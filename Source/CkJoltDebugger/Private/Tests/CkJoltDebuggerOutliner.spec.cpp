@@ -226,6 +226,64 @@ auto FCkJoltDebuggerOutliner_MultiSelectKeepsPrimaryAndSurvivesRefresh::RunTest(
     TestEqual(TEXT("clearing drops the whole set"), Outliner->Get_NumSelectedRows(), 0);
     TestFalse(TEXT("and the primary with it"), Outliner->Get_Selection().IsSet());
 
+    /*
+     * Everything above drives the panel's MODEL. A real click drives the VIEW, and `SListView` reports it by
+     * handing `OnSelectionChanged` an ARBITRARY member of its selection set — so the primary can only come
+     * from the set DELTA, and none of the assertions above exercise that derivation (P7-D71/F9).
+     */
+    Outliner->Refresh(Bodies);
+    Outliner->Set_FilterQuery(FString{});
+
+    Outliner->Simulate_RowClick({BodyEntity}, true);
+
+    {
+        TestEqual(TEXT("a click selects exactly the row clicked"), Outliner->Get_NumSelectedRows(), 1);
+
+        const auto Clicked = Outliner->Get_Selection();
+        TestTrue(TEXT("and makes it the primary"), Clicked.IsSet() && Clicked->Handle == BodyEntity);
+    }
+
+    Outliner->Simulate_RowClick({BakedEntity}, true);
+
+    {
+        TestEqual(TEXT("a Ctrl+click ADDS rather than replaces"), Outliner->Get_NumSelectedRows(), 2);
+
+        const auto ClickAdded = Outliner->Get_Selection();
+        TestTrue(TEXT("and the row it added is the new primary"),
+            ClickAdded.IsSet() && ClickAdded->Handle == BakedEntity);
+    }
+
+    // A Shift RANGE arrives as ONE signal carrying several additions, which is the case a "primary = the
+    // delegate's item" implementation gets wrong most often — the item is not the row the user released on.
+    Outliner->ClearSelection();
+    Outliner->Simulate_RowClick({BodyEntity, BakedEntity, CharacterEntity}, true);
+
+    {
+        TestEqual(TEXT("a range selects every row in it"), Outliner->Get_NumSelectedRows(), 3);
+
+        const auto RangePrimary = Outliner->Get_Selection();
+
+        if (TestTrue(TEXT("a range leaves a primary behind"), RangePrimary.IsSet()))
+        {
+            TestTrue(TEXT("and it is one of the rows the range added"),
+                RangePrimary->Handle == BodyEntity ||
+                RangePrimary->Handle == BakedEntity ||
+                RangePrimary->Handle == CharacterEntity);
+        }
+
+        // A Ctrl+click that REMOVES the primary: the last survivor takes over, because a multi-selection with
+        // no primary has nothing to show in the detail panel and nothing for the facility to sample.
+        const auto RemovedHandle = RangePrimary.IsSet() ? RangePrimary->Handle : FCk_Handle{};
+
+        Outliner->Simulate_RowClick({RemovedHandle}, false);
+
+        TestEqual(TEXT("ctrl-removing a row drops exactly that row"), Outliner->Get_NumSelectedRows(), 2);
+
+        const auto PromotedAfterRemoval = Outliner->Get_Selection();
+        TestTrue(TEXT("and a survivor is promoted to primary"),
+            PromotedAfterRemoval.IsSet() && PromotedAfterRemoval->Handle != RemovedHandle);
+    }
+
     return true;
 }
 

@@ -750,6 +750,36 @@ auto
     }
 }
 
+auto
+    SCkJoltDebugger_OutlinerPanel::
+    Simulate_RowClick(
+        const TArray<FCk_Handle>& InHandles,
+        bool InIsSelected)
+    -> void
+{
+    if (NOT _ListView.IsValid())
+    { return; }
+
+    auto Items = TArray<ItemPtr>{};
+    Items.Reserve(InHandles.Num());
+
+    for (const auto& Handle : InHandles)
+    {
+        const auto* Found = _ItemSource.FindByPredicate([&Handle](const ItemPtr& InItem)
+        { return InItem.IsValid() && InItem->Handle == Handle; });
+
+        if (Found != nullptr)
+        { Items.Emplace(*Found); }
+    }
+
+    if (Items.IsEmpty())
+    { return; }
+
+    // NOT guarded by _IsApplyingSelection: the whole point is to let OnSelectionChanged run its delta, which
+    // is what a real click does and what the guard exists to suppress for programmatic stamps.
+    _ListView->SetItemSelection(Items, InIsSelected, ESelectInfo::OnMouseClick);
+}
+
 // --------------------------------------------------------------------------------------------------------------------
 
 auto

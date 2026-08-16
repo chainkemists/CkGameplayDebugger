@@ -3,6 +3,7 @@
 #if WITH_EDITOR && WITH_DEV_AUTOMATION_TESTS
 
 #include "CkJoltDebugger/Settings/CkJoltDebuggerSettings.h"
+#include "CkJoltDebugger/Viewport/SCkJoltDebugger_3dViewport.h"
 #include "CkJoltDebugger/Window/SCkJoltDebuggerWindow.h"
 
 namespace ck_jolt_debugger_settings_spec
@@ -103,13 +104,30 @@ auto FCkJoltDebuggerSettings_ConstructRestoresPreferences::RunTest(const FString
     Settings->CameraBookmarks = {Bookmark};
 
     // Construct with NON-DEFAULT preferences, which is what drives the restore path — including the camera
-    // preset apply, which frames against a target with no content yet. That the preferences visibly land on
-    // the facility target is `[EDITOR-VERIFY]`: the target is the window's own, with no read surface here.
+    // preset apply, which frames against a target with no content yet.
     const auto Window = SNew(SCkJoltDebuggerWindow);
     Window->SlatePrepass();
 
     TestTrue(TEXT("the window constructs ensure-free with non-default preferences"),
         Window->GetDesiredSize().Y > 0.0f);
+
+    /*
+     * The restore has to LAND, not merely leave the ini alone (P7-D71/F10). Every assertion below this line
+     * reads the window's own state and the facility target it configured; asserting only that the preference
+     * survived would pass just as well against a restore pass that never ran at all.
+     */
+    TestEqual(TEXT("the restored draw flags reached the facility target"),
+        static_cast<int32>(Window->Get_TargetDrawFlags()), NonDefaultDrawFlags);
+    TestEqual(TEXT("the restored colour mode reached the facility target"),
+        static_cast<int32>(Window->Get_TargetColorMode()),
+        static_cast<int32>(ECk_Jolt_DebugDrawColorMode::ShapeType));
+    TestTrue(TEXT("the restored isolate state reached the window"), Window->Get_IsolateActive());
+    TestTrue(TEXT("the restored follow state reached the window"), Window->Get_FollowSelection());
+    TestFalse(TEXT("the restored grid state reached the window"), Window->Get_ShowGrid());
+
+    // A grid the user turned off pushes NOTHING into its retained channel — the toggle is the push, not a
+    // per-frame visibility test the capture would have to make.
+    TestEqual(TEXT("a grid restored OFF leaves its channel empty"), Window->Get_NumGridLines(), 0);
 
     // Restoring must not WRITE: every preference the window read is still the value the test set, so a restore
     // that quietly re-saved a default over the developer's own choice would show up here rather than in an ini.
@@ -128,6 +146,109 @@ auto FCkJoltDebuggerSettings_ConstructRestoresPreferences::RunTest(const FString
             Settings->CameraBookmarks[0].Location.Equals(FVector{100.0, -200.0, 300.0}) &&
             Settings->CameraBookmarks[0].IsOrthographic);
     }
+
+    // A second window, with the grid restored ON: the same restore path pushes the lattice into its channel
+    // once, which is the whole of the grid's cost.
+    Settings->ShowGrid = true;
+
+    const auto GridWindow = SNew(SCkJoltDebuggerWindow);
+    GridWindow->SlatePrepass();
+
+    TestTrue(TEXT("the restored grid state reached the second window"), GridWindow->Get_ShowGrid());
+
+    // 20 m of 1 m cells either side of the origin is 41 lines per axis, both axes: the shape is a constant,
+    // and a grid that quietly grew or shrank would change what "1 m cell" means to the eye reading it.
+    TestEqual(TEXT("a grid restored ON pushes its lattice once"), GridWindow->Get_NumGridLines(), 82);
+
+    return true;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+/*
+ * Camera bookmarks end to end (P8-D59), through the REAL hotkeys: Ctrl+digit stores, a bare digit recalls, and
+ * both live in the viewport client's InputKey. Driven through the widget's own input entry points, so what is
+ * pinned is the binding as well as the storage.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FCkJoltDebuggerSettings_CameraBookmarksStoreAndRecall,
+    "Ck.JoltDebugger.Settings.CameraBookmarksStoreAndRecall",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+auto FCkJoltDebuggerSettings_CameraBookmarksStoreAndRecall::RunTest(const FString&) -> bool
+{
+    const auto Preferences = ck_jolt_debugger_settings_spec::FScopedPreferences{};
+    auto* Settings = Preferences.Get_Settings();
+
+    if (NOT TestNotNull(TEXT("the Jolt debugger settings object exists"), Settings))
+    { return false; }
+
+    Settings->CameraBookmarks.Reset();
+
+    const auto Viewport = SNew(SCkJoltDebugger_3dViewport);
+    Viewport->SlatePrepass();
+
+    const auto Pan = [&Viewport]()
+    {
+        Viewport->Input_Key(EKeys::MiddleMouseButton, IE_Pressed);
+        Viewport->Input_MouseAxis(EKeys::MouseX, 60.0f);
+        Viewport->Input_Key(EKeys::MiddleMouseButton, IE_Released);
+    };
+
+    Viewport->ApplyPreset(ECkJoltDebugger_CameraPreset::Perspective);
+    Pan();
+
+    const auto StoredLocation = Viewport->Get_ViewLocation();
+    const auto StoredRotation = Viewport->Get_ViewRotation();
+
+    Viewport->Input_Key(EKeys::LeftControl, IE_Pressed);
+    Viewport->Input_Key(EKeys::Three, IE_Pressed);
+    Viewport->Input_Key(EKeys::Three, IE_Released);
+    Viewport->Input_Key(EKeys::LeftControl, IE_Released);
+
+    if (NOT TestTrue(TEXT("Ctrl+3 stores a pose in slot 3"),
+        Settings->CameraBookmarks.IsValidIndex(3) && Settings->CameraBookmarks[3].IsSet))
+    { return false; }
+
+    TestFalse(TEXT("a perspective pose is not stored as an orthographic one"),
+        Settings->CameraBookmarks[3].IsOrthographic);
+
+    // Somewhere else entirely: a different projection AND a different eye, so the recall has to put both back.
+    Viewport->ApplyPreset(ECkJoltDebugger_CameraPreset::Top);
+    Pan();
+
+    Viewport->Input_Key(EKeys::Three, IE_Pressed);
+
+    TestEqual(TEXT("a bare 3 recalls the stored projection"),
+        static_cast<int32>(Viewport->Get_ProjectionMode()),
+        static_cast<int32>(ECameraProjectionMode::Perspective));
+    TestTrue(TEXT("and the stored eye"), Viewport->Get_ViewLocation().Equals(StoredLocation, 0.01));
+    TestTrue(TEXT("and the stored rotation"), Viewport->Get_ViewRotation().Equals(StoredRotation, 0.01f));
+
+    // A slot nobody ever stored is INERT: the slots are dense, so an untouched one holds a default pose that
+    // would otherwise snap the camera to the origin.
+    const auto LocationBeforeInert = Viewport->Get_ViewLocation();
+
+    Viewport->Input_Key(EKeys::Seven, IE_Pressed);
+
+    TestTrue(TEXT("an unstored slot recalls nothing"),
+        Viewport->Get_ViewLocation().Equals(LocationBeforeInert));
+
+    // Ctrl+Alt+3 is not a bookmark gesture: only Ctrl stores, so a modified combination stays available to
+    // whatever else binds it.
+    const auto BookmarkBefore = Settings->CameraBookmarks[3];
+
+    Pan();
+
+    Viewport->Input_Key(EKeys::LeftControl, IE_Pressed);
+    Viewport->Input_Key(EKeys::LeftAlt, IE_Pressed);
+    Viewport->Input_Key(EKeys::Three, IE_Pressed);
+    Viewport->Input_Key(EKeys::Three, IE_Released);
+    Viewport->Input_Key(EKeys::LeftAlt, IE_Released);
+    Viewport->Input_Key(EKeys::LeftControl, IE_Released);
+
+    TestTrue(TEXT("Ctrl+Alt+3 does not overwrite the bookmark"),
+        Settings->CameraBookmarks[3].Location.Equals(BookmarkBefore.Location));
 
     return true;
 }

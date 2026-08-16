@@ -177,6 +177,50 @@ auto FCkJoltDebuggerViewport_CameraSchemeIsUnrealStyle::RunTest(const FString&) 
             Viewport->Get_ViewRotation().Equals(RotationBefore, 0.01f));
     }
 
+    // THE WHEEL DOLLIES THE WHOLE CAMERA (P7-D71/F6): the eye AND the pivot travel along the view, so the
+    // offset between them is unchanged. Shrinking the orbit distance instead — which is what this used to do —
+    // walks the eye towards a pivot it can never pass, and the wheel stalls in front of whatever was framed.
+    {
+        Viewport->ApplyPreset(ECkJoltDebugger_CameraPreset::Perspective);
+
+        const auto LocationBefore = Viewport->Get_ViewLocation();
+        const auto LookAtBefore = Viewport->Get_LookAtLocation();
+        const auto OffsetBefore = LookAtBefore - LocationBefore;
+
+        Viewport->Input_Key(EKeys::MouseScrollUp, IE_Pressed);
+
+        TestFalse(TEXT("the wheel moves the eye"),
+            Viewport->Get_ViewLocation().Equals(LocationBefore, 1.0));
+        TestFalse(TEXT("and the pivot with it"),
+            Viewport->Get_LookAtLocation().Equals(LookAtBefore, 1.0));
+        TestTrue(TEXT("so the distance between them is untouched — the wheel never stalls at the pivot"),
+            (Viewport->Get_LookAtLocation() - Viewport->Get_ViewLocation()).Equals(OffsetBefore, 0.01));
+    }
+
+    // AN ORTHO PAN SCALES OFF THE ORTHO WIDTH, NOT THE PIVOT DISTANCE (P7-D71/F5). The same drag has to cover
+    // more world when more world is on screen; scaled off the pivot it would drag by the same amount at every
+    // zoom level, which is unusable at both ends of the range.
+    {
+        Viewport->ApplyPreset(ECkJoltDebugger_CameraPreset::Top);
+
+        for (auto Notch = 0; Notch < 10; ++Notch)
+        { Viewport->Input_Key(EKeys::MouseScrollUp, IE_Pressed); }
+
+        const auto NarrowBefore = Viewport->Get_ViewLocation();
+        Drag(EKeys::MiddleMouseButton, 100.0f);
+        const auto NarrowDelta = (Viewport->Get_ViewLocation() - NarrowBefore).Size();
+
+        for (auto Notch = 0; Notch < 20; ++Notch)
+        { Viewport->Input_Key(EKeys::MouseScrollDown, IE_Pressed); }
+
+        const auto WideBefore = Viewport->Get_ViewLocation();
+        Drag(EKeys::MiddleMouseButton, 100.0f);
+        const auto WideDelta = (Viewport->Get_ViewLocation() - WideBefore).Size();
+
+        TestTrue(TEXT("a zoomed-out ortho pan covers more world than a zoomed-in one"),
+            WideDelta > NarrowDelta * 2.0);
+    }
+
     // AN ORTHOGRAPHIC PRESET IS AXIS-LOCKED: a rotate gesture pans instead, and the rotation is untouched.
     {
         Viewport->ApplyPreset(ECkJoltDebugger_CameraPreset::Top);

@@ -72,6 +72,14 @@ struct FCkJoltDebugger_CameraBookmark
 
 	UPROPERTY(Config, EditAnywhere, Category = "Viewport")
 	bool IsOrthographic = false;
+
+	/*
+	 * Whether this slot was ever stored. The slots are DENSE — the digit key is the array index — so an
+	 * untouched slot is a default-constructed pose sitting between two real ones, and recalling it would snap
+	 * the camera to the origin. A bookmark nobody took has to be inert instead.
+	 */
+	UPROPERTY(Config, EditAnywhere, Category = "Viewport")
+	bool IsSet = false;
 };
 
 // --------------------------------------------------------------------------------------------------------------------

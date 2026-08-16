@@ -11,10 +11,12 @@ auto
     Construct(const FArguments& InArgs)
     -> void
 {
-    _Fraction    = InArgs._Fraction;
-    _FillColor   = InArgs._FillColor;
-    _TrackColor  = InArgs._TrackColor;
-    _DesiredSize = InArgs._DesiredSize;
+    _Fraction       = InArgs._Fraction;
+    _FillColor      = InArgs._FillColor;
+    _TrackColor     = InArgs._TrackColor;
+    _TargetFraction = InArgs._TargetFraction;
+    _TargetColor    = InArgs._TargetColor;
+    _DesiredSize    = InArgs._DesiredSize;
 }
 
 auto
@@ -63,7 +65,28 @@ auto
             _FillColor.Get(FLinearColor::White));
     }
 
-    return InLayerId + 2;
+    if (const auto Target = _TargetFraction.Get(TOptional<float>{});
+        Target.IsSet())
+    {
+        // Square, not the rounded brush: a rounded 2px rule renders as a smudge at this height, and the marker has to
+        // read as a hard "here" against a fill whose leading edge is itself rounded.
+        constexpr auto MarkerWidth = 2.0f;
+
+        const auto Clamped  = FMath::Clamp(Target.GetValue(), 0.0f, 1.0f);
+        const auto MarkerX  = FMath::Clamp(Size.X * Clamped - MarkerWidth * 0.5f, 0.0f, Size.X - MarkerWidth);
+
+        FSlateDrawElement::MakeBox(
+            OutDrawElements,
+            InLayerId + 2,
+            InAllottedGeometry.ToPaintGeometry(
+                FVector2f(MarkerWidth, Size.Y),
+                FSlateLayoutTransform{FVector2f(MarkerX, 0.0f)}),
+            CkStyle::GetFilledBrush(),
+            ESlateDrawEffect::None,
+            _TargetColor.Get(FLinearColor::White));
+    }
+
+    return InLayerId + 3;
 }
 
 // ====================================================================================================================

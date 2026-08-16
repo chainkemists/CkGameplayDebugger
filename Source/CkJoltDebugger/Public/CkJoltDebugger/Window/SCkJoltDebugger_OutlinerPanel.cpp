@@ -249,6 +249,19 @@ auto
     -> void
 {
     _Bodies = InBodies;
+
+    // Counted HERE, once per collector pass, rather than in the chip's own attributes (P8-D74/F4). The chip
+    // asks twice per paint — its text and its kind — and the flags only ever move on a refresh, so an
+    // O(rows) walk per paint was paying a whole-collection scan to render a number that could not have
+    // changed since the last one.
+    _NumProblemRows = 0;
+
+    for (const auto& Body : _Bodies)
+    {
+        if (Body.Get_HasProblem())
+        { ++_NumProblemRows; }
+    }
+
     ApplyFilterPipeline();
 }
 
@@ -261,6 +274,7 @@ auto
     _ItemSource.Reset();
     _SelectedIdentities.Reset();
     _Primary.Reset();
+    _NumProblemRows = 0;
 
     if (_ListView.IsValid())
     {
@@ -890,15 +904,7 @@ auto
     Get_NumProblemRows() const
     -> int32
 {
-    auto Count = 0;
-
-    for (const auto& Body : _Bodies)
-    {
-        if (Body.Get_HasProblem())
-        { ++Count; }
-    }
-
-    return Count;
+    return _NumProblemRows;
 }
 
 // --------------------------------------------------------------------------------------------------------------------

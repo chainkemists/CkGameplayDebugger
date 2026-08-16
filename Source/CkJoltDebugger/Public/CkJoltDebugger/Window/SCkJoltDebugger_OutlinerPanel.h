@@ -143,7 +143,10 @@ public:
     auto Set_ProblemsFilter(bool InIsActive) -> void;
     auto Get_IsProblemsFilterActive() const -> bool { return _ProblemsOnly; }
 
-    /** Rows the facility's health scan flagged, over the whole collected set rather than the visible one. */
+    /**
+     * Rows the facility's health scan flagged, over the whole collected set rather than the visible one.
+     * CACHED at `Refresh` — the chip reads it twice per paint and the flags only move when the collector runs.
+     */
     auto Get_NumProblemRows() const -> int32;
 
     /** Regenerate every row widget after a style revision. Item identity is untouched. */
@@ -196,6 +199,11 @@ private:
 
     // The Problems chip's state. A second filter stage, not a second query.
     bool _ProblemsOnly = false;
+
+    // How many of `_Bodies` the health scan flagged, recomputed once per `Refresh` (P8-D74/F4). The chip's two
+    // attribute lambdas ask for it every paint; the answer can only change when the collector hands over a
+    // new set.
+    int32 _NumProblemRows = 0;
 };
 
 // --------------------------------------------------------------------------------------------------------------------

@@ -660,6 +660,12 @@ auto
     // here, so this clears rather than re-pushes.
     DoApplyIsolation();
 
+    // The reference-frames flag is DERIVED from "the user's own preference OR a constraint is selected"
+    // (P5-D61/S8). The selection is already empty here, so re-deriving restores exactly the preference the
+    // user chose — left standing, a world change made while a constraint was selected would leave the whole
+    // next world's frames drawn by a flag nobody set (P8-D74/F1).
+    DoApplyConstraintReferenceFrames();
+
     // The probe channel described a probe in the world that just went away. Cleared here rather than left for
     // the next refresh, which cannot happen at all until a world is selected again.
     if (_DebugDrawTarget.IsValid() && _ProbeResultsSignature.IsSet())
@@ -1695,6 +1701,13 @@ auto
     {
         if (Body.BodyKey.IsSet())
         { Keys.Emplace(*Body.BodyKey); }
+
+        // A constraint row carries no body key of its own — what it names is the pair it joins (P8-D55).
+        // Gathered here for the same reason `DoApplySelectionSet` gathers it for the highlight: isolating on
+        // a constraint-only selection would otherwise find no keys and CLEAR the isolation, so selecting a
+        // constraint while Isolate was lit turned isolation off (P8-D74/F2).
+        for (const auto ConstraintBodyKey : Body.ConstraintBodyKeys)
+        { Keys.Emplace(ConstraintBodyKey); }
     }
 
     if (Keys.IsEmpty())
@@ -1797,7 +1810,8 @@ auto
     _DragPlanePoint = InGrabPointWorld;
 
     Subsystem->Request_BeginDrag(*InPickedKey, InGrabPointWorld);
-    _DragBodyKey = *InPickedKey;
+    _DragBodyKey    = *InPickedKey;
+    _DragSubsystem  = Subsystem;
 #endif
 }
 
@@ -1850,13 +1864,17 @@ auto
     -> void
 {
 #if !UE_BUILD_SHIPPING
-    // Gated on the SUBSYSTEM's own answer as well as this window's, so the call is safe on every teardown path:
-    // by the time a world change reaches here the selector already points somewhere else, and ending a drag on
-    // a subsystem that never had one would be a request nobody asked for.
-    if (auto* Subsystem = Get_SelectedJoltSubsystem();
+    // Ended on the subsystem the drag BEGAN on, captured weakly at arm (P8-D73). `HandleWorldChanged` calls
+    // this AFTER the selector has already re-pointed, so `Get_SelectedJoltSubsystem()` there answers with the
+    // new world's subsystem — which never had this drag — and the old world's body stayed on its spring until
+    // FJoltWorld shutdown. A live server↔client selector switch never reaches that shutdown at all.
+    // Weak because the world the drag began in can die first; the `Get_IsDragging()` gate stays, against THAT
+    // subsystem, so a second call is still a no-op.
+    if (auto* Subsystem = _DragSubsystem.Get();
         ck::IsValid(Subsystem) && _DragBodyKey.IsSet() && Subsystem->Get_IsDragging())
     { Subsystem->Request_EndDrag(); }
 
+    _DragSubsystem.Reset();
     _DragBodyKey.Reset();
     _DragLineGrab.Reset();
     _DragLineAnchor.Reset();
@@ -2134,6 +2152,11 @@ auto
 
         OutLink._OtherLocation = UCk_Utils_Transform_TypeUnsafe_UE::Get_EntityCurrentLocation(InOther);
         OutLink._HasOtherLocation = true;
+
+        // The POSITION, not just the identity (P8-D74/F5). The overlap set of a probe resting against a body
+        // that is moving never changes membership, so an identity-only digest froze the lines where the two
+        // entities were when the selection landed.
+        Signature = HashCombine(Signature, GetTypeHash(OutLink._OtherLocation));
     };
 
     if (IsProbe)
@@ -2170,6 +2193,10 @@ auto
 
     Signature = HashCombine(Signature, static_cast<uint32>(Links.Num()));
     Signature = HashCombine(Signature, GetTypeHash(SelectedHandle));
+
+    // Every line STARTS at the origin, so a probe that moved while its overlap set held still moves the whole
+    // drawing (P8-D74/F5).
+    Signature = HashCombine(Signature, GetTypeHash(Origin));
 
     if (_ProbeResultsSignature.IsSet() && *_ProbeResultsSignature == Signature)
     { return; }

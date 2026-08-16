@@ -26,6 +26,7 @@ namespace ck_jolt_debugger_settings_spec
             _IsolateActive = _Settings->IsolateActive;
             _FollowSelection = _Settings->FollowSelection;
             _ShowGrid = _Settings->ShowGrid;
+            _ShowProbeResults = _Settings->ShowProbeResults;
             _RunawayVelocityCmS = _Settings->RunawayVelocityCmS;
             _CameraBookmarks = _Settings->CameraBookmarks;
         }
@@ -43,8 +44,14 @@ namespace ck_jolt_debugger_settings_spec
             _Settings->IsolateActive = _IsolateActive;
             _Settings->FollowSelection = _FollowSelection;
             _Settings->ShowGrid = _ShowGrid;
+            _Settings->ShowProbeResults = _ShowProbeResults;
             _Settings->RunawayVelocityCmS = _RunawayVelocityCmS;
             _Settings->CameraBookmarks = _CameraBookmarks;
+
+            // Restoring the CDO is not enough: every toggle this spec drives calls SaveConfig(), so the
+            // developer's REAL ini already holds the test values by the time this runs — a bookmark in slot 3
+            // among them. Saving the restored CDO is what puts the file back (P8-D74/F7).
+            _Settings->SaveConfig();
         }
 
         FScopedPreferences(const FScopedPreferences&) = delete;
@@ -62,6 +69,7 @@ namespace ck_jolt_debugger_settings_spec
         bool _IsolateActive = false;
         bool _FollowSelection = false;
         bool _ShowGrid = true;
+        bool _ShowProbeResults = false;
         float _RunawayVelocityCmS = 5000.0f;
         TArray<FCkJoltDebugger_CameraBookmark> _CameraBookmarks;
     };

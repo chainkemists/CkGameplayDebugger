@@ -91,9 +91,13 @@ client has.
   `FSceneView` from Slate.**
 - Screen pixels become local Slate units **by ratio** (`LocalSize / ViewRect.Size()`), because the two are
   the same rectangle at different DPI scales.
-- ⚠ **`OnPaint` allocates NOTHING** (`CkDebuggerCommon/CLAUDE.md` § OnPaint). The font is a member built
-  once in `Construct`; colours come off the label and the palette. Consequence: the label font does **not**
-  follow a live Style Lab text-scale flip — it is fixed for the life of the window.
+- ⚠ **`OnPaint` allocates nothing OF ITS OWN in the steady state** — which is not the same as allocating
+  nothing, and this doc claimed the stronger thing until P8-D74/F3. The font is a member built once in
+  `Construct` (`CkDebuggerCommon/CLAUDE.md` § OnPaint), colours come off the label and the palette, and the
+  label selection writes into a **member scratch array** that keeps its capacity across paints. What still
+  allocates is Slate's own `FSlateDrawElement::MakeText`, which copies the text into the element list exactly
+  as it does for every other text-drawing widget here. Consequence of the member font: it does **not** follow
+  a live Style Lab text-scale flip — it is fixed for the life of the window.
 - **The primary selection is always labelled**, whatever the `Labels` draw flag says. That label is the
   WINDOW's (`Set_PrimaryLabel`, pushed from the ungated half of `Tick`, positioned at the top of the
   highlight bounds in the palette's highlight colour) — a selection the user made is not something they
@@ -101,9 +105,12 @@ client has.
   today the only one it emits is the numeric mass beside the Mass+Inertia box, which needs BOTH `Labels`
   and `MassAndInertia`.
 - **Hard cap: 500, nearest to the eye first** (`ck_jolt_debugger_viewport::MaxPaintedLabels`). Over the cap
-  the labels are sorted by distance and truncated; **under** it the capture's own order is left untouched,
-  so a camera move does not reshuffle the draw order for nothing. The truncation logs `Display` **once per
-  window**, because a silent truncation reads as the facility losing labels.
+  the selection is **bounded, never a full sort** (P8-D74/F3): a max-heap of exactly the cap, farthest at the
+  top, so a candidate is compared against the worst kept label and the whole pass is O(n log cap) with one
+  O(cap log cap) ordering pass at the end. Sorting all of them to discard everything past 500 is what a
+  100k-body Labels flag would otherwise have paid, every paint. **Under** the cap the capture's own order is
+  left untouched, so a camera move does not reshuffle the draw order for nothing. The truncation logs
+  `Display` **once per window**, because a silent truncation reads as the facility losing labels.
 - `ProjectWorldToScreen` returns false behind the eye, so a label the camera turned away from is dropped
   rather than wrapped to the other side of the screen.
 
@@ -117,6 +124,13 @@ client has.
 - **It never fights the pick or the drag gesture.** Any of `_PendingPickPress`, `_IsCtrlGesture`, or a held
   mouse button suppresses it outright, and `LostFocus` clears it (reporting an unset key) so an overlay can
   never latch on.
+- **`MouseLeave` clears it too** (P8-D74/F6). The cursor leaving the viewport is not a move, so nothing else
+  in the client ever hears about it, and `LostFocus` does not cover the common case — moving the mouse out
+  of a viewport that still holds focus. Without the override the last hovered body kept its overlay and its
+  tooltip while the mouse was somewhere else entirely.
+- ⚠ **Known gap:** a hovered body whose row leaves the world does not clear the hover until the mouse moves.
+  The key lives on the viewport CLIENT and its change-detection is what would latch, so clearing it needs a
+  client-side path the window can call — deliberately out of scope for the P8-D74 fix-up, not an oversight.
 - The delegate fires **on change only** — re-stamping the same key sixteen times a second would invalidate
   an overlay that never moved.
 - The facility owns the overlay (`Set_HoveredBody`, its own always-visible half-alpha class); the WINDOW
@@ -268,11 +282,15 @@ drag plane. The widget never touches either — it forwards a ray.
 - **`LostFocus` ends a live drag.** `FSceneViewport` empties its key state on the way out, so a release
   that never arrives would leave the facility's spring attached to a body forever.
 - **`HandleDragRelease` is IDEMPOTENT and is the single teardown path** (P7-D71/F3). It runs on the
-  release, at the top of `HandleWorldChanged`, at the top of the destructor — before anything re-points
-  `_WorldModel` — and at the top of a fresh arm. It is gated on the SUBSYSTEM's own `Get_IsDragging()` as
-  well as this window's key, so calling it on a path where the world selector has already moved cannot end
-  a drag on a subsystem that never had one. It also `Clear_External`s the drag line's channel, which is
-  what stops a retained "JoltDebugger.Drag" line outliving the world it described (F2).
+  release, at the top of `HandleWorldChanged`, at the top of the destructor and at the top of a fresh arm.
+  **It ends the drag on the subsystem the drag BEGAN on** — a `TWeakObjectPtr` captured at arm (P8-D73) —
+  not on whatever the world selector currently points at. The world-change path calls it *after* the
+  selector has already re-pointed, so asking the selector there answered with the NEW world's subsystem,
+  which never had this drag: the old world's body stayed on its spring until `FJoltWorld` shutdown, and a
+  live server↔client selector switch never reaches that shutdown at all. The `Get_IsDragging()` gate stays,
+  against that captured subsystem, which is what keeps a second call a no-op; the weak ref is cleared on
+  release. It also `Clear_External`s the drag line's channel, which is what stops a retained
+  "JoltDebugger.Drag" line outliving the world it described (P7-D71/F2).
 - **Authority only.** The window computes `GetNetMode() != NM_Client` and pushes it down each tick; on a
   client the gesture never opens and the toolbar's Drag chip is dark with a tooltip saying why.
 
@@ -339,7 +357,10 @@ by `FCkJoltDebugger_DataCollector` on the window's refresh-gated Tick. **Five** 
 - **The "Problems" chip is a SECOND filter stage, not a second query** (P8-D57). It stacks with the text
   filter (`Matches_Query && (NOT _ProblemsOnly || Get_HasProblem())`) and obeys the same pin rule — a
   selected row survives both, dimmed. The flags are pushed in by the collector, not computed here, so a
-  body that stopped being broken stops being listed without anyone touching the chip. The chip lives ABOVE
+  body that stopped being broken stops being listed without anyone touching the chip. **Its COUNT is cached
+  at `Refresh`** (P8-D74/F4) — the chip's text and its kind are two attribute lambdas asking every paint, and
+  the flags can only move when the collector hands over a new set, so an O(rows) walk per paint was scanning
+  the whole collection to render a number that could not have changed. The chip lives ABOVE
   the query boxes because it is a different KIND of filter — one the facility computed, not one the user
   typed — and its tooltip rides an enclosing `SBox` (`SCkDebug_Chip` does not apply the base `ToolTipText`
   argument, and Slate resolves a tooltip by walking UP the hovered path).
@@ -366,7 +387,9 @@ selecting a constraint AND one of its bodies must not highlight that body twice.
 and documented (P5-D61/S8); do **not** fake a per-constraint framing. The flag is derived, never
 remembered: `DoApplyConstraintReferenceFrames` recomputes it as
 `persisted-user-intent OR a-constraint-is-selected`, so deselecting restores exactly what the user chose
-and the state is never persisted behind their back. Visible consequence: while a constraint is selected
+and the state is never persisted behind their back. **`HandleWorldChanged` re-derives it too** (P8-D74/F1):
+a world change made while a constraint was selected drops the selection, and without the re-derive the next
+world drew everybody's reference frames under a flag nobody set. Visible consequence: while a constraint is selected
 the Reference Frames toggle reads ON even if the user's own preference is off.
 
 **The primary leads the set because the facility says so**: `Set_HighlightedBodies` samples the FIRST key
@@ -414,8 +437,11 @@ is single-selection and a set has no meaning there.
 
 ### Isolate and Follow (P7-D53)
 
-- **Isolate names the SELECTED KEYS**, so it is re-pushed from `DoApplySelectionSet` every time they
-  change; the toolbar toggle and the bare `I` hotkey are the same call. An **empty** selection CLEARS the
+- **Isolate names the SELECTED KEYS** — including a constraint row's `ConstraintBodyKeys`, exactly as the
+  highlight gathers them (P8-D74/F2); a constraint-only selection would otherwise gather nothing and CLEAR
+  the isolation, so selecting a constraint under a lit Isolate turned isolation off. It is re-pushed from
+  `DoApplySelectionSet` every time the keys change; the toolbar toggle and the bare `I` hotkey are the same
+  call. An **empty** selection CLEARS the
   isolation rather than isolating nothing — a viewport that went blank under a lit toggle is
   indistinguishable from a broken draw.
 - **Follow keeps the camera's OFFSET; it does not re-frame.** The viewport client tracks the selection
@@ -655,9 +681,13 @@ read "everything visible" while the preferences said otherwise.
 the same lane; underneath it is a **retained named External sub-channel**, `"JoltDebugger.ProbeResults"`
 (P5-D61/S3), owned by this window:
 
-- Pushed only when the overlap SET changes. `UCk_Utils_Probe_UE::Get_CurrentOverlaps` returns a full
-  `TSet` **copy**, so the result is gathered, digested into a signature, and only re-drawn when that
-  signature moves. **Never poll it for every probe** — it is read for the primary selection alone.
+- Pushed only when the DRAWING changes. `UCk_Utils_Probe_UE::Get_CurrentOverlaps` returns a full `TSet`
+  **copy**, so the result is gathered, digested into a signature, and only re-drawn when that signature
+  moves. The signature covers everything the lines are built from — the overlap identities, the contact
+  points, **the origin the lines leave from and each other entity's location** (P8-D74/F5). An
+  identity-only digest froze the drawing in place for the commonest case there is: a probe resting against
+  a moving body, whose overlap membership never changes. **Never poll it for every probe** — it is read for
+  the primary selection alone.
 - Drawn per overlap: a line to the other entity, a small sphere at each contact point, and an arrow along
   the contact normal from each point.
 - `Clear_External("JoltDebugger.ProbeResults")` is the ONLY thing that empties it, and the window calls it
@@ -776,6 +806,7 @@ whatever is in the world at that moment, not a camera state a window can be rest
 | Spec | Asserts |
 |---|---|
 | `Ck.JoltDebugger.Window.ConstructsWithoutSlotAttributeEnsure` | the window builds and prepasses with no slot-attribute ensure |
+| `Ck.JoltDebugger.Window.ConstraintIsADebuggerEntity` | the FIFTH clause of `Is_JoltDebuggerEntity` (P8-D55, pinned by P8-D74/F10): an entity carrying `FFragment_JoltConstraint_Current` answers TRUE, a bare entity FALSE, an invalid handle FALSE. That one predicate answers for both the entity-target route and the game-viewport picker's filter, and the four body-ish clauses cannot cover it — a constraint entity carries none of them |
 | `Ck.JoltDebugger.Viewport.ConstructsWithoutEnsure` | the viewport builds ensure-free and owns a preview world |
 | `Ck.JoltDebugger.Viewport.CameraPresets` | every preset sets its projection mode and points the camera down its expected axis (compared as forward vectors — rotator normalization must not make it flaky) |
 | `Ck.JoltDebugger.Viewport.FrameAllWithoutContentIsInert` | framing invalid bounds leaves the camera untouched instead of snapping to the origin |
@@ -786,7 +817,7 @@ whatever is in the world at that moment, not a camera state a window can be rest
 | `Ck.JoltDebugger.Outliner.ListsConstraintRows` | a constraint row is listed beside the two bodies it joins and is selectable; it carries NO body key of its own; it names BOTH bodies with **A first** (which is what the facility samples) and reports its constraint flavour; a refresh over the same set keeps it selected; and its own row text answers the shared text filter |
 | `Ck.JoltDebugger.Outliner.ProblemsChipNarrowsToFlaggedRows` | three rows, one flagged: the chip is off to begin with and all three are listed; turning it on leaves exactly the flagged row; a SELECTED healthy row stays pinned beside it and renders dimmed (the pin rule outranks the chip exactly as it outranks the text filter); clearing the selection narrows to one again; clearing the chip restores three; and a row whose flags are cleared by the next collector pass leaves the chip with nothing to show |
 | `Ck.JoltDebugger.Viewport.LabelCapKeepsTheNearest` | the pure half of the label paint: under the cap every label survives in the CAPTURE's order (a camera move must not reshuffle the draw order); over it exactly the cap survives, **nearest first**, from a fixture authored farthest-first so a take-the-first-N implementation cannot pass; a zero cap paints nothing; no labels select nothing; and the shipped cap is 500 |
-| `Ck.JoltDebugger.Settings.ConstructRestoresPreferences` | the settings live in the `Editor` container, and the window constructs ensure-free with NON-DEFAULT preferences — which is what drives the restore path, camera preset included. Every preference the restore reads is asserted UNCHANGED afterwards, so a restore that quietly re-saved a default over the developer's own choice surfaces here rather than in an ini. Covers all seven new fields (draw flags, colour mode, isolate, follow, grid, runaway velocity, a bookmark). **And that the restore LANDED** (P7-D71/F10): the window's own read surface reports the draw flags and colour mode ON THE FACILITY TARGET, its isolate/follow/grid state, and that a grid restored OFF pushes no lines while a second window with it ON pushes exactly 82. The developer's own CDO values are saved and put back by an RAII guard, so a failing prepass cannot leave test values on the real per-user settings |
+| `Ck.JoltDebugger.Settings.ConstructRestoresPreferences` | the settings live in the `Editor` container, and the window constructs ensure-free with NON-DEFAULT preferences — which is what drives the restore path, camera preset included. Every preference the restore reads is asserted UNCHANGED afterwards, so a restore that quietly re-saved a default over the developer's own choice surfaces here rather than in an ini. Covers all seven new fields (draw flags, colour mode, isolate, follow, grid, runaway velocity, a bookmark). **And that the restore LANDED** (P7-D71/F10): the window's own read surface reports the draw flags and colour mode ON THE FACILITY TARGET, its isolate/follow/grid state, and that a grid restored OFF pushes no lines while a second window with it ON pushes exactly 82. The developer's own CDO values are saved and put back by an RAII guard **which then calls `SaveConfig()`** (P8-D74/F7) — every toggle these specs drive saves as it goes, so restoring the CDO alone left the test values, a slot-3 bookmark among them, sitting in the developer's real ini. The guard covers `ShowProbeResults` as well |
 | `Ck.JoltDebugger.Settings.CameraBookmarksStoreAndRecall` | bookmarks end to end through the REAL hotkeys (P8-D59): `Ctrl+3` stores the live pose in slot 3 and marks it set; moving to a different projection AND a different eye and pressing a bare `3` puts the projection, the eye and the rotation back; a slot nobody stored is inert rather than a snap to the origin; and `Ctrl+Alt+3` does not store, so a modified digit stays available to whatever else binds it. Under the same RAII guard |
 | `Ck.JoltDebugger.Detail.ConstructsWithoutEnsure` | every value lambda survives a completely unbound `GetSelection` AND an unbound `GetSelectionFacts` — including the rows that dereference a `TOptional` sample — and reads `--`; `Refresh_Contacts` on an unbound panel lists nothing |
 | `Ck.JoltDebugger.Detail.RowsReflectTheSelection` | the built rows render the bound selection's own values (population / motion / sleep / body key); an unsampled velocity reads `--` and a sampled one reaches the row; **every facility row degrades to `--` while the sample is unset** (mass, friction, object layer, shape type) and renders the sample once it lands (angular velocity, mass, friction, restitution, motion quality, object layer, sensor, shape type, allows-sleeping); a ZERO mass reads "Infinite" and an unasked sleeping flag reads `--`; the **character group flips visible** when the selection's population becomes Character and its rows render the character sample (ground state, velocity, ground body) while every rigid-body row degrades; an unset ground body key reads `--`; the contacts list takes one row per reported contact and empties with them; and clearing the selection empties every row and re-collapses the character group |
@@ -895,7 +926,12 @@ cap and in what order (`Ck.JoltDebugger.Viewport.LabelCapKeepsTheNearest`). Thes
 - **The probe-results channel costs one full `TSet` copy per REFRESH of the selected probe**, not per
   tick, and nothing at all while the toggle is off or the selection is not a probe.
 - **`OnPaint` costs one matrix build plus one `ProjectWorldToScreen` per painted label**, hard-capped at
-  500. With no labels and no selection it early-outs before building the matrix at all.
+  500, plus the bounded label selection over ALL of the capture's labels — one distance-squared per label
+  and a heap sift only for the ones that beat the current worst (O(n log cap), P8-D74/F3). With no labels
+  and no selection it early-outs before building the matrix at all. The selection's index array is a member
+  reused across paints, so the steady state does not grow an allocation; the text copies Slate's `MakeText`
+  makes are the only per-paint allocation left, and they are the same ones every text widget in the suite
+  pays.
 
 - **One selection change = one full inactive-body WALK — CLOSED, measured.** `Set_HighlightedBody`
   re-arms the facility's revision-keyed pass so a static or long-asleep body gains its overlay on the
@@ -950,6 +986,11 @@ cap and in what order (`Ck.JoltDebugger.Viewport.LabelCapKeepsTheNearest`). Thes
   resolved; a Ctrl+click on empty space must open no drag at all.
 - **Never end a drag anywhere but `HandleDragRelease`.** It is idempotent and gated on the subsystem's own
   `Get_IsDragging()`, which is what lets the destructor and the world-change path just call it.
+- **Never end a drag on the CURRENTLY selected subsystem.** The release runs after the world selector has
+  moved; the subsystem the drag began on is captured weakly at arm and is the one that has to be asked.
+- **Never fully sort the capture's labels to apply the cap.** The selection is a bounded max-heap of `Cap`
+  and it writes into a member scratch array — a full sort per paint at 100k labels is the cost the cap
+  exists to avoid.
 - **Never scale an ORTHO gesture off the orbit distance.** In ortho the ortho width is what says how much
   world a pixel covers.
 - **Never let the wheel shrink the orbit distance.** Eye and pivot move together, or the dolly stalls at

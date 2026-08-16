@@ -365,6 +365,11 @@ private:
     FVector           _DragPlanePoint  = FVector::ZeroVector;
     FVector           _DragPlaneNormal = FVector::ForwardVector;
 
+    // The subsystem the drag BEGAN on (P8-D73). The release has to reach THAT one: a world change ends the drag
+    // after the selector has already re-pointed, so asking the selector again would end nothing and leave the
+    // old world's body on its spring. Weak — that world can die while this window lives.
+    TWeakObjectPtr<UCk_Jolt_Subsystem> _DragSubsystem;
+
     // Last drag line pushed into the External channel, so it is re-pushed only when it actually moved.
     TOptional<FVector> _DragLineGrab;
     TOptional<FVector> _DragLineAnchor;

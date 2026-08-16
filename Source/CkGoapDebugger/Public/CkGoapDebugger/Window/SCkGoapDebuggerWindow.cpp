@@ -1,4 +1,4 @@
-#include "CkGoapDebugger/Window/SCkGoapDebuggerWindow.h"
+﻿#include "CkGoapDebugger/Window/SCkGoapDebuggerWindow.h"
 
 #include "CkGoapDebugger/CkGoapDebugger_Module.h"
 #include "CkGoapDebugger/CkGoapDebuggerStyle.h"
@@ -1185,7 +1185,7 @@ auto
                 })},
             FCkDebug_IconToggleAction{
                 TEXT("PauseOnPlanFailed"),
-                TEXT("Skull"),
+                TEXT("Severity_Error"),
                 FText::FromString(TEXT("Pause on plan failed")),
                 FText::FromString(TEXT("Pause PIE when GOAP plan construction fails.")),
                 TAttribute<bool>::CreateLambda([this]() -> bool { return _PauseOnPlanFailed; }),

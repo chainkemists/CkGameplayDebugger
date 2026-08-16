@@ -1,4 +1,4 @@
-#include "CkEqsDebugger/Window/SCkEqsDebuggerWindow.h"
+﻿#include "CkEqsDebugger/Window/SCkEqsDebuggerWindow.h"
 
 #include "CkEqsDebugger/Settings/CkEqsDebuggerSettings.h"
 #include "CkEqsDebugger/ViewModel/CkEqsDebugger_ViewModel.h"
@@ -212,7 +212,7 @@ auto
             TEXT("Candidates"), TEXT("Draw a sphere at every candidate location, color-lerped by final score.")),
         MakeOverlayToggle(TEXT("Best"), TEXT("Target"), &UCkEqsDebuggerSettings::Show_BestCandidateHighlight,
             TEXT("Best pick"), TEXT("Highlight the top-scoring candidate with a larger amber sphere.")),
-        MakeOverlayToggle(TEXT("Failed"), TEXT("Skull"), &UCkEqsDebuggerSettings::Show_FailedCandidates,
+        MakeOverlayToggle(TEXT("Failed"), TEXT("Severity_Error"), &UCkEqsDebuggerSettings::Show_FailedCandidates,
             TEXT("Failed candidates"), TEXT("Draw filter-failed candidates as muted gray spheres.")),
         MakeOverlayToggle(TEXT("Querier"), TEXT("Person"), &UCkEqsDebuggerSettings::Show_QuerierMarker,
             TEXT("Querier"), TEXT("Draw a small sphere at the querier's location.")),

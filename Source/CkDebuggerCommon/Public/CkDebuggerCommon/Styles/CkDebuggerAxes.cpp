@@ -1420,6 +1420,29 @@ auto
     return ck_debugger_axes::CategoricalPaletteSize;
 }
 
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    ck::debug_axes::
+    Get_ToneIconId(
+        ECk_Tone InTone)
+    -> FName
+{
+    switch (InTone)
+    {
+        case ECk_Tone::Info: return FName{TEXT("Severity_Info")};
+        case ECk_Tone::Ok:   return FName{TEXT("Severity_Success")};
+        case ECk_Tone::Warn: return FName{TEXT("Severity_Warning")};
+        case ECk_Tone::Err:  return FName{TEXT("Severity_Error")};
+
+        // Neutral says "nothing to report" and Accent says "look here" — neither is a severity, and a glyph for
+        // either would be a claim the tone does not make. A caller draws nothing for an empty id.
+        case ECk_Tone::Neutral:
+        case ECk_Tone::Accent:
+        default: return NAME_None;
+    }
+}
+
 // ====================================================================================================================
 // PROFILES
 

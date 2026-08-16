@@ -47,6 +47,44 @@ If you find yourself reaching for `STextBlock`, `FMenuBuilder`, or
 `SEditableTextBox` directly, check this file first — the right primitive
 probably already exists.
 
+## Severity iconography — one axis, one meaning
+
+`ck::debug_axes::Get_ToneIconId(ECk_Tone)` is the single rule mapping a tone to its glyph, and it lives beside the
+colour ramps because tone → colour and tone → glyph are one axis wearing two hats. A tool that picks its own severity
+pictures while binding the shared tone colour is a tool whose picture and colour can drift apart.
+
+| Tone | Glyph | Shape |
+|---|---|---|
+| `Err` | `Severity_Error` | circle with an × |
+| `Warn` | `Severity_Warning` | triangle with a ! |
+| `Info` | `Severity_Info` | circle with an i |
+| `Ok` | `Severity_Success` | circle with a check |
+| `Neutral`, `Accent` | `NAME_None` | nothing — neither is a severity |
+
+Four rules worth knowing before touching them:
+
+- **They live at `Resources/Icons/` ROOT, never in `General/`.** Only `Icons/General/**` feeds
+  `Get_GeneralIconPool`, the deterministic pool a feature without a bespoke glyph is assigned from at random. A
+  severity picture handed out as somebody's arbitrary decoration would make the one thing on screen that must mean
+  exactly one thing mean anything at all.
+- **Severity reads from SHAPE, not colour.** Every icon in this suite is a monochrome stroke tinted by its
+  `ColorAndOpacity`, so the four must stay distinguishable with the tint removed — hence triangle-vs-circle outlines
+  rather than four circles with different marks.
+- **They are authored here rather than taken from `FAppStyle`.** `FAppStyle::Get().GetBrush("Icons.Warning")` is free
+  and is literally the engine's art, and it loses on two counts: an `FAppStyle` brush sits outside Style Lab, so it
+  would be the one icon in a window a style revision cannot restyle; and it is an editor style set, while several of
+  these modules also ship in packaged Development/DebugGame builds.
+- **`Neutral` and `Accent` return `NAME_None` and callers must draw nothing.** `Get_IconBrush` returns null for an
+  empty id, which `SCkDebug_Icon` and `SCkDebug_IconToggle` already handle.
+
+`Ck.DebuggerCommon.Axes.ToneIcons` pins the mapping, the distinctness, that every glyph resolves to a real brush in
+**both** style sets (the silent-nullptr class of bug: a typo'd filename draws nothing and reports nothing), and that
+none of them is in the decorative pool.
+
+**This replaced per-tool guesswork.** `Skull` previously meant "Critical severity" in CkOptimizationDebugger,
+"Failed" in the gallery, "failed candidates" in CkEqsDebugger, "world trouble" in CkCrowdDebugger and "pause on plan
+failed" in CkGoapDebugger. All five meant *failure*; all five now use `Severity_Error`.
+
 ## Copy & selectable text — the policy
 
 **Default:** every piece of user-visible text that carries information (names,

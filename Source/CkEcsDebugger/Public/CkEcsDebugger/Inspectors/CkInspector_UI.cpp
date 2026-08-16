@@ -63,38 +63,38 @@ namespace ck_inspector_ui
         return UCk_Utils_WorldSpaceWidget_UE::Get_EnableDisable(Widget) == ECk_EnableDisable::Enable;
     }
 
-    // The Params fragment IS the live store for the three info structs: the request handler writes each
-    // committed struct back into it (CkWorldSpaceWidget_Processor.cpp:316/345/357). Returned by VALUE so
-    // the read-modify-write below never holds a fragment reference across a request.
-    static auto Get_Params(
+    // The Tunables fragment is the live store for the three info structs — the request handler writes each
+    // committed struct back into it, which is precisely why they are Tunables rather than Params. Returned
+    // by VALUE so the read-modify-write below never holds a fragment reference across a request.
+    static auto Get_Tunables(
         const FCk_Handle& InEntity)
-        -> FCk_WorldSpaceWidget_Spec
+        -> ck::FFragment_WorldSpaceWidget_Tunables
     {
-        if (ck::Is_NOT_Valid(InEntity) || NOT InEntity.Has<ck::FFragment_WorldSpaceWidget_Params>())
+        if (ck::Is_NOT_Valid(InEntity) || NOT InEntity.Has<ck::FFragment_WorldSpaceWidget_Tunables>())
         { return {}; }
 
-        return InEntity.Get<ck::FFragment_WorldSpaceWidget_Params>();
+        return InEntity.Get<ck::FFragment_WorldSpaceWidget_Tunables>();
     }
 
     static auto Get_ScalingInfo(
         const FCk_Handle& InEntity)
         -> FCk_WorldSpaceWidget_ScalingInfo
     {
-        return Get_Params(InEntity).Get_ScalingInfo();
+        return Get_Tunables(InEntity).Get_ScalingInfo();
     }
 
     static auto Get_FadingInfo(
         const FCk_Handle& InEntity)
         -> FCk_WorldSpaceWidget_FadingInfo
     {
-        return Get_Params(InEntity).Get_FadingInfo();
+        return Get_Tunables(InEntity).Get_FadingInfo();
     }
 
     static auto Get_OcclusionInfo(
         const FCk_Handle& InEntity)
         -> FCk_WorldSpaceWidget_OcclusionInfo
     {
-        return Get_Params(InEntity).Get_OcclusionInfo();
+        return Get_Tunables(InEntity).Get_OcclusionInfo();
     }
 
     // The three policy fields are CONSTRUCTION-ONLY (CK_PROPERTY_GET, no setter), so switching a policy

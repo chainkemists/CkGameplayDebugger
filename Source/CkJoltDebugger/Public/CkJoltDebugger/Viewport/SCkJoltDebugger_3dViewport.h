@@ -82,6 +82,14 @@ enum class ECkJoltDebugger_CameraPreset : uint8
 DECLARE_DELEGATE_TwoParams(FOnCkJoltDebugger_BodyPicked, TOptional<uint64>, bool);
 
 /*
+ * A Ctrl+LMB press that hit a body: the picked KEY and the exact world point the ray entered it at
+ * (P7-D70/i). Both come from one `TryPick_BodyHit` — the same pick that made the selection — so the drag
+ * opens on the press at the point the user actually grabbed rather than a frame later at a bounds centre.
+ * An unset key means the press hit nothing and the arm must refuse.
+ */
+DECLARE_DELEGATE_TwoParams(FOnCkJoltDebugger_DragArm, TOptional<uint64>, FVector);
+
+/*
  * The cursor ray, for the drag (P7-D54). The viewport owns the deprojection; the WINDOW owns the world, the
  * subsystem and the drag plane — this widget never touches either.
  */
@@ -113,7 +121,7 @@ public:
         SLATE_EVENT(FSimpleDelegate, OnTogglePause)
         SLATE_EVENT(FSimpleDelegate, OnStepOnce)
         SLATE_EVENT(FSimpleDelegate, OnToggleIsolate)
-        SLATE_EVENT(FSimpleDelegate, OnDragArm)
+        SLATE_EVENT(FOnCkJoltDebugger_DragArm, OnDragArm)
         SLATE_EVENT(FOnCkJoltDebugger_DragRay, OnDragRay)
         SLATE_EVENT(FOnCkJoltDebugger_DragPlaneShift, OnDragPlaneShift)
         SLATE_EVENT(FSimpleDelegate, OnDragRelease)

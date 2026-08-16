@@ -103,6 +103,17 @@ public:
 
     auto ClearSelection() -> void;
 
+    /*
+     * Drive the VIEW the way a mouse click does — `SListView::SetItemSelection` with `ESelectInfo::OnMouseClick`
+     * — rather than the model. It is the only way to exercise the path that actually derives the primary: the
+     * engine hands `OnSelectionChanged` an ARBITRARY element of its selection set, so the primary comes from the
+     * set DELTA, and `Add_ToSelection` never goes anywhere near that. Several handles at once model a Shift
+     * range (one signal, several additions); `InIsSelected == false` models a Ctrl+click that REMOVES one.
+     *
+     * A spec seam, and deliberately named as one: production paths select through the four above.
+     */
+    auto Simulate_RowClick(const TArray<FCk_Handle>& InHandles, bool InIsSelected) -> void;
+
     /** The PRIMARY selected row — the one the detail panel and the facility's sample follow. */
     auto Get_Selection() const -> TOptional<FCkJoltDebugger_BodySnapshot>;
 

@@ -108,6 +108,14 @@ enum class ECkJoltDebugger_SelectionSource : uint8
      */
     ViewportAdditive,
 
+    /*
+     * The outliner PRUNED itself: a selected row's entity left the world and the panel dropped it (promoting a
+     * survivor to primary). The window's set has to follow or the highlight and the isolation keep naming dead
+     * body keys — but nobody selected anything, so this neither re-broadcasts nor re-stamps the panel that
+     * already holds the state (P7-D71/F8).
+     */
+    OutlinerPrune,
+
     External
 };
 
@@ -149,6 +157,18 @@ public:
 
     virtual auto Get_WindowId() const -> FName override { return WindowId; }
     virtual auto Get_WindowDisplayName() const -> FText override { return FText::FromString(TEXT("CK Jolt Physics Debugger")); }
+
+    /*
+     * What the preference restore actually LANDED on the facility target and on this window. A read surface,
+     * not a control: asserting that a preference is unchanged after Construct proves only that the restore did
+     * not overwrite it, never that it arrived anywhere (P7-D71/F10).
+     */
+    auto Get_TargetDrawFlags() const -> ECk_Jolt_DebugDrawFlags;
+    auto Get_TargetColorMode() const -> ECk_Jolt_DebugDrawColorMode;
+    auto Get_IsolateActive() const -> bool { return _IsolateActive; }
+    auto Get_FollowSelection() const -> bool { return _FollowSelection; }
+    auto Get_ShowGrid() const -> bool { return _ShowGrid; }
+    auto Get_NumGridLines() const -> int32;
 
     virtual ~SCkJoltDebuggerWindow() override;
 
@@ -247,9 +267,17 @@ private:
      */
     auto Get_IsAuthorityWorld() const -> bool;
 
-    auto HandleDragArm() -> void;
+    /*
+     * The Ctrl+LMB press, carrying the key the pick resolved and the exact world point the ray met it at
+     * (P7-D70/i). The drag opens HERE, on the press: the grab point is the hit point, so nothing has to wait
+     * for a capture to sample a bounds centre. Refused when the press hit nothing, when the picked body is not
+     * the primary the selection just became, or when the world is not the authority.
+     */
+    auto HandleDragArm(TOptional<uint64> InPickedKey, FVector InGrabPointWorld) -> void;
     auto HandleDragRay(FVector InRayOrigin, FVector InRayDirection) -> void;
     auto HandleDragPlaneShift(float InDirection) -> void;
+
+    /** Idempotent: a second call with no drag live is a no-op, which is what lets teardown paths just call it. */
     auto HandleDragRelease() -> void;
 
     /** Push the drag line into its retained External sub-channel — only when it MOVED (P5-D61/S3). */
@@ -263,6 +291,21 @@ private:
     auto DoUpdateProbeResults() -> void;
 
     auto Set_ShowProbeResults(bool InIsEnabled) -> void;
+
+    auto Set_ShowGrid(bool InIsEnabled) -> void;
+
+    /*
+     * The ground grid, pushed ONCE into its retained External sub-channel (P8-D59 + P5-D61/S3). It never
+     * moves, so the capture re-emitting it every pass is the whole of its per-frame cost; the toggle either
+     * pushes it or clears the channel.
+     */
+    auto DoApplyGrid() -> void;
+
+    /*
+     * Re-derive the selection from the outliner after a refresh PRUNED it. The panel is the store; the window
+     * is the sink — and a sink still naming a body that left the world isolates on a key that draws nothing.
+     */
+    auto DoSyncSelectionFromOutliner() -> void;
 
     /*
      * The facility's health scan, armed from the window's own policy: the runaway bar is a per-user preference
@@ -315,10 +358,10 @@ private:
     bool _IsolateActive   = false;
     bool _FollowSelection = false;
 
-    // The live drag. _DragBodyKey is armed on the Ctrl+LMB press; _IsDragBegun only becomes true once the
-    // facility's sample has given the grab point its DEPTH, which lands one capture after the press.
+    // The live drag: set on the Ctrl+LMB press that opened it, unset the moment it is released. One value, not
+    // two — the press now carries its own grab point, so there is no window in which a drag is armed but not
+    // yet begun (P7-D70/i).
     TOptional<uint64> _DragBodyKey;
-    bool              _IsDragBegun = false;
     FVector           _DragPlanePoint  = FVector::ZeroVector;
     FVector           _DragPlaneNormal = FVector::ForwardVector;
 
@@ -327,6 +370,8 @@ private:
     TOptional<FVector> _DragLineAnchor;
 
     bool _ShowProbeResults = false;
+
+    bool _ShowGrid = true;
 
     // A cheap digest of what the probe-results channel currently holds: the overlap set's own contents, so the
     // channel is rebuilt when they change and left alone when they do not. Unset means the channel is empty.

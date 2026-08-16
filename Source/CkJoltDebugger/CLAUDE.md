@@ -57,10 +57,21 @@ Nothing here re-derives a colour, a bound, or a body count that the facility alr
 private `FCkJoltDebugger_3dViewportClient : FUMGViewportClient`. The shell is copied from
 `SCkCrowdDebugger_3dViewport` — camera math, input handling and per-frame invalidate transfer verbatim.
 
-**The widget draws no 3D.** There is no `Draw` / PDI override and no grid. The facility's instanced
-static meshes are registered into `Get_PreviewWorld()` and render because they are *in* that world. If
-you find yourself adding a PDI call here, the thing you want to draw belongs in CkJolt. The ONE thing
+**The widget draws no 3D.** There is no `Draw` / PDI override. The facility's instanced static meshes are
+registered into `Get_PreviewWorld()` and render because they are *in* that world — and so does the ground
+grid, which is not drawn here either but pushed into the facility's External channel by the WINDOW (below).
+If you find yourself adding a PDI call here, the thing you want to draw belongs in CkJolt. The ONE thing
 this widget does draw is 2D — the label overlay in `OnPaint`, below.
+
+**The world-axis gizmo is a WIDGET, not a paint** (P8-D59, ruled to fork (b) by P5-D61/S7). `SCkDebug_OrientationCube`
+sits in the viewport's own `ChildSlot` — `SViewport` is a compound widget whose child renders OVER the scene
+texture — bottom-left, `HitTestInvisible` so it is not a dead zone in the pick surface. Its `Rotation` is a live
+`TAttribute`, so it is bound to the client's view rotation rather than pushed each tick, and the widget is
+volatile enough to repaint without any invalidation plumbing.
+⚠ It is fed the **INVERSE** of the view rotation: the cube shows an object's orientation under a fixed
+three-quarter camera, and what a world-axis gizmo shows is the WORLD's orientation under a moving one — turning
+the camera left has to swing the axes right. The cube's own fixed camera offset stays, so the gizmo reads as a
+three-quarter view of the world axes rather than as a screen-aligned triad. There is no hand-drawn gizmo.
 
 The scene is unlit and physics-free on purpose: the debug-draw materials are unlit, so lighting would
 change nothing, and a preview world that simulated would fight the world being inspected.
@@ -133,8 +144,10 @@ file is not to be edited. The divergence is a documented follow-up for the Crowd
 | LMB drag (no Alt, no RMB) | vertical tracks along the view, horizontal yaws in place | inert |
 | Alt + LMB drag | orbit about the look-at — the eye moves, the pivot does not | inert (no rotation, ever) |
 | Alt + RMB drag | dolly | inert |
-| Wheel | dolly along the view | ortho-width zoom |
+| Wheel | dolly along the view — **eye AND pivot** | ortho-width zoom |
 | RMB + wheel | fly speed | — |
+| **Ctrl + 0…9** | store this camera pose in that slot | same |
+| **bare 0…9** | recall that slot | same |
 | WASD / QE / arrows | fly — **only while RMB is held** | — |
 | **Home** | Frame All | Frame All |
 | **bare F** | Frame Selection | Frame Selection |
@@ -163,6 +176,29 @@ arbitrary camera with no projection to go back to, so RMB and MMB both pan and A
 **`F` requires no modifiers.** `Ctrl+F`, `Alt+F`, `Shift+F` and `Cmd+F` fall through to whatever else
 binds them; only an unmodified F frames the selection. Home is unchanged.
 
+**The wheel dollies the WHOLE camera — eye and pivot both** (P7-D71/F6). Shrinking the orbit distance
+instead walks the eye towards a pivot it can never pass, so the wheel stalls in front of whatever was last
+framed and the user cannot fly through it. Moving both leaves `eye + forward × distance == look-at` intact
+by construction, so the orbit distance stays exactly as sane as it was and orbit/framing are unaffected. The
+step is a fraction of that distance, so one notch means the same thing on a rope link and on a streamed cell.
+In ortho there is nothing to dolly towards and the wheel widens the frustum instead.
+
+**Pan and dolly scale off how much WORLD is on screen, which in ortho is the ortho width** (P7-D71/F5) —
+not the pivot distance, which in an orthographic camera says nothing about what a pixel covers. Scaled off
+the pivot, one drag moved the same world distance at every zoom level, which is unusable at both ends of the
+range.
+
+**Camera bookmarks are `Ctrl+0…9` to store and a bare digit to recall** (P8-D59), both in the client's
+`InputKey` beside every other hotkey. Ten DENSE slots: the digit IS the array index in
+`UCkJoltDebuggerSettings::CameraBookmarks`, so a slot carries an `IsSet` marker — an untouched slot between
+two real ones would otherwise recall a default-constructed pose and snap the camera to the origin. A pose is
+eye + rotation + projection + ortho width, restored directly; the look-at is rebuilt from the restored
+rotation, the way a preset does it.
+⚠ **Bare digits are safe for the same reason bare Space, Enter, I and F are**: nothing reaches this client
+unless the VIEWPORT holds keyboard focus, so a digit typed into a search box stays in the search box. Only
+the top-row digits bind — a numpad digit is where a value gets typed. `Ctrl+Alt+3` and friends fall through:
+storing takes Ctrl and nothing else.
+
 **Ortho framing backs the eye off along −view by the bounding-sphere radius plus a margin.** Sitting the
 eye on the box centre — the shape inherited from the Crowd viewport — puts half the content behind the
 near plane, which is invisible with wireframes and obvious the moment the bodies are solid.
@@ -176,7 +212,9 @@ body's NORMAL instance, so a row click frames on THAT click without waiting for 
 ### Click-picking
 
 A plain left click deprojects the cursor and asks the facility for the nearest live instance:
-`TryPick_Body(Origin, Direction)`, an oriented-box test in instance space. **The widget never raycasts
+`TryPick_BodyHit(Origin, Direction, …)`, an oriented-box test in instance space. Every click path here
+goes through it — the hit point is free once the slab test has run, and the Ctrl gesture needs it — while
+the hover, which wants a key and nothing else, keeps to the `TryPick_Body` wrapper. **The widget never raycasts
 the physics world** — the preview scene has no physics scene, and the game world's belongs to a step
 this module must not touch. A click on empty space clears the selection; a click that hits an instance
 no row can be found for leaves the selection alone, because the click did hit something.
@@ -194,23 +232,32 @@ return handled, whether or not anything was picked, so nothing behind the viewpo
 That is what keeps a click on empty space a deliberate "clear the selection" rather than a stray event.
 
 **Ctrl+LMB picks on the PRESS, not the release — and that asymmetry is load-bearing.** Ctrl+LMB is one
-gesture with two jobs: it adds the body to the selection *and* it opens the drag. The drag needs the body
-highlighted so the facility samples it, and that sample is the only JPH-free source of the grab point's
-DEPTH, so the selection has to happen at the top of the gesture. The release then knows a Ctrl gesture is
-finishing and does **not** pick a second time — a release-side pick would replace the multi-selection the
-press just built with the one body under the cursor. A Ctrl+click on empty space adds nothing rather than
-clearing what the user was assembling.
+gesture with two jobs: it adds the body to the selection *and* it opens the drag, and the drag has to open
+at the top of the gesture or the first mouse move has nowhere to pull from. The release then knows a Ctrl
+gesture is finishing and does **not** pick a second time — a release-side pick would replace the
+multi-selection the press just built with the one body under the cursor. A Ctrl+click on empty space adds
+nothing rather than clearing what the user was assembling.
+
+**One pick answers both jobs.** The press resolves through `TryPick_BodyHit`, which returns the body key
+AND the world point where the ray entered its oriented bounds; the key goes to the selection and the point
+goes to the drag as its grab point. Picking twice would be two O(live instances) walks for one answer.
+
+**`Alt`+LMB arms no pick at all** (P7-D71/F7). Alt+LMB is the orbit gesture, and an orbit that begins and
+ends over the same body would otherwise re-select it on release.
 
 ### Drag (P7-D54)
 
 The viewport owns the cursor and the deprojection; the **window** owns the world, the subsystem and the
 drag plane. The widget never touches either — it forwards a ray.
 
-- **The drag OPENS on the first mouse MOVE, not on the press.** `TryPick_Body` returns a body key and
-  nothing else — no hit point, no distance — so the grab point's depth has to come from
-  `Get_BodySample()->Get_WorldBounds()` for the primary selection, which the Ctrl+press just made and the
-  NEXT capture fills in. Until that sample lands the gesture is inert. Anything else would be guessing a
-  depth, and a wrong one gives the spring a lever arm that spins the body.
+- **The drag OPENS on the PRESS, at the exact point the ray met the body** (P7-D70/i). `TryPick_BodyHit`
+  hands back the hit point along with the key, so the grab point is the surface the user clicked and
+  nothing has to wait a capture for `Get_BodySample()` to publish a bounds centre. The earlier
+  open-on-first-move path was a workaround for a key-only pick and is gone — there is no window in which a
+  drag is armed but not begun, and no `_IsDragBegun` beside `_DragBodyKey` to keep in agreement.
+- **The arm is keyed on the PICKED body** (P7-D71/F4). It carries the key the press resolved, and the
+  window refuses when it is unset or is not the primary the press just made — a Ctrl+click on empty space
+  used to arm a drag on whatever was selected BEFORE, which grabbed a body the user never clicked.
 - **The plane is camera-parallel through the grab point**, captured once at drag open. Ctrl+wheel slides
   it along its own normal, scaled by how far away it already is, so one notch means the same thing on a
   crate at arm's length and on one across a streamed cell.
@@ -220,6 +267,12 @@ drag plane. The widget never touches either — it forwards a ray.
   body would eat the mouse and silently do nothing.
 - **`LostFocus` ends a live drag.** `FSceneViewport` empties its key state on the way out, so a release
   that never arrives would leave the facility's spring attached to a body forever.
+- **`HandleDragRelease` is IDEMPOTENT and is the single teardown path** (P7-D71/F3). It runs on the
+  release, at the top of `HandleWorldChanged`, at the top of the destructor — before anything re-points
+  `_WorldModel` — and at the top of a fresh arm. It is gated on the SUBSYSTEM's own `Get_IsDragging()` as
+  well as this window's key, so calling it on a path where the world selector has already moved cannot end
+  a drag on a subsystem that never had one. It also `Clear_External`s the drag line's channel, which is
+  what stops a retained "JoltDebugger.Drag" line outliving the world it described (F2).
 - **Authority only.** The window computes `GetNetMode() != NM_Client` and pushes it down each tick; on a
   client the gesture never opens and the toolbar's Drag chip is dark with a tooltip saying why.
 
@@ -322,8 +375,9 @@ and asks only that body for its contacts. A set in list order would describe a b
 | Source | Source enum | Path |
 |---|---|---|
 | Outliner row click (incl. Ctrl/Shift) | `Outliner` | `OnSelectionChanged` (non-`Direct` only), primary + set on the delegate |
-| Viewport click | `Viewport` | `TryPick_Body` → key → row |
-| Viewport **Ctrl**+click | `ViewportAdditive` | `TryPick_Body` → key → row → `OutlinerPanel::Add_ToSelection` → read the set back |
+| Outliner PRUNE (a row's entity left) | `OutlinerPrune` | the panel drops it; `DoSyncSelectionFromOutliner` re-derives the window's set from `Get_SelectedAll()` |
+| Viewport click | `Viewport` | `TryPick_BodyHit` → key → row |
+| Viewport **Ctrl**+click | `ViewportAdditive` | `TryPick_BodyHit` → key → row → `OutlinerPanel::Add_ToSelection` → read the set back |
 | Contacts-list row click | `Viewport` | other body key → row (the same resolution a pick does) |
 | Global `DebugSelectionSync` | `External` | `Resolve_ClosestLineageMatch` with `Is_JoltDebuggerEntity` |
 | `FCkDebug_EntityTargetRoute` ("Open In") | `External` | `TargetEntity` |
@@ -345,6 +399,14 @@ from diverging. That is also why `ViewportAdditive` exists as its own source: it
 user-driven source, but the outliner is **not** re-stamped from it — a single-row stamp would collapse the
 multi-selection the panel just built.
 
+**The window's set follows the panel's PRUNE, and that is its own source** (P7-D71/F8). The panel drops a
+selected row whose entity left the world and promotes a survivor; without `DoSyncSelectionFromOutliner`
+right after `Refresh`, the window's `_SelectionAll` kept the dead members and every sink downstream of it —
+the highlight, the isolation set, the bounds union — went on naming keys that draw nothing, which under
+Isolate is a blank viewport under a lit toggle. `OutlinerPrune` re-stamps nothing (the panel already holds
+the state), re-broadcasts nothing (nobody selected anything) and leaves a pending route target alone (it
+runs on the very refresh that target is waiting for).
+
 **Echo suppression is triple-guarded**: only the three user-driven sources re-broadcast; programmatic
 selects use `ESelectInfo::Direct`, which `OnSelectionChanged` ignores; and `HandleGlobalSelectionSync`
 drops anything tagged with this tab's own id. Only the PRIMARY is ever broadcast — the rest of the suite
@@ -359,6 +421,10 @@ is single-selection and a set has no meaning there.
 - **Follow keeps the camera's OFFSET; it does not re-frame.** The viewport client tracks the selection
   bounds' centre and translates the eye and the look-at by its delta each tick — rotation, orbit distance
   and projection are untouched. Turning Follow on re-arms the anchor, so it never teleports the camera.
+  ⚠ **What it tracks is the UNION of the highlighted bounds, not the primary** (P7-D71/F12b, amending
+  P7-D53): the bounds pushed down are `Get_HighlightedBodyBounds()`, so a multi-selection is followed by
+  the centre of everything the highlight is showing. Following the primary alone would drift the rest of a
+  selection off screen while the toggle claimed to be following it.
 - Both persist (`IsolateActive` / `FollowSelection`) and are restored as **state**: with nothing selected
   yet, the restore pushes no isolation set and the first selection arms it.
 
@@ -544,7 +610,7 @@ would.
 
 | Lane | Group | Contents |
 |---|---|---|
-| Primary | `JoltRender` | wireframe/solid toggle (`Grid`) — swaps the facility's materials, rebuilds no geometry |
+| Primary | `JoltRender` | wireframe/solid toggle (`Grid`) — swaps the facility's materials, rebuilds no geometry — and the ground-grid toggle (`Net`) |
 | Primary | `JoltSim` | Pause toggle + Step button; both disabled with a tooltip when no world has begun play |
 | Primary | `JoltSelection` | Isolate toggle (`Lock`, also `I`), Follow toggle (`Target`), and the Drag STATE chip (`Hand`) |
 | Context | `JoltTarget` | `SCkDebug_WorldSelector` |
@@ -605,6 +671,25 @@ the same lane; underneath it is a **retained named External sub-channel**, `"Jol
   for an entity carrying the world-contacts fragment ALONGSIDE something listed (a Probe). Adding a
   ProbeTrace population was out of Phase 8's scope; the branch is written and guarded on the fragment.
 
+### The ground grid (P8-D59)
+
+A metre lattice at Z=0 — 1 m cells over a 20 m half-extent, a heavier line every 10, and the world axes
+through the origin — pushed **ONCE** into the retained named External sub-channel `"JoltDebugger.Grid"`
+(P5-D61/S3). The capture re-emits a retained channel every pass without clearing it, so a grid that never
+moves costs exactly one push for the life of the window; the toggle either pushes it or `Clear_External`s
+the channel, and nothing about it runs on `Tick`.
+
+- **Colours come off the shared style, never a hex.** The two lines through the origin ARE the world axes
+  and are drawn in `CkStyle::AxisX()` / `AxisY()`, so the grid doubles as the ground truth the orientation
+  gizmo is claiming; majors are `CkStyle::TextMute()` and minors the same colour dimmed. Dimming is a
+  MULTIPLY rather than an alpha — the lines go through Jolt's own colour path, which is not a translucency
+  budget this window owns.
+- **41 lines per axis, both axes: 82.** The shape is a set of constants, not a knob — "1 m cell" has to
+  keep meaning the same thing to the eye reading it. `Get_NumGridLines()` is the window's read surface for
+  the count, which is how a headless spec pins that the toggle pushed anything at all.
+- ⚠ **The grid is not part of the physics world.** It is debugger-side line work in a debug-draw channel;
+  nothing collides with it, and it is invisible to the game viewport.
+
 **Contact flags are process-wide** and every contacts tooltip says so — Jolt's contact draw switches are plain
 statics with no per-system variant, so arming them here arms contact emission for every world and every other
 debugger preview at once (`CkJolt/Claude.md` § Contact recording).
@@ -654,7 +739,15 @@ This is the plugin-wide settings split, not a local choice: see `CkGameplayDebug
 | `RunawayVelocityCmS` | half of `Set_ProblemThresholds` on the target; the other half is the world's `KillZ` |
 | `IsolateActive` | `_IsolateActive` + `DoApplyIsolation()` — state, not an act; the first selection arms it |
 | `FollowSelection` | `Set_FollowSelection` on the viewport |
-| `ShowGrid` / `RunawayVelocityCmS` (5000) / `CameraBookmarks` | Phase 8 (not consumed yet) |
+| `ShowGrid` | `_ShowGrid`, then `DoApplyGrid()` — one push into the retained grid channel, or a clear |
+| `CameraBookmarks` | nothing at restore: the slots are read by the viewport client's own `0…9` recall, on demand |
+
+**A camera bookmark is stored by the VIEWPORT, not by the window.** `Ctrl+0…9` writes
+`UCkJoltDebuggerSettings::CameraBookmarks[slot]` + `SaveConfig()` straight from the viewport client's
+`InputKey`, which is the same "write the moment the user flips it" rule every toggle here follows — the
+window is not in the loop because the pose is the client's own state and nothing else consumes it. The
+array is DENSE (ten slots, digit = index) and each slot carries `IsSet`, so an untouched slot is inert
+rather than a pose at the origin.
 
 **The bool preferences carry no `b` prefix** — the house rule and the four population toggles beside them both
 say `ShowSensors`, not `bShowSensors`. PHASE_7 spells three of them `bIsolateActive` / `bFollowSelection` /
@@ -686,14 +779,15 @@ whatever is in the world at that moment, not a camera state a window can be rest
 | `Ck.JoltDebugger.Viewport.ConstructsWithoutEnsure` | the viewport builds ensure-free and owns a preview world |
 | `Ck.JoltDebugger.Viewport.CameraPresets` | every preset sets its projection mode and points the camera down its expected axis (compared as forward vectors — rotator normalization must not make it flaky) |
 | `Ck.JoltDebugger.Viewport.FrameAllWithoutContentIsInert` | framing invalid bounds leaves the camera untouched instead of snapping to the origin |
-| `Ck.JoltDebugger.Viewport.CameraSchemeIsUnrealStyle` | the four DISCRIMINATING facts of P7-D49, driven through the client's own input entry points: RMB-drag leaves the eye exactly where it was while turning the camera; Alt+LMB-drag moves the eye while the look-at pivot stays put (the reverse of the first, which is what tells orbit from look-in-place); MMB-drag moves the eye with the rotation untouched; and an ortho preset refuses both a rotate gesture and an orbit gesture |
+| `Ck.JoltDebugger.Viewport.CameraSchemeIsUnrealStyle` | the DISCRIMINATING facts of P7-D49 + P7-D71, driven through the client's own input entry points: RMB-drag leaves the eye exactly where it was while turning the camera; Alt+LMB-drag moves the eye while the look-at pivot stays put (the reverse of the first, which is what tells orbit from look-in-place); MMB-drag moves the eye with the rotation untouched; **the wheel moves the eye AND the pivot, leaving the distance between them untouched** (F6 — a wheel that shrank the orbit distance would stall at the pivot); **the same ortho pan covers more world zoomed out than zoomed in** (F5 — scaled off the ortho width, not the pivot distance); and an ortho preset refuses both a rotate gesture and an orbit gesture |
 | `Ck.JoltDebugger.Outliner.ConstructsWithoutEnsure` | the panel builds, reconciles an EMPTY pass and a `Clear` without an ensure, and resolves an absent handle to nothing |
-| `Ck.JoltDebugger.Outliner.MultiSelectKeepsPrimaryAndSurvivesRefresh` | the multi-select contract on three real entities: a plain select takes one row, `Add_ToSelection` (the Ctrl+click path, from the outliner OR the viewport) makes two with the LAST as primary, the set is reported primary-FIRST (which is what the facility samples), a refresh over the same entities keeps both rows AND the same primary, a filter matching neither of them hides neither — both stay pinned and dimmed beside the one match — a selected row whose entity leaves the world leaves the selection and promotes the survivor to primary, and clearing drops the set with its primary |
+| `Ck.JoltDebugger.Outliner.MultiSelectKeepsPrimaryAndSurvivesRefresh` | the multi-select contract on three real entities: a plain select takes one row, `Add_ToSelection` (the Ctrl+click path, from the outliner OR the viewport) makes two with the LAST as primary, the set is reported primary-FIRST (which is what the facility samples), a refresh over the same entities keeps both rows AND the same primary, a filter matching neither of them hides neither — both stay pinned and dimmed beside the one match — a selected row whose entity leaves the world leaves the selection and promotes the survivor to primary, and clearing drops the set with its primary. Then the same contract again through the CLICK path (`Simulate_RowClick` → `SListView::SetItemSelection(…, ESelectInfo::OnMouseClick)`), which is the only thing that exercises the set-DELTA derivation the engine forces: a click takes one row and makes it primary, a Ctrl+click adds and re-primaries, a Shift RANGE arriving as one signal leaves a primary that is one of the rows it added, and a Ctrl+click REMOVING the primary promotes a survivor |
 | `Ck.JoltDebugger.Outliner.RowsSelectFilterAndSurviveRefresh` | three rows on three real entities (a standalone `ck::FEcsWorld`): select-by-handle finds the right row, a refresh over the same entities KEEPS the selection (the pointer-reuse contract), the filter hides non-matches EXCEPT the selected row, which stays pinned and dimmed while the matching row is not, the pin disappears with the selection, and an external select reaches a filtered-out row and reveals every row again |
 | `Ck.JoltDebugger.Outliner.ListsConstraintRows` | a constraint row is listed beside the two bodies it joins and is selectable; it carries NO body key of its own; it names BOTH bodies with **A first** (which is what the facility samples) and reports its constraint flavour; a refresh over the same set keeps it selected; and its own row text answers the shared text filter |
 | `Ck.JoltDebugger.Outliner.ProblemsChipNarrowsToFlaggedRows` | three rows, one flagged: the chip is off to begin with and all three are listed; turning it on leaves exactly the flagged row; a SELECTED healthy row stays pinned beside it and renders dimmed (the pin rule outranks the chip exactly as it outranks the text filter); clearing the selection narrows to one again; clearing the chip restores three; and a row whose flags are cleared by the next collector pass leaves the chip with nothing to show |
 | `Ck.JoltDebugger.Viewport.LabelCapKeepsTheNearest` | the pure half of the label paint: under the cap every label survives in the CAPTURE's order (a camera move must not reshuffle the draw order); over it exactly the cap survives, **nearest first**, from a fixture authored farthest-first so a take-the-first-N implementation cannot pass; a zero cap paints nothing; no labels select nothing; and the shipped cap is 500 |
-| `Ck.JoltDebugger.Settings.ConstructRestoresPreferences` | the settings live in the `Editor` container, and the window constructs ensure-free with NON-DEFAULT preferences — which is what drives the restore path, camera preset included. Every preference the restore reads is asserted UNCHANGED afterwards, so a restore that quietly re-saved a default over the developer's own choice surfaces here rather than in an ini. Covers all seven new fields (draw flags, colour mode, isolate, follow, grid, runaway velocity, a bookmark). The developer's own CDO values are saved and put back by an RAII guard, so a failing prepass cannot leave test values on the real per-user settings |
+| `Ck.JoltDebugger.Settings.ConstructRestoresPreferences` | the settings live in the `Editor` container, and the window constructs ensure-free with NON-DEFAULT preferences — which is what drives the restore path, camera preset included. Every preference the restore reads is asserted UNCHANGED afterwards, so a restore that quietly re-saved a default over the developer's own choice surfaces here rather than in an ini. Covers all seven new fields (draw flags, colour mode, isolate, follow, grid, runaway velocity, a bookmark). **And that the restore LANDED** (P7-D71/F10): the window's own read surface reports the draw flags and colour mode ON THE FACILITY TARGET, its isolate/follow/grid state, and that a grid restored OFF pushes no lines while a second window with it ON pushes exactly 82. The developer's own CDO values are saved and put back by an RAII guard, so a failing prepass cannot leave test values on the real per-user settings |
+| `Ck.JoltDebugger.Settings.CameraBookmarksStoreAndRecall` | bookmarks end to end through the REAL hotkeys (P8-D59): `Ctrl+3` stores the live pose in slot 3 and marks it set; moving to a different projection AND a different eye and pressing a bare `3` puts the projection, the eye and the rotation back; a slot nobody stored is inert rather than a snap to the origin; and `Ctrl+Alt+3` does not store, so a modified digit stays available to whatever else binds it. Under the same RAII guard |
 | `Ck.JoltDebugger.Detail.ConstructsWithoutEnsure` | every value lambda survives a completely unbound `GetSelection` AND an unbound `GetSelectionFacts` — including the rows that dereference a `TOptional` sample — and reads `--`; `Refresh_Contacts` on an unbound panel lists nothing |
 | `Ck.JoltDebugger.Detail.RowsReflectTheSelection` | the built rows render the bound selection's own values (population / motion / sleep / body key); an unsampled velocity reads `--` and a sampled one reaches the row; **every facility row degrades to `--` while the sample is unset** (mass, friction, object layer, shape type) and renders the sample once it lands (angular velocity, mass, friction, restitution, motion quality, object layer, sensor, shape type, allows-sleeping); a ZERO mass reads "Infinite" and an unasked sleeping flag reads `--`; the **character group flips visible** when the selection's population becomes Character and its rows render the character sample (ground state, velocity, ground body) while every rigid-body row degrades; an unset ground body key reads `--`; the contacts list takes one row per reported contact and empties with them; and clearing the selection empties every row and re-collapses the character group |
 
@@ -754,8 +848,25 @@ cap and in what order (`Ck.JoltDebugger.Viewport.LabelCapKeepsTheNearest`). Thes
 - **Ctrl+LMB drag on a dynamic body pulls it around with a visible yellow drag line**; Ctrl+wheel pushes
   the plane away and pulls it back; release drops it and the line disappears; dragging a static or
   kinematic body does nothing
+- **the drag grabs the body AT THE POINT CLICKED and starts on the press** — click a corner and the body
+  hangs from that corner, not from its centre, and the very first mouse move already pulls it
+- **Ctrl+LMB on EMPTY SPACE opens no drag** — the previously selected body does not jump to the cursor
+- **switching the world selector mid-drag drops the body and takes the drag line with it**; closing the
+  tab mid-drag does the same
+- **the wheel keeps flying forward past whatever was framed** instead of stalling in front of it, and an
+  ortho pan drags proportionally at every zoom level
+- **the ground grid gives the empty preview world a sense of scale** — 1 m cells, a heavier line every
+  10 m, red/green axes through the origin — the toggle takes it away and brings it back, and it survives
+  an editor restart
+- **the world-axis gizmo in the bottom-left points the right way in every camera preset** and turns with
+  the camera; clicking through it still picks the body underneath
+- **`Ctrl+3`, move the camera, then `3` returns it exactly** — including the projection, so a bookmark
+  taken in Top comes back orthographic; an unused digit does nothing; digits typed into the outliner's
+  search box do not move the camera
 - **On a PIE client world the Drag chip is dark with an explanatory tooltip and Ctrl+LMB does nothing**
-  (it still adds to the selection — only the drag is refused)
+  (it still adds to the selection — only the drag is refused). ⚠ The tooltip now binds on the
+  `SCkDebug_IconToggle` itself rather than on an `SBox` around it (P7-D71/F11) — confirm the AUTHORITY-aware
+  text is what appears on hover, not the toggle's own generic one
 - **the contacts list fills for a resting body and its rows select the other body on click**; a character
   selection lists none
 - **constraints appear in the outliner with their type; selecting one highlights BOTH bodies** and turns
@@ -791,8 +902,12 @@ cap and in what order (`Ck.JoltDebugger.Viewport.LabelCapKeepsTheNearest`). Thes
   very next capture. That pass became incremental in Phase 4, so it now draws only the newly selected
   body: **23.6 ms at 100k bodies, down from 249.9 ms** (`Ck.Jolt.DebugDraw.Benchmark.ScaleMatrix`, full
   table in `CkJolt/Claude.md`). What remains is the walk itself. Accepted.
-- **`TryPick_Body` is O(live instances) per click — measured, accepted.** 14.0 ms at 100k instances. A
-  click handler, not a tick; a seventh of a frame once per click is not a problem worth structure.
+- **`TryPick_BodyHit` is O(live instances) per click — measured, accepted.** 14.0 ms at 100k instances
+  (measured as `TryPick_Body`, which is now the same walk). A click handler, not a tick; a seventh of a
+  frame once per click is not a problem worth structure. A Ctrl+press pays it **once** for both the
+  selection and the drag's grab point, and the hover pays it at most every 60 ms.
+- **The grid is 82 retained lines, pushed once.** They ride the capture's line component from then on;
+  the per-frame cost is emitting them, and nothing re-pushes.
 - **Collection and filtering are O(all rows) per refresh — STILL UNMEASURED**, with no virtualisation
   beyond `SListView`'s own, and the sort adds an O(n log n) pass on top. The facility benchmark covers
   the CkJolt side only; a 100k-body world's collector walk, filter pass, sort and row reconcile have
@@ -828,9 +943,21 @@ cap and in what order (`Ck.JoltDebugger.Viewport.LabelCapKeepsTheNearest`). Thes
 - **Never re-push the drag line every tick.** External sub-channels are RETAINED (P5-D61/S3): the capture
   re-emits them without clearing. Push only when the grab point or the anchor moved, and move it by
   `Clear_External` + a fresh `Draw_ExternalLine` — the draw calls APPEND, they do not replace.
-- **Never guess the drag's grab point.** `TryPick_Body` returns a key and nothing else; the depth comes
-  from `Get_BodySample()->Get_WorldBounds()`, which is why the drag opens on the first move rather than
-  on the press. A guessed depth gives the spring a lever arm that spins the body.
+- **Never guess the drag's grab point.** It comes from `TryPick_BodyHit`, on the surface the user clicked
+  — a bounds centre is a guessed depth, and a wrong one gives the spring a lever arm that spins the body.
+  Never re-pick to get it either: the press's own pick already produced it.
+- **Never arm the drag on the selection rather than on the PICK.** The arm carries the key the press
+  resolved; a Ctrl+click on empty space must open no drag at all.
+- **Never end a drag anywhere but `HandleDragRelease`.** It is idempotent and gated on the subsystem's own
+  `Get_IsDragging()`, which is what lets the destructor and the world-change path just call it.
+- **Never scale an ORTHO gesture off the orbit distance.** In ortho the ortho width is what says how much
+  world a pixel covers.
+- **Never let the wheel shrink the orbit distance.** Eye and pivot move together, or the dolly stalls at
+  the pivot and the user cannot fly through what they last framed.
+- **Never leave the window's selection set behind the outliner's.** The panel prunes; the window re-derives
+  from `Get_SelectedAll()` on the same refresh, or the highlight and the isolation name dead keys.
+- **Never re-push the grid.** It is a retained channel: one push, and `Clear_External` is the only thing
+  that empties it.
 - **Never allocate a brush or a font in `OnPaint`.** The label overlay's font is a member built once in
   `Construct` (`CkDebuggerCommon/CLAUDE.md` § OnPaint), and the deprecated no-argument `ToPaintGeometry()`
   overload is not used.

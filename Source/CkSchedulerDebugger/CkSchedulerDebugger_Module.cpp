@@ -66,7 +66,7 @@ auto FCkSchedulerDebuggerModule::StartupModule() -> void
     _DebuggerToolRegistrationId = FCkDebuggerToolRegistry::Get().Register(FCkDebuggerToolDescriptor{
         TEXT("CkSchedulerDebugger"),
         _DebuggerTabName,
-        FText::FromString(TEXT("CK Scheduler Debugger")),
+        FText::FromString(TEXT("[CK] Scheduler Debugger")),
         FText::FromString(TEXT("Inspect processor scheduling, phases, and frame execution")),
         TEXT("Stopwatch"),
         ECkDebuggerToolCategory::Systems,

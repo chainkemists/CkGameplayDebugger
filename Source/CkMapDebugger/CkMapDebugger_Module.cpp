@@ -55,7 +55,7 @@ auto FCkMapDebuggerModule::StartupModule() -> void
     _DebuggerToolRegistrationId = FCkDebuggerToolRegistry::Get().Register(FCkDebuggerToolDescriptor{
         TEXT("CkMapDebugger"),
         _DebuggerTabName,
-        FText::FromString(TEXT("CK Map Debugger")),
+        FText::FromString(TEXT("[CK] Map Debugger")),
         FText::FromString(TEXT("POIs, compasses, minimaps, and fog-of-war — the CkPoi map stack at a glance")),
         TEXT("TreasureMap"),
         ECkDebuggerToolCategory::Core,

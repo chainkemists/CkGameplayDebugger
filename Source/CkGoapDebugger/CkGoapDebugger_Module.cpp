@@ -105,7 +105,7 @@ auto
     _DebuggerToolRegistrationId = FCkDebuggerToolRegistry::Get().Register(FCkDebuggerToolDescriptor{
         TEXT("CkGoapDebugger"),
         _DebuggerTabName,
-        FText::FromString(TEXT("CK GOAP Debugger")),
+        FText::FromString(TEXT("[CK] GOAP Debugger")),
         FText::FromString(TEXT("Inspect GOAP planning, world state, actions, and plan history")),
         TEXT("Goap"),
         ECkDebuggerToolCategory::Ai,

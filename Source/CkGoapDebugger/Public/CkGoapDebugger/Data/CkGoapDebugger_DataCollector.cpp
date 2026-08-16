@@ -1,5 +1,7 @@
 ﻿#include "CkGoapDebugger/Data/CkGoapDebugger_DataCollector.h"
 
+#include "CkGoap/Action/CkGoap_Action_Utils.h"
+
 #include "CkCore/Object/CkObject_Utils.h"
 #include "CkCore/Time/CkTime_Utils.h"
 #include "CkCore/Validation/CkIsValid.h"
@@ -508,7 +510,7 @@ namespace ck_goap_debugger_data_collector_internal
         // chain. For top-level Planners themselves (no Action role) treat
         // IsActive as the answer.
         {
-            const auto AsAction = ck::StaticCast<FCk_Handle_Goap_Action>(
+            const auto AsAction = UCk_Utils_Goap_Action_UE::CastChecked(
                 static_cast<FCk_Handle>(InPlannerHandle));
             Info.IsInActiveChain = InChainDepthByHandle.Contains(AsAction) || Info.IsActive;
         }

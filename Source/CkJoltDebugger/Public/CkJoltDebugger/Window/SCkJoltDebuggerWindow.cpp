@@ -132,6 +132,23 @@ namespace ck_jolt_debugger
     static auto Get_ProbeResultsChannel() -> FName
     { return FName{TEXT("JoltDebugger.ProbeResults")}; }
 
+    /*
+     * The retained External sub-channel the ground grid lives in (P8-D59). Pushed ONCE — the capture re-emits
+     * a retained channel every pass, so a grid that never moves costs one push for the life of the window.
+     */
+    static auto Get_GridChannel() -> FName
+    { return FName{TEXT("JoltDebugger.Grid")}; }
+
+    // The grid's shape, in centimetres: metre cells over a 20 m half-extent, with a heavier line every ten so
+    // the eye can count distance without measuring it.
+    static constexpr float GridCellSize   = 100.0f;
+    static constexpr float GridExtent     = 2000.0f;
+    static constexpr int32 GridMajorEvery = 10;
+
+    // Dimming factor for a minor grid line. Multiplied into the colour rather than expressed as alpha: the
+    // debug lines go through Jolt's own colour path, which is not a translucency budget this window owns.
+    static constexpr float GridMinorDim = 0.45f;
+
     // How far a contact normal is drawn, and how big a contact point's marker is. Both in centimetres, both
     // sized to read beside a human-scale body rather than to be geometrically meaningful.
     static constexpr float ProbeContactPointRadius = 6.0f;
@@ -376,7 +393,7 @@ auto
         .OnTogglePause(FSimpleDelegate::CreateSP(this, &SCkJoltDebuggerWindow::HandleTogglePause))
         .OnStepOnce(FSimpleDelegate::CreateSP(this, &SCkJoltDebuggerWindow::HandleStepOnce))
         .OnToggleIsolate(FSimpleDelegate::CreateSP(this, &SCkJoltDebuggerWindow::HandleToggleIsolate))
-        .OnDragArm(FSimpleDelegate::CreateSP(this, &SCkJoltDebuggerWindow::HandleDragArm))
+        .OnDragArm(FOnCkJoltDebugger_DragArm::CreateSP(this, &SCkJoltDebuggerWindow::HandleDragArm))
         .OnDragRay(FOnCkJoltDebugger_DragRay::CreateSP(this, &SCkJoltDebuggerWindow::HandleDragRay))
         .OnDragPlaneShift(FOnCkJoltDebugger_DragPlaneShift::CreateSP(this, &SCkJoltDebuggerWindow::HandleDragPlaneShift))
         .OnDragRelease(FSimpleDelegate::CreateSP(this, &SCkJoltDebuggerWindow::HandleDragRelease))
@@ -456,6 +473,11 @@ auto
 
 SCkJoltDebuggerWindow::~SCkJoltDebuggerWindow()
 {
+    // FIRST, while the world selector still points at the world whose subsystem holds the spring: a debugger
+    // that closes mid-drag must not leave a body attached to a constraint nothing will ever release
+    // (P7-D71/F3). Idempotent, so it costs nothing when no drag was live.
+    HandleDragRelease();
+
     // Demand off BEFORE unregistering: the capture processor reads demand, and a target that is dropped while
     // still desired leaves its last instances standing in the preview world.
     if (_DebugDrawTarget.IsValid())
@@ -599,6 +621,11 @@ auto
         UWorld*)
     -> void
 {
+    // Before anything else (P7-D71/F3 + F2): end whatever drag was live and take its line down. Idempotent,
+    // and it is the ONE place the drag's local state is dropped — a world change that reset the flags by hand
+    // was how the retained "JoltDebugger.Drag" channel came to outlive the world it described.
+    HandleDragRelease();
+
     DoUnregisterDebugDrawTarget();
 
     if (_DebugDrawTarget.IsValid())
@@ -627,12 +654,11 @@ auto
     if (_DetailPanel.IsValid())
     { _DetailPanel->Refresh_Contacts(); }
 
-    // The drag belonged to the world that just went away — its subsystem is already gone, so there is
-    // nothing to end, only local state to drop and a line to take down.
-    _DragBodyKey.Reset();
-    _IsDragBegun = false;
-    _DragLineGrab.Reset();
-    _DragLineAnchor.Reset();
+    // The isolation set named bodies in the world that just went away (P7-D71/F1). Left standing, the facility
+    // keeps drawing ONLY those keys — and every one of them is dead, so the viewport goes blank under a lit
+    // Isolate toggle, which reads as a broken draw rather than as a stale set. The selection is already empty
+    // here, so this clears rather than re-pushes.
+    DoApplyIsolation();
 
     // The probe channel described a probe in the world that just went away. Cleared here rather than left for
     // the next refresh, which cannot happen at all until a world is selected again.
@@ -802,7 +828,13 @@ auto
         : TMap<uint64, ECk_Jolt_DebugDraw_ProblemFlags>{});
 
     if (_OutlinerPanel.IsValid())
-    { _OutlinerPanel->Refresh(_Collector.Get_Bodies()); }
+    {
+        _OutlinerPanel->Refresh(_Collector.Get_Bodies());
+
+        // The panel prunes selected rows whose entities left the world and promotes a survivor to primary. The
+        // window's own set has to follow it here, before any sink reads it (P7-D71/F8).
+        DoSyncSelectionFromOutliner();
+    }
 
     DoApplyPendingTarget(InWorld);
     DoRefreshSelectionFacts();
@@ -844,6 +876,40 @@ auto
 
     _DebugDrawTarget->Set_ProblemThresholds(
         FCk_Jolt_DebugDraw_ProblemThresholds{Settings->RunawayVelocityCmS, KillZ});
+}
+
+auto
+    SCkJoltDebuggerWindow::
+    DoSyncSelectionFromOutliner()
+    -> void
+{
+    if (NOT _OutlinerPanel.IsValid())
+    { return; }
+
+    auto All = _OutlinerPanel->Get_SelectedAll();
+
+    // Compared by row IDENTITY rather than by snapshot: every field but the handle and the population is
+    // re-collected each pass, so a value compare would re-apply the whole selection on every velocity change.
+    const auto IsUnchanged = All.Num() == _SelectionAll.Num() &&
+        [&]()
+        {
+            for (auto Index = 0; Index < All.Num(); ++Index)
+            {
+                if (All[Index].Handle != _SelectionAll[Index].Handle ||
+                    All[Index].Population != _SelectionAll[Index].Population)
+                { return false; }
+            }
+
+            return true;
+        }();
+
+    if (IsUnchanged)
+    { return; }
+
+    DoApplySelectionSet(
+        MoveTemp(All),
+        _OutlinerPanel->Get_Selection(),
+        ECkJoltDebugger_SelectionSource::OutlinerPrune);
 }
 
 auto
@@ -962,9 +1028,11 @@ auto
         ECkJoltDebugger_SelectionSource InSource)
     -> void
 {
-    // Anything but an external apply supersedes a route target still waiting for a row: left standing, it
-    // would land on the next refresh and take the selection away from whoever just made one.
-    if (InSource != ECkJoltDebugger_SelectionSource::External)
+    // A USER apply supersedes a route target still waiting for a row: left standing, it would land on the next
+    // refresh and take the selection away from whoever just made one. A prune is nobody's act, so it leaves
+    // the pending target alone — it runs on the very refresh the target is waiting for.
+    if (InSource != ECkJoltDebugger_SelectionSource::External &&
+        InSource != ECkJoltDebugger_SelectionSource::OutlinerPrune)
     { _PendingTarget.Reset(); }
 
     _Selection    = MoveTemp(InPrimary);
@@ -1005,7 +1073,8 @@ auto
     // The outliner is a sink for every source except the two that already drove its own store — re-stamping
     // those would fight the view's selection state, and a single-row stamp would collapse a multi-selection.
     const auto OutlinerOwnsThisApply = InSource == ECkJoltDebugger_SelectionSource::Outliner
-        || InSource == ECkJoltDebugger_SelectionSource::ViewportAdditive;
+        || InSource == ECkJoltDebugger_SelectionSource::ViewportAdditive
+        || InSource == ECkJoltDebugger_SelectionSource::OutlinerPrune;
 
     if (_OutlinerPanel.IsValid() && NOT OutlinerOwnsThisApply)
     {
@@ -1452,30 +1521,48 @@ auto
     BuildRenderGroup()
     -> TSharedRef<SWidget>
 {
-    return SNew(SCkDebug_IconToggle)
-        .IconId(TEXT("Grid"))
-        .Label(FText::FromString(TEXT("Wireframe")))
-        .ToolTip(FText::FromString(TEXT("Draw the Jolt bodies as wireframe instead of solid. Materials swap on the same instances — no geometry is rebuilt.")))
-        .IsOn_Lambda([this]()
-        {
-            return _DebugDrawTarget.IsValid() &&
-                _DebugDrawTarget->Get_RenderMode() == ECk_Jolt_DebugDraw_RenderMode::Wireframe;
-        })
-        .OnStateChanged_Lambda([this](const bool InIsWireframe)
-        {
-            if (NOT _DebugDrawTarget.IsValid())
-            { return; }
+    return SNew(SHorizontalBox)
 
-            _DebugDrawTarget->Set_RenderMode(InIsWireframe
-                ? ECk_Jolt_DebugDraw_RenderMode::Wireframe
-                : ECk_Jolt_DebugDraw_RenderMode::Solid);
+        + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+        [
+            SNew(SCkDebug_IconToggle)
+            .IconId(TEXT("Grid"))
+            .Label(FText::FromString(TEXT("Wireframe")))
+            .ToolTip(FText::FromString(TEXT("Draw the Jolt bodies as wireframe instead of solid. Materials swap on the same instances — no geometry is rebuilt.")))
+            .IsOn_Lambda([this]()
+            {
+                return _DebugDrawTarget.IsValid() &&
+                    _DebugDrawTarget->Get_RenderMode() == ECk_Jolt_DebugDraw_RenderMode::Wireframe;
+            })
+            .OnStateChanged_Lambda([this](const bool InIsWireframe)
+            {
+                if (NOT _DebugDrawTarget.IsValid())
+                { return; }
 
-            auto* Settings = GetMutableDefault<UCkJoltDebuggerSettings>();
-            Settings->RenderMode = InIsWireframe
-                ? ECkJoltDebugger_RenderModePref::Wireframe
-                : ECkJoltDebugger_RenderModePref::Solid;
-            Settings->SaveConfig();
-        });
+                _DebugDrawTarget->Set_RenderMode(InIsWireframe
+                    ? ECk_Jolt_DebugDraw_RenderMode::Wireframe
+                    : ECk_Jolt_DebugDraw_RenderMode::Solid);
+
+                auto* Settings = GetMutableDefault<UCkJoltDebuggerSettings>();
+                Settings->RenderMode = InIsWireframe
+                    ? ECkJoltDebugger_RenderModePref::Wireframe
+                    : ECkJoltDebugger_RenderModePref::Solid;
+                Settings->SaveConfig();
+            })
+        ]
+
+        // The ground grid is a PRIMARY control: it acts on this viewport and nothing else. It carries a
+        // different glyph from Wireframe beside it deliberately — two toggles sharing one icon in one lane are
+        // indistinguishable at a glance, and "Grid" was already spent on the wireframe lattice.
+        + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+        [
+            SNew(SCkDebug_IconToggle)
+            .IconId(TEXT("Net"))
+            .Label(FText::FromString(TEXT("Grid")))
+            .ToolTip(FText::FromString(TEXT("Draw a ground grid at Z=0 — 1 m cells over 20 m, a heavier line every 10, and the world axes through the origin. It gives an empty preview world a sense of scale; it is not part of the physics world.")))
+            .IsOn_Lambda([this]() { return _ShowGrid; })
+            .OnStateChanged_Lambda([this](const bool InIsEnabled) { Set_ShowGrid(InIsEnabled); })
+        ];
 }
 
 auto
@@ -1664,16 +1751,32 @@ auto
 // is behind — it is the one sim-MUTATING thing this module does.
 // --------------------------------------------------------------------------------------------------------------------
 
+/*
+ * The drag opens ON THE PRESS, at the exact point the pick ray met the body (P7-D70/i). The viewport resolves
+ * the press through `TryPick_BodyHit` — one pick, which both selects the body and hands its surface point over
+ * — so nothing here has to wait a capture for a sample or guess a depth from a bounds centre.
+ *
+ * Three refusals, and the first is the one that matters: the arm is keyed on the PICKED body, so a Ctrl+click
+ * on empty space (or on a body that is not the primary the pick just made) opens no drag at all instead of
+ * grabbing whatever was selected before (P7-D71/F4).
+ */
 auto
     SCkJoltDebuggerWindow::
-    HandleDragArm()
+    HandleDragArm(
+        TOptional<uint64> InPickedKey,
+        FVector InGrabPointWorld)
     -> void
 {
 #if !UE_BUILD_SHIPPING
-    _DragBodyKey.Reset();
-    _IsDragBegun = false;
+    // A gesture whose release never arrived must not leak into this one.
+    HandleDragRelease();
 
-    if (NOT Get_IsAuthorityWorld() || NOT _Selection.IsSet() || NOT _Selection->BodyKey.IsSet())
+    if (NOT InPickedKey.IsSet() || NOT Get_IsAuthorityWorld())
+    { return; }
+
+    // The press picked and applied the selection before arming, so the primary IS the picked body — unless the
+    // pick hit something the outliner has no row for, in which case there is nothing to drag by.
+    if (NOT _Selection.IsSet() || NOT _Selection->BodyKey.IsSet() || *_Selection->BodyKey != *InPickedKey)
     { return; }
 
     // Only DYNAMIC bodies can be dragged — the facility drops anything else at Verbose, and arming on a
@@ -1681,16 +1784,23 @@ auto
     if (NOT _Selection->HasSimulationState || _Selection->MotionType != ECk_MotionType::Dynamic)
     { return; }
 
-    _DragBodyKey = *_Selection->BodyKey;
+    auto* Subsystem = Get_SelectedJoltSubsystem();
+
+    if (ck::Is_NOT_Valid(Subsystem))
+    { return; }
+
+    // The plane is camera-parallel THROUGH the grab point, captured once here. Ctrl+wheel slides it along its
+    // own normal from then on.
+    _DragPlaneNormal = _Viewport.IsValid()
+        ? _Viewport->Get_ViewRotation().Vector()
+        : FVector::ForwardVector;
+    _DragPlanePoint = InGrabPointWorld;
+
+    Subsystem->Request_BeginDrag(*InPickedKey, InGrabPointWorld);
+    _DragBodyKey = *InPickedKey;
 #endif
 }
 
-/*
- * The drag OPENS on the first mouse move, not on the press, and that is not a latency compromise — it is the
- * only way to get the grab point's DEPTH without reading Jolt from Slate. `TryPick_Body` hands back a body
- * key and nothing else, so the depth has to come from the facility's sample of the primary selection, which
- * the Ctrl+press just made and the NEXT capture fills in. Until it lands, the gesture is inert.
- */
 auto
     SCkJoltDebuggerWindow::
     HandleDragRay(
@@ -1699,44 +1809,13 @@ auto
     -> void
 {
 #if !UE_BUILD_SHIPPING
-    if (NOT _DragBodyKey.IsSet() || NOT _DebugDrawTarget.IsValid())
+    if (NOT _DragBodyKey.IsSet())
     { return; }
 
     auto* Subsystem = Get_SelectedJoltSubsystem();
 
     if (ck::Is_NOT_Valid(Subsystem))
     { return; }
-
-    if (NOT _IsDragBegun)
-    {
-        const auto Highlighted = _DebugDrawTarget->Get_HighlightedBody();
-
-        if (NOT Highlighted.IsSet() || *Highlighted != *_DragBodyKey)
-        { return; }
-
-        const auto Sample = _DebugDrawTarget->Get_BodySample();
-
-        if (NOT Sample.IsSet() || Sample->Get_WorldBounds().IsValid == 0)
-        { return; }
-
-        _DragPlaneNormal = _Viewport.IsValid()
-            ? _Viewport->Get_ViewRotation().Vector()
-            : FVector::ForwardVector;
-        _DragPlanePoint = Sample->Get_WorldBounds().GetCenter();
-
-        const auto GrabPoint = ck_jolt_debugger::TryIntersect_Plane(
-            InRayOrigin, InRayDirection, _DragPlanePoint, _DragPlaneNormal);
-
-        if (NOT GrabPoint.IsSet())
-        { return; }
-
-        Subsystem->Request_BeginDrag(*_DragBodyKey, *GrabPoint);
-        _IsDragBegun = true;
-
-        // The move that opened the drag is also the move that placed the anchor ON the grab point; pulling
-        // starts with the next one.
-        return;
-    }
 
     const auto TargetPoint = ck_jolt_debugger::TryIntersect_Plane(
         InRayOrigin, InRayDirection, _DragPlanePoint, _DragPlaneNormal);
@@ -1753,7 +1832,7 @@ auto
     -> void
 {
 #if !UE_BUILD_SHIPPING
-    if (NOT _IsDragBegun)
+    if (NOT _DragBodyKey.IsSet())
     { return; }
 
     // Scaled by how far the plane already is, so one wheel notch means the same thing on a body at arm's
@@ -1771,11 +1850,14 @@ auto
     -> void
 {
 #if !UE_BUILD_SHIPPING
-    if (auto* Subsystem = Get_SelectedJoltSubsystem(); ck::IsValid(Subsystem) && _IsDragBegun)
+    // Gated on the SUBSYSTEM's own answer as well as this window's, so the call is safe on every teardown path:
+    // by the time a world change reaches here the selector already points somewhere else, and ending a drag on
+    // a subsystem that never had one would be a request nobody asked for.
+    if (auto* Subsystem = Get_SelectedJoltSubsystem();
+        ck::IsValid(Subsystem) && _DragBodyKey.IsSet() && Subsystem->Get_IsDragging())
     { Subsystem->Request_EndDrag(); }
 
     _DragBodyKey.Reset();
-    _IsDragBegun = false;
     _DragLineGrab.Reset();
     _DragLineAnchor.Reset();
 
@@ -1889,6 +1971,100 @@ auto
     Settings->SaveConfig();
 
     DoUpdateProbeResults();
+}
+
+auto
+    SCkJoltDebuggerWindow::
+    Set_ShowGrid(
+        bool InIsEnabled)
+    -> void
+{
+    _ShowGrid = InIsEnabled;
+
+    auto* Settings = GetMutableDefault<UCkJoltDebuggerSettings>();
+    Settings->ShowGrid = InIsEnabled;
+    Settings->SaveConfig();
+
+    DoApplyGrid();
+}
+
+/*
+ * The ground grid (P8-D59): a metre lattice at Z=0 pushed ONCE into its own retained External sub-channel.
+ * The capture re-emits a retained channel every pass without clearing it (P5-D61/S3), so a grid that never
+ * moves costs one push for the life of the window — which is why this is a push/clear rather than anything
+ * that runs on Tick.
+ *
+ * Colours come off the shared style: the two lines through the origin ARE the world axes and are drawn in the
+ * suite's own axis colours, so the grid doubles as the ground truth the orientation gizmo is claiming. No hex
+ * anywhere.
+ */
+auto
+    SCkJoltDebuggerWindow::
+    DoApplyGrid()
+    -> void
+{
+    using namespace ck_jolt_debugger;
+
+    if (NOT _DebugDrawTarget.IsValid())
+    { return; }
+
+    const auto Channel = Get_GridChannel();
+
+    _DebugDrawTarget->Clear_External(Channel);
+
+    if (NOT _ShowGrid)
+    { return; }
+
+    const auto MajorColor = CkStyle::TextMute();
+    const auto MinorColor = MajorColor * GridMinorDim;
+
+    const auto NumCells = FMath::FloorToInt(GridExtent / GridCellSize);
+
+    for (auto Cell = -NumCells; Cell <= NumCells; ++Cell)
+    {
+        const auto Offset = static_cast<double>(Cell) * GridCellSize;
+        const auto IsMajor = Cell % GridMajorEvery == 0;
+        const auto LineColor = IsMajor ? MajorColor : MinorColor;
+
+        // A line at x = Offset runs ALONG Y, so the one through the origin is the Y axis — and the other way
+        // round. Naming them the wrong way is the one mistake a grid can make that misleads rather than looks
+        // wrong.
+        _DebugDrawTarget->Draw_ExternalLine(Channel,
+            FVector{Offset, -GridExtent, 0.0}, FVector{Offset, GridExtent, 0.0},
+            Cell == 0 ? CkStyle::AxisY() : LineColor);
+
+        _DebugDrawTarget->Draw_ExternalLine(Channel,
+            FVector{-GridExtent, Offset, 0.0}, FVector{GridExtent, Offset, 0.0},
+            Cell == 0 ? CkStyle::AxisX() : LineColor);
+    }
+}
+
+auto
+    SCkJoltDebuggerWindow::
+    Get_NumGridLines() const
+    -> int32
+{
+    return _DebugDrawTarget.IsValid()
+        ? _DebugDrawTarget->Get_NumExternalLines(ck_jolt_debugger::Get_GridChannel())
+        : 0;
+}
+
+auto
+    SCkJoltDebuggerWindow::
+    Get_TargetDrawFlags() const
+    -> ECk_Jolt_DebugDrawFlags
+{
+    return _DebugDrawTarget.IsValid()
+        ? _DebugDrawTarget->Get_DrawFlags()
+        : ECk_Jolt_DebugDrawFlags::None;
+}
+
+auto
+    SCkJoltDebuggerWindow::
+    Get_TargetColorMode() const
+    -> ECk_Jolt_DebugDrawColorMode
+{
+    return Get_ColorMode();
 }
 
 auto
@@ -2092,26 +2268,26 @@ auto
         [
             /*
              * The drag is armed by the WORLD, not by the user, so this reads as state rather than as a
-             * control: always disabled, lit while the selected world is the authority. The explanation
-             * rides the enabled SBox around it — a disabled widget shows no tooltip of its own, and a
-             * Ctrl+LMB that silently did nothing on a client would read as a broken debugger rather than
-             * as a refused sim mutation.
+             * control: its inner check box is always disabled, and it is merely lit while the selected world
+             * is the authority.
+             *
+             * The live explanation binds on the TOGGLE itself (P7-D71/F11). `SCkDebug_IconToggle` takes its
+             * own ToolTip as a static FText and hands it to the disabled check box inside — which shows none
+             * — while the compound widget around it stays enabled, so the base ToolTipText attribute lands
+             * exactly where the hover resolves it. A Ctrl+LMB that silently did nothing on a client would read
+             * as a broken debugger rather than as a refused sim mutation, so the reason has to be reachable.
              */
-            SNew(SBox)
+            SNew(SCkDebug_IconToggle)
+            .IconId(TEXT("Hand"))
+            .Label(FText::FromString(TEXT("Drag")))
+            .IsEnabled(false)
+            .IsOn_Lambda([this]() { return Get_IsAuthorityWorld(); })
             .ToolTipText_Lambda([this]() -> FText
             {
                 return Get_IsAuthorityWorld()
-                    ? FText::FromString(TEXT("Ctrl+LMB drags a DYNAMIC body by a spring; Ctrl+wheel moves the drag plane along the view; release drops it."))
+                    ? FText::FromString(TEXT("Ctrl+LMB drags a DYNAMIC body by a spring, grabbing it at the point you clicked; Ctrl+wheel moves the drag plane along the view; release drops it."))
                     : FText::FromString(TEXT("Dragging is disabled: the selected world is a CLIENT. A drag here would move a body the server corrects on its next replication."));
             })
-            [
-                SNew(SCkDebug_IconToggle)
-                .IconId(TEXT("Hand"))
-                .Label(FText::FromString(TEXT("Drag")))
-                .ToolTip(FText::FromString(TEXT("Ctrl+LMB drags a dynamic body. Available only on an authority world.")))
-                .IsEnabled(false)
-                .IsOn_Lambda([this]() { return Get_IsAuthorityWorld(); })
-            ]
         ];
 }
 
@@ -2371,8 +2547,12 @@ auto
     _IsolateActive     = Settings->IsolateActive;
     _FollowSelection   = Settings->FollowSelection;
     _ShowProbeResults  = Settings->ShowProbeResults;
+    _ShowGrid          = Settings->ShowGrid;
 
     DoApplyIsolation();
+
+    // Pushed once, here: the grid is retained by the capture from now on and only a toggle ever touches it.
+    DoApplyGrid();
 
     if (_Viewport.IsValid())
     {

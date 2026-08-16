@@ -1,12 +1,15 @@
 #include "CkJoltDebugger/Viewport/SCkJoltDebugger_3dViewport.h"
 
 #include "CkCore/Macros/CkMacros.h"
+#include "CkCore/Validation/CkIsValid.h"
 
 #include "CkDebuggerCommon/Styles/CkDebuggerAxes.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_OrientationCube.h"
 
 #include "CkEditorTools/Style/CkStyle.h"
 
 #include "CkJoltDebugger/CkJoltDebugger_Log.h"
+#include "CkJoltDebugger/Settings/CkJoltDebuggerSettings.h"
 
 #include "CkJolt/Subsystem/CkJolt_DebugDrawTarget.h"
 
@@ -22,6 +25,7 @@
 #include "Fonts/FontMeasure.h"
 #include "Framework/Application/SlateApplication.h"
 #include "Rendering/DrawElements.h"
+#include "Widgets/SOverlay.h"
 
 // --------------------------------------------------------------------------------------------------------------------
 
@@ -52,6 +56,38 @@ namespace ck_jolt_debugger_3d_viewport
     // per pixel — without this the hover would be the most expensive thing this window does (P8-D58).
     auto Get_HoverThrottleSeconds() -> double
     { return 0.06; }
+
+    // How much of the pivot distance one wheel notch travels. The step scales with the pivot so a notch means
+    // the same thing on a rope link and on a streamed cell (P7-D71/F6).
+    auto Get_WheelDollyFraction() -> double
+    { return 0.1; }
+
+    // The world-axis gizmo's footprint, in local Slate units. Small enough to stay out of the way of the pick
+    // surface it overlays, big enough that three axis edges are readable at a glance.
+    auto Get_GizmoSize() -> float
+    { return 56.0f; }
+
+    // Camera bookmarks (P8-D59): ten slots, keyed by the DIGIT itself, so the slot IS the array index and a
+    // bookmark can never drift onto another key's number.
+    constexpr int32 NumBookmarkSlots = 10;
+
+    /*
+     * The top-row digit keys only. A numpad digit is deliberately not a bookmark key: the pad is where a value
+     * gets typed, and these keys only ever reach this client while the VIEWPORT holds keyboard focus anyway.
+     */
+    auto TryGet_BookmarkSlot(
+        const FKey& InKey) -> TOptional<int32>
+    {
+        static const TArray<FKey> DigitKeys =
+        {
+            EKeys::Zero, EKeys::One, EKeys::Two, EKeys::Three, EKeys::Four,
+            EKeys::Five, EKeys::Six, EKeys::Seven, EKeys::Eight, EKeys::Nine
+        };
+
+        const auto Index = DigitKeys.IndexOfByKey(InKey);
+
+        return Index == INDEX_NONE ? TOptional<int32>{} : TOptional<int32>{Index};
+    }
 
     auto Get_PresetRotation(
         ECkJoltDebugger_CameraPreset InPreset) -> FRotator
@@ -143,7 +179,7 @@ public:
     auto Set_OnToggleIsolate(FSimpleDelegate InDelegate) -> void
     { _OnToggleIsolate = MoveTemp(InDelegate); }
 
-    auto Set_OnDragArm(FSimpleDelegate InDelegate) -> void
+    auto Set_OnDragArm(FOnCkJoltDebugger_DragArm InDelegate) -> void
     { _OnDragArm = MoveTemp(InDelegate); }
 
     auto Set_OnDragRay(FOnCkJoltDebugger_DragRay InDelegate) -> void
@@ -280,7 +316,9 @@ public:
             {
                 _PendingPickPress.Reset();
 
-                const auto IsPlainPress = NOT _IsRightMouseDown && NOT _IsMiddleMouseDown;
+                // Alt+LMB is the ORBIT gesture, not a click: arming a pending pick on it means every orbit
+                // that happens to start and end over the same body re-selects it (P7-D71/F7).
+                const auto IsPlainPress = NOT _IsRightMouseDown && NOT _IsMiddleMouseDown && NOT _IsAltDown;
 
                 if (IsPlainPress && InViewport != nullptr)
                 {
@@ -292,19 +330,21 @@ public:
                 /*
                  * Ctrl+LMB is ONE gesture with two jobs (P7-D53 + P7-D54): it adds the body to the selection
                  * and it opens the drag. The pick therefore resolves on the PRESS rather than on the release,
-                 * unlike the plain click — the drag needs the body highlighted so the facility samples it, and
-                 * that sample is what gives the grab point its depth.
+                 * unlike the plain click — and it resolves through TryPick_BodyHit, so the SAME pick that made
+                 * the selection also hands the drag its grab point, on the surface the user clicked (P7-D70/i).
                  */
                 if (IsPlainPress && _IsControlDown)
                 {
                     _IsCtrlGesture = true;
-                    DoPick(InViewport, true);
+                    const auto Hit = DoPick(InViewport, true);
 
 #if !UE_BUILD_SHIPPING
-                    if (_IsDragEnabled)
+                    // A Ctrl+press on empty space opens NO drag: a gesture that ate the mouse and moved the
+                    // previous selection is what the pick-keyed arm exists to make impossible.
+                    if (_IsDragEnabled && Hit._Key.IsSet())
                     {
                         _IsDragGesture = true;
-                        _OnDragArm.ExecuteIfBound();
+                        _OnDragArm.ExecuteIfBound(Hit._Key, Hit._PointWorld);
                     }
 #endif
                 }
@@ -358,6 +398,34 @@ public:
         { _PendingPickPress.Reset(); }
 
         const auto IsUnmodifiedPress = InEvent == IE_Pressed && NOT Get_IsAnyModifierDown();
+
+        /*
+         * Camera bookmarks (P8-D59). Ctrl+digit stores the pose in that digit's slot, a bare digit recalls it.
+         * They are safe as bare keys for the same reason Space, Enter, I and F are: nothing reaches this client
+         * unless the VIEWPORT owns keyboard focus, so a digit typed into a search box stays in the search box.
+         */
+        if (InEvent == IE_Pressed)
+        {
+            const auto BookmarkSlot = ck_jolt_debugger_3d_viewport::TryGet_BookmarkSlot(InKey);
+
+            if (BookmarkSlot.IsSet())
+            {
+                const auto IsControlOnly = _IsControlDown &&
+                    NOT _IsAltDown && NOT _IsShiftDown && NOT _IsCommandDown;
+
+                if (IsControlOnly)
+                {
+                    DoStore_Bookmark(*BookmarkSlot);
+                    return true;
+                }
+
+                if (IsUnmodifiedPress)
+                {
+                    DoRecall_Bookmark(*BookmarkSlot);
+                    return true;
+                }
+            }
+        }
 
         if (IsUnmodifiedPress && InKey == EKeys::SpaceBar)
         {
@@ -420,7 +488,7 @@ public:
 
         if (IsMouseWheel && InEvent == IE_Pressed)
         {
-            Zoom(InKey == EKeys::MouseScrollUp ? 1.1f : 1.0f / 1.1f);
+            DoWheelDolly(InKey == EKeys::MouseScrollUp ? 1.0 : -1.0);
             return true;
         }
 
@@ -589,6 +657,63 @@ public:
     }
 
 private:
+    /*
+     * A bookmark is the camera's STATE, not a framing: eye, rotation, projection and — for an ortho pose —
+     * the ortho width, which no look-at could reproduce. The slots are dense and indexed by the digit itself,
+     * so slot 3 is `CameraBookmarks[3]` whether or not 0..2 were ever stored.
+     */
+    auto DoStore_Bookmark(int32 InSlot) -> void
+    {
+        auto* Settings = GetMutableDefault<UCkJoltDebuggerSettings>();
+
+        if (ck::Is_NOT_Valid(Settings))
+        { return; }
+
+        if (Settings->CameraBookmarks.Num() < ck_jolt_debugger_3d_viewport::NumBookmarkSlots)
+        { Settings->CameraBookmarks.SetNum(ck_jolt_debugger_3d_viewport::NumBookmarkSlots); }
+
+        auto& Bookmark = Settings->CameraBookmarks[InSlot];
+        Bookmark.Location       = GetViewLocation();
+        Bookmark.Rotation       = GetViewRotation();
+        Bookmark.OrthoWidth     = ViewInfo.OrthoWidth;
+        Bookmark.IsOrthographic = ViewInfo.ProjectionMode == ECameraProjectionMode::Orthographic;
+
+        // Without this an untouched slot recalls the struct's own defaults, which reads as the camera snapping
+        // to the origin — a bookmark that was never taken must be inert, not a pose.
+        Bookmark.IsSet = true;
+
+        Settings->SaveConfig();
+    }
+
+    auto DoRecall_Bookmark(int32 InSlot) -> void
+    {
+        const auto* Settings = GetDefault<UCkJoltDebuggerSettings>();
+
+        if (ck::Is_NOT_Valid(Settings) || NOT Settings->CameraBookmarks.IsValidIndex(InSlot))
+        { return; }
+
+        const auto& Bookmark = Settings->CameraBookmarks[InSlot];
+
+        if (NOT Bookmark.IsSet)
+        { return; }
+
+        ViewInfo.ProjectionMode = Bookmark.IsOrthographic
+            ? ECameraProjectionMode::Orthographic
+            : ECameraProjectionMode::Perspective;
+
+        if (Bookmark.IsOrthographic)
+        { ViewInfo.OrthoWidth = Bookmark.OrthoWidth; }
+
+        SetViewLocation(Bookmark.Location);
+        SetViewRotation(Bookmark.Rotation);
+
+        // The pose carries no pivot, so the look-at is rebuilt from the restored rotation at the current orbit
+        // distance — the same thing a preset does, and the invariant every other path maintains.
+        DoResync_LookAtFromRotation();
+
+        Invalidate();
+    }
+
     auto DoClear_Hover() -> void
     {
         if (NOT _HoveredBodyKey.IsSet())
@@ -640,25 +765,50 @@ private:
         _OnBodyHovered.Execute(_HoveredBodyKey);
     }
 
-    /** The one pick path: deproject, ask the facility, report the key and whether the click was additive. */
+    /// What one pick resolved to. An unset key means the ray left the scene without touching a drawn body.
+    struct FPickHit
+    {
+        TOptional<uint64> _Key;
+        FVector           _PointWorld = FVector::ZeroVector;
+    };
+
+    /*
+     * The one pick path: deproject, ask the facility for the HIT, report the key and whether the click was
+     * additive. The hit is RETURNED as well as broadcast, because the Ctrl gesture needs the grab point from
+     * the very same pick — a second TryPick_BodyHit would be a second O(live instances) walk for an answer
+     * this one already produced.
+     */
     auto DoPick(
         FViewport* InViewport,
-        const bool InIsAdditive) -> void
+        const bool InIsAdditive) -> FPickHit
     {
-        if (NOT _OnBodyPicked.IsBound() || InViewport == nullptr)
-        { return; }
+        auto Hit = FPickHit{};
+
+        if (InViewport == nullptr)
+        { return Hit; }
 
         auto RayOrigin = FVector::ZeroVector;
         auto RayDirection = FVector::ZeroVector;
 
         if (NOT GetCursorWorldRay(InViewport, RayOrigin, RayDirection))
-        { return; }
+        { return Hit; }
 
-        const auto Target = _Target.Pin();
+        if (const auto Target = _Target.Pin())
+        {
+            auto Key = uint64{0};
+            auto HitPoint = FVector::ZeroVector;
+            auto Distance = 0.0f;
 
-        _OnBodyPicked.Execute(Target.IsValid()
-            ? Target->TryPick_Body(RayOrigin, RayDirection)
-            : TOptional<uint64>{}, InIsAdditive);
+            if (Target->TryPick_BodyHit(RayOrigin, RayDirection, Key, HitPoint, Distance))
+            {
+                Hit._Key = Key;
+                Hit._PointWorld = HitPoint;
+            }
+        }
+
+        _OnBodyPicked.ExecuteIfBound(Hit._Key, InIsAdditive);
+
+        return Hit;
     }
 
     auto Get_IsAnyModifierDown() const -> bool
@@ -720,12 +870,23 @@ private:
         SetLookAtLocation(_LookAt);
     }
 
-    // Pan and dolly move by a fraction of how far away the pivot is, so a camera framed on a rope link and one
-    // framed on a whole streamed cell both feel the same.
+    /*
+     * Pan and dolly move by a fraction of how much world the view is showing, so a camera framed on a rope link
+     * and one framed on a whole streamed cell both feel the same.
+     *
+     * In ORTHO that quantity is the ortho width, not the pivot distance (P7-D71/F5): an orthographic camera's
+     * distance to its pivot says nothing about how much world a pixel covers, so a pan scaled off it drags by
+     * the same world amount however far the user has zoomed in — unusable at both ends of the zoom range.
+     */
     auto Get_GestureScale() const -> double
     {
         const auto SpeedScale = FMath::Clamp(_CameraSpeed / 1000.0f, 0.1f, 100.0f);
-        return FMath::Max(_OrbitDistance, 1.0) * 0.001 * SpeedScale;
+
+        const auto Extent = ViewInfo.ProjectionMode == ECameraProjectionMode::Orthographic
+            ? FMath::Max(static_cast<double>(ViewInfo.OrthoWidth), 1.0)
+            : FMath::Max(_OrbitDistance, 1.0);
+
+        return Extent * 0.001 * SpeedScale;
     }
 
     auto DoLookInPlace(
@@ -880,15 +1041,31 @@ private:
         Invalidate();
     }
 
-    auto Zoom(float InFactor) -> void
+    /*
+     * The wheel (P7-D71/F6). In perspective this is a DOLLY in the Unreal sense: the eye and the look-at both
+     * travel along the view, by a step scaled to how far the pivot is. Shrinking the orbit distance instead —
+     * which is what this did — walks the eye towards a pivot it can never pass, so the wheel stalls in front
+     * of whatever the camera last framed and the user cannot fly through it. Moving both leaves the invariant
+     * (eye + forward * distance == look-at) intact by construction, so _OrbitDistance stays exactly as sane as
+     * it was; orbit and framing are unaffected.
+     *
+     * In ortho there is nothing to dolly towards — the wheel widens or narrows the frustum instead.
+     */
+    auto DoWheelDolly(double InDirection) -> void
     {
         if (ViewInfo.ProjectionMode == ECameraProjectionMode::Orthographic)
-        { ViewInfo.OrthoWidth = FMath::Clamp(ViewInfo.OrthoWidth / InFactor, 10.0f, 1000000.0f); }
-        else
         {
-            _OrbitDistance = FMath::Clamp(_OrbitDistance / InFactor, 1.0, 100000000.0);
-            SetViewLocation(_LookAt - GetViewRotation().Vector() * _OrbitDistance);
+            const auto Factor = InDirection > 0.0 ? 1.1f : 1.0f / 1.1f;
+            ViewInfo.OrthoWidth = FMath::Clamp(ViewInfo.OrthoWidth / Factor, 10.0f, 1000000.0f);
+            Invalidate();
+            return;
         }
+
+        const auto Step = GetViewRotation().Vector() *
+            (InDirection * FMath::Max(_OrbitDistance, 1.0) * ck_jolt_debugger_3d_viewport::Get_WheelDollyFraction());
+
+        SetViewLocation(GetViewLocation() + Step);
+        DoSet_LookAt(_LookAt + Step);
 
         Invalidate();
     }
@@ -902,7 +1079,7 @@ private:
     FSimpleDelegate _OnTogglePause;
     FSimpleDelegate _OnStepOnce;
     FSimpleDelegate _OnToggleIsolate;
-    FSimpleDelegate _OnDragArm;
+    FOnCkJoltDebugger_DragArm _OnDragArm;
     FOnCkJoltDebugger_DragRay _OnDragRay;
     FOnCkJoltDebugger_DragPlaneShift _OnDragPlaneShift;
     FSimpleDelegate _OnDragRelease;
@@ -974,6 +1151,39 @@ auto
     _SceneViewport = MakeShared<FSceneViewport>(_ViewportClient.Get(), SharedThis(this));
     _ViewportClient->Set_Viewport(_SceneViewport.ToSharedRef());
     SetViewportInterface(_SceneViewport.ToSharedRef());
+
+    /*
+     * The world-axis gizmo (P8-D59, ruled to fork (b) by P5-D61/S7): the suite's own orientation cube in the
+     * viewport's own child slot, which SViewport draws OVER the rendered scene. No hand-drawn OnPaint gizmo.
+     *
+     * It is fed the INVERSE of the view rotation, because the cube shows an object's orientation under a fixed
+     * three-quarter camera and what this needs to show is the WORLD's orientation under a moving one — turning
+     * the camera left has to swing the axes right. The cube's own fixed camera offset stays, so the gizmo reads
+     * as a three-quarter view of the world axes rather than as a screen-aligned triad.
+     *
+     * HitTestInvisible: it sits over the bottom-left corner of the pick surface, and a gizmo that ate clicks
+     * there would be a dead zone in the viewport.
+     */
+    ChildSlot
+    [
+        SNew(SOverlay)
+
+        + SOverlay::Slot()
+        .HAlign(HAlign_Left)
+        .VAlign(VAlign_Bottom)
+        .Padding(CkStyle::SpaceM)
+        [
+            SNew(SCkDebug_OrientationCube)
+            .Visibility(EVisibility::HitTestInvisible)
+            .Size(ck_jolt_debugger_3d_viewport::Get_GizmoSize())
+            .Rotation_Lambda([this]() -> FQuat
+            {
+                return _ViewportClient.IsValid()
+                    ? _ViewportClient->GetViewRotation().Quaternion().Inverse()
+                    : FQuat::Identity;
+            })
+        ]
+    ];
 
     // Built once, never in OnPaint (CkDebuggerCommon/CLAUDE.md § OnPaint). It therefore does NOT follow a live
     // Style Lab text-scale flip; the label size is fixed for the life of the window.

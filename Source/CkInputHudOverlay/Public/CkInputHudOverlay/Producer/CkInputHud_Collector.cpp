@@ -237,7 +237,7 @@ namespace ck_input_hud_collector
             if (NOT UCk_Utils_IntentMatcher_UE::Get_HasActiveSet(Layer.Matcher))
             { continue; }
 
-            const auto& Current = Layer.Matcher.Get<ck::FFragment_IntentMatcher_Current>();
+            const auto& Current = Layer.Matcher.Get<ck::FFragment_IntentMatcher>();
             const auto& Set     = Current.Get_ActiveSet();
             const auto& Intents = Set.Get_Intents();
 

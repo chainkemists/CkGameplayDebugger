@@ -35,7 +35,7 @@ namespace ck_inspector_resolver
     {
         if (NOT HasCurrent(InEntity) || NOT InEntity.Has<ck::FFragment_ResolverDataBundle_Params>())
         { return 0; }
-        return InEntity.Get<ck::FFragment_ResolverDataBundle_Params>().Get_Params().Get_Phases().Num();
+        return InEntity.Get<ck::FFragment_ResolverDataBundle_Params>().Get_Phases().Num();
     }
 
     auto Get_PhaseIndex(const FCk_Handle& InEntity) -> int32

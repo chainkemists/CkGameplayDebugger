@@ -108,7 +108,7 @@ const FName SCkCrowdDebuggerWindow::WindowId{TEXT("CkCrowdDebugger")};
 
 auto SCkCrowdDebuggerWindow::Is_CrowdDebuggerEntity(const FCk_Handle& InCandidate) -> bool
 {
-	return ck::IsValid(InCandidate) && InCandidate.Has<ck::FFragment_CrowdAgent_Params>();
+	return ck::IsValid(InCandidate) && InCandidate.Has<ck::FFragment_CrowdAgent_Tunables>();
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -124,7 +124,7 @@ auto SCkCrowdDebuggerWindow::Construct(const FArguments& InArgs) -> void
 	_WorldModel = MakeShared<FCkDebuggerModel_WorldSelector>();
 
 	// Shared viewport picker, specialized to crowd agents: only entities with
-	// FFragment_CrowdAgent_Params (plus their owner chain up to the NPC
+	// FFragment_CrowdAgent_Tunables (plus their owner chain up to the NPC
 	// representative) are previewed and pickable. The pick routes through this
 	// module's registered entity-target route, which resolves the lineage and
 	// re-fronts the tab with the agent selected.

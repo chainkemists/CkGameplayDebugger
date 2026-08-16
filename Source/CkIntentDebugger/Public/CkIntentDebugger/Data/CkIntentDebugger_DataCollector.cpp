@@ -201,7 +201,7 @@ namespace ck_intent_debugger_collector
             FCkIntentDebugger_LayerRow& OutRow)
         -> void
     {
-        const auto& Current = InMatcher.Get<ck::FFragment_IntentMatcher_Current>();
+        const auto& Current = InMatcher.Get<ck::FFragment_IntentMatcher>();
         const auto& Set = Current.Get_ActiveSet();
         const auto& Intents = Set.Get_Intents();
 

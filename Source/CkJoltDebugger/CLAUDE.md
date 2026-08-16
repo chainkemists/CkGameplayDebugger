@@ -57,12 +57,61 @@ Nothing here re-derives a colour, a bound, or a body count that the facility alr
 private `FCkJoltDebugger_3dViewportClient : FUMGViewportClient`. The shell is copied from
 `SCkCrowdDebugger_3dViewport` — camera math, input handling and per-frame invalidate transfer verbatim.
 
-**The widget draws NOTHING.** There is no `Draw` / PDI override and no grid. The facility's instanced
+**The widget draws no 3D.** There is no `Draw` / PDI override and no grid. The facility's instanced
 static meshes are registered into `Get_PreviewWorld()` and render because they are *in* that world. If
-you find yourself adding a PDI call here, the thing you want to draw belongs in CkJolt.
+you find yourself adding a PDI call here, the thing you want to draw belongs in CkJolt. The ONE thing
+this widget does draw is 2D — the label overlay in `OnPaint`, below.
 
 The scene is unlit and physics-free on purpose: the debug-draw materials are unlit, so lighting would
 change nothing, and a preview world that simulated would fight the world being inspected.
+
+### Labels and hover (P8-D58)
+
+The only two things this widget renders itself, and both exist because the facility cannot: JPH hands out
+labels as WORLD positions and renders no text, and the hover overlay needs a screen ray only the viewport
+client has.
+
+**Labels — `OnPaint`.**
+
+- The projection is built **the same way `GetCursorWorldRay` builds its inverse**: the same
+  `FSceneViewInitOptions`, the same `FMinimalViewInfo::CalculateProjectionMatrixGivenView`, composed into
+  one world→clip matrix (`TryGet_ViewProjection` on the client), then `FSceneView::ProjectWorldToScreen`.
+  A projection derived any other way would put labels where clicks do not land. **Do not try to capture an
+  `FSceneView` from Slate.**
+- Screen pixels become local Slate units **by ratio** (`LocalSize / ViewRect.Size()`), because the two are
+  the same rectangle at different DPI scales.
+- ⚠ **`OnPaint` allocates NOTHING** (`CkDebuggerCommon/CLAUDE.md` § OnPaint). The font is a member built
+  once in `Construct`; colours come off the label and the palette. Consequence: the label font does **not**
+  follow a live Style Lab text-scale flip — it is fixed for the life of the window.
+- **The primary selection is always labelled**, whatever the `Labels` draw flag says. That label is the
+  WINDOW's (`Set_PrimaryLabel`, pushed from the ungated half of `Tick`, positioned at the top of the
+  highlight bounds in the palette's highlight colour) — a selection the user made is not something they
+  should have to turn a flag on to name. The facility's own `Get_Labels()` are drawn on top of it, and
+  today the only one it emits is the numeric mass beside the Mass+Inertia box, which needs BOTH `Labels`
+  and `MassAndInertia`.
+- **Hard cap: 500, nearest to the eye first** (`ck_jolt_debugger_viewport::MaxPaintedLabels`). Over the cap
+  the labels are sorted by distance and truncated; **under** it the capture's own order is left untouched,
+  so a camera move does not reshuffle the draw order for nothing. The truncation logs `Display` **once per
+  window**, because a silent truncation reads as the facility losing labels.
+- `ProjectWorldToScreen` returns false behind the eye, so a label the camera turned away from is dropped
+  rather than wrapped to the other side of the screen.
+
+**Hover.**
+
+- Driven from `FViewportClient::MouseMove` — the NON-captured move. `FSceneViewport` routes a move with no
+  button held there and one with a button held to `CapturedMouseMove`, which is exactly the split hover
+  wants.
+- **Throttled to ≥ 60 ms.** A pick is O(live instances) and the mouse produces a move event per pixel;
+  unthrottled this would be the most expensive thing the window does.
+- **It never fights the pick or the drag gesture.** Any of `_PendingPickPress`, `_IsCtrlGesture`, or a held
+  mouse button suppresses it outright, and `LostFocus` clears it (reporting an unset key) so an overlay can
+  never latch on.
+- The delegate fires **on change only** — re-stamping the same key sixteen times a second would invalidate
+  an overlay that never moved.
+- The facility owns the overlay (`Set_HoveredBody`, its own always-visible half-alpha class); the WINDOW
+  owns the name, because only the collector can turn a body key back into an entity. A drawn body the
+  collector cannot attribute still highlights, with no tooltip — inventing a name from the key would read
+  as an entity that does not exist.
 
 ### Camera
 
@@ -178,10 +227,19 @@ drag plane. The widget never touches either — it forwards a ray.
 
 ## The outliner
 
-`SCkJoltDebugger_OutlinerPanel` lists one row per body-backing entity of the selected world, collected
-by `FCkJoltDebugger_DataCollector` on the window's refresh-gated Tick. Four populations, one flat list:
+`SCkJoltDebugger_OutlinerPanel` lists one row per Jolt-backing entity of the selected world, collected
+by `FCkJoltDebugger_DataCollector` on the window's refresh-gated Tick. **Five** populations, one flat list:
 `JoltBody`, `BakedStatic` (a JoltStaticActor attribution entity), `Sensor` (a CkSpatialQuery Probe),
-`Character`.
+`Character`, `Constraint`.
+
+- **`Constraint` is the odd population and deliberately so (P8-D55).** A constraint entity draws NOTHING,
+  so it has no colour class and no population toggle — the other four line up one-to-one with those. Its
+  row `BodyKey` is **UNSET**, because a key there would collide with the body row that already owns it in
+  the shared key → row lookup; what the row carries instead is `ConstraintBodyKeys` (the pair it joins,
+  **A first**) plus `ConstraintType` and `IsBodyBWorldAnchor`. `NumBodies` is reused for the pair count.
+  The collector reads the pair through `UCk_Utils_JoltConstraint_UE::Get_BodyA/Get_BodyB` and turns each
+  into a key through the SAME `FFragment_JoltBody_Current` the JoltBody pass keys its own rows from, so a
+  constraint's body key and that body's row key are the same number by construction.
 
 - **Row identity is `(Handle, Population)`, not the handle alone.** One entity can back two populations
   at once — a JoltBody that also owns a Probe — and a handle-keyed map would collapse those into one
@@ -225,6 +283,13 @@ by `FCkJoltDebugger_DataCollector` on the window's refresh-gated Tick. Four popu
   covers the row that IS selected, not the one about to be. A selection the user cannot see is
   indistinguishable from no selection, which would read as a broken "Open In". The Highlight query is
   left alone — it dims, it never hides.
+- **The "Problems" chip is a SECOND filter stage, not a second query** (P8-D57). It stacks with the text
+  filter (`Matches_Query && (NOT _ProblemsOnly || Get_HasProblem())`) and obeys the same pin rule — a
+  selected row survives both, dimmed. The flags are pushed in by the collector, not computed here, so a
+  body that stopped being broken stops being listed without anyone touching the chip. The chip lives ABOVE
+  the query boxes because it is a different KIND of filter — one the facility computed, not one the user
+  typed — and its tooltip rides an enclosing `SBox` (`SCkDebug_Chip` does not apply the base `ToolTipText`
+  argument, and Slate resolves a tooltip by walking UP the hovered path).
 - Right-click copies the row text or the full entity handle (`SListView::OnContextMenuOpening`, never a
   click-trapping widget inside the row). Multi-select aware — every selected row, joined with `\n`.
 
@@ -236,6 +301,20 @@ The window owns the model in two halves: `TOptional<FCkJoltDebugger_BodySnapshot
 **primary**) and `TArray<FCkJoltDebugger_BodySnapshot> _SelectionAll` (the whole set, **primary first**).
 `DoApplySelectionSet` is the ONE writer; `DoApplySelection` is its single-selection convenience. Every
 source funnels through it and every sink is driven from it.
+
+**A constraint selection highlights the PAIR, not the row** (P8-D55). A constraint row has no body key,
+so `DoApplySelectionSet` contributes its `ConstraintBodyKeys` instead — body A first, so the facility's
+sample and the detail panel follow the constraint's own first body. Keys are `AddUnique`d, because
+selecting a constraint AND one of its bodies must not highlight that body twice.
+
+⚠ **Selecting a constraint turns on `ConstraintReferenceFrames` for the WHOLE WORLD.** Jolt's
+`PhysicsSystem::DrawConstraintReferenceFrame` takes no constraint — the draw is all-or-nothing — so
+"draws its reference frames" is implemented as arming that flag while a constraint is selected. Accepted
+and documented (P5-D61/S8); do **not** fake a per-constraint framing. The flag is derived, never
+remembered: `DoApplyConstraintReferenceFrames` recomputes it as
+`persisted-user-intent OR a-constraint-is-selected`, so deselecting restores exactly what the user chose
+and the state is never persisted behind their back. Visible consequence: while a constraint is selected
+the Reference Frames toggle reads ON even if the user's own preference is off.
 
 **The primary leads the set because the facility says so**: `Set_HighlightedBodies` samples the FIRST key
 and asks only that body for its contacts. A set in list order would describe a body the user did not click.
@@ -384,6 +463,28 @@ the one piece of state that changes what every number below it means.
 
 ---
 
+### Health badge (P8-D57)
+
+The stats header carries an `SCkDebug_CountBadge` with the number of flagged rows, **collapsed when that
+number is zero** — a badge reading "0" is a permanent alarm nobody can silence, and an absent one is the
+good news. Its colour is `ck::debug_axes::Get_HeatColor(1.0f)`, never a hand-written hex.
+
+The flags themselves come from the FACILITY, not from this module: `DoApplyProblemThresholds` pushes the
+per-user runaway bar and the selected world's `AWorldSettings::KillZ` into
+`FCk_Jolt_DebugDrawTarget::Set_ProblemThresholds`, and `FCkJoltDebugger_DataCollector::Apply_ProblemFlags`
+stamps `Get_ProblemBodies()` onto the rows between the ECS pass and the outliner refresh. The collector
+**never reads `JPH::PhysicsSystem`** — that is the module's founding rule, and a Slate-side physics read
+would break it.
+
+- Thresholds are re-pushed only on CHANGE. `Set_ProblemThresholds` drops the last verdict by design, so
+  pushing an identical pair every refresh would blank the problem set between captures and flicker the chip.
+- A **baked-static** row inherits the UNION of its own bodies' flags (through the collector's owner index):
+  an actor with one broken body is a row the user has to be able to find.
+- A **constraint** row inherits the flags of the pair it joins.
+- With no inspectable world the thresholds are cleared, so nothing is scanned outside PIE.
+
+---
+
 ## Target lifecycle and demand
 
 The **window**, not the viewport, owns one `FCk_Jolt_DebugDrawTarget`, constructed against the
@@ -483,6 +584,27 @@ the colour mode BEFORE the population visibility (the reverse order would wipe w
 `Set_ColorMode` re-applies the saved visibility whenever the mode returns to BodyClass, or the toggles would
 read "everything visible" while the preferences said otherwise.
 
+**"Probe results" is in the Draw lane but is NOT a facility draw flag** (P8-D56). From the user's side
+"show me what the probe is touching" is the same kind of question as "show me velocities", so it sits in
+the same lane; underneath it is a **retained named External sub-channel**, `"JoltDebugger.ProbeResults"`
+(P5-D61/S3), owned by this window:
+
+- Pushed only when the overlap SET changes. `UCk_Utils_Probe_UE::Get_CurrentOverlaps` returns a full
+  `TSet` **copy**, so the result is gathered, digested into a signature, and only re-drawn when that
+  signature moves. **Never poll it for every probe** — it is read for the primary selection alone.
+- Drawn per overlap: a line to the other entity, a small sphere at each contact point, and an arrow along
+  the contact normal from each point.
+- `Clear_External("JoltDebugger.ProbeResults")` is the ONLY thing that empties it, and the window calls it
+  when the selection leaves a probe and when the world changes. The capture re-emits a retained channel
+  every pass without clearing it, which is what stops it flickering.
+- ⚠ **A persistent probe TRACE has no hit positions at all** — `ck::FFragment_ProbeTrace_WorldContacts`
+  holds a `TSet<FCk_Handle>` and an anonymous-contact bool, nothing more — so a trace selection can only
+  draw the entity lines. **The tooltip says so**, rather than the user seeing points on some selections
+  and not others and drawing their own conclusions.
+- ⚠ **A ProbeTrace entity is not one of this window's five populations today**, so that branch only fires
+  for an entity carrying the world-contacts fragment ALONGSIDE something listed (a Probe). Adding a
+  ProbeTrace population was out of Phase 8's scope; the branch is written and guarded on the fragment.
+
 **Contact flags are process-wide** and every contacts tooltip says so — Jolt's contact draw switches are plain
 statics with no per-system variant, so arming them here arms contact emission for every world and every other
 debugger preview at once (`CkJolt/Claude.md` § Contact recording).
@@ -528,6 +650,8 @@ This is the plugin-wide settings split, not a local choice: see `CkGameplayDebug
 | `CameraPreset` (the 7 orientations) | `ApplyPreset` on the viewport |
 | `DrawFlags` (raw `ECk_Jolt_DebugDrawFlags` bits) | `Set_DrawFlags` on the target |
 | `ColorMode` (`ECkJoltDebugger_ColorModePref`) | `Set_ColorMode`, then the legend rebuild |
+| `ShowProbeResults` | `_ShowProbeResults`, then `DoUpdateProbeResults` — the External sub-channel, not a draw flag |
+| `RunawayVelocityCmS` | half of `Set_ProblemThresholds` on the target; the other half is the world's `KillZ` |
 | `IsolateActive` | `_IsolateActive` + `DoApplyIsolation()` — state, not an act; the first selection arms it |
 | `FollowSelection` | `Set_FollowSelection` on the viewport |
 | `ShowGrid` / `RunawayVelocityCmS` (5000) / `CameraBookmarks` | Phase 8 (not consumed yet) |
@@ -566,6 +690,9 @@ whatever is in the world at that moment, not a camera state a window can be rest
 | `Ck.JoltDebugger.Outliner.ConstructsWithoutEnsure` | the panel builds, reconciles an EMPTY pass and a `Clear` without an ensure, and resolves an absent handle to nothing |
 | `Ck.JoltDebugger.Outliner.MultiSelectKeepsPrimaryAndSurvivesRefresh` | the multi-select contract on three real entities: a plain select takes one row, `Add_ToSelection` (the Ctrl+click path, from the outliner OR the viewport) makes two with the LAST as primary, the set is reported primary-FIRST (which is what the facility samples), a refresh over the same entities keeps both rows AND the same primary, a filter matching neither of them hides neither — both stay pinned and dimmed beside the one match — a selected row whose entity leaves the world leaves the selection and promotes the survivor to primary, and clearing drops the set with its primary |
 | `Ck.JoltDebugger.Outliner.RowsSelectFilterAndSurviveRefresh` | three rows on three real entities (a standalone `ck::FEcsWorld`): select-by-handle finds the right row, a refresh over the same entities KEEPS the selection (the pointer-reuse contract), the filter hides non-matches EXCEPT the selected row, which stays pinned and dimmed while the matching row is not, the pin disappears with the selection, and an external select reaches a filtered-out row and reveals every row again |
+| `Ck.JoltDebugger.Outliner.ListsConstraintRows` | a constraint row is listed beside the two bodies it joins and is selectable; it carries NO body key of its own; it names BOTH bodies with **A first** (which is what the facility samples) and reports its constraint flavour; a refresh over the same set keeps it selected; and its own row text answers the shared text filter |
+| `Ck.JoltDebugger.Outliner.ProblemsChipNarrowsToFlaggedRows` | three rows, one flagged: the chip is off to begin with and all three are listed; turning it on leaves exactly the flagged row; a SELECTED healthy row stays pinned beside it and renders dimmed (the pin rule outranks the chip exactly as it outranks the text filter); clearing the selection narrows to one again; clearing the chip restores three; and a row whose flags are cleared by the next collector pass leaves the chip with nothing to show |
+| `Ck.JoltDebugger.Viewport.LabelCapKeepsTheNearest` | the pure half of the label paint: under the cap every label survives in the CAPTURE's order (a camera move must not reshuffle the draw order); over it exactly the cap survives, **nearest first**, from a fixture authored farthest-first so a take-the-first-N implementation cannot pass; a zero cap paints nothing; no labels select nothing; and the shipped cap is 500 |
 | `Ck.JoltDebugger.Settings.ConstructRestoresPreferences` | the settings live in the `Editor` container, and the window constructs ensure-free with NON-DEFAULT preferences — which is what drives the restore path, camera preset included. Every preference the restore reads is asserted UNCHANGED afterwards, so a restore that quietly re-saved a default over the developer's own choice surfaces here rather than in an ini. Covers all seven new fields (draw flags, colour mode, isolate, follow, grid, runaway velocity, a bookmark). The developer's own CDO values are saved and put back by an RAII guard, so a failing prepass cannot leave test values on the real per-user settings |
 | `Ck.JoltDebugger.Detail.ConstructsWithoutEnsure` | every value lambda survives a completely unbound `GetSelection` AND an unbound `GetSelectionFacts` — including the rows that dereference a `TOptional` sample — and reads `--`; `Refresh_Contacts` on an unbound panel lists nothing |
 | `Ck.JoltDebugger.Detail.RowsReflectTheSelection` | the built rows render the bound selection's own values (population / motion / sleep / body key); an unsampled velocity reads `--` and a sampled one reaches the row; **every facility row degrades to `--` while the sample is unset** (mass, friction, object layer, shape type) and renders the sample once it lands (angular velocity, mass, friction, restitution, motion quality, object layer, sensor, shape type, allows-sleeping); a ZERO mass reads "Infinite" and an unasked sleeping flag reads `--`; the **character group flips visible** when the selection's population becomes Character and its rows render the character sample (ground state, velocity, ground body) while every rigid-body row degrades; an unset ground body key reads `--`; the contacts list takes one row per reported contact and empties with them; and clearing the selection empties every row and re-collapses the character group |
@@ -583,7 +710,11 @@ renders.
 ### What the specs cannot reach — `[EDITOR-VERIFY]` only
 
 Headless specs construct widgets; they cannot render, and they cannot give a target real content
-(content bounds come from captured ISM buckets, which need a live Jolt world). These remain manual:
+(content bounds come from captured ISM buckets, which need a live Jolt world). **`OnPaint` and the hover
+throttle are in that set**: a paint needs a live `FSceneViewport` with a non-zero rect and hover needs
+real mouse-move delivery, neither of which an automation run has. The projection under the paint is engine
+math with no branch of ours in it, so what IS pinned headlessly is the pure half — which labels survive the
+cap and in what order (`Ck.JoltDebugger.Viewport.LabelCapKeepsTheNearest`). These remain manual:
 
 - bodies actually render in the viewport, and match the in-world draw
 - framing on real content — Frame All / the ortho presets landing on the bodies
@@ -627,12 +758,33 @@ Headless specs construct widgets; they cannot render, and they cannot give a tar
   (it still adds to the selection — only the drag is refused)
 - **the contacts list fills for a resting body and its rows select the other body on click**; a character
   selection lists none
+- **constraints appear in the outliner with their type; selecting one highlights BOTH bodies** and turns
+  the world's constraint reference frames on for as long as the selection holds; "Open In → Jolt" from the
+  ECS debugger reaches a constraint row
+- **a rope built by `UCk_Utils_JoltRope_UE` lists its constraints** and they all highlight sensibly
+- **selecting an overlapping probe with "Probe results" on draws contact points, normals and a line to
+  each overlapping entity**; the lines do not flicker between captures and disappear when the selection
+  leaves the probe; the tooltip explains why a persistent trace has no points
+- **throwing a body far below KillZ, or making one a runaway, lights the header badge and the Problems
+  chip** and narrows the list to it; slowing it down clears both
+- **labels appear on the selection with no draw flag set**, and turning the Labels flag on labels bodies up
+  to the cap without tanking the frame rate (the cap logs once)
+- **hovering a body highlights it subtly and shows its name**; the hover never fires mid-click or mid-drag,
+  and leaving the viewport clears it
 - `[PACKAGED-VERIFY]` both engine debug materials render in a packaged Development build — exact
   acceptance steps in `CkJolt/Claude.md` § "Colour + wireframe"
 
 ---
 
 ## Known costs
+
+- **The health scan is one extra O(active) walk per capture, and only while armed.** It is a separate
+  capture step rather than a hook in `Draw_Body` (the incremental pass would have made it lie), and the
+  window disarms it whenever no world is inspectable.
+- **The probe-results channel costs one full `TSet` copy per REFRESH of the selected probe**, not per
+  tick, and nothing at all while the toggle is off or the selection is not a probe.
+- **`OnPaint` costs one matrix build plus one `ProjectWorldToScreen` per painted label**, hard-capped at
+  500. With no labels and no selection it early-outs before building the matrix at all.
 
 - **One selection change = one full inactive-body WALK — CLOSED, measured.** `Set_HighlightedBody`
   re-arms the facility's revision-keyed pass so a static or long-asleep body gains its overlay on the
@@ -679,6 +831,20 @@ Headless specs construct widgets; they cannot render, and they cannot give a tar
 - **Never guess the drag's grab point.** `TryPick_Body` returns a key and nothing else; the depth comes
   from `Get_BodySample()->Get_WorldBounds()`, which is why the drag opens on the first move rather than
   on the press. A guessed depth gives the spring a lever arm that spins the body.
+- **Never allocate a brush or a font in `OnPaint`.** The label overlay's font is a member built once in
+  `Construct` (`CkDebuggerCommon/CLAUDE.md` § OnPaint), and the deprecated no-argument `ToPaintGeometry()`
+  overload is not used.
+- **Never poll `Get_CurrentOverlaps`.** It returns a full `TSet` **copy** — read it for the PRIMARY
+  selection only, digest the result, and re-push the External channel only when that digest moves.
+- **Never fake a per-constraint reference frame.** Jolt's `DrawConstraintReferenceFrame` takes no
+  constraint; selecting one arms the flag for the whole world, and that is disclosed rather than
+  worked around.
+- **Never give a constraint row a `BodyKey`.** It draws nothing, and a key there would shadow the body
+  row that owns it in the shared key → row lookup. `ConstraintBodyKeys` is the pair, A first.
+- **Never let the hover fire during a gesture**, and never leave it un-throttled. It is a
+  `TryPick_Body` per event, and the mouse produces one per pixel.
+- **Never let the collector compute a health flag.** It reads the ECS; the flags are the CAPTURE's, and
+  the collector's `Apply_ProblemFlags` only stamps what the facility already decided.
 - **Never let the drag path run on a client.** It is the only sim-mutating act this module performs, and
   the whole path is gated on `GetNetMode() != NM_Client` and behind the same `#if !UE_BUILD_SHIPPING` as
   the facility API it calls.

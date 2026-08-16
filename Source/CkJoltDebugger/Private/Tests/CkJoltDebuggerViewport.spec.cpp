@@ -199,4 +199,77 @@ auto FCkJoltDebuggerViewport_CameraSchemeIsUnrealStyle::RunTest(const FString&) 
     return true;
 }
 
+// --------------------------------------------------------------------------------------------------------------------
+
+/*
+ * The half of the label paint a headless spec CAN reach. OnPaint itself needs a live FSceneViewport with a
+ * non-zero rect, which an automation run does not have; the projection under it is engine math with no branch
+ * of ours in it, so what is worth pinning is the CAP — which labels survive, and in what order (P8-D58).
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FCkJoltDebuggerViewport_LabelCapKeepsTheNearest,
+    "Ck.JoltDebugger.Viewport.LabelCapKeepsTheNearest",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+auto FCkJoltDebuggerViewport_LabelCapKeepsTheNearest::RunTest(const FString&) -> bool
+{
+    const auto ViewLocation = FVector{0.0, 0.0, 0.0};
+
+    auto Labels = TArray<FCk_Jolt_DebugDrawLabel>{};
+
+    // Authored FARTHEST first, so an implementation that simply took the first N would fail every assertion.
+    for (auto Index = 0; Index < 10; ++Index)
+    {
+        Labels.Emplace(FCk_Jolt_DebugDrawLabel{
+            FVector{static_cast<double>((10 - Index) * 100), 0.0, 0.0},
+            FString::FromInt(Index),
+            FLinearColor::White});
+    }
+
+    {
+        // Under the cap nothing is reordered: the capture's own order is the draw order.
+        const auto All = ck_jolt_debugger_viewport::Select_NearestLabels(Labels, ViewLocation, 100);
+
+        TestEqual(TEXT("under the cap every label survives"), All.Num(), 10);
+
+        if (All.Num() == 10)
+        {
+            TestEqual(TEXT("and the capture's order is untouched"), All[0], 0);
+            TestEqual(TEXT("all the way down"), All[9], 9);
+        }
+    }
+
+    {
+        const auto Nearest = ck_jolt_debugger_viewport::Select_NearestLabels(Labels, ViewLocation, 3);
+
+        TestEqual(TEXT("over the cap exactly the cap survives"), Nearest.Num(), 3);
+
+        if (Nearest.Num() == 3)
+        {
+            // Index 9 sits at x=100, 8 at x=200, 7 at x=300 — the three nearest, nearest first.
+            TestEqual(TEXT("the nearest label leads"), Nearest[0], 9);
+            TestEqual(TEXT("then the next nearest"), Nearest[1], 8);
+            TestEqual(TEXT("then the third"), Nearest[2], 7);
+        }
+    }
+
+    {
+        const auto None = ck_jolt_debugger_viewport::Select_NearestLabels(Labels, ViewLocation, 0);
+        TestEqual(TEXT("a zero cap paints nothing"), None.Num(), 0);
+    }
+
+    {
+        const auto Empty = ck_jolt_debugger_viewport::Select_NearestLabels(
+            TArray<FCk_Jolt_DebugDrawLabel>{}, ViewLocation, ck_jolt_debugger_viewport::MaxPaintedLabels);
+
+        TestEqual(TEXT("no labels select nothing"), Empty.Num(), 0);
+    }
+
+    // The shipped cap is the one the ruling names, and a viewport that quietly raised it would be paying for
+    // labels the user cannot read anyway.
+    TestEqual(TEXT("the shipped cap is 500"), ck_jolt_debugger_viewport::MaxPaintedLabels, 500);
+
+    return true;
+}
+
 #endif

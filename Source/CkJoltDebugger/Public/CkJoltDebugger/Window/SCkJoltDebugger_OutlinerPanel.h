@@ -124,6 +124,17 @@ public:
     /** Drive the filter query directly — the same path a keystroke in the search box takes. */
     auto Set_FilterQuery(const FString& InQuery) -> void;
 
+    /*
+     * The "Problems" narrowing (P8-D57). It stacks WITH the text filter rather than replacing it, and it obeys
+     * the same pin rule: a selected row survives both, dimmed, because a selection the user cannot see is
+     * indistinguishable from no selection.
+     */
+    auto Set_ProblemsFilter(bool InIsActive) -> void;
+    auto Get_IsProblemsFilterActive() const -> bool { return _ProblemsOnly; }
+
+    /** Rows the facility's health scan flagged, over the whole collected set rather than the visible one. */
+    auto Get_NumProblemRows() const -> int32;
+
     /** Regenerate every row widget after a style revision. Item identity is untouched. */
     auto Rebuild_ForStyleChange() -> void;
 
@@ -171,6 +182,9 @@ private:
     // Filter hides rows; Highlight dims the ones that survive the filter.
     FString _FilterString;
     FString _HighlightString;
+
+    // The Problems chip's state. A second filter stage, not a second query.
+    bool _ProblemsOnly = false;
 };
 
 // --------------------------------------------------------------------------------------------------------------------

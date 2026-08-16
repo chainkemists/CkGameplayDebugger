@@ -16,6 +16,7 @@
 #include "CkDebuggerCommon/Picker/SCkDebug_ViewportPickerControls.h"
 #include "CkDebuggerCommon/Styles/CkDebuggerAxes.h"
 #include "CkDebuggerCommon/Styles/CkDebuggerCommonStyle.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_CountBadge.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_IconToggle.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_SectionHeader.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_StatusPill.h"
@@ -35,11 +36,16 @@
 #include "CkJolt/Body/CkJoltBody_Fragment.h"
 #include "CkJolt/Character/CkJoltCharacter_Fragment.h"
 #include "CkJolt/StaticWorld/CkJoltStaticActor_Fragment.h"
+#include "CkJolt/Constraint/CkJoltConstraint_Fragment.h"
+
+#include "CkEcsExt/Transform/CkTransform_Utils.h"
 
 #include "CkSpatialQuery/Probe/CkProbe_Fragment.h"
+#include "CkSpatialQuery/Probe/CkProbe_Utils.h"
 
 #include "Engine/Engine.h"
 #include "Engine/World.h"
+#include "GameFramework/WorldSettings.h"
 
 #include "HAL/IConsoleManager.h"
 #include "Styling/AppStyle.h"
@@ -121,6 +127,15 @@ namespace ck_jolt_debugger
      */
     static auto Get_DragChannel() -> FName
     { return FName{TEXT("JoltDebugger.Drag")}; }
+
+    /// The retained External sub-channel the selected probe's overlaps live in (P8-D56 + P5-D61/S3).
+    static auto Get_ProbeResultsChannel() -> FName
+    { return FName{TEXT("JoltDebugger.ProbeResults")}; }
+
+    // How far a contact normal is drawn, and how big a contact point's marker is. Both in centimetres, both
+    // sized to read beside a human-scale body rather than to be geometrically meaningful.
+    static constexpr float ProbeContactPointRadius = 6.0f;
+    static constexpr float ProbeContactNormalLength = 40.0f;
 
     /*
      * Where a cursor ray meets a plane. Unset when the ray is parallel to the plane, and when the hit is
@@ -339,7 +354,10 @@ auto
     return InCandidate.Has<ck::FFragment_JoltBody_Current>()
         || InCandidate.Has<ck::FFragment_JoltStaticActor_Current>()
         || InCandidate.Has<ck::FFragment_Probe_Current>()
-        || InCandidate.Has<ck::FFragment_JoltCharacter_Current>();
+        || InCandidate.Has<ck::FFragment_JoltCharacter_Current>()
+        // The fifth clause (P8-D55). A constraint entity draws nothing of its own, but it IS a Jolt entity this
+        // window lists and can select — so an ECS "Open In" and a viewport pick both have to reach it.
+        || InCandidate.Has<ck::FFragment_JoltConstraint_Current>();
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -361,7 +379,8 @@ auto
         .OnDragArm(FSimpleDelegate::CreateSP(this, &SCkJoltDebuggerWindow::HandleDragArm))
         .OnDragRay(FOnCkJoltDebugger_DragRay::CreateSP(this, &SCkJoltDebuggerWindow::HandleDragRay))
         .OnDragPlaneShift(FOnCkJoltDebugger_DragPlaneShift::CreateSP(this, &SCkJoltDebuggerWindow::HandleDragPlaneShift))
-        .OnDragRelease(FSimpleDelegate::CreateSP(this, &SCkJoltDebuggerWindow::HandleDragRelease));
+        .OnDragRelease(FSimpleDelegate::CreateSP(this, &SCkJoltDebuggerWindow::HandleDragRelease))
+        .OnBodyHovered(FOnCkJoltDebugger_BodyHovered::CreateSP(this, &SCkJoltDebuggerWindow::HandleViewportBodyHovered));
 
     DoCreateDebugDrawTarget();
 
@@ -503,6 +522,10 @@ auto
     // lag the body it is attached to, and the user is holding the mouse down while they watch it.
     DoUpdateDragLine();
 
+    // Also ungated: the label rides the selection bounds, and a label lagging the body it names reads worse
+    // than no label at all.
+    DoUpdateViewportLabels();
+
     if (NOT FCkDebuggerRefreshGate::Should_RefreshNow(WindowId))
     { return; }
 
@@ -610,6 +633,22 @@ auto
     _IsDragBegun = false;
     _DragLineGrab.Reset();
     _DragLineAnchor.Reset();
+
+    // The probe channel described a probe in the world that just went away. Cleared here rather than left for
+    // the next refresh, which cannot happen at all until a world is selected again.
+    if (_DebugDrawTarget.IsValid() && _ProbeResultsSignature.IsSet())
+    { _DebugDrawTarget->Clear_External(ck_jolt_debugger::Get_ProbeResultsChannel()); }
+
+    _ProbeResultsSignature.Reset();
+
+    if (_DebugDrawTarget.IsValid())
+    { _DebugDrawTarget->Set_HoveredBody(TOptional<uint64>{}); }
+
+    if (_Viewport.IsValid())
+    {
+        _Viewport->Set_HoverLabel(FText::GetEmpty());
+        _Viewport->Set_PrimaryLabel({});
+    }
 
     _Stats = FCkJoltDebugger_Stats{};
 }
@@ -755,11 +794,56 @@ auto
 {
     _Collector.Collect(InWorld);
 
+    // Between the ECS pass and the outliner: the rows are the registry's and the flags are the capture's, and
+    // the panel has to receive one reconciled snapshot rather than two halves arriving a frame apart.
+    DoApplyProblemThresholds(InWorld);
+    _Collector.Apply_ProblemFlags(_DebugDrawTarget.IsValid()
+        ? _DebugDrawTarget->Get_ProblemBodies()
+        : TMap<uint64, ECk_Jolt_DebugDraw_ProblemFlags>{});
+
     if (_OutlinerPanel.IsValid())
     { _OutlinerPanel->Refresh(_Collector.Get_Bodies()); }
 
     DoApplyPendingTarget(InWorld);
     DoRefreshSelectionFacts();
+    DoUpdateProbeResults();
+}
+
+auto
+    SCkJoltDebuggerWindow::
+    DoApplyProblemThresholds(
+        UWorld* InWorld)
+    -> void
+{
+    if (NOT _DebugDrawTarget.IsValid())
+    { return; }
+
+    if (NOT ck_jolt_debugger::Get_IsInspectable(InWorld))
+    {
+        _DebugDrawTarget->Set_ProblemThresholds({});
+        return;
+    }
+
+    const auto* Settings = GetDefault<UCkJoltDebuggerSettings>();
+
+    // KillZ is the world's, not the facility's: a preview world has no kill plane at all, and the number the
+    // user cares about is the one the world being INSPECTED enforces.
+    const auto* WorldSettings = InWorld->GetWorldSettings();
+    const auto KillZ = WorldSettings != nullptr
+        ? static_cast<float>(WorldSettings->KillZ)
+        : -TNumericLimits<float>::Max();
+
+    const auto Current = _DebugDrawTarget->Get_ProblemThresholds();
+
+    // Re-pushed only on CHANGE: the setter drops the last verdict, so pushing an identical pair every refresh
+    // would blank the problem set between every capture and make the chip flicker.
+    if (Current.IsSet() &&
+        Current->Get_RunawayVelocityCmS() == Settings->RunawayVelocityCmS &&
+        Current->Get_KillZ() == KillZ)
+    { return; }
+
+    _DebugDrawTarget->Set_ProblemThresholds(
+        FCk_Jolt_DebugDraw_ProblemThresholds{Settings->RunawayVelocityCmS, KillZ});
 }
 
 auto
@@ -896,7 +980,12 @@ auto
         for (const auto& Body : _SelectionAll)
         {
             if (Body.BodyKey.IsSet())
-            { Keys.Emplace(*Body.BodyKey); }
+            { Keys.AddUnique(*Body.BodyKey); }
+
+            // A constraint row draws NOTHING itself — what it highlights is the pair it joins (P8-D55). Body A
+            // leads, so the facility's sample and the detail panel follow the constraint's own first body.
+            for (const auto ConstraintBodyKey : Body.ConstraintBodyKeys)
+            { Keys.AddUnique(ConstraintBodyKey); }
         }
 
         _DebugDrawTarget->Set_HighlightedBodies(MoveTemp(Keys));
@@ -928,6 +1017,12 @@ auto
 
     // Isolation names the SELECTED keys, so it has to be re-pushed whenever they change.
     DoApplyIsolation();
+
+    DoApplyConstraintReferenceFrames();
+
+    // The probe channel belongs to WHICHEVER probe is selected; a selection that left one has to take its
+    // lines with it rather than leaving a retained channel describing a body nobody is looking at.
+    DoUpdateProbeResults();
 
     const auto IsUserOriginated = InSource == ECkJoltDebugger_SelectionSource::Outliner
         || InSource == ECkJoltDebugger_SelectionSource::Viewport
@@ -1023,6 +1118,39 @@ auto
         _OutlinerPanel->Get_Selection(),
         ECkJoltDebugger_SelectionSource::ViewportAdditive);
 }
+
+/*
+ * The subdued twin of a pick (P8-D58). The facility owns the overlay; this window owns the NAME, because the
+ * facility keys bodies and only the collector can turn a key back into an entity.
+ */
+auto
+    SCkJoltDebuggerWindow::
+    HandleViewportBodyHovered(
+        TOptional<uint64> InBodyKey)
+    -> void
+{
+    if (_DebugDrawTarget.IsValid())
+    { _DebugDrawTarget->Set_HoveredBody(InBodyKey); }
+
+    if (NOT _Viewport.IsValid())
+    { return; }
+
+    if (NOT InBodyKey.IsSet())
+    {
+        _Viewport->Set_HoverLabel(FText::GetEmpty());
+        return;
+    }
+
+    const auto* Hovered = TryFind_RowForBodyKey(*InBodyKey);
+
+    // A drawn body the collector cannot attribute to an entity still HIGHLIGHTS — it just has no name to show,
+    // and inventing one from the key would read as an entity that does not exist.
+    _Viewport->Set_HoverLabel(Hovered != nullptr
+        ? FText::FromString(Hovered->DisplayName)
+        : FText::GetEmpty());
+}
+
+// --------------------------------------------------------------------------------------------------------------------
 
 /*
  * A contacts-row click. It is the same key -> row resolution a viewport pick does, and it is just as
@@ -1715,6 +1843,226 @@ auto
 
 auto
     SCkJoltDebuggerWindow::
+    DoApplyConstraintReferenceFrames()
+    -> void
+{
+    if (NOT _DebugDrawTarget.IsValid())
+    { return; }
+
+    const auto IsConstraintSelected = _SelectionAll.ContainsByPredicate(
+        [](const FCkJoltDebugger_BodySnapshot& InBody)
+        { return InBody.Population == ECkJoltDebugger_Population::Constraint; });
+
+    // Derived from the PERSISTED intent rather than remembered: the user's own toggle is the saved bit, the
+    // selection forces it on while it holds, and turning the selection off restores exactly what they chose.
+    const auto* Settings = GetDefault<UCkJoltDebuggerSettings>();
+    const auto UserWantsFrames = EnumHasAnyFlags(
+        static_cast<ECk_Jolt_DebugDrawFlags>(Settings->DrawFlags),
+        ECk_Jolt_DebugDrawFlags::ConstraintReferenceFrames);
+
+    auto Flags = _DebugDrawTarget->Get_DrawFlags();
+
+    if (UserWantsFrames || IsConstraintSelected)
+    { EnumAddFlags(Flags, ECk_Jolt_DebugDrawFlags::ConstraintReferenceFrames); }
+    else
+    { EnumRemoveFlags(Flags, ECk_Jolt_DebugDrawFlags::ConstraintReferenceFrames); }
+
+    if (Flags == _DebugDrawTarget->Get_DrawFlags())
+    { return; }
+
+    // Not persisted: this is selection state, not a preference. Set_DrawFlag is what the user's own toggle uses.
+    _DebugDrawTarget->Set_DrawFlags(Flags);
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkJoltDebuggerWindow::
+    Set_ShowProbeResults(
+        bool InIsEnabled)
+    -> void
+{
+    _ShowProbeResults = InIsEnabled;
+
+    auto* Settings = GetMutableDefault<UCkJoltDebuggerSettings>();
+    Settings->ShowProbeResults = InIsEnabled;
+    Settings->SaveConfig();
+
+    DoUpdateProbeResults();
+}
+
+auto
+    SCkJoltDebuggerWindow::
+    DoUpdateProbeResults()
+    -> void
+{
+    using namespace ck_jolt_debugger;
+
+    if (NOT _DebugDrawTarget.IsValid())
+    { return; }
+
+    const auto DoClearChannel = [this]()
+    {
+        if (NOT _ProbeResultsSignature.IsSet())
+        { return; }
+
+        _ProbeResultsSignature.Reset();
+        _DebugDrawTarget->Clear_External(Get_ProbeResultsChannel());
+    };
+
+    if (NOT _ShowProbeResults || NOT _Selection.IsSet() || ck::Is_NOT_Valid(_Selection->Handle))
+    {
+        DoClearChannel();
+        return;
+    }
+
+    const auto SelectedHandle = _Selection->Handle;
+
+    const auto IsProbe = SelectedHandle.Has<ck::FFragment_Probe_Current>();
+    const auto IsProbeTrace = SelectedHandle.Has<ck::FFragment_ProbeTrace_WorldContacts>();
+
+    if (NOT IsProbe && NOT IsProbeTrace)
+    {
+        DoClearChannel();
+        return;
+    }
+
+    // Where the lines START. The probe's own drawn bounds rather than its transform: the sensor body is what
+    // the viewport is showing, and a line leaving from anywhere else would not touch it.
+    const auto Bounds = _DebugDrawTarget->Get_HighlightedBodyBounds();
+    const auto Origin = Bounds.IsSet() && Bounds->IsValid != 0
+        ? Bounds->GetCenter()
+        : UCk_Utils_Transform_UE::Has(SelectedHandle)
+            ? UCk_Utils_Transform_TypeUnsafe_UE::Get_EntityCurrentLocation(SelectedHandle)
+            : FVector::ZeroVector;
+
+    // Gathered first, hashed, and only then drawn: Get_CurrentOverlaps copies a whole TSet, so the channel is
+    // rebuilt when the RESULT changes rather than every time this runs (P5-D61/S3).
+    struct FProbeLink
+    {
+        FVector          _OtherLocation = FVector::ZeroVector;
+        bool             _HasOtherLocation = false;
+        TArray<FVector>  _ContactPoints;
+        FVector          _ContactNormal = FVector::ZeroVector;
+    };
+
+    auto Links = TArray<FProbeLink>{};
+    auto Signature = uint32{0};
+
+    const auto NoteOther = [&Signature](const FCk_Handle& InOther, FProbeLink& OutLink)
+    {
+        Signature = HashCombine(Signature, GetTypeHash(InOther));
+
+        if (ck::Is_NOT_Valid(InOther) || NOT UCk_Utils_Transform_UE::Has(InOther))
+        { return; }
+
+        OutLink._OtherLocation = UCk_Utils_Transform_TypeUnsafe_UE::Get_EntityCurrentLocation(InOther);
+        OutLink._HasOtherLocation = true;
+    };
+
+    if (IsProbe)
+    {
+        const auto Probe = UCk_Utils_Probe_UE::CastChecked(SelectedHandle);
+
+        for (const auto& Overlap : UCk_Utils_Probe_UE::Get_CurrentOverlaps(Probe))
+        {
+            auto Link = FProbeLink{};
+            NoteOther(Overlap.Get_OtherEntity(), Link);
+
+            Link._ContactPoints = Overlap.Get_ContactPoints();
+            Link._ContactNormal = Overlap.Get_ContactNormal();
+
+            Signature = HashCombine(Signature, static_cast<uint32>(Link._ContactPoints.Num()));
+
+            for (const auto& Point : Link._ContactPoints)
+            { Signature = HashCombine(Signature, GetTypeHash(Point)); }
+
+            Links.Emplace(MoveTemp(Link));
+        }
+    }
+    else
+    {
+        // A ProbeTrace records WHICH entities it hit and nothing else — FFragment_ProbeTrace_WorldContacts
+        // holds a TSet<FCk_Handle> with no positions in it — so this half can only ever draw the lines.
+        for (const auto& Other : SelectedHandle.Get<ck::FFragment_ProbeTrace_WorldContacts>()._Entities)
+        {
+            auto Link = FProbeLink{};
+            NoteOther(Other, Link);
+            Links.Emplace(MoveTemp(Link));
+        }
+    }
+
+    Signature = HashCombine(Signature, static_cast<uint32>(Links.Num()));
+    Signature = HashCombine(Signature, GetTypeHash(SelectedHandle));
+
+    if (_ProbeResultsSignature.IsSet() && *_ProbeResultsSignature == Signature)
+    { return; }
+
+    _ProbeResultsSignature = Signature;
+    _DebugDrawTarget->Clear_External(Get_ProbeResultsChannel());
+
+    const auto Channel = Get_ProbeResultsChannel();
+    const auto LinkColor = ck::debug_axes::Get_CategoricalColor(2);
+    const auto PointColor = ck::debug_axes::Get_CategoricalColor(0);
+    const auto NormalColor = ck::debug_axes::Get_CategoricalColor(1);
+
+    for (const auto& Link : Links)
+    {
+        if (Link._HasOtherLocation)
+        { _DebugDrawTarget->Draw_ExternalLine(Channel, Origin, Link._OtherLocation, LinkColor); }
+
+        for (const auto& Point : Link._ContactPoints)
+        {
+            _DebugDrawTarget->Draw_ExternalSphere(Channel, Point, ProbeContactPointRadius, PointColor);
+
+            if (Link._ContactNormal.IsNearlyZero())
+            { continue; }
+
+            _DebugDrawTarget->Draw_ExternalArrow(Channel, Point,
+                Point + Link._ContactNormal.GetSafeNormal() * ProbeContactNormalLength, NormalColor);
+        }
+    }
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkJoltDebuggerWindow::
+    DoUpdateViewportLabels()
+    -> void
+{
+    if (NOT _Viewport.IsValid())
+    { return; }
+
+    if (NOT _Selection.IsSet() || NOT _DebugDrawTarget.IsValid())
+    {
+        _Viewport->Set_PrimaryLabel({});
+        return;
+    }
+
+    const auto Bounds = _DebugDrawTarget->Get_HighlightedBodyBounds();
+
+    if (NOT Bounds.IsSet() || Bounds->IsValid == 0)
+    {
+        _Viewport->Set_PrimaryLabel({});
+        return;
+    }
+
+    auto Label = FCkJoltDebugger_ViewportLabel{};
+
+    // Sat on TOP of the selection rather than at its centre, so the text does not sit inside the very shape it
+    // is naming.
+    Label.WorldPosition = Bounds->GetCenter() + FVector{0.0, 0.0, Bounds->GetExtent().Z};
+    Label.Text          = _Selection->DisplayName;
+    Label.Color         = _DebugDrawTarget->Get_Palette().Get_HighlightColor();
+
+    _Viewport->Set_PrimaryLabel(MoveTemp(Label));
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkJoltDebuggerWindow::
     BuildSelectionGroup()
     -> TSharedRef<SWidget>
 {
@@ -1864,6 +2212,31 @@ auto
         [ SNew(SCkDebug_IconToolbar).Actions(Actions) ];
     }
 
+    // NOT a facility draw flag, and deliberately in the same lane as the ones that are: from the user's side
+    // "show me what the probe is touching" is the same kind of question as "show me velocities" (P8-D56).
+    Lane->AddSlot().AutoWidth().VAlign(VAlign_Center).Padding(0.0f, 0.0f, CkStyle::SpaceS, 0.0f)
+    [
+        SNew(STextBlock)
+        .Font_Static(&ck_jolt_debugger::Font_RowLabel)
+        .ColorAndOpacity(CkStyle::TextMute())
+        .Text(FText::FromString(TEXT("Probe")))
+    ];
+
+    Lane->AddSlot().AutoWidth().VAlign(VAlign_Center).Padding(0.0f, 0.0f, CkStyle::SpaceM, 0.0f)
+    [
+        SNew(SCkDebug_IconToggle)
+        .IconId(TEXT("Probe"))
+        .Label(FText::FromString(TEXT("Probe results")))
+        .ToolTip(FText::FromString(TEXT(
+            "Draw what the SELECTED probe is currently overlapping: a line to each overlapping entity, its "
+            "contact points, and their normals.\n\n"
+            "A persistent probe TRACE records only WHICH entities it hit - its world-contacts fragment holds "
+            "no hit positions at all - so a trace selection draws the lines and nothing else.\n\n"
+            "Read for the selection only: the overlap query returns a full copy of the probe's overlap set.")))
+        .IsOn_Lambda([this]() { return _ShowProbeResults; })
+        .OnStateChanged_Lambda([this](const bool InIsEnabled) { Set_ShowProbeResults(InIsEnabled); })
+    ];
+
     using FColorModeControl = SSegmentedControl<ECk_Jolt_DebugDrawColorMode>;
 
     const auto ModeControl =
@@ -1995,8 +2368,9 @@ auto
 
     // Isolate is restored as STATE, not as an act: with nothing selected yet it pushes no isolation set, and
     // the first selection the user makes arms it through DoApplySelectionSet.
-    _IsolateActive   = Settings->IsolateActive;
-    _FollowSelection = Settings->FollowSelection;
+    _IsolateActive     = Settings->IsolateActive;
+    _FollowSelection   = Settings->FollowSelection;
+    _ShowProbeResults  = Settings->ShowProbeResults;
 
     DoApplyIsolation();
 
@@ -2151,6 +2525,31 @@ auto
 
                 + SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)
                 [ Summary ]
+
+                // The health count (P8-D57). Present only when there IS something wrong: a badge reading "0"
+                // is a permanent alarm nobody can silence, and an absent one is the good news.
+                + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+                    .Padding(0.0f, 0.0f, CkStyle::SpaceS, 0.0f)
+                [
+                    SNew(SBox)
+                    .ToolTipText(FText::FromString(TEXT(
+                        "Bodies the facility's health scan flagged this capture: NaN transform or velocity, a "
+                        "runaway linear speed, an AABB under the world's KillZ, or a shape with no extent. "
+                        "Use the outliner's Problems chip to narrow to them.")))
+                    .Visibility_Lambda([this]() -> EVisibility
+                    {
+                        return _Collector.Get_NumProblemRows() > 0 ? EVisibility::Visible : EVisibility::Collapsed;
+                    })
+                    [
+                        SNew(SCkDebug_CountBadge)
+                        .ValueText_Lambda([this]() -> FText
+                        {
+                            return FText::AsNumber(_Collector.Get_NumProblemRows());
+                        })
+                        .SuffixText(FText::FromString(TEXT("problems")))
+                        .ValueColor(ck::debug_axes::Get_HeatColor(1.0f))
+                    ]
+                ]
 
                 // Paused is the one piece of state that changes what every other number below MEANS, so it
                 // rides the summary line rather than waiting to be found in a section.

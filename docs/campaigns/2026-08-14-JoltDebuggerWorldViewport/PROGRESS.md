@@ -47,6 +47,13 @@ and is documented as a **Known gap** in `CkJoltDebugger/CLAUDE.md` (the hover cl
 move). F8 and F9 accepted no-change.
 
 ## Ship — instructions for the user (NOT executed; cross-repo publish guard)
+> ⚠ **2026-08-15 18:20 — CkGameplayDebugger local `dev` is `ahead 17, behind 5` of `origin/dev`**
+> (origin gained 85cb2c3 save-debugger, f61ffda/5b902c6 debugger-common, 53d60e6 input-hud,
+> 5413c21 optimization-debugger — none touch `Source/CkJoltDebugger/`). A plain push is NOT a
+> fast-forward: rebase first (`git -C Plugins/CkGameplayDebugger rebase origin/dev`, editor closed;
+> name a backup branch first, e.g. `git branch backup/jolt-campaign-pre-rebase`), then RE-GATE
+> (`--test-pattern JoltDebug` + `DebuggerLauncher`, serial) before pushing. CkFoundation and CkTests
+> are `ahead 11`, fast-forwards.
 > **Covers the WHOLE 8-phase campaign in one pass.** Every step below is outward and user-gated;
 > the orchestrator executed none of them. Run the `[EDITOR-VERIFY]` pass FIRST — a red step is
 > cheaper to fix-forward before the tips are published than after.

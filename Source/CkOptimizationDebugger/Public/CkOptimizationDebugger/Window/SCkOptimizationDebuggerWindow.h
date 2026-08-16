@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include "CkDebuggerCommon/Window/SCkDebugger_WindowBase.h"
 
@@ -145,6 +145,7 @@ private:
     auto DoCreate_CleanupPage() -> TSharedRef<SWidget>;
 
     auto DoCreate_CategoryFilters() -> TSharedRef<SWidget>;
+    auto DoCreate_ScopeFilters() -> TSharedRef<SWidget>;
 
     // ---- Dashboard sections. Each returns a finished sub-tree; DoRebuild_Dashboard slots them in order. ----
     auto DoBuild_DashboardEmptyState() -> TSharedRef<SWidget>;
@@ -182,6 +183,22 @@ private:
     auto DoNavigate_ToSelected() -> void;
     auto DoNavigate_To(const FCkOptimizationDebugger_FindingRow& InFinding) -> void;
     auto DoApply_FixToSelected() -> void;
+
+    /** Applies every automatic fix the CURRENT FILTER admits. Not the whole scan — see the implementation for why
+     *  ignoring the filter would act on rows the reader muted. */
+    auto DoApply_FixAllVisible() -> void;
+
+    /** The one apply pipeline both entry points share: the empty check, the session gate, the confirmation, the
+     *  single-vs-batch split, the post-fix re-scan and the status line. `InScopeLabel` is what the "nothing here has
+     *  a fix" message calls the set, so it can say which set it means. */
+    auto DoApply_Fixes(
+        const TArray<FCkOptimizationDebugger_FindingRow>& InFixable,
+        const FString& InScopeLabel) -> void;
+
+    /** Mutes or unmutes every non-header row in the selection, persists the set, and rebuilds. The direction is
+     *  decided by the CALLER from what the selection already is, so the menu's verb and the effect cannot
+     *  disagree on a mixed selection. */
+    auto DoToggle_MuteOnSelected(bool InMute) -> void;
 
     // ---- Rebuild entry points (never called from Tick) ----
 
@@ -341,6 +358,7 @@ private:
     // rebuild — the buttons' attributes read these fields and never walk the selection themselves.
     bool _HasSelectedFinding = false;
     int32 _SelectedFixableCount = 0;
+    int32 _VisibleFixableCount = 0;
     bool _FixButtonEnabled = false;
     FString _FixButtonLabel = FString{TEXT("Apply Fix")};
     FString _FixButtonTooltip;

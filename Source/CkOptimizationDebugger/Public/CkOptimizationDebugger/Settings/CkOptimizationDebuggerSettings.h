@@ -113,6 +113,16 @@ public:
     UPROPERTY(config)
     TArray<FName> ExcludedLevelNames;
 
+    /**
+     * Stable keys of findings the reader muted. Driven by the findings list's context menu, never typed here — same
+     * reasoning as `ExcludedLevelNames` above, and stored sorted for the same reason.
+     *
+     * It grows without bound by design: a key is small, and pruning it against "findings the current scan produced"
+     * would silently un-mute everything the reader had triaged on a level they have not opened this session.
+     */
+    UPROPERTY(config)
+    TArray<FString> MutedFindingKeys;
+
     // ----------------------------------------------------------------------------------------------------------------
     // ACCESSORS
     // ----------------------------------------------------------------------------------------------------------------
@@ -147,6 +157,42 @@ public:
         Settings->ExcludedLevelNames.Sort([](const FName& InLhs, const FName& InRhs)
         {
             return InLhs.Compare(InRhs) < 0;
+        });
+
+        Settings->SaveConfig();
+    }
+
+    // ----------------------------------------------------------------------------------------------------------------
+
+    /** The findings the reader has triaged away, by stable key.
+     *
+     *  Same shape and same reasoning as `ExcludedLevelNames`: no `EditAnywhere`, because a stable key hand-typed into
+     *  a preferences page would match nothing, and `config` because a triage decision that evaporated on restart is
+     *  one nobody would make twice. Per-USER rather than project config for the same reason the thresholds are: "I
+     *  have looked at this and I am not acting on it" is one person's judgement, not team policy, and one QA pass
+     *  must never silently hide findings from everybody else. */
+    static auto Load_MutedStableKeys() -> TSet<FString>
+    {
+        const auto* Settings = Get();
+
+        if (Settings == nullptr)
+        { return TSet<FString>{}; }
+
+        return TSet<FString>{Settings->MutedFindingKeys};
+    }
+
+    /** Writes the muted set back out, SORTED — the same anti-spurious-diff rule the exclusion set follows. */
+    static auto Save_MutedStableKeys(const TSet<FString>& InStableKeys) -> void
+    {
+        auto* Settings = GetMutableDefault<UCkOptimizationDebuggerSettings>();
+
+        if (Settings == nullptr)
+        { return; }
+
+        Settings->MutedFindingKeys = InStableKeys.Array();
+        Settings->MutedFindingKeys.Sort([](const FString& InLhs, const FString& InRhs)
+        {
+            return InLhs.Compare(InRhs, ESearchCase::CaseSensitive) < 0;
         });
 
         Settings->SaveConfig();

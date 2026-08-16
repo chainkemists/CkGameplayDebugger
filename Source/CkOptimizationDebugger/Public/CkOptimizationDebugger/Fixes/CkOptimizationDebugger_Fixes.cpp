@@ -5,6 +5,7 @@
 #include "CkCore/Validation/CkIsValid.h"
 
 #if WITH_EDITOR
+#include "CkOptimizationDebugger/Analysis/Checks/CkOptimizationDebugger_Checks_Mesh.h"
 #include "CkOptimizationDebugger/Analysis/Checks/CkOptimizationDebugger_Checks_Texture.h"
 #include "CkOptimizationDebugger/Analysis/CkOptimizationDebugger_Thresholds.h"
 
@@ -14,14 +15,18 @@
 #include "Components/LightComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Editor.h"
+#include "Engine/Blueprint.h"
+#include "Engine/BlueprintGeneratedClass.h"
 #include "Engine/Level.h"
 #include "Engine/RendererSettings.h"
 #include "Engine/StaticMesh.h"
 #include "Engine/StaticMeshActor.h"
 #include "Engine/Texture.h"
+#include "Engine/TextureDefines.h"
 #include "Engine/World.h"
 #include "GameFramework/Actor.h"
 #include "HAL/IConsoleManager.h"
+#include "Materials/Material.h"
 #include "Materials/MaterialInterface.h"
 #include "Misc/PackageName.h"
 #include "PhysicsEngine/BodySetup.h"
@@ -45,6 +50,10 @@ namespace ck_optimization_debugger_fixes_impl
     const auto k_MeshComplexCollision    = FName{TEXT("Mesh.ComplexCollision")};
     const auto k_TextureNormalMap        = FName{TEXT("Texture.NormalMapCompression")};
     const auto k_TextureDataSrgb         = FName{TEXT("Texture.DataTextureSrgb")};
+    const auto k_TextureMissingMipmaps   = FName{TEXT("Texture.MissingMipmaps")};
+    const auto k_MeshNaniteMaterial      = FName{TEXT("Mesh.NaniteMaterialIncompatible")};
+    const auto k_LightingLightmapRes     = FName{TEXT("Lighting.LightmapResolution")};
+    const auto k_BlueprintTickEnabled    = FName{TEXT("Blueprint.TickEnabled")};
     const auto k_LightingMovableCount    = FName{TEXT("Lighting.MovableLightCount")};
     const auto k_ActorEmptyStaticMesh    = FName{TEXT("Actor.EmptyStaticMesh")};
     const auto k_ActorInstancingCandidate = FName{TEXT("Actor.InstancingCandidate")};
@@ -469,7 +478,268 @@ namespace ck_optimization_debugger_fixes_impl
     }
 
     // ----------------------------------------------------------------------------------------------------------------
+
+    auto
+        Apply_RestoreMipmaps(
+            const FCkOptimizationDebugger_FindingRow& InFinding)
+        -> FCkOptimizationDebugger_FixResult
+    {
+        auto* Texture = Cast<UTexture>(TryLoad_Asset(InFinding.Target.Path));
+
+        if (ck::Is_NOT_Valid(Texture))
+        {
+            return Make_Failure(ck::Format_UE(TEXT("{}: the texture could not be loaded."),
+                InFinding.Target.DisplayName));
+        }
+
+        if (Texture->MipGenSettings != TMGS_NoMipmaps)
+        {
+            return Make_Failure(ck::Format_UE(TEXT("{}: mip generation is already on — re-scan."),
+                InFinding.Target.DisplayName));
+        }
+
+        // The check's OTHER half. `Texture.MissingMipmaps` fires on "no mips AND not in the UI group", and a texture
+        // moved into the UI group since the scan is legitimately mipless — generating mips for it would undo a
+        // deliberate authoring decision and report it as a fix.
+        if (Texture->LODGroup == TEXTUREGROUP_UI)
+        {
+            return Make_Failure(ck::Format_UE(
+                TEXT("{}: this is now in the UI texture group, where shipping without mips is correct. Left alone; re-scan."),
+                InFinding.Target.DisplayName));
+        }
+
+        Texture->Modify();
+
+        // `FromTextureGroup` rather than a specific setting: the group is where a project states its mip policy, so
+        // this hands the decision back to that policy instead of this tool inventing one per texture.
+        Texture->MipGenSettings = TMGS_FromTextureGroup;
+
+        Texture->PostEditChange();
+        Texture->MarkPackageDirty();
+
+        return Make_Success(ck::Format_UE(
+            TEXT("{}: mip generation set to FromTextureGroup — the texture rebuilds with mips."),
+            InFinding.Target.DisplayName), true);
+    }
+
+    // ----------------------------------------------------------------------------------------------------------------
+
+    auto
+        Apply_NaniteMaterialUsage(
+            const FCkOptimizationDebugger_FindingRow& InFinding)
+        -> FCkOptimizationDebugger_FixResult
+    {
+        auto* Mesh = Cast<UStaticMesh>(TryLoad_Asset(InFinding.Target.Path));
+
+        if (ck::Is_NOT_Valid(Mesh))
+        {
+            return Make_Failure(ck::Format_UE(TEXT("{}: the mesh could not be loaded."),
+                InFinding.Target.DisplayName));
+        }
+
+        // The check fires on "Nanite is ON and some slot's material does not declare the usage". A mesh whose Nanite
+        // was turned off since the scan has nothing to fix here — and flagging its materials anyway would compile
+        // shaders for a claim nothing is making.
+        if (NOT Mesh->NaniteSettings.bEnabled)
+        {
+            return Make_Failure(ck::Format_UE(
+                TEXT("{}: Nanite is no longer enabled on this mesh, so its materials do not need the usage flag. Re-scan."),
+                InFinding.Target.DisplayName));
+        }
+
+        auto ChangedNames = TArray<FString>{};
+
+        for (const auto& StaticMaterial : Mesh->GetStaticMaterials())
+        {
+            // The check's own predicate, exported rather than copied — a second spelling of "is this incompatible"
+            // in the fix is a second place for it to drift from what the list reported.
+            if (NOT ck_optimization_debugger_checks_mesh::Is_NaniteIncompatible(StaticMaterial.MaterialInterface))
+            { continue; }
+
+            auto* BaseMaterial = StaticMaterial.MaterialInterface->GetMaterial();
+
+            if (BaseMaterial == nullptr)
+            { continue; }
+
+            // The BASE material carries the usage flag, so a mesh using several instances of one parent is fixed
+            // once — `Is_NaniteIncompatible` stops matching for the rest on the next iteration.
+            BaseMaterial->Modify();
+
+            BaseMaterial->bUsedWithNanite = 1;
+
+            BaseMaterial->PostEditChange();
+            BaseMaterial->MarkPackageDirty();
+
+            ChangedNames.AddUnique(BaseMaterial->GetName());
+        }
+
+        if (ChangedNames.IsEmpty())
+        {
+            return Make_Failure(ck::Format_UE(
+                TEXT("{}: every material on this mesh already declares Used With Nanite — re-scan."),
+                InFinding.Target.DisplayName));
+        }
+
+        // Said out loud, because it is the cost the reader is about to pay and nothing else on screen would tell
+        // them: setting the usage flag invalidates the material's shader map and queues a compile.
+        return Make_Success(ck::Format_UE(
+            TEXT("{}: Used With Nanite set on {} material(s) ({}). This queues a shader compile."),
+            InFinding.Target.DisplayName,
+            ChangedNames.Num(),
+            FString::Join(ChangedNames, TEXT(", "))), true);
+    }
+
+    // ----------------------------------------------------------------------------------------------------------------
     // Actor fixes
+    // ----------------------------------------------------------------------------------------------------------------
+
+    auto
+        Apply_ClampLightmapResolution(
+            const FCkOptimizationDebugger_FindingRow& InFinding)
+        -> FCkOptimizationDebugger_FixResult
+    {
+        auto* Actor = TryResolve_Actor(InFinding.Target.Path);
+
+        if (ck::Is_NOT_Valid(Actor))
+        {
+            return Make_Failure(ck::Format_UE(TEXT("{}: the actor is no longer in a loaded level — re-scan."),
+                InFinding.Target.DisplayName));
+        }
+
+        // Read fresh rather than carried on the finding: a threshold the reader tightened after the scan is the one
+        // they mean now, and clamping to a stale number would write a value the current settings still flag.
+        const auto Thresholds = ck_optimization_debugger_thresholds::Build_FromSettings();
+        const auto Budget = Thresholds.MaxLightmapResolution;
+
+        if (Budget <= 0)
+        {
+            return Make_Failure(ck::Format_UE(
+                TEXT("{}: the lightmap-resolution budget is not a positive number, so there is nothing to clamp to."),
+                InFinding.Target.DisplayName));
+        }
+
+        // The level lock is checked BEFORE anything is modified, exactly as the two destructive actor fixes do:
+        // `Modify` on a component in a locked level would rewrite a level the editor is protecting.
+        if (Is_ActorLevelLocked(Actor))
+        {
+            return Make_Failure(ck::Format_UE(TEXT("{}: its level is locked — unlock it first. Nothing changed."),
+                InFinding.Target.DisplayName));
+        }
+
+        auto Components = TArray<UStaticMeshComponent*>{};
+        Actor->GetComponents<UStaticMeshComponent>(Components);
+
+        auto ChangedCount = 0;
+        auto WorstBefore = 0;
+
+        // EVERY over-budget component on the actor, not the first. The check aggregates per actor precisely because
+        // one actor can carry several over-budget overrides, so a fix that clamped one of them would leave a finding
+        // the reader watched "fix" and then reappear.
+        for (auto* Component : Components)
+        {
+            if (ck::Is_NOT_Valid(Component))
+            { continue; }
+
+            if (NOT Component->bOverrideLightMapRes)
+            { continue; }
+
+            if (Component->OverriddenLightMapRes <= Budget)
+            { continue; }
+
+            WorstBefore = FMath::Max(WorstBefore, Component->OverriddenLightMapRes);
+
+            Component->Modify();
+
+            // Clamped to the budget rather than the override cleared: clearing falls back to the mesh's own default,
+            // which is a DIFFERENT number nobody chose and may be higher than the budget too. Clamping states exactly
+            // what the reader asked for.
+            Component->OverriddenLightMapRes = Budget;
+
+            Component->PostEditChange();
+            ++ChangedCount;
+        }
+
+        if (ChangedCount == 0)
+        {
+            return Make_Failure(ck::Format_UE(
+                TEXT("{}: no component on this actor is over the {} lightmap-resolution budget any more — re-scan."),
+                InFinding.Target.DisplayName, Budget));
+        }
+
+        Actor->MarkPackageDirty();
+
+        return Make_Success(ck::Format_UE(
+            TEXT("{}: lightmap resolution clamped to {} on {} component(s) (worst was {})."),
+            InFinding.Target.DisplayName, Budget, ChangedCount, WorstBefore), true);
+    }
+
+    // ----------------------------------------------------------------------------------------------------------------
+
+    auto
+        Apply_DisableBlueprintStartWithTick(
+            const FCkOptimizationDebugger_FindingRow& InFinding)
+        -> FCkOptimizationDebugger_FixResult
+    {
+        auto* Asset = TryLoad_Asset(InFinding.Target.Path);
+
+        // The finding targets the Blueprint ASSET; the tick flag lives on its generated class's CDO. Both spellings
+        // are accepted because a target path can name either depending on how the asset was discovered.
+        auto* GeneratedClass = Cast<UBlueprintGeneratedClass>(Asset);
+
+        if (GeneratedClass == nullptr)
+        {
+            if (const auto* Blueprint = Cast<UBlueprint>(Asset))
+            { GeneratedClass = Cast<UBlueprintGeneratedClass>(Blueprint->GeneratedClass); }
+        }
+
+        if (GeneratedClass == nullptr)
+        {
+            return Make_Failure(ck::Format_UE(TEXT("{}: the Blueprint class could not be loaded."),
+                InFinding.Target.DisplayName));
+        }
+
+        auto* Cdo = Cast<AActor>(GeneratedClass->GetDefaultObject());
+
+        if (ck::Is_NOT_Valid(Cdo))
+        {
+            return Make_Failure(ck::Format_UE(TEXT("{}: this Blueprint is not an Actor, so it has no tick to turn off."),
+                InFinding.Target.DisplayName));
+        }
+
+        auto& Tick = Cdo->PrimaryActorTick;
+
+        // The check's WHOLE condition — `bCanEverTick && bStartWithTickEnabled` — re-asked. A class that can no
+        // longer tick at all is already where the fix would take it, and reporting a change there would be a success
+        // message for nothing.
+        if (NOT Tick.bCanEverTick)
+        {
+            return Make_Failure(ck::Format_UE(
+                TEXT("{}: this class can no longer tick at all — nothing to turn off. Re-scan."),
+                InFinding.Target.DisplayName));
+        }
+
+        if (NOT Tick.bStartWithTickEnabled)
+        {
+            return Make_Failure(ck::Format_UE(TEXT("{}: it already starts with tick disabled — re-scan."),
+                InFinding.Target.DisplayName));
+        }
+
+        Cdo->Modify();
+
+        // `bStartWithTickEnabled`, never `bCanEverTick`. The class keeps the ABILITY to tick, so anything that
+        // enables it deliberately at runtime still works — this only stops it ticking from frame zero. Clearing
+        // `bCanEverTick` instead would break `SetActorTickEnabled` and turn a cost fix into a broken actor.
+        Tick.bStartWithTickEnabled = false;
+
+        Cdo->PostEditChange();
+        GeneratedClass->MarkPackageDirty();
+
+        return Make_Success(ck::Format_UE(
+            TEXT("{}: Start With Tick Enabled turned off. The class can still be ticked deliberately — test anything ")
+            TEXT("that relied on it ticking from spawn."),
+            InFinding.Target.DisplayName), true);
+    }
+
     // ----------------------------------------------------------------------------------------------------------------
 
     auto
@@ -938,6 +1208,18 @@ namespace ck_optimization_debugger_fixes_impl
         if (CheckId == k_TextureDataSrgb)
         { return Apply_DisableSrgb(InFinding); }
 
+        if (CheckId == k_TextureMissingMipmaps)
+        { return Apply_RestoreMipmaps(InFinding); }
+
+        if (CheckId == k_MeshNaniteMaterial)
+        { return Apply_NaniteMaterialUsage(InFinding); }
+
+        if (CheckId == k_LightingLightmapRes)
+        { return Apply_ClampLightmapResolution(InFinding); }
+
+        if (CheckId == k_BlueprintTickEnabled)
+        { return Apply_DisableBlueprintStartWithTick(InFinding); }
+
         if (CheckId == k_ActorEmptyStaticMesh)
         { return Apply_DeleteEmptyStaticMeshActor(InFinding); }
 
@@ -1000,6 +1282,15 @@ namespace ck_optimization_debugger_fixes
             FCkOptimizationDebugger_FixInfo{k_MeshComplexCollision, TEXT("Generate Simple Collision"),  EExecution::Transactional, false},
             FCkOptimizationDebugger_FixInfo{k_TextureNormalMap,     TEXT("Fix Normal Map Compression"), EExecution::Transactional, false},
             FCkOptimizationDebugger_FixInfo{k_TextureDataSrgb,      TEXT("Disable sRGB"),               EExecution::Transactional, false},
+            FCkOptimizationDebugger_FixInfo{k_TextureMissingMipmaps, TEXT("Restore Mip Generation"),     EExecution::Transactional, false},
+
+            // Sets `Used With Nanite` on the offending base materials. Not destructive and Undo reverses it — but it
+            // invalidates their shader maps, which the result message says because nothing else on screen would.
+            FCkOptimizationDebugger_FixInfo{k_MeshNaniteMaterial,    TEXT("Flag Materials For Nanite"),  EExecution::Transactional, false},
+
+            // Clamps the override on every over-budget component of the actor. An actor-component property edit, so
+            // it respects the level lock exactly as the two destructive actor fixes do.
+            FCkOptimizationDebugger_FixInfo{k_LightingLightmapRes,   TEXT("Clamp Lightmap Resolution"),  EExecution::Transactional, false},
 
             // Destructive: these two remove actors from the level rather than editing a property on one. That flag is
             // what puts a confirmation in front of a batch containing them.
@@ -1010,6 +1301,13 @@ namespace ck_optimization_debugger_fixes
             // why it is `Review` rather than sharing the config-write bucket with an ini edit — and why it runs last,
             // so the selection it leaves is the one the reader is looking at when the batch finishes.
             FCkOptimizationDebugger_FixInfo{k_LightingMovableCount, TEXT("Select Lights For Review"), EExecution::Review, false},
+
+            // The ONLY entry that changes BEHAVIOUR rather than cost, and the reason the fourth flag exists. Undo
+            // reverses it like any property edit, so it is not destructive — but a Blueprint that no longer ticks
+            // from frame zero looks identical until something it was driving quietly stops happening, which is
+            // exactly the surprise a batch of "make it cheaper" fixes must not spring on a reader unannounced.
+            FCkOptimizationDebugger_FixInfo{k_BlueprintTickEnabled, TEXT("Disable Start With Tick"),
+                EExecution::Transactional, /*IsDestructive*/ false, /*ChangesBehavior*/ true},
 
             // A config write. Undo does not reach DefaultEngine.ini, which is why this one is separated out of the
             // batch's transaction rather than smuggled inside it.
@@ -1124,6 +1422,7 @@ namespace ck_optimization_debugger_fixes
 
         auto DestructiveVerbs = TArray<FString>{};
         auto ConfigVerbs = TArray<FString>{};
+        auto BehaviorVerbs = TArray<FString>{};
 
         for (const auto& Finding : InFindings)
         {
@@ -1141,6 +1440,12 @@ namespace ck_optimization_debugger_fixes
                 DestructiveVerbs.AddUnique(Info->DisplayVerb);
             }
 
+            if (Info->ChangesBehavior)
+            {
+                ++Confirmation.BehaviorChangeCount;
+                BehaviorVerbs.AddUnique(Info->DisplayVerb);
+            }
+
             if (Info->Execution == ECkOptimizationDebugger_FixExecution::ConfigWrite)
             {
                 ++Confirmation.ConfigWriteCount;
@@ -1151,7 +1456,9 @@ namespace ck_optimization_debugger_fixes
         // A property edit inside a transaction needs no ceremony — Ctrl+Z is the whole answer. The two that do are
         // the ones Ctrl+Z does not cover: actors that stop existing, and a line written into a file the rest of the
         // team shares.
-        Confirmation.IsRequired = Confirmation.DestructiveCount > 0 || Confirmation.ConfigWriteCount > 0;
+        Confirmation.IsRequired = Confirmation.DestructiveCount > 0
+            || Confirmation.ConfigWriteCount > 0
+            || Confirmation.BehaviorChangeCount > 0;
 
         if (NOT Confirmation.IsRequired)
         { return Confirmation; }
@@ -1166,6 +1473,18 @@ namespace ck_optimization_debugger_fixes
                 TEXT("{} fix(es) REMOVE or REPLACE actors in the level ({}). Undo reverses them in one step."),
                 Confirmation.DestructiveCount,
                 FString::Join(DestructiveVerbs, TEXT(", "))));
+        }
+
+        if (Confirmation.BehaviorChangeCount > 0)
+        {
+            // Undo DOES reverse these, and the line says so — the prompt is not a warning about permanence, it is a
+            // warning that a batch of COST fixes is about to change what the game does. A reader who applied six
+            // "make it cheaper" fixes and got a behaviour change unannounced would stop trusting the button.
+            Lines.Add(ck::Format_UE(
+                TEXT("{} fix(es) can change how the game BEHAVES, not only what it costs ({}). Undo reverses them, ")
+                TEXT("but test the affected assets."),
+                Confirmation.BehaviorChangeCount,
+                FString::Join(BehaviorVerbs, TEXT(", "))));
         }
 
         if (Confirmation.ConfigWriteCount > 0)

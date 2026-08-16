@@ -17,9 +17,7 @@
 // compiles unity, and two anonymous helpers of the same name in two check files would collide in the merged TU.
 namespace ck_optimization_debugger_checks_mesh
 {
-    // A material a Nanite mesh renders through must declare it. `bUsedWithNanite` is the authored flag; the
-    // usage-check API that would ANSWER the same question can block on a shader compile, and an audit tool must
-    // never make the editor build shaders to tell the reader something it can read off a UPROPERTY.
+    // Contract, and why the authored flag rather than the usage-check API, are on the declaration in the header.
     auto
         Is_NaniteIncompatible(
             const UMaterialInterface* InMaterial)
@@ -177,6 +175,9 @@ namespace ck_optimization_debugger_checks_mesh
                         ck::Format_UE(TEXT("Nanite is on, but {} of this mesh's materials do not declare Used With Nanite: {}. A material that does not declare the usage falls back at render time, so the mesh silently stops being the thing you enabled Nanite for.{}"),
                             OffendingSlots.Num(), FString::Join(OffendingSlots, TEXT(", ")), Usage),
                         TEXT("Tick Used With Nanite on each listed material, or disable Nanite on the mesh."));
+
+                    Finding.HasAutoFix = true;
+                    Finding.FixDescription = TEXT("Set Used With Nanite on the offending materials (queues a shader compile).");
 
                     OutFindings.Add(MoveTemp(Finding));
                 }

@@ -23,10 +23,10 @@ the three back in the change that actually lands the export, together with its d
 | Page | What it answers | Phase |
 |---|---|---|
 | **Dashboard** | "How is this level doing overall, and is it worse than last time?" — level stats, findings by severity, disk-size breakdown, deltas vs the previous scan, per-sub-level include toggles, inline threshold editing | P3 |
-| **Level analysis** (Findings) | "What is wrong, where, and what do I do about it?" — the finding list with dual search, severity/category filters, grouping, copy menu, detail panel | P1 |
+| **Level analysis** (Findings) | "What is wrong, where, and what do I do about it?" — the finding list with dual search, **path scope, suggested-fix and mute filters**, severity/category filters, grouping, copy menu, detail panel | P1 (P9 added the three narrowing filters) |
 | **Memory** | "What is actually resident?" — textures, render targets and static meshes in three sortable tables with resource and GPU totals, guarded texture-streaming metrics, search, copy and Content Browser sync | P4 |
 | **Profiling** | "Let me look at it running" — eight stat overlays, a GPU capture, six view modes, the Nanite / Lumen / virtual-shadow-map visualizers, and a console box, all applied to the active level editor viewport | P5 |
-| **Cleanup** | "What can I delete?" — unreferenced assets, possible duplicates, redirectors and dirty packages under `/Game`, in four sub-tabs over one list, with deletion routed through the editor's own confirmation dialog | P6 |
+| **Cleanup** | "What can I delete, and what is wrong with my project's shape?" — unreferenced assets, possible duplicates, **name collisions**, redirectors and dirty packages under `/Game`, in five sub-tabs over one list, with deletion routed through the editor's own confirmation dialog | P6 (P8 added name collisions + the external-reference gate) |
 
 The page bar is `SCkDebug_UnderlineTabs` over an `SWidgetSwitcher`. **The switcher's slots are added in
 `ECkOptimizationDebugger_Page` declaration order** and `ck_optimization_debugger_model::Get_PageIndex` is the enum's
@@ -91,8 +91,27 @@ Load-bearing shapes:
 - **`StableKey` is `CheckId|<target path>`** — the identity a row is reused BY across re-scans, so a re-scan that
   reproduces a finding does not move the user's selection. A `ProjectSettings` target carries no object path, so
   its section name stands in.
-- **Filter and highlight are different things.** `Matches_Filter` consults the text filter, the severity mask and
-  the category mask — never the highlight query. Highlight dims; it does not hide.
+- **Filter and highlight are different things.** `Matches_Filter` consults the text filter, the severity mask, the
+  category mask, the path scope, the suggested-fix flag and the mute set — never the highlight query. Highlight dims;
+  it does not hide.
+- **The narrowing axes are SEPARATE controls, not spellings of the text query.** Typing `/Game/Characters` into the
+  filter box also matched any finding whose title or explanation contained the word, so one control silently answered
+  two questions; `PathScope` is a real prefix test over the target path. A `ProjectSettings` finding carries no path
+  and is therefore excluded by any non-empty scope — deliberate, and pinned, because a reader narrowed to a content
+  folder is not asking about the renderer and keeping those rows would make the scope look like it had failed.
+- **The suggested-fix filter reads the CHECK's claim, and its label says so.** `ShowOnlyWithSuggestedFix` tests
+  `FindingRow::HasAutoFix` alone. Whether the button can RUN a fix additionally needs the registry to hold the check
+  id, an editor session and no PIE — three session facts a filter has no business consulting. The affordance is
+  therefore worded "has a suggested fix", never "fixable", so it cannot promise an enabled button.
+- **Muting hides; it never deletes, fixes or excludes.** Keyed by `StableKey` — already the identity a row is REUSED
+  by across re-scans — so the same problem stays muted when it is found again while a genuinely new finding on the
+  same asset gets its own key and appears. Two things keep it honest, and both are required: the count of muted
+  findings **in the current scan** is printed beside the toggle (not in its tooltip — the reader must not have to
+  hover to learn the list is hiding something), and a revealed row carries an inert `MUTED` chip so a mixed list can
+  never read as all-live. `Get_MutedFindingCount` counts the CURRENT findings, never the persisted set: that set
+  accumulates keys from other scans and branches, and printing its size would claim this level hides more than it
+  does. The set is per-user `config` and grows unbounded by design — pruning it against the current scan would
+  silently un-mute every level nobody has opened this session.
 - **Two count projections, deliberately different numbers.** `Get_CountsBySeverity` is the whole scan (the
   dashboard headline); `Get_VisibleCountsBySeverity` is what survived the filter (the page-bar count). Confusing
   them would report a filtered list as a clean level.
@@ -251,8 +270,13 @@ its run order are built on:
 It replaced a `bool IsTransactional`, which was covering two genuinely different things and therefore filed the
 light-selection action into a bucket named `ConfigWrite`.
 
-`Destructive` means the fix removes or replaces actors rather than editing a property — **and it is read**, by
-`Build_BatchConfirmation`.
+**Two independent risk flags, and they are deliberately not one field.** `IsDestructive` means the fix removes or
+replaces actors rather than editing a property. `ChangesBehavior` means it alters how the game BEHAVES rather than only
+what it costs. Both are read by `Build_BatchConfirmation`, each producing its own line, because the two are genuinely
+different risks and a single field could not say which one the dialog is asking about: a deleted actor is visibly gone
+and Undo restores it, while a Blueprint that no longer ticks from frame zero looks identical until something it was
+driving quietly stops happening. `Blueprint.TickEnabled` is the only entry carrying `ChangesBehavior` today, and Undo
+still reverses it — what the flag buys is the prompt.
 
 | CheckId | What the fix actually does | Undo | Destructive |
 |---|---|---|---|
@@ -262,6 +286,10 @@ light-selection action into a bucket named `ConfigWrite`.
 | `Mesh.ComplexCollision` | flips `UBodySetup::CollisionTraceFlag` to `CTF_UseSimpleAndComplex`, and when the body setup has NO simple primitives adds one `FKBoxElem` sized from the mesh bounds, then `InvalidatePhysicsData` + `CreatePhysicsMeshes` + `PostEditChange` | yes | no |
 | `Texture.NormalMapCompression` | `CompressionSettings = TC_Normalmap` **and** `SRGB = 0`, then `PostEditChange()` | yes | no |
 | `Texture.DataTextureSrgb` | `SRGB = 0`, then `PostEditChange()` | yes | no |
+| `Texture.MissingMipmaps` | `MipGenSettings = TMGS_FromTextureGroup`, then `PostEditChange()`. `FromTextureGroup` rather than a specific setting: the group is where a project states its mip policy, so this hands the decision back to that policy instead of inventing one per texture. Re-validates BOTH halves — a texture moved into `TEXTUREGROUP_UI` since the scan is legitimately mipless and is refused | yes | no |
+| `Mesh.NaniteMaterialIncompatible` | `bUsedWithNanite = 1` on each offending BASE material, then `PostEditChange()`. Re-asks the check's own exported `Is_NaniteIncompatible` per slot, and refuses outright if Nanite has been turned off on the mesh since the scan. Fixing the base material means a mesh using several instances of one parent is fixed once. **Queues a shader compile**, which the result message says because nothing else on screen would | yes | no |
+| `Lighting.LightmapResolution` | clamps `OverriddenLightMapRes` to the CURRENT budget on **every** over-budget component of the actor — not the first, because the check aggregates per actor precisely because one actor can carry several. Clamps rather than clearing the override: clearing falls back to the mesh's own default, a different number nobody chose that may also be over budget. Reads the threshold fresh, and checks `FLevelUtils::IsLevelLocked` before touching anything | yes | no |
+| `Blueprint.TickEnabled` | `bStartWithTickEnabled = false` on the generated class's CDO, then `PostEditChange()`. **`bCanEverTick` is deliberately left alone** — the class keeps the ability to tick, so anything that enables it at runtime still works; clearing it would break `SetActorTickEnabled` and turn a cost fix into a broken actor. Re-validates both halves of the check | yes | no, but **`ChangesBehavior`** |
 | `Actor.EmptyStaticMesh` | re-validates that the actor is still a plain `AStaticMeshActor` with no mesh, then `UWorld::EditorDestroyActor` | yes | **yes** |
 | `Actor.InstancingCandidate` | re-derives the convertible group from the live world, spawns one actor with a `UHierarchicalInstancedStaticMeshComponent`, copies the template's materials and every matching actor's world transform as an instance, then deletes the originals | yes | **yes** |
 | `Lighting.MovableLightCount` | **selects** every movable-light actor in that level for review. Not a mobility change — see below. Its verb is **"Select Lights For Review"**, because "Review Light Mobility" read as though it changed mobility | n/a (changes nothing) | no |
@@ -290,6 +318,17 @@ light-selection action into a bucket named `ConfigWrite`.
 - **What stops a re-scan is `FCkOptimizationDebugger_FixResult::ChangedState`**, the per-invocation truth, and
   nothing else. There was a registry-level `RequiresRescanOfAssets` beside it saying the same thing a level earlier;
   it was never read, and two flags that can disagree about the same question is one flag too many.
+- **The four fixes added in P9 are all one-property transactional edits**, and each re-validates the WHOLE condition
+  its check tested rather than the property it is about to flip — the rule that already governs the sRGB and Nanite
+  fixes. `Mesh.NaniteMaterialIncompatible` re-asks the check's own `Is_NaniteIncompatible`, exported for the purpose,
+  because a second spelling of "is this incompatible" in the fix is a second place for it to drift from what the list
+  reported.
+- **`Texture.MaxSize` is mechanically fixable and deliberately has NO fix.** `UTexture::MaxTextureSize` would clamp the
+  built texture without touching source art, undoably. It is refused because the value it would write is a **per-user**
+  calibration (`config=GameUserSettings`) and the asset it writes into is **shared** — strictly worse than the
+  committed-config case this module already refuses, since one QA person's 2048 would be baked into an artist's asset.
+  Moving the threshold to project config to justify it would put the same number in two places.
+  `Ck.OptimizationDebugger.Fixes.RegistryCoverage` lists it among the non-fix checks with that reason attached.
 - **A batch that cannot be undone asks first.** `Build_BatchConfirmation` is pure over the selection and returns the
   prompt, or an unset confirmation when there is nothing to ask about. It fires on exactly two things: a fix flagged
   `IsDestructive`, and a `ConfigWrite`. A property edit inside a transaction is one Ctrl+Z away and deliberately
@@ -753,14 +792,88 @@ actions that can remove content are the reader's own presses, and each one ends 
 It is its own explicit pass, independent of the level scan and the memory scan in every direction: **Scan Project**
 walks `/Game`, and nothing else on this window triggers it.
 
-### The four categories, as implemented
+### The five categories, as implemented
 
 | Category | Fires for | How it is decided |
 |---|---|---|
-| **Unreferenced** | an asset under `/Game` that no other package references on disk | `IAssetRegistry::GetReferencers(PackageName, Out, EDependencyCategory::Package, EDependencyQuery::NoRequirements)` — hard AND soft — with self-references discarded, over the package's PRIMARY asset, minus the always-rooted class list below |
+| **Unreferenced** | an asset under `/Game` that no other package references on disk **and that no registered external-reference provider claims** | `IAssetRegistry::GetReferencers(PackageName, Out, EDependencyCategory::Package, EDependencyQuery::NoRequirements)` — hard AND soft — with self-references discarded, over the package's PRIMARY asset, minus the always-rooted class list below, **then `FCk_AssetReferenceProviderRegistry`** for the references that graph structurally cannot see |
 | **Possible duplicates** | assets sharing a **name**, a **class** and a **disk size** across different folders | `Build_DuplicateGroupKey(name, class, size)`, lower-cased on the two text halves. **Content is never hashed and never compared.** Groups of one are dropped |
+| **Name collisions** | assets sharing an exact **name** across different folders, whatever their class or size | `Build_NameCollisionGroupKey(name)` — the lower-cased name and NOTHING else. Grouped like duplicates; groups of one are dropped. **Carries no action** (see below) |
 | **Redirectors** | `FAssetData::IsRedirector()` under `/Game` | the row's detail is the REFERENCER COUNT, not the redirector's destination — reading a destination means loading the redirector, and a scan that loaded every redirector in the project to label a row would be doing the thing this page refuses to do |
 | **Dirty packages** | `FEditorFileUtils::GetDirtyPackages`, narrowed to `/Game` | the one category that reads LIVE editor state rather than the registry, and the only one that can go stale between scans |
+
+### Name collisions are a different question from duplicates, and the split is deliberate
+
+A duplicate match asks **"is one of these redundant?"** and needs class and size to say so. A name collision asks
+**"does this name resolve to what the author meant?"**, which class and size have nothing to do with. An `SM_Rock` and
+a `T_Rock` are not duplicates and never will be — but every short-name lookup, every codegen accessor keyed on the
+name, and every Content Browser search still has to pick one of them, and which one it picks is not something the
+project decides.
+
+Concretely, in this codebase: `UCkAssetRegistrySubsystem` generates one `assets::` accessor per asset NAME, and on a
+collision the loser is renamed `<Name>_DUP1` (`CkAssetRegistrySubsystem.cpp:676-687`). Which asset wins depends on
+asset-registry iteration order, so `assets::Get_Foo()` can resolve to a different asset on a different machine.
+
+Consequences that fall out of it being a different question:
+
+- **Folding the two passes together would split exactly the pairs worth reporting.** Relaxing the duplicate key to
+  just the name would ALSO stop reporting duplicates, and matching only same-class-same-size names would miss the
+  mesh-vs-texture collision that is the common case.
+- **A package the registry could not size still takes part**, unlike the duplicate pass. A missing size is no evidence
+  either way about a NAME, and dropping it would hide a collision for a reason unrelated to the question.
+- **A collision group carries no class and no size**, and its rows carry no bytes. Members share only the name, so
+  copying the first member's class and size onto the group would print one member's facts as the group's. The header
+  says "N assets share this name"; nothing here is reclaimable, and the sort therefore falls through to member count —
+  the group most worth looking at is the one the most assets are fighting over.
+- **The category has NO action, on purpose.** Resolving a collision means renaming an asset, which is a content
+  decision no batch action should make for the reader. `TryGet_ActionForCategory` returns null and the button says why
+  in those words — "at most one action per category" is now the catalog rule, and
+  `Ck.OptimizationDebugger.Cleanup.ActionCatalog` asserts the null explicitly so "deliberately actionless" stays
+  distinguishable from "somebody forgot".
+- **The label is "Name collisions", never "Duplicate names".** The second would send the reader looking for something
+  to delete.
+- **Scope limit, stated rather than assumed: it walks the same package table the other passes do**, which holds one
+  entry per package — the PRIMARY asset. A secondary object inside a multi-object package therefore does not take
+  part, even though the AngelScript generator's own discovery is per-asset rather than per-package. In `/Game` content
+  that is one asset per package almost without exception, so the two agree in practice; if a project ever grows
+  multi-object packages under `/Game`, this pass narrows silently and would need its own asset-granular walk.
+
+### Unreferenced consults the external-reference registry, because the package graph is not the whole truth
+
+`IAssetRegistry::GetReferencers` answers only from serialized package edges. An asset reached from AngelScript goes
+through a generated `assets::` accessor — a text call resolved at runtime — which creates **no edge at all**. Asking
+the graph alone therefore does not merely miss it; it reports a script-critical asset as unreferenced and offers it to
+`ObjectTools::DeleteAssets`, and the engine's own delete dialog derives its referencer list from the SAME graph, so
+the reader's safety net agrees with the mistake.
+
+The walk asks `FCk_AssetReferenceProviderRegistry` (`CkCore/Reference/`) in the same breath as the graph.
+`CkAngelscriptGenerator`'s asset subsystem registers under `"AngelScript"`, backed by the same two maps its
+`OnAssetsPreDelete` warning reads — so the dialog and this scan agree by construction rather than by two copies of one
+rule. Neither module links the other, which is what keeps this DeveloperTool module packageable.
+
+Three states, and the page must never collapse them:
+
+| State | How | What the status strip says |
+|---|---|---|
+| Provider(s) registered, some assets claimed | `Get_HasAnyProvider()` true, count > 0 | "N asset(s) kept off the unreferenced list because AngelScript references them", Ok tone |
+| Provider(s) registered, none claimed | true, count 0 | nothing extra — the count is simply correct |
+| **No provider registered** | false | "no external-reference provider was registered, so references made only from script or config were NOT considered", **Warn tone** |
+
+The third is the load-bearing one. "Nobody was there to ask" is not "asked and found none", and reporting the
+unreferenced count bare in that state presents a project this pass could not fully consider as one it did — the same
+defect `RequiresEditor` prevents one level up. It is Warn-toned for the same reason a cancelled or still-indexing scan
+is: all three are partial answers, and the tone is what tells the reader that before they read the counts.
+
+A hit **suppresses the row and increments a count** rather than dropping it silently: a row that vanished would make
+this tab disagree with the Reference Viewer with nothing on screen explaining why, which is why an excluded level is
+greyed rather than removed.
+
+**The registry is resolved ONCE, before the walk.** Asking per row would let a provider that unregistered half way
+through produce a list whose first half considered script references and whose second half did not — the hazard the
+memory page's streaming guard is asked once for.
+
+**Still not the whole truth.** Soft paths assembled at runtime in a Blueprint or a DataTable, and any reference no
+provider covers, remain invisible. The Unreferenced hint says so.
 
 **The conservative duplicate rule, verbatim, because it is the one claim on this page that could be over-read:**
 *possible duplicates are identified conservatively using matching asset name, class and disk size; they are presented
@@ -819,8 +932,9 @@ the button takes — because an action that changed what is on disk changed the 
 - **Cancel cancels all four passes.** It used to be polled only inside the unreferenced walk, so pressing it left
   the duplicate match and the redirector walk to run to completion; the dirty-package pass is now skipped outright
   once cancelled, because a partial answer that still filled one category in full is one the reader would trust.
-- **Exactly one action claims each category**, which is what lets the page show ONE button instead of three that
-  mostly disable. `Ck.OptimizationDebugger.Cleanup.ActionCatalog` pins it.
+- **At MOST one action claims each category**, which is what lets the page show ONE button instead of three that
+  mostly disable. Not "exactly one" — `NameCollisions` deliberately has none, and the spec asserts that null by name.
+  `Ck.OptimizationDebugger.Cleanup.ActionCatalog` pins it.
 - **A mixed selection is narrowed, never refused.** A reader who rubber-banded a list is asking about the rows the
   button understands; `Get_ApplicableRows` is that narrowing and the button's count is what it found.
 - **The always-rooted exclusion list is short and reasoned.** `World`, `Level`, `DataAsset`, `PrimaryDataAsset`,
@@ -847,8 +961,12 @@ the button takes — because an action that changed what is on disk changed the 
 - **Row identity is keyed `<category id>|<asset path>`.** The category is in the key because one asset can
   legitimately appear under two categories — a redirector nothing points at is both a redirector and unreferenced —
   and a key that dropped it would make the second appearance replace the first.
-- **The list is hand-laid, not an `SHeaderRow`.** The duplicates category carries group header LINES, and a header
-  row has nowhere to put one. The order is therefore the projection's and not the reader's: biggest first with the
+- **The list is hand-laid, not an `SHeaderRow`.** The two GROUPED categories carry group header LINES, and a header
+  row has nowhere to put one. `Get_IsGroupedCleanupCategory` is the one predicate that decides grouping, indentation
+  and which projection the rebuild calls — asked once rather than compared against a category literal in three places,
+  which is how the third one gets forgotten. A group header carries the active category on its otherwise-empty row so
+  the row generator can word itself: a header reading "N copies · X reclaimable" over a set of name collisions would
+  be telling the reader to go delete one of them. The order is therefore the projection's and not the reader's: biggest first with the
   asset path breaking every tie, and duplicate groups heaviest-first by what keeping ONE copy would free.
 - **The page tab counts the WHOLE census, not the active category.** The reader's question there is "is there
   anything to look at"; a number that changed when they clicked a sub-tab would answer a different one. No warn dot:
@@ -873,6 +991,12 @@ specific to this module:
   Minor → `Info`. Nothing here is ever `Ok`-toned: a finding is by definition something the reader may want to act
   on, and painting one green says the opposite. `Ck.OptimizationDebugger.Model.SeverityTones` pins the mapping and
   its distinctness.
+- **The severity GLYPH comes off that same tone**, through `ck::debug_axes::Get_ToneIconId` — so colour and picture
+  cannot drift, and this tool no longer owns an opinion about what severity looks like. It used to name `Skull` /
+  `Flame` / `Note` out of the decorative `Icons/General/**` set, which had two problems: those are not the pictures
+  UE uses for severity anywhere else, so a reader had to learn them here; and `Skull` simultaneously meant "Critical"
+  here, "Failed" in the gallery, and "world trouble" in the crowd debugger — one picture, three meanings, in sibling
+  tools sharing one launcher. See [CkDebuggerCommon/CLAUDE.md](../CkDebuggerCommon/CLAUDE.md) for the axis.
 - **`Stopwatch` is this tool's identity** (launcher descriptor); `Target` is the Scan command. Severity has its own
   glyphs on the chrome's icon-action row — `Skull` Critical, `Flame` Major, `Note` Minor — and each category has
   one, used in the filter row AND on the group header so a category never means two pictures: `Cube` mesh,
@@ -998,6 +1122,22 @@ else's branch.
   several rows selected copies titles / paths / summaries joined by newlines. Open a level with an UNLOADED
   sub-level and confirm the status strip names it as not scanned. Enter and leave PIE and confirm the findings
   clear with the "re-scan" status rather than pointing at a dead world.
+- `[EDITOR-VERIFY]` **The three narrowing filters.** On a scanned level: type `/Game/` into the scope box and
+  confirm every `ProjectSettings.*` finding disappears while asset and actor findings stay; narrow to a real content
+  subfolder and confirm only findings under it survive and the Findings tab count drops with the list while the
+  Dashboard count does NOT. Clear it. Press **Has a suggested fix** and confirm every remaining row shows a `FIX`
+  chip; press it again to restore. Set both at once and confirm you get the intersection rather than one of them.
+- `[EDITOR-VERIFY]` **Muting, end to end.** Right-click a finding → **Mute (1)**; it leaves the list, the status
+  strip reports the new muted count, and `1 muted` appears beside the **Show muted** toggle. Turn **Show muted** on:
+  the finding returns carrying a `MUTED` chip. Multi-select two muted rows plus one unmuted and confirm the menu
+  offers **Mute (3)** rather than Unmute — the verb follows the whole selection. Select only muted rows and confirm
+  it reads **Unmute**. Re-scan and confirm the mute survives, then restart the editor and confirm it survives that
+  too. Finally confirm a group HEADER cannot be muted (right-click one with rows selected; only the rows change).
+- `[EDITOR-VERIFY]` **Severity glyphs.** Confirm the chrome's severity toggles and the finding rows show a red
+  circle-with-x for Critical, an amber triangle-with-! for Major and a blue circle-with-i for Minor — UE's own
+  shapes — and that each is legible at 16px. Open the Style Lab and change the palette: the glyphs must re-tint with
+  everything else (this is what an `FAppStyle` brush could not have done). Then open the Goap, Eqs and Crowd
+  debuggers and confirm their failure toggles now show the SAME error glyph rather than a skull.
 - `[EDITOR-VERIFY]` **Navigation.** Select a mesh/texture finding and press **Go To** — the Content Browser jumps to
   the ASSET, not to an actor placing it. Select an `Actor.EmptyStaticMesh` or `Lighting.LightmapResolution` finding —
   the actor is selected alone and the viewport frames it. Select any `ProjectSettings.*` finding — Project Settings
@@ -1009,6 +1149,17 @@ else's branch.
   `ProjectSettings.TextureStreamingDisabled`, whose status line says it was written to `DefaultEngine.ini` and which
   Undo must not appear to reverse. Confirm the findings list re-scans itself after every fix except
   `Lighting.MovableLightCount`, which instead leaves the movable-light actors selected in the outliner.
+- `[EDITOR-VERIFY]` **The four fixes added in P9, one at a time.** `Texture.MissingMipmaps`: confirm Mip Gen
+  Settings reads FromTextureGroup afterwards and the texture rebuilds with mips; move a flagged texture into the UI
+  group first and confirm the fix REFUSES rather than generating mips. `Mesh.NaniteMaterialIncompatible`: confirm
+  Used With Nanite is ticked on each named material, that a shader compile is queued, and that a mesh whose Nanite you
+  turned off since the scan is refused. `Lighting.LightmapResolution`: on an actor with TWO over-budget components,
+  confirm BOTH are clamped to the budget (not just the first) and that a locked level refuses with nothing changed.
+  `Blueprint.TickEnabled`: confirm Start With Tick Enabled is off afterwards and **Can Ever Tick is still ON** — if
+  that second one is off, the fix is wrong and would break `SetActorTickEnabled`. Ctrl+Z each.
+- `[EDITOR-VERIFY]` **The behaviour-change prompt.** Select only Nanite/sRGB fixes and confirm applying asks nothing.
+  Add a `Blueprint.TickEnabled` finding and confirm a dialog appears whose text names a BEHAVIOUR change (not a
+  deletion and not a config write) and says Undo reverses it. Decline and confirm nothing was applied.
 - `[EDITOR-VERIFY]` **Fixes, batched.** Multi-select several fixable findings of different checks (include the
   texture-streaming one), confirm the button reads "Fix N Findings", apply, and confirm ONE Ctrl+Z reverses the whole
   transactional part in one step. Confirm the status strip reads "N fixed, M failed — rescanned: K finding(s)".
@@ -1136,6 +1287,28 @@ else's branch.
   says the match is name + class + size and is not a claim of byte-identity. **Redirectors**: confirm each row's
   detail is a referencer count. **Dirty packages**: modify an asset without saving, re-scan, and confirm it appears
   with an em dash rather than `0 B` if it has never been written.
+- `[EDITOR-VERIFY]` **The external-reference gate — the defect this closes.** Find (or author) a `/Game` asset that
+  NOTHING references by package but that an `.as` file reaches through its generated `assets::` accessor. Scan the
+  project. Confirm it does **not** appear under Unreferenced, that the status strip says "N asset(s) kept off the
+  unreferenced list because AngelScript references them", and that the tone is Ok. Then confirm the Reclaimable tile
+  does not include its bytes. Remove the `.as` call, let AngelScript recompile (the usage map rebuilds on PostCompile),
+  re-scan, and confirm the asset now DOES appear — the gate must track the script, not a snapshot of it.
+- `[EDITOR-VERIFY]` **The provider-absent state.** This is the one that must never read as a clean project. Launch with
+  `-NoCkAsRegen`, or otherwise reach a session where the AngelScript asset subsystem did not initialize, and scan.
+  Confirm the status strip says "no external-reference provider was registered, so references made only from script or
+  config were NOT considered", **and that the strip is Warn-toned rather than Ok**. A bare unreferenced count in this
+  state is the tool presenting a project it could not fully consider as one it did.
+- `[EDITOR-VERIFY]` **Name collisions.** Create three assets that all carry the SAME name in three different folders,
+  and make at least one of them a different CLASS from the others (a `Rock` static mesh in two folders plus a `Rock`
+  texture in a third). Scan. Confirm all three appear under **Name collisions** in ONE group whose header reads
+  "3 assets share this name" with **no** reclaimable figure, that the header is not selectable, and that each row's
+  detail names the other two by path. Then confirm the texture does NOT appear under Possible duplicates — that
+  category still needs class and size to match, which is the whole reason this is a separate question. Confirm the
+  action button reads **No action** and its tooltip says the fix is a rename, rather than "this category has nothing
+  to act on".
+- `[EDITOR-VERIFY]` **The collision consequence, end to end.** With two same-named assets in place, open the generated
+  `*Assets.as` and confirm one accessor carries the plain name and the other `<Name>_DUP1`. Rename one asset, let
+  AngelScript recompile, re-scan, and confirm the collision group is gone and both accessors carry plain names.
 - `[EDITOR-VERIFY]` **Cleanup search, copy and navigation.** Type into the filter box: the list narrows, the sub-tab
   counts drop with it, and the header tiles and page-tab count do NOT. Confirm a filter typed on the **Level
   analysis** or **Memory** page leaves this list untouched, and vice versa. Right-click with several rows selected and

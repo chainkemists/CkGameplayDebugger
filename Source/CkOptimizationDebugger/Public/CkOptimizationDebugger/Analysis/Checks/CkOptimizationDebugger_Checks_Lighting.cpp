@@ -139,6 +139,9 @@ namespace ck_optimization_debugger_checks_lighting
                 Explanation,
                 TEXT("Lower the override, or clear it and let the mesh asset's own lightmap resolution apply."));
 
+            Finding.HasAutoFix = true;
+            Finding.FixDescription = TEXT("Clamp the override to the budget on every over-budget component of this actor.");
+
             OutFindings.Add(MoveTemp(Finding));
         }
     }

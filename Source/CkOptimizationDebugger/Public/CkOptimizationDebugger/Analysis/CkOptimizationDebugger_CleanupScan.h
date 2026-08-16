@@ -25,6 +25,23 @@ struct CKOPTIMIZATIONDEBUGGER_API FCkOptimizationDebugger_CleanupScanResult
 
     // The asset registry was still indexing, so every count here is a floor rather than a total.
     bool WasStillIndexing = false;
+
+    // Packages the on-disk graph says nothing references, but a registered external-reference provider does — an
+    // AngelScript generated accessor, today. They are NOT unreferenced and are deliberately absent from `Rows`.
+    //
+    // The COUNT is on the record rather than the rows being silently dropped: a row that vanished would make this tab
+    // disagree with the Reference Viewer with nothing on screen explaining why, which is the same reason an excluded
+    // level is greyed rather than removed. This is how the page says the scan looked at them.
+    int32 ExternallyReferencedCount = 0;
+
+    // Which providers claimed at least one of those, sorted, so the status strip can name them rather than saying
+    // "something" referenced them.
+    TArray<FName> ExternalReferenceSourceIds;
+
+    // Whether ANY provider was registered to ask. False means this pass could not consider script or config
+    // references AT ALL — not that it considered them and found none. Reporting an unreferenced count without saying
+    // which of the two happened is the defect `RequiresEditor` and `IsAvailable` exist to prevent elsewhere.
+    bool HasExternalReferenceProvider = false;
 };
 
 // --------------------------------------------------------------------------------------------------------------------

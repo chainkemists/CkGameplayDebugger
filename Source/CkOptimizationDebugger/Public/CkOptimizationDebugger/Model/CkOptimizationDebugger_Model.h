@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include "CkCore/Macros/CkMacros.h"
 
@@ -121,6 +121,37 @@ struct CKOPTIMIZATIONDEBUGGER_API FCkOptimizationDebugger_FilterState
     // `k_AllSeverityMask` / `k_AllCategoryMask` below are the same values, pinned by a spec.
     uint8 SeverityMask = 0x07;
     uint8 CategoryMask = 0x7F;
+
+    /** Only findings whose target path begins with this, case-insensitively. Empty means no scoping.
+     *
+     *  A REAL axis rather than something typed into `FilterString`, because the free-text query searches the title
+     *  and the explanation as well as the path — so scoping to `/Game/Characters` by typing it there also matched any
+     *  finding whose wording happened to contain the word, which is one box silently meaning two things.
+     *
+     *  A `ProjectSettings` finding carries no path and is therefore excluded by ANY non-empty scope. That is the
+     *  intended reading: a reader narrowing to a content folder is not asking about the project's renderer settings. */
+    FString PathScope;
+
+    /** Show only findings whose CHECK offered a fix.
+     *
+     *  This reads `FCkOptimizationDebugger_FindingRow::HasAutoFix` and nothing else, which is why the UI affordance
+     *  says "has a suggested fix" rather than "fixable". Whether the button can actually RUN one additionally
+     *  requires the fix registry to hold the check id (`Can_ApplyFix`), plus an editor session and no PIE — three
+     *  session facts a filter has no business consulting, and which the disabled tooltip already answers in place.
+     *  Wording the filter as the narrower claim is what keeps it from promising an enabled button. */
+    bool ShowOnlyWithSuggestedFix = false;
+
+    /** Stable keys the reader has triaged and asked not to see again. Empty is the resting state.
+     *
+     *  Keyed by `StableKey` because that is already the identity a row is REUSED by across re-scans — so a muted
+     *  finding stays muted when the same problem is found again, which is the whole point, while a genuinely new
+     *  finding on the same asset gets its own key and shows up. */
+    TSet<FString> MutedStableKeys;
+
+    /** Show muted findings anyway (still visibly marked as muted). The escape hatch that keeps muting honest: a
+     *  filter that can permanently hide findings with no way to see what it hid is a filter that makes the tool lie
+     *  about the project, and the reader who muted something six months ago cannot audit their own past decisions. */
+    bool ShowMuted = false;
 };
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -433,6 +464,13 @@ enum class ECkOptimizationDebugger_CleanupCategory : uint8
 {
     Unreferenced,
     Duplicates,
+
+    /** Assets sharing an exact NAME across different folders, whatever their class or size. Deliberately a separate
+     *  question from `Duplicates`: that one asks "is one of these redundant", this one asks "does this name resolve to
+     *  what the author thinks". A `SM_Rock` and a `T_Rock` are not duplicates and never will be, but a short-name
+     *  lookup, a codegen accessor keyed on the name, and a Content Browser search all have to pick one of them. */
+    NameCollisions,
+
     Redirectors,
     DirtyPackages,
 };
@@ -464,14 +502,14 @@ struct CKOPTIMIZATIONDEBUGGER_API FCkOptimizationDebugger_CleanupRow
 
     // Duplicates only: `<name>|<class>|<size>`, the whole conservative match. Empty on every other category, which is
     // what makes "is this a grouped row" answerable without consulting the category twice.
-    FString DuplicateGroupKey;
+    FString GroupKey;
 };
 
 // --------------------------------------------------------------------------------------------------------------------
 
 /** A set of assets that share a name, a class and a disk size. **Possible** duplicates — the match is deliberately
  *  conservative and is never a claim that the bytes are identical; see the module CLAUDE.md for the rule verbatim. */
-struct CKOPTIMIZATIONDEBUGGER_API FCkOptimizationDebugger_CleanupDuplicateGroup
+struct CKOPTIMIZATIONDEBUGGER_API FCkOptimizationDebugger_CleanupGroup
 {
     FString GroupKey;
 
@@ -609,6 +647,56 @@ public:
         ECkOptimizationDebugger_Severity InSeverity) -> void;
 
 public:
+    auto
+    Get_PathScope() const -> const FString&;
+
+    auto
+    Set_PathScope(
+        FString InPathScope) -> void;
+
+    auto
+    Get_ShowOnlyWithSuggestedFix() const -> bool;
+
+    auto
+    Set_ShowOnlyWithSuggestedFix(
+        bool InShowOnly) -> void;
+
+public:
+    /** Whether this finding is on the triage list. Keyed by stable key, so it survives a re-scan that reproduces the
+     *  same finding — which is the entire reason to have it. */
+    auto
+    Get_IsMuted(
+        const FString& InStableKey) const -> bool;
+
+    auto
+    Set_Muted(
+        const FString& InStableKey,
+        bool InMuted) -> void;
+
+    auto
+    Get_ShowMuted() const -> bool;
+
+    auto
+    Set_ShowMuted(
+        bool InShowMuted) -> void;
+
+    /** How many of the CURRENT findings are muted — the number the "show muted" affordance prints so the reader can
+     *  see there is something hidden without turning it on. Deliberately not the size of the muted SET: that set
+     *  accumulates keys from scans and branches this project no longer has, and printing it would claim this level
+     *  hides more than it does. */
+    auto
+    Get_MutedFindingCount() const -> int32;
+
+    /** Replaces the whole muted set — how the persisted settings are loaded back in at window construction, exactly
+     *  as the level-exclusion set is. */
+    auto
+    Set_MutedStableKeys(
+        TSet<FString> InStableKeys) -> void;
+
+    auto
+    Get_MutedStableKeys() const -> const TSet<FString>&;
+
+public:
     /** Whether the NEXT scan will skip this level. Excluded levels still appear on the dashboard, greyed — a level
      *  that vanished from the list would make a narrowed scan look like a smaller project. */
     auto
@@ -667,9 +755,10 @@ public:
     Get_SortedCleanupRows(
         ECkOptimizationDebugger_CleanupCategory InCategory) const -> TArray<FCkOptimizationDebugger_CleanupRow>;
 
-    /** The duplicate rows the filter admits, grouped by their conservative match key. */
+    /** A grouped category's rows, filtered and grouped by their match key. */
     auto
-    Get_CleanupDuplicateGroups() const -> TArray<FCkOptimizationDebugger_CleanupDuplicateGroup>;
+    Get_CleanupGroups(
+        ECkOptimizationDebugger_CleanupCategory InCategory) const -> TArray<FCkOptimizationDebugger_CleanupGroup>;
 
     /** The WHOLE cleanup census, per category and in total — never the filtered view, for the same reason the memory
      *  totals are not filtered: the header answers "what is there", and a query the reader typed must not make it
@@ -794,7 +883,7 @@ namespace ck_optimization_debugger_model
     constexpr auto k_DiskCategoryCount = 8;
     constexpr auto k_MemoryTableCount  = 3;
     constexpr auto k_MemoryColumnCount = 6;
-    constexpr auto k_CleanupCategoryCount = 4;
+    constexpr auto k_CleanupCategoryCount = 5;
 
     // All bits set == no filtering. Kept next to the counts so the two can never disagree.
     constexpr auto k_AllSeverityMask = static_cast<uint8>(0x07);
@@ -878,6 +967,13 @@ namespace ck_optimization_debugger_model
     /** Does this finding survive the whole filter state: the text filter across title / target name / check id, the
      *  severity toggles and the category toggles. The Highlight query is deliberately NOT consulted — highlight
      *  dims, it never hides. */
+    /** Whether a finding's target path falls under a path scope. Empty scope admits everything; a non-empty scope
+     *  excludes every `ProjectSettings` finding, which carries no path. Case-insensitive. */
+    CKOPTIMIZATIONDEBUGGER_API auto
+    Matches_PathScope(
+        const FCkOptimizationDebugger_FindingRow& InFinding,
+        const FString& InPathScope) -> bool;
+
     CKOPTIMIZATIONDEBUGGER_API auto
     Matches_Filter(
         const FCkOptimizationDebugger_FindingRow& InFinding,
@@ -1138,6 +1234,16 @@ namespace ck_optimization_debugger_model
         const FString& InClassName,
         int64 InDiskSizeBytes) -> FString;
 
+    /** The name-collision key: the asset name, lower-cased, and NOTHING else.
+     *
+     *  Deliberately not the duplicate key minus two fields — it is a different question. Class and size are what make
+     *  a duplicate *possible*; they are irrelevant to whether two assets answer to one name. Lower-cased because the
+     *  Content Browser, `FPackageName` and Windows all treat `Rock` and `rock` as one name, so a case-sensitive match
+     *  would miss the pair a reader is most likely to have created by accident. */
+    CKOPTIMIZATIONDEBUGGER_API auto
+    Build_NameCollisionGroupKey(
+        const FString& InDisplayName) -> FString;
+
     /** Name, path, class and detail joined into one haystack — the same shape the finding and memory haystacks have,
      *  over the fields a cleanup row carries. */
     CKOPTIMIZATIONDEBUGGER_API auto
@@ -1158,15 +1264,26 @@ namespace ck_optimization_debugger_model
         ECkOptimizationDebugger_CleanupCategory InCategory,
         const FString& InFilter) -> TArray<FCkOptimizationDebugger_CleanupRow>;
 
-    /** The duplicate rows the filter admits, grouped by `DuplicateGroupKey`.
+    /** One GROUPED category's rows — `Duplicates` or `NameCollisions` — filtered and grouped by `GroupKey`.
      *
      *  Groups come out heaviest first — a group's weight is its member count times one member's size, i.e. what the
      *  reader could reclaim by keeping one copy — with the group key as the tie-break, and members sorted by path.
-     *  A group with fewer than two members is dropped: one asset is not a duplicate of anything. */
+     *  A group with fewer than two members is dropped: one asset collides with nothing and duplicates nothing.
+     *
+     *  The category is a PARAMETER rather than two functions, because the grouping rule is identical and a second copy
+     *  of it would be a second place for the heaviest-first ordering and the singleton drop to drift. What differs
+     *  between the two is only what `GroupKey` was built from, and that decision is already made by the scan. */
     CKOPTIMIZATIONDEBUGGER_API auto
-    Get_CleanupDuplicateGroups(
+    Get_CleanupGroups(
         const TArray<FCkOptimizationDebugger_CleanupRow>& InRows,
-        const FString& InFilter) -> TArray<FCkOptimizationDebugger_CleanupDuplicateGroup>;
+        ECkOptimizationDebugger_CleanupCategory InCategory,
+        const FString& InFilter) -> TArray<FCkOptimizationDebugger_CleanupGroup>;
+
+    /** Whether a category renders as GROUPS rather than a flat list. Asked by the page instead of comparing against a
+     *  category literal in three places, which is how the third one gets forgotten. */
+    CKOPTIMIZATIONDEBUGGER_API auto
+    Get_IsGroupedCleanupCategory(
+        ECkOptimizationDebugger_CleanupCategory InCategory) -> bool;
 
     /** Per-category and grand totals over the rows as given — no filtering, because the page header is the census and
      *  not the view. Always yields one category entry per enum value, in declaration order. */

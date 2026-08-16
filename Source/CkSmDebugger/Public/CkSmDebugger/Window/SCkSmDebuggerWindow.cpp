@@ -1007,7 +1007,7 @@ auto
     -> bool
 {
     return ck::IsValid(InCandidate)
-        && InCandidate.Has_All<ck::FFragment_Sm_Current, ck::FFragment_Sm_Params>();
+        && InCandidate.Has_All<ck::FFragment_Sm, ck::FFragment_Sm_Params>();
 }
 
 auto

@@ -1,6 +1,6 @@
 # Phase 7 — Unreal-scheme camera, Draw lane, sim controls, detail, multi-select, drag UI
 
-> **Status:** ⏳ Pending
+> **Status:** ✅ Done 2026-08-15 (committed locally; ship withheld; `[EDITOR-VERIFY]` pending)
 > **Depends on:** Phase 6 ✅ (the whole facility surface Phases 5–6 add is a hard prerequisite —
 > nothing in this phase compiles without it)
 > **Scope (repo):** `Plugins/CkGameplayDebugger/Source/CkJoltDebugger/` ONLY. Zero CkFoundation
@@ -259,11 +259,27 @@ around by a spring.
 
 ## Exit criteria — ALL in the same commit as the last work item
 
-- [ ] Scoped serial `--test-pattern JoltDebugger` green; `--test-pattern Jolt` green (unchanged —
+- [x] Scoped serial `--test-pattern JoltDebugger` green; `--test-pattern Jolt` green (unchanged —
       this phase must not move the facility numbers); `--test-pattern DebuggerLauncher` census 3/3
-- [ ] Full serial suite == baseline set (no new failures)
-- [ ] ≥ 3 new debugger specs land (camera scheme, outliner multi-select, extended detail rows) and
-      the settings round-trip spec covers every new preference
-- [ ] Adversarial review (fresh Opus drafts the triage; orchestrator ratifies) → fix-up → gate of
-      record re-run on the FINAL artifact
-- [ ] `CkJoltDebugger/CLAUDE.md`, PLAN, PROGRESS updated; commit LOCAL only (ship withheld, P8-D60)
+      — **7A** verified at commit `1300de4`; **7B** `JoltDebug` 11/11 (`BuildTest_P7B_1.log` 16:20)
+      + `DebuggerLauncher` 3/3 (16:22) at commit `4bdd694`; re-proven on the FINAL artifact by the
+      campaign gate of record: scoped `Jolt` **98/98** (`Test_Final_Jolt.log`, 18:04),
+      `DebuggerLauncher` **3/3**, `Probe` **27/27**
+- [x] Full serial suite == baseline set (no new failures) — `Saved/Logs/BuildTest_Final_Full.log`
+      (2026-08-15 17:55): **Total 1150 / Passed 1146 / Failed 4 / Contaminated 0**, the failing set
+      IDENTICAL to the Phase-4 baseline set (`Ck_AutoTest_Crowd_NavQueryFilter_ForceReplan`,
+      `Ck_AutoTest_Homing_Retarget_SwitchesPursuit`,
+      `Ck_AutoTest_PathNetworkFollower_DesiredNavmeshClearanceMovesInward`,
+      `Ck_AutoTest_PathNetworkFollower_ProjectsRibbonWaypointWithinNavQueryExtent`) — **zero new,
+      zero gone**
+- [x] ≥ 3 new debugger specs land (camera scheme, outliner multi-select, extended detail rows) and
+      the settings round-trip spec covers every new preference — `Ck.JoltDebugger.Settings.
+      ConstructRestoresPreferences` asserts all seven new fields AND that the restore landed on the
+      facility target (P7-D71/F10)
+- [x] Adversarial review (fresh Opus drafts the triage; orchestrator ratifies) → fix-up → gate of
+      record re-run on the FINAL artifact — Phase-7 review returned 12 findings, triage ratified
+      **[P7-D71]**, fix-up merged into the 8B executor (`25e0c91`); the final campaign review's
+      F1–F7(first half)/F10 + P8-D73 landed in `6bde863`, and the gate above ran on THAT artifact
+- [x] `CkJoltDebugger/CLAUDE.md`, PLAN, PROGRESS updated; commit LOCAL only (ship withheld, P8-D60)
+      — commits `1300de4` (7A) → `4bdd694` (7B) → `5fff942` → `25e0c91` (8B + Phase-7 fix-up) →
+      `6bde863` (final fix-up); **nothing pushed, no superproject pointer bumps** (P0-D8/P4-D36)

@@ -1,6 +1,6 @@
 # Phase 6 — Pause/step, detail sample, selection contacts, multi-select/isolate, drag, stats (CkJolt)
 
-> **Status:** ⏳ Pending
+> **Status:** ✅ Done 2026-08-15 (committed locally; ship withheld; `[EDITOR-VERIFY]` pending)
 > **Depends on:** Phase 5 ✅
 > **Scope (repo):** `Plugins/CkFoundation/Source/CkJolt/` + `Plugins/CkTests/.../UnitTests/CkJolt/`.
 > Same collateral allowance as Phase 5 (mechanical `CkJoltDebugger` call-site fixes only).

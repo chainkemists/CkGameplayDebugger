@@ -11,10 +11,10 @@
 | 3 | Outliner + selection sync + picking + detail | CkGameplayDebugger/CkJoltDebugger (+ CkJolt read APIs as needed) | ✅ Done 2026-08-15 (committed; `[EDITOR-VERIFY]` pending) |
 | 4 | 100k scale hardening, measurement, polish, docs | both | ✅ Done 2026-08-15 (committed; measured 100k: revision/selection pass 250→23 ms; `[EDITOR-VERIFY]` pending) |
 | 5 | Draw channels: lines/text/external, per-target draw flags, contact recording, highlight visibility, colour-by modes | CkFoundation/CkJolt | ✅ Done 2026-08-15 (committed locally; `[EDITOR-VERIFY]` pending) |
-| 6 | Pause/step, body+character detail sample, selection contacts, multi-select/isolate, mouse-drag facility, stats extension | CkFoundation/CkJolt | ⏳ Pending |
-| 7 | Unreal-scheme camera, Draw command lane, sim controls, detail panel, multi-select/isolate/follow UI, drag UI | CkGameplayDebugger/CkJoltDebugger | ⏳ Pending |
-| 8 | Constraints population, probe results, health checks, labels+hover, grid/gizmo/bookmarks, close-out | both | ⏳ Pending |
-| — | Ship (ck-ship-dev, user-gated) | both + superproject pointer bumps | 🟡 withheld — extended by phases 5–8 |
+| 6 | Pause/step, body+character detail sample, selection contacts, multi-select/isolate, mouse-drag facility, stats extension | CkFoundation/CkJolt | ✅ Done 2026-08-15 (committed locally; `[EDITOR-VERIFY]` pending) |
+| 7 | Unreal-scheme camera, Draw command lane, sim controls, detail panel, multi-select/isolate/follow UI, drag UI | CkGameplayDebugger/CkJoltDebugger | ✅ Done 2026-08-15 (committed locally; `[EDITOR-VERIFY]` pending) |
+| 8 | Constraints population, probe results, health checks, labels+hover, grid/gizmo/bookmarks, close-out | both | ✅ Done 2026-08-15 (committed locally; `[EDITOR-VERIFY]` pending) |
+| — | Ship (ck-ship-dev, user-gated) | both + superproject pointer bumps | 🟢 READY — all 8 phases committed locally; push + pointer bumps await user (P0-D8/P4-D36) |
 
 ## Phase summaries (contracts to be authored at entry)
 

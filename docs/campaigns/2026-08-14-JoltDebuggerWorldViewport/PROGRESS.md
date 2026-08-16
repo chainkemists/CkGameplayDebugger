@@ -1,47 +1,110 @@
 # Jolt Debugger — World Viewport — PROGRESS.md (living log)
 
 ## Current state  <!-- supersedes everything below; update at EVERY phase boundary and session end -->
-**As of 2026-08-15 (campaign EXTENDED — Phase 5 DONE + committed; Phase 6 next under P5-D65 speed policy):** Phases 1–4 are DONE
-and COMMITTED LOCALLY. After the user's live PIE pass the campaign was **extended by four phases**
-(5–8: draw channels + draw flags + colour modes; sim control + inspection + drag facility; camera
-+ command lanes + detail + drag UI; constraints/probes/health/labels/grid + close-out). Rulings
-**P5-D38 … P8-D60** are in the decision log below; phase contracts are in `PHASE_5.md` … `PHASE_8.md`;
-the unit breakdown is in `PHASE_5_DISPATCH.md`. **NEXT: Phase 6 executor A (P5-D66 Island drop + pause/step + detail sample + selected-body contacts + multi-select/isolate), then executor B (drag facility + stats).**
-**SHIP IS WITHHELD — extended by phases 5–8** (previously "ready"). Nothing pushed; no superproject
-pointer bumps. `[EDITOR-VERIFY]` for Phases 3–4 (+ `[PACKAGED-VERIFY]`) still awaits the user; the
-Phase-1–4 work is independently shippable if the user chooses to publish before 5–8 land.
-**Local tips (all `dev`, all ahead of `origin/dev`):**
-- CkFoundation: 4e8b1c5a6 (Phase 5) ← 2d0f71ced (Phase 4) ← 8e85733f1 (P3) ← 5b3ce3eb3 (P2) ← fb90e2f09 (branding) ← 5edf6c152 (P1)
-- CkTests: f866da75 (P5) ← 59e3d1d6 (P4) ← 99e8c9f9 (P3) ← d039513b (P2) ← a6903924 (branding) ← fbd99927 (P1)
-- CkGameplayDebugger: [P5 docs commit] ← 1e24bfe (P5 collateral) ← 688583b (P4 docs) ← 66f1e75 (P4) ← 0271004/f646b4a (P3) ← 00b4801/c1cbd5f (P2) ← 5b954c7 (branding) ← c804e7b (P1 docs)
-- Superproject: local `dev` @ fd13be1 (branding) on top of origin/dev f51209d; HEAD detached at fd13be1.
-**Final gate of record (orchestrator, serial, final artifact):** full suite 1146/1150 with fails ⊆
-baseline named set (one flaky sibling re-ran green in isolation); scoped Jolt+JoltDebugger 78/78 exit 0
-(14 facility + 9 debugger specs); DebuggerLauncher census 3/3; Probe 27/27.
-**Measured (P4 benchmark, 100k static + 1k awake):** steady 2.6 ms; revision re-run 23 ms (was 260);
-selection change 24 ms (was 250); pick 14–16 ms; first pass ~63–70 ms.
+**As of 2026-08-15 — CAMPAIGN CLOSED. All 8 phases are DONE and COMMITTED LOCALLY on `dev` in each
+of the three submodules.** Phases 1–4 delivered the world-targetable facility, the preview viewport,
+the outliner/selection stack and the 100k hardening; phases 5–8 turned it from a shape viewer into a
+physics debugger (draw channels + flags + colour modes; sim control + inspection + drag facility;
+Unreal-scheme camera + command lanes + detail + drag UI; constraints/probes/health/labels/grid +
+close-out). Rulings **P0-D1 … P8-D74** are in the decision log below; phase contracts are in
+`PHASE_1.md` … `PHASE_8.md`.
+
+**NEXT — user only: (1) the `[EDITOR-VERIFY]` pass (section below, 66 numbered steps + the retained
+Phase-3/4 pointers), then (2) ship** per the instructions that follow. Nothing else is queued.
+
+**SHIP IS WITHHELD (P0-D8 / P4-D36 — outward action, user-gated).** Nothing pushed; no superproject
+pointer bumps; no downstream bumps.
+
+**Local tips (all `dev`, all strictly ahead of `origin/dev`, all fast-forwards):**
+- **CkFoundation `495214021`** — 495214021 (final fix-up + `TryPick_BodyHit`) ← ee073f2c7 (P8A) ←
+  1df23d699 (P6 fix-up) ← 2bef8ef5c (P6B) ← 1242ba703 (P6A) ← 4e8b1c5a6 (P5) ← 2d0f71ced (P4) ←
+  8e85733f1 (P3) ← 5b3ce3eb3 (P2) ← fb90e2f09 (branding) ← 5edf6c152 (P1)
+- **CkTests `536d6013`** — 536d6013 ← 0accfe9c ← 551fe5f0 ← ecacf8c5 ← 756e7260 ← f866da75 (P5) ←
+  59e3d1d6 (P4) ← 99e8c9f9 (P3) ← d039513b (P2) ← a6903924 (branding) ← fbd99927 (P1)
+- **CkGameplayDebugger `6bde863`** — 6bde863 (final fix-up) ← 25e0c91 (P8B + Phase-7 fix-up) ←
+  5fff942 (P8A) ← 4bdd694 (P7B) ← 1300de4 (P7A) ← d905760 ← a8cf391 (P5 docs) ← 1e24bfe (P5
+  collateral) ← 688583b (P4 docs) ← 66f1e75 (P4) ← 0271004/f646b4a (P3) ← 00b4801/c1cbd5f (P2) ←
+  5b954c7 (branding) ← c804e7b (P1 docs); **plus the docs close-out commit on top.**
+- Superproject: local `dev` @ fd13be1 (branding) on top of origin/dev f51209d; HEAD detached at
+  fd13be1. **No gitlink bumps made.**
+
+**GATE OF RECORD (orchestrator re-read the logs; serial; FINAL artifact — the one built from
+`6bde863` / `495214021` / `536d6013`):** full suite `Saved/Logs/BuildTest_Final_Full.log`
+(2026-08-15 17:55) — **Total 1150 / Passed 1146 / Failed 4 / Contaminated 0**. The failing set is
+EXACTLY the Phase-4 baseline set — **zero new, zero gone**:
+`Ck_AutoTest_Crowd_NavQueryFilter_ForceReplan`, `Ck_AutoTest_Homing_Retarget_SwitchesPursuit`,
+`Ck_AutoTest_PathNetworkFollower_DesiredNavmeshClearanceMovesInward`,
+`Ck_AutoTest_PathNetworkFollower_ProjectsRibbonWaypointWithinNavQueryExtent`.
+Scoped: `Jolt` **98/98** (`Test_Final_Jolt.log`, 18:04), `DebuggerLauncher` **3/3**, `Probe` **27/27**.
+
+**Measured (final artifact, 100k default — MEASURED, NOT GATED):** steady **1.73 ms**, revision
+**15.8 ms**, highlight **16.8 ms**, pick **12.5 ms**, first pass **48.6 ms**; all draw flags on
+≈ **290–306 ms** (retained-lines optimization is a recorded follow-up, not chased).
+
+**Final fix-up ([P8-D74]) landed:** F1–F7 (first half), F10, and P8-D73. **F6's second half — clearing
+the hover when the hovered body leaves the outliner set — was SKIPPED** under the P5-D65 speed policy
+and is documented as a **Known gap** in `CkJoltDebugger/CLAUDE.md` (the hover clears on the next mouse
+move). F8 and F9 accepted no-change.
 
 ## Ship — instructions for the user (NOT executed; cross-repo publish guard)
-> **2026-08-15: ship withheld — the campaign was extended by phases 5–8.** These steps stay valid
-> and describe how to publish the Phase-1–4 work *if the user chooses to ship it early*; otherwise
-> they run once after Phase 8. Phases 5–8 add commits to the same three `dev` tips, so the
-> dependency order and the pointer-bump step are unchanged either way.
+> **Covers the WHOLE 8-phase campaign in one pass.** Every step below is outward and user-gated;
+> the orchestrator executed none of them. Run the `[EDITOR-VERIFY]` pass FIRST — a red step is
+> cheaper to fix-forward before the tips are published than after.
 
-1. PIE-verify Phase 3 (7 steps, PHASE_3.md) + Phase 4 (5 steps, PHASE_4.md) + the static-probe line
-   (destroy a Static probe with the debugger open → its instance disappears). Fix-forward anything red.
-2. Publish in dependency order so no tip references an unpushed SHA: push CkFoundation `dev` first,
-   then CkTests `dev`, then CkGameplayDebugger `dev` (each is a fast-forward of origin/dev — verify
-   with `git status -sb`); THEN bump the three gitlinks in the superproject on a `feature/`-prefixed
-   branch (`feature/jolt-debugger-world-viewport`) and push/PR per `ck-ship-dev` / `ck-ship-pr`.
-   The superproject also carries the local branding commit fd13be1 on `dev` (attach with
-   `git checkout dev` once the editor is closed).
-3. `[PACKAGED-VERIFY]`: Development packaged build → open the Jolt debugger → both engine debug
-   materials render (solid + wireframe). If not: switch wireframe to the CkUsf-generated look
-   (P1-D13 branch b, mechanism in `CkJolt/CLAUDE.md`).
-4. Downstream (BusterBlock) pointer bumps after the three pushes.
-5. Next campaign (already scoped by the user): refactor the Crowd debugger onto this facility
-   (carry over: ortho eye-offset fix `SCkCrowdDebugger_3dViewport.cpp:632-637`, preview-world
-   target registration, outliner/selection contracts).
+**0. Pre-check (do this before anything else).** For each submodule confirm it is *ahead only* —
+never diverged, never behind:
+
+```
+git -C Plugins/CkFoundation        status -sb    # expect: ## dev...origin/dev [ahead N]
+git -C Plugins/CkTests             status -sb    # expect: ## dev...origin/dev [ahead N]
+git -C Plugins/CkGameplayDebugger  status -sb    # expect: ## dev...origin/dev [ahead N]
+```
+
+Any `behind` or `diverged` means someone else moved `origin/dev`: STOP and rebase per `ck-ship-dev`
+before pushing. All three are expected to be clean fast-forwards of `origin/dev`.
+
+**1. Push the submodules in dependency order** — CkGameplayDebugger consumes CkFoundation, and CkTests
+carries the specs for it, so nothing may be pushed that references an unpushed SHA:
+
+```
+git -C Plugins/CkFoundation        push origin dev    # → 495214021
+git -C Plugins/CkTests             push origin dev    # → 536d6013
+git -C Plugins/CkGameplayDebugger  push origin dev    # → 6bde863
+```
+
+**Cross-repo publish guard: never bump a superproject pointer to a SHA that is not yet on `origin`.**
+All three pushes must be green before step 2 begins.
+
+**2. Superproject pointer bumps.** Close the editor first (the hook blocks `git checkout` while it
+holds engine assets), then:
+
+```
+git checkout dev                                                        # attaches the local branding commit fd13be1
+git checkout -b feature/jolt-debugger-world-viewport                    # branch tripwire: feature/ or bugfix/ ONLY
+git add Plugins/CkFoundation Plugins/CkTests Plugins/CkGameplayDebugger  # stage ONLY the three gitlinks
+git commit -m "chore(submodule): bump CkFoundation, CkTests, CkGameplayDebugger — Jolt debugger campaign (phases 1–8)"
+```
+
+⚠ **Stage only those three paths.** A blanket `git add .` would sweep up whatever else is dirty in
+the working tree and silently attach another session's work to this commit.
+⚠ **`feature/` or `bugfix/` only** — the build machine ignores every other prefix and the branch
+fails silently: the push succeeds, the PR opens, and CI never runs. This work is additive →
+`feature/jolt-debugger-world-viewport`.
+
+**3. Push + PR** via `ck-ship-dev` / `ck-ship-pr`.
+
+**4. `[PACKAGED-VERIFY]`** — package a **Development** build (DeveloperTool modules are excluded from
+Test/Shipping), open the Jolt debugger, and confirm **both** engine debug materials render: bodies
+solid, then wireframe on the toggle — not untinted-default and not invisible. A `Failed to load
+WireframeMaterial` line in the log is a FAIL even if the window looks fine (the facility degrades to
+Solid and ensures). Exact acceptance steps in `CkJolt/Claude.md` § "Colour + wireframe". On failure the
+fallback is P1-D13 branch (b), a CkUsf-generated wireframe look.
+
+**5. Downstream (BusterBlock) pointer bumps** — only after all three pushes in step 1 are on `origin`.
+
+**6. Next campaign (already scoped by the user):** refactor the Crowd debugger onto this facility
+(carry over: ortho eye-offset fix `SCkCrowdDebugger_3dViewport.cpp:632-637`, preview-world target
+registration, outliner/selection contracts, and now the Unreal-scheme camera from P7-D49).
 
 ## Status board
 
@@ -53,10 +116,108 @@ selection change 24 ms (was 250); pick 14–16 ms; first pass ~63–70 ms.
 | 3 — outliner + selection | ✅ Done 2026-08-15, COMMITTED (8e85733f1 / 99e8c9f9 / f646b4a / 0271004); gate: full 1146/1150 fails ⊆ baseline (VatProxy red re-ran green = Zen DDC infra noise), scoped serial 75/75; `[EDITOR-VERIFY]` (7 steps in PHASE_3.md) pending user |
 | 4 — scale + polish | ✅ Done 2026-08-15, COMMITTED (2d0f71ced / 59e3d1d6 / 66f1e75); measured; gate: full 1146/1150 ⊆ baseline, scoped 78/78; `[EDITOR-VERIFY]` (5 steps + static-probe) pending user |
 | 5 — draw channels, draw flags, colour modes (CkJolt) | ✅ Done 2026-08-15, COMMITTED (CkFoundation 4e8b1c5a6 / CkTests f866da75 / CkGameplayDebugger 1e24bfe); gate Jolt 83/83, Launcher 3/3, Probe 27/27; `[EDITOR-VERIFY]` pending; Island mode dropped in P6 (P5-D66) |
-| 6 — sim control, inspection, drag facility (CkJolt) | ⏳ Pending — contract `PHASE_6.md` (P6-D43…D48) |
-| 7 — camera, lanes, detail, selection, drag UI (CkJoltDebugger) | ⏳ Pending — contract `PHASE_7.md` (P7-D49…D54) |
-| 8 — constraints, probes, health, labels, grid, close-out | ⏳ Pending — contract `PHASE_8.md` (P8-D55…D60) |
-| Ship | 🟡 withheld — extended by phases 5–8 (push/pointer bumps/PACKAGED-VERIFY still user-gated; instructions in "Ship" section above) |
+| 6 — sim control, inspection, drag facility (CkJolt) | ✅ Done 2026-08-15, COMMITTED (CkFoundation 1242ba703/2bef8ef5c/1df23d699 · CkTests 756e7260/ecacf8c5/551fe5f0 · CkGameplayDebugger d905760); gate Jolt 91/91 + JoltDebug 10/10 (post-reboot re-run); `[EDITOR-VERIFY]` pending |
+| 7 — camera, lanes, detail, selection, drag UI (CkJoltDebugger) | ✅ Done 2026-08-15, COMMITTED (CkGameplayDebugger 1300de4 (7A) / 4bdd694 (7B); fix-up folded into 25e0c91 + 6bde863); gate at landing JoltDebug 11/11 (`BuildTest_P7B_1.log` 16:20) + Launcher 3/3 (16:22); re-proven on the FINAL artifact by the gate of record (full 1146/1150 delta-zero, `Jolt` 98/98, Launcher 3/3, `Probe` 27/27); review 12 findings → [P7-D71]; `[EDITOR-VERIFY]` pending user |
+| 8 — constraints, probes, health, labels, grid, close-out | ✅ Done 2026-08-15, COMMITTED (CkFoundation ee073f2c7 → 495214021 · CkTests 0accfe9c → 536d6013 · CkGameplayDebugger 5fff942 (8A) → 25e0c91 (8B + P7 fix-up) → 6bde863 (final fix-up)); **gate of record: full serial 1150/1146/4/0 with the failing set == Phase-4 baseline set exactly (zero new, zero gone), `Jolt` 98/98, `DebuggerLauncher` 3/3, `Probe` 27/27**; benchmark 100k steady 1.73 ms / revision 15.8 / highlight 16.8 / pick 12.5 / first pass 48.6, all-flags ≈ 290–306 ms; final review 10 findings → [P8-D74] (F6 second half SKIPPED → Known gap); `[EDITOR-VERIFY]` pending user |
+| Ship | 🟢 READY — all 8 phases committed locally; push + pointer bumps await user (P0-D8/P4-D36). Instructions in the "Ship" section above; run the `[EDITOR-VERIFY]` pass first |
+
+## `[EDITOR-VERIFY]` — user pass (phases 5–8)
+
+Every step below is one live PIE action. They are consolidated and deduped from
+`CkJoltDebugger/CLAUDE.md` § "What the specs cannot reach" and `CkJolt/Claude.md`; headless specs
+construct widgets but cannot render, cannot deliver a real mouse-move, and cannot give a target real
+content, so this list IS the remaining evidence. **The Phase-3 (7 steps, `PHASE_3.md`) and Phase-4
+(5 steps + the static-probe line: destroy a Static probe with the debugger open → its instance
+disappears) pointers stand unchanged** — run them too if they have not been run since Phase 4.
+
+**In-world CVars (the Phase-5 re-host — verify NOTHING regressed for the existing consumer)**
+1. `ck.Jolt.DebugDraw.Enabled 1` still draws every body, static and dynamic, as it did before.
+2. `ck.Jolt.DebugDraw.Opacity` still changes in-world body translucency.
+3. `ck.Jolt.DebugDraw.Velocity 1` draws **both** the linear and the angular arrow (one CVar, two flags).
+4. `ck.Jolt.DebugDraw.WorldTransform 1` draws body axes at a **visible** size (the ×100 scale note).
+5. `ck.Jolt.DebugDraw.Constraints 1` draws constraints in-world.
+6. `ck.Jolt.DebugDraw.Contacts 1` draws contact points AND normals — and confirm it also arms them in the debugger preview (this toggle is process-wide, unlike every other flag).
+7. `ck.Jolt.DebugDraw.SleepColoring 1` collapses statics/kinematics to one neutral colour each and distinguishes only awake vs asleep.
+8. In-world body colours now follow the facility palette (grey static / green kinematic / yellow awake / dim red sleeping / blue sensor / tan baked-static / magenta character) instead of per-body distinct colours — confirm this reads as an improvement, not a regression.
+
+**Viewport draw + contacts**
+9. Bodies actually render in the debugger viewport and match the in-world draw.
+10. Every Draw-lane toggle visibly changes the viewport — velocity, angular velocity, world transform, COM axes, AABBs, constraints, contacts, labels.
+11. The whole Draw lane (all flags + colour mode) survives an editor restart.
+12. Switching colour mode recolours the bodies and the legend follows.
+13. The population toggles grey out outside BodyClass mode; returning to Class restores the toggles the user had set.
+14. The wireframe/solid toggle flips render mode with the colour surviving both.
+15. Demand goes off when the tab is backgrounded — click a sibling tab during PIE and the viewport stops capturing.
+16. The window survives PIE end without crashing, showing its last state.
+17. The contacts list fills for a resting body and its rows select the other body on click; a character selection lists none.
+
+**Highlight, hover, labels**
+18. A row click highlights that body **unmistakably** — opaque magenta, drawn over its neighbours.
+19. Hovering a body highlights it subtly and shows its name.
+20. The hover never fires mid-click or mid-drag, and leaving the viewport clears it.
+21. **Known gap (F6 second half, deliberately skipped):** a hovered body whose row leaves the world keeps its hover until the mouse moves — confirm this is tolerable in practice.
+22. Labels appear on the primary selection with **no** draw flag set.
+23. Turning the Labels flag on labels bodies up to the 500 cap without tanking the frame rate (the cap logs once).
+24. Labels sit on the right bodies at every camera angle and in both projections.
+
+**Camera (Unreal editor scheme, P7-D49)**
+25. RMB-drag looks around **without moving the eye**.
+26. WASD/QE fly **only** while RMB is held; RMB+wheel changes fly speed.
+27. MMB-drag pans; the wheel dollies along the view.
+28. Alt+LMB orbits the current look-at; Alt+RMB dollies.
+29. Plain LMB-drag tracks forward/back + yaw, and the **sign** feels right (drag down = forward) — a spec can only assert the eye moved along the view, not which way feels correct.
+30. In an ortho preset RMB and MMB pan, the wheel zooms, and the view **never** rotates.
+31. The ortho eye offset keeps solid bodies from being clipped by the near plane in Top/Front/etc.
+32. Framing lands on real content — Frame All / `Home` and each ortho preset put the bodies on screen.
+33. `F` frames the selection; `Ctrl+F` and `Alt+F` do **not** frame.
+34. The wheel keeps flying forward past whatever was framed instead of stalling in front of it, and an ortho pan drags proportionally at every zoom level.
+
+**Selection, isolate, follow**
+35. The outliner lists all four populations with clean names and both searches filter them.
+36. A viewport click on a body selects its row — including a body **past the first** of a baked-static actor (resolved through the collector's owner index).
+37. A drag-then-release does **not** pick; a click does.
+38. ECS debugger → a Jolt entity → "Open In → Jolt" lands on the row; "Sync from ECS" works; both reach a row the filter is currently hiding.
+39. The game-viewport picker previews and picks only Jolt entities and their owner chain.
+40. A selected row stays visible, dimmed, when a filter typed afterwards excludes it.
+41. Ctrl+click in the outliner **and** in the viewport builds a multi-selection, all of it highlighted; the detail panel follows the **last** body clicked.
+42. Isolate hides everything else, `I` toggles it, it re-applies as the selection changes, and with nothing selected it is inert rather than blanking the viewport.
+43. Follow keeps the camera on a moving body **without re-framing it** — rotation and distance stay put.
+44. The detail panel's velocity tracks a moving dynamic body and reads `--` for a character; the character group flips visible for a character selection and its rigid-body rows degrade.
+45. Preferences persist across an **editor restart** — render mode, the four population toggles, and the camera orientation come back as they were left.
+
+**Sim controls + stats**
+46. Pause freezes the sim (**in-world too**); Step advances exactly one step.
+47. Space toggles pause and Enter steps, with the viewport focused.
+48. The stat rail shows the PAUSED pill, the step ms, and a body breakdown that visibly lags by up to 30 captures under its "(sampled)" labels.
+
+**Drag (P7-D54 / P6-D47)**
+49. Ctrl+LMB drag on a dynamic body pulls it around with a visible **yellow drag line**; release drops it and the line disappears.
+50. The drag grabs the body **at the point clicked** and starts on the press — click a corner and the body hangs from that corner, not its centre, and the very first mouse move already pulls.
+51. Ctrl+wheel pushes the drag plane away and pulls it back.
+52. Dragging a **static or kinematic** body does nothing; Ctrl+LMB on **empty space** opens no drag (the previously selected body does not jump to the cursor).
+53. Switching the world selector mid-drag drops the body and takes the drag line with it; closing the tab mid-drag does the same.
+
+**Constraints, probes, health**
+54. Constraints appear in the outliner with their type; selecting one highlights **both** bodies and turns the world's constraint reference frames on for as long as the selection holds.
+55. "Open In → Jolt" from the ECS debugger reaches a constraint row.
+56. A rope built by `UCk_Utils_JoltRope_UE` lists its constraints and they all highlight sensibly.
+57. Selecting an overlapping probe with "Probe results" on draws contact points, normals and a line to each overlapping entity; the lines do **not** flicker between captures and disappear when the selection leaves the probe.
+58. The tooltip explains why a persistent ProbeTrace has no points.
+59. Throwing a body far below KillZ, or making one a runaway, lights the header badge **and** the Problems chip and narrows the list to it; slowing it down clears both.
+
+**Grid, gizmo, bookmarks**
+60. The ground grid gives the empty preview world a sense of scale — 1 m cells, a heavier line every 10 m, red/green axes through the origin; the toggle takes it away and brings it back, and it survives an editor restart.
+61. The world-axis gizmo (bottom-left) points the right way in **every** camera preset and turns with the camera; clicking through it still picks the body underneath.
+62. `Ctrl+3`, move the camera, then `3` returns it **exactly** — including the projection, so a bookmark taken in Top comes back orthographic.
+63. An unused bookmark digit does nothing; `Ctrl+Alt+3` does not store; digits typed into the outliner's search box do not move the camera.
+
+**Multi-world / authority**
+64. In a **server+client PIE** session both worlds draw in-world under the same CVars (the old first-world-only behaviour was a singleton artifact and is gone — P1-D17).
+65. The world selector switches the viewport between the PIE worlds and the outliner repopulates.
+66. On a PIE **client** world the Drag chip is dark with an **authority-aware** tooltip and Ctrl+LMB does nothing (it still adds to the selection — only the drag is refused). ⚠ P7-D71/F11 moved the tooltip binding onto the `SCkDebug_IconToggle` itself — confirm the authority text is what appears on hover, not the toggle's generic one.
+
+**`[PACKAGED-VERIFY]`** (not PIE — step 4 of the Ship section): both engine debug materials render in
+a packaged **Development** build, solid and wireframe. Exact acceptance steps in `CkJolt/Claude.md`.
 
 ## Decision log
 | # | Date | Decision | Why | Revisit when |
@@ -108,16 +269,25 @@ selection change 24 ms (was 250); pick 14–16 ms; first pass ~63–70 ms.
 ## Open items
 | Item | Status | Next step |
 |---|---|---|
-| INV-A color mechanism | RULED → P1-D11 | — |
-| INV-B static-body zero-cost model | RULED → P1-D10 | — |
-| INV-C ISM registration in preview world | RULED → P1-D12 (spec must prove it) | Phase-1 work item 5 |
-| INV-D async-physics capture strategy | RULED → P1-D9 | — |
-| INV-E renderer rename/architecture | RULED → P1-D8 | — |
-| P1-D13 wireframe material source | RULED → decision log P1-D13 (branch (a)) | — |
-| Baseline gate | DONE — 1146/1150, 4 named pre-existing fails recorded above | — |
-| `[PACKAGED-VERIFY]` both debug materials (`M_SimpleUnlitTranslucent` + `WireframeMaterial`) load in a packaged Development build | OPEN (pre-existing risk, now named) | Verify during Phase-4 / next packaged acceptance pass; on failure switch wireframe to P1-D13 branch (b) |
-| Phases 5–8 planner STOP list (S1–S14) | ✅ CLOSED 2026-08-15 — all 14 ruled, see [P5-D61] | Unit XI is unblocked |
+| INV-A color mechanism | ✅ CLOSED — RULED → P1-D11, shipped | — |
+| INV-B static-body zero-cost model | ✅ CLOSED — RULED → P1-D10, measured in P4/P8 | — |
+| INV-C ISM registration in preview world | ✅ CLOSED — RULED → P1-D12 and PROVEN by `Ck.Jolt.DebugDraw.PreviewWorldCompat` | — |
+| INV-D async-physics capture strategy | ✅ CLOSED — RULED → P1-D9, shipped | — |
+| INV-E renderer rename/architecture | ✅ CLOSED — RULED → P1-D8, shipped | — |
+| P1-D13 wireframe material source | ✅ CLOSED — branch (a) shipped; packaged risk tracked in its own row below | — |
+| Baseline gate | ✅ CLOSED — 1146/1150, 4 named pre-existing fails; the final gate of record matched the set EXACTLY | — |
+| Phases 5–8 planner STOP list (S1–S14) | ✅ CLOSED 2026-08-15 — all 14 ruled, see [P5-D61] | — |
+| **`[EDITOR-VERIFY]` — user PIE pass (66 steps, section above) + the retained Phase-3/4 pointers** | **OPEN — awaits the user** | Run it before shipping; fix-forward anything red |
+| **`[PACKAGED-VERIFY]` both debug materials (`M_SimpleUnlitTranslucent` + `WireframeMaterial`) load in a packaged Development build** | **OPEN** (pre-existing risk, named since P1-D13) | Ship step 4; on failure switch wireframe to P1-D13 branch (b) |
+| **F6 second half — hover does not clear when the hovered body leaves the outliner set** | **OPEN — deliberate gap** ([P8-D74], skipped under the P5-D65 speed policy) | Documented as a Known gap in `CkJoltDebugger/CLAUDE.md`; the hover clears on the next mouse move. Close it if the user's PIE pass finds it annoying (step 21) |
+| **ProbeTrace results population** | **OPEN — follow-up** | A persistent ProbeTrace draws lines to hit entities but no contact points (the fragments do not carry them); the tooltip explains it. Populating them is a CkSpatialQuery change, not a debugger one |
+| **All-flags cost ≈ 290–306 ms at 100k** | **OPEN — perf follow-up** | The line channel re-pushes every line every capture. Retaining unchanged lines (or batching per flag) is the obvious lever; NOT chased — the default 1.73 ms path is the one that matters |
+| **Island colour mode** | **OPEN — optional** | Dropped in P5-D66 because `GetIslandIndexInternal()` sits under Jolt's INTERNAL-USE banner. A vendored-patch option exists if the user wants it back |
+| **Per-line contact-record lock** | **OPEN — perf item** ([P5-D64] F6) | The contact record takes the `FCriticalSection` per LINE, not per batch. Only costs while some target demands contacts; measure before optimizing |
+| **The drag anchor inflates `BodyStats`** | **OPEN — documented, not fixed** | The kinematic anchor is a real JPH body, so the sampled body counts tick up by one while a drag is live. The capture skips it for drawing/picking/listing; only the stat rail sees it |
 **Rule: no completion claim may be written anywhere in this file while any row here is unresolved.**
+> The seven OPEN rows above are **user-gated or explicitly deferred**, not unfinished implementation
+> work. No completion claim in this file rests on any of them.
 
 ## Planner STOP list — Phases 5–8 (orchestrator rulings needed; NOT resolved by the planner)
 
@@ -174,6 +344,194 @@ reads. The planner wrote the phase contracts to the ruling **as issued** and rec
   green in the serial baseline). Orchestrator's serial full gate is the arbiter.
 
 ## Dated entries (append-only, newest first)
+
+### 2026-08-15 — CAMPAIGN CLOSED (phases 5–8): final fix-up landed; gate of record delta-zero; docs welded
+- **Final fix-up landed** ([P8-D74]): F1–F7 (first half), F10, and P8-D73 (drag release targets the
+  subsystem the drag began on, via a weak ref captured at arm). **F6's second half — clearing the
+  hover when the hovered body leaves the outliner set — was SKIPPED** under the P5-D65 speed policy
+  and is written up as a **Known gap** in `CkJoltDebugger/CLAUDE.md`; the hover clears on the next
+  mouse move. **F8** (grid colour comment) and **F9** (per-capture `BodyIDVector` while armed) were
+  accepted no-change, F9 as a documented cost.
+- **GATE OF RECORD — orchestrator re-read the logs, serial, on the FINAL artifact.** Full suite
+  `Saved/Logs/BuildTest_Final_Full.log` (17:55): **Total 1150 / Passed 1146 / Failed 4 /
+  Contaminated 0**. The failing set is **exactly** the Phase-4 baseline set — `Crowd_NavQueryFilter_
+  ForceReplan`, `Homing_Retarget_SwitchesPursuit`, `PathNetworkFollower_DesiredNavmeshClearance
+  MovesInward`, `PathNetworkFollower_ProjectsRibbonWaypointWithinNavQueryExtent` — **zero new, zero
+  gone**. Scoped: `Jolt` **98/98** (`Test_Final_Jolt.log`, 18:04), `DebuggerLauncher` **3/3**,
+  `Probe` **27/27**.
+- **Benchmark (100k default, measured — NOT a gate):** steady **1.73 ms**, revision **15.8**,
+  highlight **16.8**, pick **12.5**, first pass **48.6**; all draw flags on ≈ **290–306 ms**
+  (recorded as a follow-up, not chased — the default path is the one that matters).
+- **COMMITTED LOCALLY, tips:** CkFoundation **`495214021`**, CkTests **`536d6013`**,
+  CkGameplayDebugger **`6bde863`** (plus this docs close-out commit). All three are clean
+  fast-forwards of `origin/dev`.
+- **Docs welded:** both module CLAUDE.md files finalised; PHASE_7 / PHASE_8 status headers and exit
+  criteria ticked with the evidence above; PLAN rows 7/8 ✅ and the Ship row 🟢 READY; PROGRESS's
+  Current state, Ship instructions (whole campaign, one pass) and status board rewritten; the
+  `[EDITOR-VERIFY]` backlog consolidated into **66 numbered steps in 10 groups** with the Phase-3/4
+  pointers retained.
+- **SHIP REMAINS WITHHELD (P0-D8 / P4-D36).** Nothing pushed, no superproject pointer bumps, no
+  downstream bumps. The only work left in this campaign belongs to the user: the `[EDITOR-VERIFY]`
+  pass, then the ship sequence.
+
+### 2026-08-15 — Phase-8 final adversarial review (fresh Opus): 10 findings; triage RATIFIED [P8-D74]; final fix-up + gate of record dispatched
+- **[P8-D74]** FIX-NOW: **F1** `DoApplyConstraintReferenceFrames()` on world change (old-world
+  leak of the reference-frames flag); **F2** isolation gather folds `ConstraintBodyKeys` (isolate +
+  constraint selection cleared isolation); **F3** `Select_NearestLabels` bounded selection (partial
+  sort / max-heap of Cap) + fix the two "nothing allocates" claims; **F4** cache the Problems chip
+  count in `Refresh()`; **F5** probe-results signature folds `Origin` + each `_OtherLocation` (frozen
+  ProbeTrace lines); **F6** `MouseLeave` override clears hover; **F7** `~FScopedPreferences` calls
+  `SaveConfig()` + covers `ShowProbeResults` (spec was writing the developer's real ini — must land
+  before the gate); **F10** assert the fifth `Is_JoltDebuggerEntity` clause. Plus **P8-D73** (drag
+  release targets the subsystem the drag began on — weak ref captured at arm). ACCEPT: **F8**
+  (grid colour comment), **F9** (per-capture `BodyIDVector` while armed — documented cost).
+- Gate of record after the fix-up (P5-D65): full serial suite (delta vs Phase-4 baseline set) +
+  scoped `Jolt`, `JoltDebug`, `DebuggerLauncher`, `Probe`; benchmark numbers recorded.
+
+
+### 2026-08-15 — Phase 8B + Phase-7 fix-up + TryPick_BodyHit DONE (Opus); orchestrator-verified (Jolt.DebugDraw 27/27 17:23, JoltDebug 15/15 17:24, DebuggerLauncher 3/3 17:25); COMMITTED (CkFoundation 495214021 / CkTests 536d6013 / CkGameplayDebugger 25e0c91); [P8-D73]; final review dispatched
+- ALL implementation units of phases 5–8 are now committed. Remaining: final adversarial review →
+  fix-up → gate of record (full serial suite vs Phase-4 baseline + scoped) → docs close-out.
+- **[P8-D73]** ruling on 8B deviation (a): `HandleDragRelease` in `HandleWorldChanged` runs after
+  the selector re-pointed, so it cannot `Request_EndDrag` on the OLD world (backstop = FJoltWorld
+  Shutdown — insufficient for a live server↔client selector switch) → FIX in the final fix-up: the
+  window keeps a weak ref to the subsystem the drag began on and ends the drag on THAT subsystem.
+  Deviations (b) `OutlinerPrune` source + `Simulate_RowClick` seam, (c) `Net` glyph for the grid —
+  ACCEPTED.
+
+
+### 2026-08-15 — Phase 8A DONE (Opus); orchestrator-verified (Jolt.DebugDraw 27/27 16:56, JoltDebug 14/14 16:55, DebuggerLauncher 3/3 16:57, Probe 27/27 16:58); COMMITTED (CkFoundation ee073f2c7 / CkTests 0accfe9c / CkGameplayDebugger 5fff942); [P8-D72]; merged "8B + Phase-7 fix-up" executor dispatched
+- Landed: constraint body accessors (`Get_BodyA/B/IsBodyBWorldAnchor` on utils); Constraint
+  population (rows, predicate, both bodies highlighted + reference frames while selected); probe
+  results retained channel `"JoltDebugger.ProbeResults"`; health scan (target thresholds,
+  `Get_ProblemBodies`, O(active), off by default) + Problems chip + count badge; labels OnPaint
+  (500 nearest, cached font); hover (≥60 ms, gesture-suppressed). Specs ListsConstraintRows,
+  ProblemsChipNarrowsToFlaggedRows, LabelCapKeepsTheNearest, ProblemBodiesFlagTheBrokenOnes.
+- **[P8-D72] accepted deviations:** Build.cs +CkEcsExt +CkLog (import libs don't propagate across
+  the plugin boundary); new module log category; ProbeTrace branch fragment-guarded (no ProbeTrace
+  population — follow-up); health scan O(active) misses a body that sank below KillZ then slept
+  (documented); reference-frame toggle reads ON while a constraint is selected; NaN arms of the
+  facility spec exercise the pure predicate (live bodies clamp NaN); label font cached at Construct.
+
+
+### 2026-08-15 — Phase-7 adversarial review (fresh Opus): 12 findings; triage RATIFIED [P7-D71]; fix-up merged into the "8B + Phase-7 fix-up" executor (after 8A lands)
+- **[P7-D71]** FIX-NOW: **F1** (HIGH — isolation set survives world change with dead keys → blank
+  viewport) → `DoApplyIsolation()`/`Clear_Isolation()` in `HandleWorldChanged`; **F2** drag line
+  channel orphaned on world change → `Clear_External(DragChannel)` there; **F3** `Request_EndDrag`
+  on world change + destructor (before `_WorldModel` re-points); **F4** Ctrl+LMB on empty space
+  arms a drag on the previous selection → arm carries the picked key (`TOptional<uint64>`), refuse
+  when unset/≠ primary — folded into P7-D70(i) `TryPick_BodyHit` rework; **F5** ortho pan scale
+  from `OrthoWidth`; **F6** wheel dolly moves eye AND look-at along forward (UE semantics) instead
+  of shrinking the pivot distance; **F7** no `_PendingPickPress` when Alt is down; **F8** window
+  re-derives `_SelectionAll` from `Get_SelectedAll()` on refresh (prune reaches highlight/isolate);
+  **F9** multi-select spec drives `SetItemSelection(..., OnMouseClick)` (add / range / ctrl-remove
+  primary); **F10** settings spec asserts the restore landed (window read-backs); **F11** authority
+  tooltip bound on the IconToggle itself. ACCEPT: **F12a** cross-refs stay `CkJolt/Claude.md`
+  (git-tracked spelling; Windows FS is case-insensitive); **F12b** RULING: Follow tracks the union
+  of highlighted bounds (what the highlight shows) — P7-D53 amended.
+- Sequencing: 8A is building CkGameplayDebugger now → the fix-up + P7-D70(i) + Phase-8 Unit C
+  (grid/gizmo/bookmarks) go to ONE executor after 8A lands; then Phase-8 review, close-out gates.
+
+
+### 2026-08-15 — Phase 7B DONE (Opus); orchestrator-verified (JoltDebug 11/11 `BuildTest_P7B_1.log` 16:20, DebuggerLauncher 3/3 16:22); COMMITTED (CkGameplayDebugger 4bdd694); [P7-D70]; Phase-7 review ∥ Phase 8A dispatched
+- Landed: `FCkJoltDebugger_SelectionFacts`; detail groups + Contacts list; outliner multi-select
+  (panel-owned store; SListView hands an arbitrary set element → primary derived from the delta);
+  window selection set → highlight all / bounds union / contacts demand; Ctrl+click add
+  (`ViewportAdditive` source); Isolate + `I`; Follow; drag UI (arm/ray/plane-shift/release,
+  retained "JoltDebugger.Drag" line, authority gate, !UE_BUILD_SHIPPING).
+- **[P7-D70] rulings on 7B deviations:** (i) drag grab-point via bounds centre on first mouse move
+  is a WORKAROUND — NOT ACCEPTED as final: the Phase-7 fix-up adds facility
+  `FCk_Jolt_DebugDrawTarget::TryPick_BodyHit(origin, dir, OutKey, OutHitPointWorld, OutDistance)`
+  (oriented-box slab hit already computed by `TryPick_Body`) and the drag opens on press at the
+  exact hit point (spec: hit point lies on the picked body's bounds surface ± tolerance);
+  (ii) `ViewportAdditive` source that re-broadcasts but does not re-stamp the outliner — ACCEPTED;
+  (iii) Isolate with empty selection clears isolation — ACCEPTED.
+- Phase-7 adversarial review (fresh Opus, range CkGameplayDebugger 1e24bfe..4bdd694 debugger only)
+  runs concurrently with Phase 8A (constraints population / probe results / health checks); the
+  Phase-7 fix-up (+ P7-D70 i) runs after 8A lands (no edits during another lane's build).
+
+
+### 2026-08-15 — Phase-6 fix-up re-gated after reboot: Jolt 91/91, JoltDebug 10/10 (orchestrator re-read `BuildTest_P6fix_Jolt.log` 15:50 / `_JoltDebug.log` 15:52); COMMITTED (CkFoundation 1df23d699 / CkTests 551fe5f0). Phase 6 DONE. 7B dispatched
+- All 15 findings mapped DONE by the gate-runner (F1–F15 incl. accepted-doc items). Benchmark
+  100k default steady 1.82 ms; all-flags 304 ms (unchanged class). Binaries post-dated sources
+  (not stale-green). Stale BusterBlock toolbox locks (reboot casualty) auto-recovered by the build.
+
+
+### 2026-08-15 — machine REBOOTED mid Phase-6 fix-up gate; fix-up edits survived on disk (uncommitted); re-gate dispatched
+- State at 15:40: CkFoundation 14 dirty CkJolt files (F1–F15 fix-up), CkTests spec dirty; commits
+  intact (CkFoundation 2bef8ef5c, CkTests ecacf8c5, CkGameplayDebugger 1300de4). Original gate
+  (91 tests, in FrameCostMatrix) never produced a verdict → treated as NOT RUN.
+- Fresh Opus gate-runner: maps diff → F1…F15, clears stale locks, runs whole `Jolt` + `JoltDebug`
+  serially, reports verdicts. Nothing accepted until the log is re-read by the orchestrator.
+
+
+### 2026-08-15 — Phase 7A DONE (Opus); orchestrator-verified; COMMITTED (CkGameplayDebugger 1300de4); Phase-6 fix-up dispatched (7B follows it)
+- Landed: UE-editor camera scheme (`_LookAt`/`_OrbitDistance` invariant; look-in-place, RMB-gated
+  flight, pan, dolly, track/yaw, Alt-orbit/dolly, ortho pan-only), spec
+  `Viewport.CameraSchemeIsUnrealStyle`; settings fields (`IsolateActive`/`FollowSelection`/`ShowGrid`
+  — no `b` prefix per house rule; `RunawayVelocityCmS`, `CameraBookmarks`, `DrawFlags`, `ColorMode`)
+  + round-trip spec; `JoltDraw` lane (Bodies/Constraints/Contacts/Labels + colour mode; legend from
+  `Get_LegendEntries`; population toggles BodyClass-only + re-applied on return); six in-world CVars;
+  `JoltSim` lane Pause/Step + Space/Enter + PAUSED pill; Simulation stat section (sampled rows).
+- Gate — **orchestrator re-read the run outputs**: `JoltDebug` 10/10 (14:51), `DebuggerLauncher`
+  3/3 (14:53), exit 0 both. Executor notes the engine is UE 5.7 (FInputKeyEventArgs deprecations).
+- **[P7-D69]** accepted deviations: no-`b` bool prefs; gesture state tracked in the client (headless
+  drivability); `Set_ColorMode` re-applies the saved population mask on return to BodyClass.
+
+
+### 2026-08-15 — Phase-6 adversarial review (fresh Opus): 15 findings; triage RATIFIED [P6-D68]; fix-up queued behind Phase 7A's build
+- **[P6-D68]** FIX-NOW: **F1** (HIGH — PlanStep consumes the step-once gate before the engine-
+  paused test → click silently lost) → evaluate `WorldBlocks` first; **F2** (HIGH — dragged body
+  destroyed mid-drag → dangling constraint/UAF) → drop the empty-queue early-out; while dragging,
+  `DoEnd_Drag()` when `TryGetBody(_DraggedBodyId)==nullptr`; **F3** (HIGH — `Query_SelectionContacts`
+  uses accept-all filters → anchor/probes listed as contacts) → `DefaultBroadPhaseLayerFilter` +
+  `DefaultObjectLayerFilter` for the selected body's layer AND skip `_InternalBodyKeys`; **F4**
+  (step-once advances floor(acc/dt) steps) → granted frame bypasses `ComputeStepPlan`: exactly 1
+  step of FixedDt, accumulator untouched; **F5/F6** (specs don't drive PlanStep/Step processors;
+  step-duration measurement uncovered) → drive `FProcessor_JoltWorld_PlanStep::DoTick`, assert
+  `Get_NumStepsLastFrame()==1`, engine-paused leg, `Get_LastStepDurationMs()>0` after real steps;
+  **F7** (`_HighlightedBodyKeys.Contains` linear per body) → parallel `TSet`; **F8** (drag facility
+  compiled into Shipping; `_BodyKey=0` aliasing) → wrap facility + processor + subsystem API in
+  `#if !UE_BUILD_SHIPPING` consistently; **F9** (`Get_DragState` reads body transform off-thread) →
+  cache grab point at `Apply_DragRequests`, getter returns the cache (do now — cheap, P7 consumes
+  it); **F11** → reject keys with bits ≥ 32 (Verbose); **F12** → add legs: kinematic refused,
+  second Begin while dragging, world Shutdown mid-drag; **F14** → fix comment, use
+  `TryResolve_JoltWorld` precedent, dedupe `Conv_GroundState`; **F15** → `Excluded` counting.
+  ACCEPT: **F10** (document anchor in BodyStats counts), **F13** (spec names as shipped; census
+  updated in Claude.md — PHASE_6 census note added by orchestrator).
+- Sequencing: fix-up touches CkJolt while Phase 7A may be building the editor → fix-up dispatched
+  AFTER 7A reports (no source edits during another lane's build). Whole-`Jolt` Phase-6 gate runs
+  with the fix-up.
+
+
+### 2026-08-15 — Phase 6 executor B DONE (Opus); orchestrator-verified; COMMITTED (CkFoundation 2bef8ef5c / CkTests ecacf8c5); Phase-6 review + Phase 7A dispatched concurrently
+- Landed: `FJoltWorld::Request_BeginDrag/UpdateDrag/EndDrag` + `FProcessor_JoltDebugDrag_Apply`
+  (FGroup_Transform, after WaitForAsync+KinematicPush, before Step; CK_REGISTER_PROCESSOR); kinematic
+  anchor on lazily registered non-colliding layer (S2 recipe); `Get_DebugInternalBodyKeys()`;
+  capture + `TryPick_Body` skip internal keys; `FCk_Jolt_DebugDraw_WorldStats` (step ms, contact
+  pairs via atomic sink on FJoltWorld from `CkContactListener`, active counts, BodyStats+constraints
+  every 30 captures). Specs DragMovesDynamicBody, InternalBodiesAreInvisible, StatsSampled.
+- Gate — **orchestrator re-read logs**: `Jolt.DebugDraw` 26/26 (BuildTest_P6B_DebugDraw.log
+  14:29); `JoltDebug` 9/9 (BuildTest_P6B_JoltDebug.log 14:31). Whole-`Jolt` for Phase 6 runs at
+  the Phase-6 fix-up (P5-D65).
+- Phase-6 adversarial review (fresh Opus, read-only, range 4e8b1c5a6..2bef8ef5c) and Phase 7A
+  (camera rewrite P7-D49, Draw lane P7-D50, sim controls + stats P7-D51; PHASE_7 items 1–12) run
+  concurrently — different repos, review has no build.
+
+
+### 2026-08-15 — Phase 6 executor A DONE (Opus); orchestrator-verified; COMMITTED (CkFoundation 1242ba703 / CkTests 756e7260 / CkGameplayDebugger d905760); executor B dispatched
+- Landed: Island mode dropped (P5-D66); `Request_SetDebugPaused`/`Request_StepOnce` (consumed in
+  PlanStep)/`LastStepDurationMs`; `FCk_Jolt_DebugDraw_BodySample`/`CharacterSample` (capture-owned);
+  `Set_WantsSelectionContacts` + `CollideShape` contact entries; `Set_HighlightedBodies`/
+  `Set_IsolatedBodies`/`Clear_Isolation`. Specs PauseAndStepOnce, BodySampleFields,
+  SelectionContacts, MultiHighlightAndIsolate, SelectionSampleIsCaptureOwned.
+- Gate — **orchestrator re-read logs**: `JoltDebug` 9/9 (BuildTest_P6A.log 13:51); `Jolt` 87/87
+  (BuildTest_P6A_Jolt.log 14:02).
+- **[P6-D67] P5-D65 correction:** the toolbox pattern is a substring match — `JoltDebug` matches only
+  `Ck.JoltDebugger.*`. Per-unit facility gate = `--test-pattern Jolt.DebugDraw` (+ `JoltDebug` when
+  debugger code moved); whole `Jolt` once per phase stays.
+- Committed per-executor (kept clean file boundaries between concurrent-touching units).
+
 
 ### 2026-08-15 — Phase 5 fix-up landed (Opus); gate of record VERIFIED; Phase 5 COMMITTED (local); [P5-D66]
 - F1–F5, F7(b)(c), F8–F10, P5-D63(v) DONE (per-world contact recorder keyed by `JPH::PhysicsSystem*`
@@ -635,3 +993,4 @@ reads. The planner wrote the phase contracts to the ruling **as issued** and rec
 | 2026-08-15 (cont.) | Fable 5 | Phase 3 + Phase 4 executed end-to-end autonomously (user AFK, P0-D8): outliner/selection/picking/detail, benchmark + incremental pass + sweep revision + settings, 2 review rounds (30 findings, 22 fixed), all committed locally; ship withheld | 3× Opus executors (P3 units VIII/IX/fix-up, P4 impl + fix-up), 2× Opus adversarial reviewers (drafted triage), gates run by orchestrator |
 | 2026-08-15 | Fable 5 (orchestrator); Opus (planner) | Campaign extended by phases 5–8 after the user's PIE pass: rulings P5-D38…P8-D60 issued by the orchestrator, four phase contracts + dispatch plan authored by an Opus planner (research-only, no code, no builds, no commits) | 1× Opus planner + 4× Opus Explore research agents (facility, debugger module, vendored Jolt API, probes/specs/docs) |
 | 2026-08-15 | Fable 5 | Phase 1 committed; Phase 2 executed end-to-end: facility extensions, viewport shell, review (10 findings) fixed, rulings P2-D19…D21, docs weld, gate of record green | standing Opus executor (Unit V), fresh Opus executor (Units VI/VII + docs), 1× Opus adversarial reviewer; gates run by orchestrator |
+| 2026-08-15 | Fable 5 | **Phases 5–8 executed end-to-end and the campaign CLOSED**: draw channels/flags/colour modes, sim control + inspection + drag facility, Unreal-scheme camera + command lanes + detail + drag UI, constraints/probes/health/labels/grid/gizmo/bookmarks; 4 review rounds (47 findings triaged, rulings P5-D64…P8-D74), final fix-up, gate of record delta-zero on the final artifact, both module CLAUDE.md files welded, all commits LOCAL; **ship withheld** | 1× Opus planner, 9× Opus executors (P5 units XI/XII/fix-up, P6 A/B/fix-up, P7A, P7B, 8A, 8B+P7 fix-up, final fix-up), 4× Opus adversarial reviewers (each drafted its own triage; orchestrator ratified), 1× Opus gate-runner; final gate re-read by the orchestrator |

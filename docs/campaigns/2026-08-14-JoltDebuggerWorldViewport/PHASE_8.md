@@ -1,6 +1,6 @@
 # Phase 8 — Constraints, probe results, health checks, labels/hover, grid/gizmo/bookmarks, close-out
 
-> **Status:** ⏳ Pending
+> **Status:** ✅ Done 2026-08-15 (committed locally; ship withheld; `[EDITOR-VERIFY]` pending)
 > **Depends on:** Phase 7 ✅
 > **Scope (repo):** `Plugins/CkGameplayDebugger/Source/CkJoltDebugger/` primarily; **narrow**
 > CkFoundation additions are in scope only where a work item names them (constraint read surface,
@@ -224,11 +224,35 @@ selected**; record the limitation.
 
 ## Exit criteria — campaign close
 
-- [ ] Full serial suite == baseline set; scoped serial `Jolt`, `JoltDebugger`, `DebuggerLauncher`,
-      `Probe` all green on the FINAL artifact
-- [ ] ≥ 5 new specs across the two repos (problem bodies, constraint rows, problems chip,
-      bookmarks round-trip, plus whatever the fix-up adds)
-- [ ] Both module CLAUDE.md files finalised; the two known docs defects fixed
-- [ ] PLAN + PROGRESS updated; all commits LOCAL; **ship withheld and the ship instructions rewritten
-      to cover phases 1–8 in one pass**
-- [ ] The full `[EDITOR-VERIFY]` backlog (Phases 3–8) is collected in one place for the user
+- [x] Full serial suite == baseline set; scoped serial `Jolt`, `JoltDebugger`, `DebuggerLauncher`,
+      `Probe` all green on the FINAL artifact — **gate of record**, orchestrator re-read the logs:
+      `Saved/Logs/BuildTest_Final_Full.log` (2026-08-15 17:55) **Total 1150 / Passed 1146 / Failed 4
+      / Contaminated 0**, failing set IDENTICAL to the Phase-4 baseline set
+      (`Ck_AutoTest_Crowd_NavQueryFilter_ForceReplan`, `Ck_AutoTest_Homing_Retarget_SwitchesPursuit`,
+      `Ck_AutoTest_PathNetworkFollower_DesiredNavmeshClearanceMovesInward`,
+      `Ck_AutoTest_PathNetworkFollower_ProjectsRibbonWaypointWithinNavQueryExtent`) — **delta zero:
+      zero new, zero gone**. Scoped: `Jolt` **98/98** (`Test_Final_Jolt.log`, 18:04),
+      `DebuggerLauncher` **3/3**, `Probe` **27/27**. All on the artifact built from the FINAL fix-up
+      (`6bde863` / `495214021` / `536d6013`)
+- [x] ≥ 5 new specs across the two repos (problem bodies, constraint rows, problems chip,
+      bookmarks round-trip, plus whatever the fix-up adds) — the scoped `Jolt` count moved 83 → 91
+      → **98** across Phases 5–8, and the debugger's own `JoltDebug` lane 10 → 11 → 14 → **15**
+- [x] Both module CLAUDE.md files finalised; the two known docs defects fixed —
+      `CkJoltDebugger/CLAUDE.md` and `CkJolt/Claude.md` carry the permanent record, including the
+      **Known gap** the fix-up deliberately did NOT close (see below)
+- [x] PLAN + PROGRESS updated; all commits LOCAL; **ship withheld and the ship instructions rewritten
+      to cover phases 1–8 in one pass** — PROGRESS's "Ship — instructions for the user" now covers
+      the whole 8-phase campaign; nothing pushed, no superproject pointer bumps (P0-D8/P4-D36)
+- [x] The full `[EDITOR-VERIFY]` backlog (Phases 3–8) is collected in one place for the user —
+      PROGRESS § **"`[EDITOR-VERIFY]` — user pass (phases 5–8)"**, 66 numbered steps in 10 groups,
+      with the Phase-3/4 pointers retained alongside
+
+**Benchmark on the final artifact (100k default, measured — NOT gated):** steady **1.73 ms**,
+revision **15.8 ms**, highlight **16.8 ms**, pick **12.5 ms**, first pass **48.6 ms**; all draw
+flags on ≈ **290–306 ms** (a retained-lines optimization follow-up is recorded, not chased).
+
+**Landed in the final fix-up ([P8-D74]):** F1–F7 (first half), F10, and P8-D73. **F6's second half —
+clearing the hover when the hovered body leaves the outliner set — was SKIPPED** under the P5-D65
+speed policy and is documented as a **Known gap** in `CkJoltDebugger/CLAUDE.md`; the hover clears on
+the next mouse move. F8 (grid colour comment) and F9 (per-capture `BodyIDVector` while armed) were
+ACCEPTED no-change, F9 as a documented cost.

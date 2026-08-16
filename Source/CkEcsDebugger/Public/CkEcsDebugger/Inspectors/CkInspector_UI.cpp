@@ -43,10 +43,12 @@ namespace ck_inspector_ui
         const FCk_Handle& InEntity)
         -> bool
     {
-        if (ck::Is_NOT_Valid(InEntity) || NOT InEntity.Has<ck::FFragment_WorldSpaceWidget_Current>())
+        const auto Widget = UCk_Utils_WorldSpaceWidget_UE::Cast(InEntity);
+
+        if (ck::Is_NOT_Valid(Widget))
         { return false; }
 
-        return InEntity.Get<ck::FFragment_WorldSpaceWidget_Current>().Get_Enabled();
+        return UCk_Utils_WorldSpaceWidget_UE::Get_EnableDisable(Widget) == ECk_EnableDisable::Enable;
     }
 
     // The Params fragment IS the live store for the three info structs: the request handler writes each

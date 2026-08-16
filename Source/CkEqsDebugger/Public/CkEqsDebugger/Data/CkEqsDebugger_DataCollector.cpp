@@ -1,5 +1,7 @@
 #include "CkEqsDebugger/Data/CkEqsDebugger_DataCollector.h"
 
+#include "CkEqs/Query/CkEqs_Utils.h"
+
 #include "CkCore/Validation/CkIsValid.h"
 #include "CkCore/Macros/CkMacros.h"
 
@@ -36,7 +38,7 @@ auto
         [this, &TransientEntity, &InSelectedHandle, InDeepPopulateAll](FCk_Entity InEntity, const FFragment_EqsQuery_Params&)
         {
             auto GenericHandle = ck::MakeHandle(InEntity, TransientEntity);
-            auto QueryHandle = ck::StaticCast<FCk_Handle_EqsQuery>(GenericHandle);
+            auto QueryHandle = UCk_Utils_Eqs_UE::CastChecked(GenericHandle);
 
             auto Info = CollectShallow(QueryHandle);
 

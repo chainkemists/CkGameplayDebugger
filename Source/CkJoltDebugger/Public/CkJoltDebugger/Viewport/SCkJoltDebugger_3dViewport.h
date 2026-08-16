@@ -36,7 +36,20 @@ namespace ck_jolt_debugger_viewport
      *
      * Returns INDICES into the source array rather than copies: a label carries an FString, and the caller is
      * about to read them in order anyway.
+     *
+     * Bounded, never a full sort (P8-D74/F3): the working set is a max-heap of exactly `InCap` indices, so the
+     * cost is O(n log cap) over the labels and the final ordering pass is O(cap log cap). Sorting all of them to
+     * throw away everything past 500 is what a 100k-body Labels flag would have paid for, every paint.
+     *
+     * `OutIndices` is RESET, not reallocated — the paint hands it the same member array every pass.
      */
+    auto Select_NearestLabels(
+        const TArray<FCk_Jolt_DebugDrawLabel>& InLabels,
+        const FVector& InViewLocation,
+        int32 InCap,
+        TArray<int32>& OutIndices) -> void;
+
+    /** The allocating convenience: same selection, its own array. For callers with no scratch to reuse. */
     auto Select_NearestLabels(
         const TArray<FCk_Jolt_DebugDrawLabel>& InLabels,
         const FVector& InViewLocation,
@@ -213,6 +226,10 @@ private:
     // Built ONCE. OnPaint must never allocate a font or a brush (CkDebuggerCommon/CLAUDE.md § OnPaint), and a
     // font built per paint is exactly that.
     FSlateFontInfo _LabelFont;
+
+    // The label selection's working set, kept across paints so the bounded selection allocates once and then
+    // reuses its capacity (P8-D74/F3). Mutable because OnPaint is const and this is scratch, not state.
+    mutable TArray<int32> _LabelScratch;
 
     // Whether the 500-label cap has already been reported. The cap is a hard truncation, and a truncation the
     // user is never told about reads as the facility losing labels — but once per session is enough.

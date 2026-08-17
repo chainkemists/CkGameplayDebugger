@@ -627,6 +627,19 @@ If your module renders graph nodes via `SGraphEditor`, also add `GraphEditor`.
   pending target and applies it after the first refresh. Clear pending/cached handles before the
   PIE registry dies.
 
+## Common 3D preview shell
+
+- `Viewport/SCkDebug_3dPreviewViewport` owns the runtime-safe preview world, scene viewport, camera/navigation,
+  camera presets and bookmarks, common render/grid/frame/follow/isolate controls, projection, and teardown.
+- `Viewport/CkDebug3dInteractionRouter` owns neutral click, additive selection, drag sequencing, plane shifts,
+  hover throttling, and focus-loss cleanup. Feature adapters resolve opaque identities and execute specialized
+  behavior; they do not create a second viewport client.
+- A feature adapter declares capabilities and translates its own settings and commands. Jolt retains pause,
+  step, authority-gated physics drag, contacts, probes, palettes, and labels; Crowd retains source selection,
+  VoxelNav, Recast, PathNetwork, CVars, and details.
+- Preview geometry belongs in the runtime `CkDebugScene` target. Never retain gameplay-world actors, ECS handles,
+  navigation objects, or world pointers in the preview scene; collect first and publish copied values.
+
 ## Quick reference — file paths
 
 ```
@@ -654,6 +667,9 @@ CkDebuggerCommon/
 │   ├── CkDebug_CopyMenu_Utils.h      (Handle_RightClickToCopy, AddCopyEntry, AddCopyEntryToToolMenu)
 │   ├── CkDebug_InspectorEditGuard.h  (panel-scoped "edit in flight" registry + RAII scope; defers rebuilds)
 │   └── CkDebug_RequestGate.h         (ck::DebugRequestGate — net-mode -> {enabled, reason} for debug write controls)
+├── Viewport/
+│   ├── CkDebug3dInteractionRouter.h  (neutral pick/drag/hover/command sequencing)
+│   └── SCkDebug_3dPreviewViewport.h  (runtime-safe preview shell, camera, common controls, bookmarks)
 ├── Widgets/
 │   ├── SCkDebug_EntityRef.h          (clickable FCk_Handle pill — navigates to ECS Debugger)
 │   ├── SCkDebug_Icon.h               (THE icon widget — glyph + mandatory Meaning tooltip, click-passive)

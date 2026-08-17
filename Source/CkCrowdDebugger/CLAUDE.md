@@ -1,0 +1,22 @@
+# CkCrowdDebugger
+
+## 3D viewport ownership
+
+- `SCkCrowdDebugger_3dViewport` is a thin feature facade over Common's `SCkDebug_3dPreviewViewport`. Do not add a
+  Crowd-owned `FPreviewScene`, viewport client, camera implementation, or input router.
+- The window/view model may collect live Crowd, Recast, VoxelNav, and PathNetwork state, but the viewport boundary
+  copies it into `FCkCrowdDebugger_3dSceneSnapshot`. Scene/preview adapters retain values and opaque `uint64`
+  identities only; never store a gameplay `UWorld`, actor, ECS handle/registry, navmesh, or VoxelNav producer.
+- `FCkCrowdDebugger_3dSceneAdapter` owns Crowd-specific translation: capsule/status appearance, velocity and selected
+  paths, Recast triangles, width-aware PathNetwork ribbons and opacity, Voxel layers/bounds/chunks/portals, and
+  current-row pick mapping. Reusable component/material/reconciliation/picking mechanics belong in `CkDebugScene`.
+- Preserve the `ck.CrowdDebugger.PathNetworkTrace` compatibility token and all specialized source/CVar/detail-panel
+  controls when changing the adapter. Common controls are capability-driven and must not be recreated in the Crowd
+  window.
+
+## Verification
+
+- `Ck.CrowdDebugger.Viewport3d.*` covers copied lifetimes, stable identity reorder, exact pick mapping, bounds,
+  ribbons, Voxel content, atomic failure, appearance ownership, and 240-agent stable instancing.
+- Re-run the full serial `Crowd` family after adapter changes. The current CkPlugins user config has an inherited
+  `Nav.Filter.Customer` mapping failure; do not hide new failures behind that known baseline.

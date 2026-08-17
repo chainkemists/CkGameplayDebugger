@@ -28,6 +28,7 @@ public class CkCrowdDebugger : CkModuleRules
 			"AIModule",
 
 			"CkCore",
+			"CkDebugScene",
 			"CkEcs",
 			"CkEcsExt",
 			"CkLabel",

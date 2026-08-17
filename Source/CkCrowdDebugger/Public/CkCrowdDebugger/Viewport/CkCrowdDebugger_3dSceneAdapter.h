@@ -144,7 +144,13 @@ class FCkCrowdDebugger_3dSceneAdapter
     auto
     Get_RibbonTriangleCount(int32 InIndex) const -> int32;
     auto
+    Get_RibbonRenderedTriangleCount(int32 InIndex) const -> int32;
+    auto
     Get_RibbonOutlinePointCount(int32 InIndex) const -> int32;
+    auto
+    Get_RecastTriangleCount() const -> int32;
+    auto
+    Get_RecastRenderedTriangleCount() const -> int32;
 
   private:
     auto
@@ -175,7 +181,10 @@ class FCkCrowdDebugger_3dSceneAdapter
     TMap<ECkCrowdDebugger_3dSceneRole, int32> _NonItemRoleCounts;
     TMap<uint64, FCk_DebugScene_Appearance> _Appearances;
     TMap<ECkCrowdDebugger_3dSceneRole, FCk_DebugScene_Appearance> _RoleAppearances;
+    int32 _RecastTriangleCount = 0;
+    int32 _RecastRenderedTriangleCount = 0;
     TArray<int32> _RibbonTriangleCounts;
+    TArray<int32> _RibbonRenderedTriangleCounts;
     TArray<int32> _RibbonOutlinePointCounts;
     TSharedPtr<FCk_DebugScene_Mesh> _CapsuleMesh;
     TSharedPtr<FCk_DebugScene_Mesh> _BoxMesh;

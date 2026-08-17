@@ -109,9 +109,33 @@ Get_RibbonOffset(const TArray<FVector>& InPoints, int32 InPointIndex, float InHa
 }
 
 auto
-AddRibbonTriangles(const FCkCrowdDebugger_3dRibbonSnapshot& InRibbon, TArray<FCk_DebugScene_Triangle>& Out) -> bool
+IsRibbonInputValid(const FCkCrowdDebugger_3dRibbonSnapshot& InRibbon) -> bool
 {
     if (InRibbon._Points.Num() < 2 || InRibbon._Points.Num() != InRibbon._HalfWidths.Num())
+    {
+        return false;
+    }
+    for (const auto& Point : InRibbon._Points)
+    {
+        if (NOT IsFinite(Point))
+        {
+            return false;
+        }
+    }
+    for (const auto HalfWidth : InRibbon._HalfWidths)
+    {
+        if (NOT FMath::IsFinite(HalfWidth))
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
+auto
+AddRibbonTriangles(const FCkCrowdDebugger_3dRibbonSnapshot& InRibbon, TArray<FCk_DebugScene_Triangle>& Out) -> bool
+{
+    if (NOT IsRibbonInputValid(InRibbon))
     {
         return false;
     }
@@ -129,6 +153,24 @@ AddRibbonTriangles(const FCkCrowdDebugger_3dRibbonSnapshot& InRibbon, TArray<FCk
     {
         Out.Append({{Left[Index], Left[Index + 1], Right[Index + 1]}, {Left[Index], Right[Index + 1], Right[Index]}});
     }
+    return true;
+}
+
+auto
+AppendTwoSidedTriangle(
+    const FCk_DebugScene_Triangle& InTriangle,
+    TArray<FCk_DebugScene_Triangle>& OutTriangles) -> bool
+{
+    const auto IsFiniteTriangle = IsFinite(InTriangle._A) && IsFinite(InTriangle._B) && IsFinite(InTriangle._C);
+    const auto HasArea =
+        FVector::CrossProduct(InTriangle._B - InTriangle._A, InTriangle._C - InTriangle._A).SizeSquared() >
+        SMALL_NUMBER;
+    if (NOT IsFiniteTriangle || NOT HasArea)
+    {
+        return false;
+    }
+    OutTriangles.Add(InTriangle);
+    OutTriangles.Add({InTriangle._A, InTriangle._C, InTriangle._B});
     return true;
 }
 } // namespace ck_crowd_debugger_3d_scene_adapter
@@ -256,7 +298,7 @@ auto
     }
     for (const auto& Ribbon : InSnapshot._PathNetwork._Ribbons)
     {
-        if (Ribbon._Points.Num() < 2 || Ribbon._Points.Num() != Ribbon._HalfWidths.Num())
+        if (NOT ck_crowd_debugger_3d_scene_adapter::IsRibbonInputValid(Ribbon))
         {
             continue;
         }
@@ -416,7 +458,7 @@ auto
     {
         if (NOT Mesh.IsValid())
         {
-            return true;
+            return false;
         }
         const auto Key = MakeItemKey(Role, Identity);
         const auto Appearance = MakeAppearance(Color, Transparent);
@@ -436,14 +478,20 @@ auto
     };
     if (InSnapshot._Recast._Revision != _RecastRevision)
     {
-        _RecastRevision = InSnapshot._Recast._Revision;
         auto Triangles = TArray<FCk_DebugScene_Triangle>{};
+        auto LogicalTriangleCount = 0;
         for (auto Index = 0; Index + 2 < InSnapshot._Recast._Triangles.Num(); Index += 3)
         {
-            Triangles.Add({InSnapshot._Recast._Triangles[Index], InSnapshot._Recast._Triangles[Index + 1],
-                           InSnapshot._Recast._Triangles[Index + 2]});
+            const auto SourceTriangle =
+                FCk_DebugScene_Triangle{InSnapshot._Recast._Triangles[Index], InSnapshot._Recast._Triangles[Index + 1],
+                                         InSnapshot._Recast._Triangles[Index + 2]};
+            if (ck_crowd_debugger_3d_scene_adapter::AppendTwoSidedTriangle(SourceTriangle, Triangles))
+            {
+                ++LogicalTriangleCount;
+            }
         }
         _StaticInstances.Remove(MakeItemKey(ECkCrowdDebugger_3dSceneRole::Recast, 1));
+        const auto RenderedTriangleCount = Triangles.Num();
         if (NOT Triangles.IsEmpty() && NOT SubmitStatic(ECkCrowdDebugger_3dSceneRole::Recast, 1,
                                                         FCk_DebugScene_Mesh::Create_FromTriangles(MoveTemp(Triangles)),
                                                         FLinearColor{0.27f, 0.78f, 0.43f, 0.15f},
@@ -452,6 +500,9 @@ auto
             InTarget.Abort_Reconcile();
             return RestoreAndFail();
         }
+        _RecastRevision = InSnapshot._Recast._Revision;
+        _RecastTriangleCount = LogicalTriangleCount;
+        _RecastRenderedTriangleCount = RenderedTriangleCount;
     }
     else if (const auto* Instances = _StaticInstances.Find(MakeItemKey(ECkCrowdDebugger_3dSceneRole::Recast, 1)))
     {
@@ -459,8 +510,6 @@ auto
         _RoleItems.FindOrAdd(ECkCrowdDebugger_3dSceneRole::Recast)
             .Add(MakeItemKey(ECkCrowdDebugger_3dSceneRole::Recast, 1));
     }
-    _RibbonTriangleCounts.Reset();
-    _RibbonOutlinePointCounts.Reset();
     if (InSnapshot._PathNetwork._Revision == _RibbonRevision)
     {
         for (auto Index = 0; Index < InSnapshot._PathNetwork._Ribbons.Num(); ++Index)
@@ -471,12 +520,16 @@ auto
                 InTarget.Upsert_Item(Key, *Instances);
                 _RoleItems.FindOrAdd(ECkCrowdDebugger_3dSceneRole::PathNetworkRibbon).Add(Key);
             }
-            _RibbonOutlinePointCounts.Add(InSnapshot._PathNetwork._Ribbons[Index]._Points.Num());
-            _RibbonTriangleCounts.Add(FMath::Max(0, InSnapshot._PathNetwork._Ribbons[Index]._Points.Num() - 1) * 2);
         }
     }
     else
     {
+        _RibbonTriangleCounts.Reset();
+        _RibbonRenderedTriangleCounts.Reset();
+        _RibbonOutlinePointCounts.Reset();
+        _RibbonTriangleCounts.SetNumZeroed(InSnapshot._PathNetwork._Ribbons.Num());
+        _RibbonRenderedTriangleCounts.SetNumZeroed(InSnapshot._PathNetwork._Ribbons.Num());
+        _RibbonOutlinePointCounts.SetNumZeroed(InSnapshot._PathNetwork._Ribbons.Num());
         for (auto Index = InSnapshot._PathNetwork._Ribbons.Num(); Index < _RibbonCount; ++Index)
         {
             const auto Identity = static_cast<uint64>(Index + 1);
@@ -485,18 +538,34 @@ auto
                 FString::Printf(TEXT("%d:%llu"), static_cast<int32>(ECkCrowdDebugger_3dSceneRole::PathNetworkRibbon),
                                 static_cast<unsigned long long>(Identity)));
         }
-        _RibbonRevision = InSnapshot._PathNetwork._Revision;
-        _RibbonCount = InSnapshot._PathNetwork._Ribbons.Num();
         for (auto Index = 0; Index < InSnapshot._PathNetwork._Ribbons.Num(); ++Index)
         {
             auto Triangles = TArray<FCk_DebugScene_Triangle>{};
             const auto& Ribbon = InSnapshot._PathNetwork._Ribbons[Index];
+            const auto Key = MakeItemKey(ECkCrowdDebugger_3dSceneRole::PathNetworkRibbon, Index + 1);
+            _StaticInstances.Remove(Key);
             if (NOT ck_crowd_debugger_3d_scene_adapter::AddRibbonTriangles(Ribbon, Triangles))
             {
                 continue;
             }
-            _RibbonTriangleCounts.Add(Triangles.Num());
-            _RibbonOutlinePointCounts.Add(Ribbon._Points.Num());
+            const auto SourceTriangles = Triangles;
+            Triangles.Reset();
+            auto LogicalTriangleCount = 0;
+            for (const auto& Triangle : SourceTriangles)
+            {
+                if (ck_crowd_debugger_3d_scene_adapter::AppendTwoSidedTriangle(Triangle, Triangles))
+                {
+                    ++LogicalTriangleCount;
+                }
+            }
+            if (LogicalTriangleCount == 0)
+            {
+                continue;
+            }
+            const auto RenderedTriangleCount = Triangles.Num();
+            _RibbonTriangleCounts[Index] = LogicalTriangleCount;
+            _RibbonRenderedTriangleCounts[Index] = RenderedTriangleCount;
+            _RibbonOutlinePointCounts[Index] = Ribbon._Points.Num();
             if (NOT SubmitStatic(ECkCrowdDebugger_3dSceneRole::PathNetworkRibbon, Index + 1,
                                  FCk_DebugScene_Mesh::Create_FromTriangles(MoveTemp(Triangles)),
                                  FLinearColor{0.0f, 0.8f, 0.9f, InSnapshot._PathNetwork._Opacity},
@@ -506,6 +575,8 @@ auto
                 return RestoreAndFail();
             }
         }
+        _RibbonRevision = InSnapshot._PathNetwork._Revision;
+        _RibbonCount = InSnapshot._PathNetwork._Ribbons.Num();
     }
     const auto VoxelRoles = TArray<ECkCrowdDebugger_3dSceneRole>{
         ECkCrowdDebugger_3dSceneRole::VoxelOccupied, ECkCrowdDebugger_3dSceneRole::VoxelMergedFree,
@@ -683,7 +754,10 @@ auto
     _NonItemRoleCounts.Reset();
     _Appearances.Reset();
     _RoleAppearances.Reset();
+    _RecastTriangleCount = 0;
+    _RecastRenderedTriangleCount = 0;
     _RibbonTriangleCounts.Reset();
+    _RibbonRenderedTriangleCounts.Reset();
     _RibbonOutlinePointCounts.Reset();
 }
 
@@ -772,11 +846,19 @@ auto
         const auto* Found = _RoleAppearances.Find(InRole);
         return Found != nullptr ? *Found : FCk_DebugScene_Appearance{};
         }
-        auto
-        FCkCrowdDebugger_3dSceneAdapter::Get_RibbonTriangleCount(int32 InIndex) const
+auto
+    FCkCrowdDebugger_3dSceneAdapter::
+    Get_RibbonTriangleCount(int32 InIndex) const
     -> int32
 {
     return _RibbonTriangleCounts.IsValidIndex(InIndex) ? _RibbonTriangleCounts[InIndex] : 0;
+}
+auto
+    FCkCrowdDebugger_3dSceneAdapter::
+    Get_RibbonRenderedTriangleCount(int32 InIndex) const
+    -> int32
+{
+    return _RibbonRenderedTriangleCounts.IsValidIndex(InIndex) ? _RibbonRenderedTriangleCounts[InIndex] : 0;
 }
 auto
     FCkCrowdDebugger_3dSceneAdapter::
@@ -784,4 +866,18 @@ auto
     -> int32
 {
     return _RibbonOutlinePointCounts.IsValidIndex(InIndex) ? _RibbonOutlinePointCounts[InIndex] : 0;
+}
+auto
+    FCkCrowdDebugger_3dSceneAdapter::
+    Get_RecastTriangleCount() const
+    -> int32
+{
+    return _RecastTriangleCount;
+}
+auto
+    FCkCrowdDebugger_3dSceneAdapter::
+    Get_RecastRenderedTriangleCount() const
+    -> int32
+{
+    return _RecastRenderedTriangleCount;
 }

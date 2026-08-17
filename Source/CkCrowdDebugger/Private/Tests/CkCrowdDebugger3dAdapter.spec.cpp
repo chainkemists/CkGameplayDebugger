@@ -8,6 +8,8 @@
 #include "CkDebugScene/CkDebugScene_Target.h"
 
 #include "Engine/World.h"
+
+#include <limits>
 namespace ck_crowd_debugger_3d_adapter_spec
 {
 constexpr auto TestFlags = EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter;
@@ -258,6 +260,97 @@ auto
         TestTrue(TEXT("widest authored point expands bounds"),
                  Bounds.IsSet() && Bounds->IsInsideOrOn(FVector{100.0f, 40.0f, 0.0f}));
     }
+    return true;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCkCrowdDebugger3dAdapter_RetainedSurfacesSanitizeAndRenderTwoSided,
+                                 "Ck.CrowdDebugger.Viewport3d.RetainedSurfacesSanitizeAndRenderTwoSided",
+                                 ck_crowd_debugger_3d_adapter_spec::TestFlags)
+
+auto
+    FCkCrowdDebugger3dAdapter_RetainedSurfacesSanitizeAndRenderTwoSided::
+    RunTest(const FString&)
+    -> bool
+{
+    using namespace ck_crowd_debugger_3d_adapter_spec;
+    auto Fixture = FScopedTarget{};
+    auto Snapshot = MakeSnapshot();
+    Snapshot._Recast._Revision = 1;
+    Snapshot._Recast._Triangles = {FVector{0.0f, 0.0f, 0.0f}, FVector{100.0f, 0.0f, 0.0f},
+                                   FVector{0.0f, 100.0f, 0.0f}, FVector{200.0f, 0.0f, 0.0f},
+                                   FVector{200.0f, 0.0f, 0.0f}, FVector{200.0f, 0.0f, 0.0f}};
+    Snapshot._PathNetwork._Revision = 1;
+    Snapshot._PathNetwork._Ribbons = {
+        FCkCrowdDebugger_3dRibbonSnapshot{
+            {FVector::ZeroVector, FVector{50.0f, 0.0f, 0.0f}},
+            {std::numeric_limits<float>::quiet_NaN(), 10.0f}},
+        FCkCrowdDebugger_3dRibbonSnapshot{
+            {FVector{0.0f, 200.0f, 0.0f}, FVector{0.0f, 200.0f, 0.0f}, FVector{100.0f, 200.0f, 0.0f}},
+            {10.0f, 10.0f, 10.0f}}};
+
+    auto Adapter = FCkCrowdDebugger_3dSceneAdapter{};
+    TestTrue(TEXT("mixed valid and degenerate retained surfaces reconcile"), Adapter.Reconcile(Snapshot, *Fixture._Target));
+    TestTrue(TEXT("a valid Recast triangle remains published"),
+             Adapter.Has_Role(ECkCrowdDebugger_3dSceneRole::Recast));
+    TestEqual(TEXT("Recast keeps only valid source triangles"), Adapter.Get_RecastTriangleCount(), 1);
+    TestEqual(TEXT("Recast publishes reverse winding for two-sided rendering"),
+              Adapter.Get_RecastRenderedTriangleCount(), 2);
+    TestTrue(TEXT("a valid ribbon span remains published after a degenerate span"),
+             Adapter.Has_Role(ECkCrowdDebugger_3dSceneRole::PathNetworkRibbon));
+    TestEqual(TEXT("an invalid earlier ribbon retains its source metric slot"), Adapter.Get_RibbonTriangleCount(0), 0);
+    TestEqual(TEXT("ribbon keeps only its valid source triangles"), Adapter.Get_RibbonTriangleCount(1), 2);
+    TestEqual(TEXT("ribbon publishes reverse winding for two-sided rendering"),
+              Adapter.Get_RibbonRenderedTriangleCount(1), 4);
+    TestEqual(TEXT("ribbon outline retains its authored points"), Adapter.Get_RibbonOutlinePointCount(1), 3);
+
+    Fixture._Target->Reset_FrameStats();
+    TestTrue(TEXT("unchanged retained surfaces reconcile without topology churn"),
+             Adapter.Reconcile(Snapshot, *Fixture._Target));
+    const auto& SteadyStats = Fixture._Target->Get_Stats();
+    TestEqual(TEXT("unchanged retained surfaces add no instances"), SteadyStats.Get_InstancesAdded(), 0);
+    TestEqual(TEXT("unchanged retained surfaces update no instances"), SteadyStats.Get_InstancesUpdated(), 0);
+    TestEqual(TEXT("unchanged retained surfaces remove no instances"), SteadyStats.Get_InstancesRemoved(), 0);
+
+    auto DegenerateOnly = Snapshot;
+    DegenerateOnly._Recast._Revision = 2;
+    DegenerateOnly._Recast._Triangles = {FVector{0.0f, 0.0f, 0.0f}, FVector{0.0f, 0.0f, 0.0f},
+                                         FVector{0.0f, 0.0f, 0.0f}};
+    DegenerateOnly._PathNetwork._Revision = 2;
+    DegenerateOnly._PathNetwork._Ribbons = {FCkCrowdDebugger_3dRibbonSnapshot{
+        {FVector{0.0f, 200.0f, 0.0f}, FVector{0.0f, 200.0f, 0.0f}}, {10.0f, 10.0f}}};
+    TestTrue(TEXT("degenerate-only retained sources reconcile as an empty rendered result"),
+             Adapter.Reconcile(DegenerateOnly, *Fixture._Target));
+    TestFalse(TEXT("degenerate-only Recast does not retain a stale mesh"),
+              Adapter.Has_Role(ECkCrowdDebugger_3dSceneRole::Recast));
+    TestFalse(TEXT("degenerate-only ribbon does not retain a stale mesh"),
+              Adapter.Has_Role(ECkCrowdDebugger_3dSceneRole::PathNetworkRibbon));
+    Fixture._Target->Reset_FrameStats();
+    TestTrue(TEXT("a latched degenerate revision does not republish a missing mesh"),
+             Adapter.Reconcile(DegenerateOnly, *Fixture._Target));
+    TestFalse(TEXT("latched degenerate Recast stays absent"), Adapter.Has_Role(ECkCrowdDebugger_3dSceneRole::Recast));
+    TestFalse(TEXT("latched degenerate ribbon stays absent"),
+              Adapter.Has_Role(ECkCrowdDebugger_3dSceneRole::PathNetworkRibbon));
+    TestEqual(TEXT("latched degenerate revision adds no retained mesh"),
+              Fixture._Target->Get_Stats().Get_InstancesAdded(), 0);
+
+    TestTrue(TEXT("valid retained surfaces can be republished after a degenerate revision"),
+             Adapter.Reconcile(Snapshot, *Fixture._Target));
+    TestTrue(TEXT("Recast is live before the empty-source removal"),
+             Adapter.Has_Role(ECkCrowdDebugger_3dSceneRole::Recast));
+    TestTrue(TEXT("ribbon is live before the empty-source removal"),
+             Adapter.Has_Role(ECkCrowdDebugger_3dSceneRole::PathNetworkRibbon));
+
+    auto Empty = Snapshot;
+    Empty._Recast._Revision = 3;
+    Empty._Recast._Triangles.Reset();
+    Empty._PathNetwork._Revision = 3;
+    Empty._PathNetwork._Ribbons.Reset();
+    TestTrue(TEXT("empty retained sources remove their prior published surfaces"), Adapter.Reconcile(Empty, *Fixture._Target));
+    TestFalse(TEXT("empty Recast source removes retained surface"), Adapter.Has_Role(ECkCrowdDebugger_3dSceneRole::Recast));
+    TestFalse(TEXT("empty ribbon source removes retained surface"),
+              Adapter.Has_Role(ECkCrowdDebugger_3dSceneRole::PathNetworkRibbon));
     return true;
 }
 

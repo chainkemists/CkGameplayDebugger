@@ -92,7 +92,7 @@ namespace ck_crowd_debugger_3d_viewport
         UE_LOG(
             LogTemp,
             Display,
-            TEXT("CkCrowdDebugger.PathNetworkTrace stage=3d_draw frame=%llu navmesh_triangles=%d ribbons=%d opacity=%.3f first_start=%s first_end=%s first_start_half_width=%.3f first_end_half_width=%.3f"),
+            TEXT("CkCrowdDebugger.PathNetworkTrace stage=retained_publish frame=%llu navmesh_triangles=%d ribbons=%d opacity=%.3f first_start=%s first_end=%s first_start_half_width=%.3f first_end_half_width=%.3f"),
             static_cast<unsigned long long>(GFrameCounter),
             InNavmeshTriangleCount,
             InRibbons.Num(),

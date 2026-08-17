@@ -4,6 +4,10 @@
 
 #include "CkJoltDebugger/Viewport/SCkJoltDebugger_3dViewport.h"
 
+#include "Components/DirectionalLightComponent.h"
+#include "Components/SkyLightComponent.h"
+#include "UObject/UObjectIterator.h"
+
 namespace ck_jolt_debugger_viewport_spec
 {
     struct FPresetExpectation
@@ -32,6 +36,29 @@ namespace ck_jolt_debugger_viewport_spec
 // --------------------------------------------------------------------------------------------------------------------
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FCkJoltDebuggerViewport_CursorRayUsesCameraTranslation,
+    "Ck.JoltDebugger.Viewport.CursorRayUsesCameraTranslation",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+auto FCkJoltDebuggerViewport_CursorRayUsesCameraTranslation::RunTest(const FString&) -> bool
+{
+    const auto ViewOrigin = FVector{1234.0, -5678.0, 910.0};
+    const auto ViewRotationMatrix = FMatrix{FInverseRotationMatrix(FRotator{-20.0, 35.0, 0.0})} * FMatrix(
+        FPlane(0, 0, 1, 0), FPlane(1, 0, 0, 0), FPlane(0, 1, 0, 0), FPlane(0, 0, 0, 1));
+
+    const auto InverseView = ck_jolt_debugger_viewport::Make_InverseViewMatrix(
+        ViewOrigin, ViewRotationMatrix);
+
+    TestTrue(
+        TEXT("inverse view maps the view-space origin back to the camera's world location"),
+        InverseView.TransformPosition(FVector::ZeroVector).Equals(ViewOrigin, 0.01));
+
+    return true;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
     FCkJoltDebuggerViewport_ConstructsWithoutEnsure,
     "Ck.JoltDebugger.Viewport.ConstructsWithoutEnsure",
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
@@ -41,7 +68,40 @@ auto FCkJoltDebuggerViewport_ConstructsWithoutEnsure::RunTest(const FString&) ->
     const auto Viewport = SNew(SCkJoltDebugger_3dViewport);
     Viewport->SlatePrepass();
 
-    TestNotNull(TEXT("Jolt debugger viewport owns a preview world"), Viewport->Get_PreviewWorld());
+    auto* PreviewWorld = Viewport->Get_PreviewWorld();
+    TestNotNull(TEXT("Jolt debugger viewport owns a preview world"), PreviewWorld);
+
+    const auto RenderFeatures = Viewport->Get_RenderFeatures();
+    TestTrue(TEXT("lighting is enabled"), RenderFeatures.Lighting);
+    TestTrue(TEXT("post processing is enabled"), RenderFeatures.PostProcessing);
+    TestTrue(TEXT("anti-aliasing is enabled"), RenderFeatures.AntiAliasing);
+    TestTrue(TEXT("temporal anti-aliasing is enabled"), RenderFeatures.TemporalAA);
+    TestEqual(
+        TEXT("the viewport resolves temporal AA even when the project default is none"),
+        RenderFeatures.ForcedAntiAliasingMethod,
+        EAntiAliasingMethod::AAM_TemporalAA);
+    TestFalse(TEXT("dynamic shadows stay disabled"), RenderFeatures.DynamicShadows);
+    TestFalse(TEXT("motion blur stays disabled"), RenderFeatures.MotionBlur);
+    TestFalse(TEXT("depth of field stays disabled"), RenderFeatures.DepthOfField);
+    TestFalse(TEXT("eye adaptation stays disabled"), RenderFeatures.EyeAdaptation);
+
+    auto HasDirectionalLight = false;
+    auto HasSkyLight = false;
+
+    for (TObjectIterator<UDirectionalLightComponent> It; It; ++It)
+    {
+        if (It->GetWorld() == PreviewWorld && It->IsRegistered())
+        { HasDirectionalLight = true; }
+    }
+
+    for (TObjectIterator<USkyLightComponent> It; It; ++It)
+    {
+        if (It->GetWorld() == PreviewWorld && It->IsRegistered())
+        { HasSkyLight = true; }
+    }
+
+    TestTrue(TEXT("the preview has a directional light for form"), HasDirectionalLight);
+    TestTrue(TEXT("the preview has a skylight so no side falls to black"), HasSkyLight);
     return true;
 }
 

@@ -5,6 +5,7 @@
 #include "Camera/CameraTypes.h"
 #include "Engine/EngineBaseTypes.h"
 #include "InputCoreTypes.h"
+#include "SceneUtils.h"
 
 #include "CkJolt/Subsystem/CkJolt_DebugDrawTarget.h"
 
@@ -22,6 +23,16 @@ class UWorld;
 
 namespace ck_jolt_debugger_viewport
 {
+    constexpr auto AntiAliasingMethod = EAntiAliasingMethod::AAM_TemporalAA;
+
+    /**
+     * Build the inverse view transform used by cursor deprojection. The origin is deliberately explicit:
+     * FSceneView's split deprojection API expects camera translation in this matrix as well as rotation.
+     */
+    auto Make_InverseViewMatrix(
+        const FVector& InViewOrigin,
+        const FMatrix& InViewRotationMatrix) -> FMatrix;
+
     /*
      * The hard cap on how many of the capture's labels one paint may draw (P8-D58). A cap rather than a budget:
      * at the campaign's 100k bar the Labels flag produces a label per dynamic body, and a paint that tried to
@@ -67,6 +78,21 @@ struct FCkJoltDebugger_ViewportLabel
     FVector      WorldPosition = FVector::ZeroVector;
     FString      Text;
     FLinearColor Color = FLinearColor::White;
+};
+
+// --------------------------------------------------------------------------------------------------------------------
+
+struct FCkJoltDebugger_ViewportRenderFeatures
+{
+    bool Lighting = false;
+    bool PostProcessing = false;
+    bool AntiAliasing = false;
+    bool TemporalAA = false;
+    EAntiAliasingMethod ForcedAntiAliasingMethod = EAntiAliasingMethod::AAM_None;
+    bool DynamicShadows = false;
+    bool MotionBlur = false;
+    bool DepthOfField = false;
+    bool EyeAdaptation = false;
 };
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -122,8 +148,8 @@ DECLARE_DELEGATE_OneParam(FOnCkJoltDebugger_BodyHovered, TOptional<uint64>);
 // FPreviewScene whose UWorld is the render target of an FCk_Jolt_DebugDrawTarget, and the facility's instanced
 // static meshes live in that world. Everything here is camera and input.
 //
-// The scene is deliberately unlit and physics-free — the debug-draw materials are unlit, and a preview world that
-// simulated would fight the world being inspected.
+// The scene has directional + sky lighting but remains physics-free. Jolt geometry never casts shadows, so the
+// light supplies form without hiding features; a simulated preview world would fight the world being inspected.
 // --------------------------------------------------------------------------------------------------------------------
 
 class SCkJoltDebugger_3dViewport final : public SViewport
@@ -145,6 +171,9 @@ public:
 
     /** The world every registered target must bind to. Valid for the widget's lifetime. */
     auto Get_PreviewWorld() const -> UWorld*;
+
+    /** The explicit render contract used by this preview, exposed so construction tests can pin it. */
+    auto Get_RenderFeatures() const -> FCkJoltDebugger_ViewportRenderFeatures;
 
     /** Framing source for FrameAll, and the ray-pick source for a viewport click. Held weakly — the window owns the target. */
     auto Set_Target(TSharedPtr<FCk_Jolt_DebugDrawTarget> InTarget) -> void;

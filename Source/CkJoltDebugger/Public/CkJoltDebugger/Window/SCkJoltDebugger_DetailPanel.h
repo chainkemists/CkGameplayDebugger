@@ -2,6 +2,8 @@
 
 #include "CkJoltDebugger/Data/CkJoltDebugger_Types.h"
 
+#include "CkEditorTools/Style/CkStyle.h"
+
 #include "Widgets/SCompoundWidget.h"
 #include "Widgets/Views/SListView.h"
 
@@ -62,8 +64,20 @@ public:
     /** What the named row renders right now — the row's own bound value, evaluated. Empty for an unknown key. */
     auto Get_RowValueText(const FString& InKey) const -> FText;
 
+    /** The live value color the named row paints. Unknown and unset rows are intentionally muted. */
+    auto Get_RowValueColor(const FString& InKey) const -> FLinearColor;
+
+    /** The live semantic tone of a status-pill row. Neutral for an unknown or non-status row. */
+    auto Get_RowStatusTone(const FString& InKey) const -> ECk_Tone;
+
     /** Whether the character group is currently rendering. False for every rigid-body selection. */
     auto Get_IsCharacterGroupVisible() const -> bool;
+
+    /** Live semantic surfaces for the identity summary; useful to focused automation without walking Slate. */
+    auto Get_PopulationStatusText() const -> FText;
+    auto Get_PopulationStatusTone() const -> ECk_Tone;
+    auto Get_SimulationStatusText() const -> FText;
+    auto Get_SimulationStatusTone() const -> ECk_Tone;
 
     /*
      * Reconcile the contacts list against the facts the window just refreshed. PUSHED rather than bound: an
@@ -82,21 +96,37 @@ private:
 
     auto MakeRow(
         const FString& InKey,
-        TAttribute<FText> InValue) -> TSharedRef<SWidget>;
+        TAttribute<FText> InValue,
+        TAttribute<FLinearColor> InSetValueColor = {}) -> TSharedRef<SWidget>;
 
     /** A row whose value comes from the facility's rigid-body sample, degrading to "--" while it is unset. */
     auto MakeSampleRow(
         const FString& InKey,
-        TFunction<FText(const FCk_Jolt_DebugDraw_BodySample&)> InRead) -> TSharedRef<SWidget>;
+        TFunction<FText(const FCk_Jolt_DebugDraw_BodySample&)> InRead,
+        TAttribute<FLinearColor> InSetValueColor = {}) -> TSharedRef<SWidget>;
+
+    /** A sample-backed state rendered as a status pill while retaining the same keyed value read surface. */
+    auto MakeSampleStatusRow(
+        const FString& InKey,
+        TFunction<FText(const FCk_Jolt_DebugDraw_BodySample&)> InText,
+        TFunction<ECk_Tone(const FCk_Jolt_DebugDraw_BodySample&)> InTone) -> TSharedRef<SWidget>;
 
     /** The character twin of MakeSampleRow. */
     auto MakeCharacterRow(
         const FString& InKey,
-        TFunction<FText(const FCk_Jolt_DebugDraw_CharacterSample&)> InRead) -> TSharedRef<SWidget>;
+        TFunction<FText(const FCk_Jolt_DebugDraw_CharacterSample&)> InRead,
+        TAttribute<FLinearColor> InSetValueColor = {}) -> TSharedRef<SWidget>;
+
+    /** The character counterpart of MakeSampleStatusRow. */
+    auto MakeCharacterStatusRow(
+        const FString& InKey,
+        TFunction<FText(const FCk_Jolt_DebugDraw_CharacterSample&)> InText,
+        TFunction<ECk_Tone(const FCk_Jolt_DebugDraw_CharacterSample&)> InTone) -> TSharedRef<SWidget>;
 
     auto MakeSection(const FString& InLabel) -> TSharedRef<SWidget>;
 
     auto MakeEntityRow() -> TSharedRef<SWidget>;
+    auto MakeIdentitySummary() -> TSharedRef<SWidget>;
 
     auto MakeContactsList() -> TSharedRef<SWidget>;
 
@@ -110,6 +140,8 @@ private:
     // The bound value of every key/value row, by key: one lookup surface for the row values, so what a caller
     // reads back is the same attribute the widget paints rather than a re-derivation of it.
     TMap<FString, TAttribute<FText>> _RowValues;
+    TMap<FString, TAttribute<FLinearColor>> _RowValueColors;
+    TMap<FString, TAttribute<ECk_Tone>> _RowStatusTones;
 
     TSharedPtr<SListView<ContactItemPtr>> _ContactList;
     TArray<ContactItemPtr>                _ContactItems;

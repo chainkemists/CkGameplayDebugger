@@ -109,6 +109,20 @@ namespace ck_jolt_debugger_3d_viewport
 
 auto
     ck_jolt_debugger_viewport::
+    Make_InverseViewMatrix(
+        const FVector& InViewOrigin,
+        const FMatrix& InViewRotationMatrix)
+    -> FMatrix
+{
+    // Match FSceneView's inverse-view construction: camera translation is part of the transform expected by
+    // DeprojectScreenToWorld's split inverse-view / inverse-projection overload.
+    return InViewRotationMatrix.GetTransposed() * FTranslationMatrix(InViewOrigin);
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    ck_jolt_debugger_viewport::
     Select_NearestLabels(
         const TArray<FCk_Jolt_DebugDrawLabel>& InLabels,
         const FVector&                         InViewLocation,
@@ -190,6 +204,14 @@ public:
         FPreviewScene& InPreviewScene)
         : FUMGViewportClient(&InPreviewScene)
     {
+        EngineShowFlags.EnableAdvancedFeatures();
+        EngineShowFlags.SetLighting(true);
+        EngineShowFlags.SetPostProcessing(true);
+        EngineShowFlags.SetAntiAliasing(true);
+        EngineShowFlags.SetTemporalAA(true);
+        EngineShowFlags.SetDynamicShadows(false);
+        EngineShowFlags.SetMotionBlur(false);
+        EngineShowFlags.SetDepthOfField(false);
         EngineShowFlags.SetEyeAdaptation(false);
         SetBackgroundColor(FLinearColor::Black);
         SetViewLocation(ck_jolt_debugger_3d_viewport::Get_DefaultPerspectiveLocation());
@@ -251,6 +273,33 @@ public:
 
     auto Get_ProjectionMode() const -> ECameraProjectionMode::Type
     { return ViewInfo.ProjectionMode; }
+
+    auto Get_RenderFeatures() const -> FCkJoltDebugger_ViewportRenderFeatures
+    {
+        return FCkJoltDebugger_ViewportRenderFeatures{
+            static_cast<bool>(EngineShowFlags.Lighting),
+            static_cast<bool>(EngineShowFlags.PostProcessing),
+            static_cast<bool>(EngineShowFlags.AntiAliasing),
+            static_cast<bool>(EngineShowFlags.TemporalAA),
+            ck_jolt_debugger_viewport::AntiAliasingMethod,
+            static_cast<bool>(EngineShowFlags.DynamicShadows),
+            static_cast<bool>(EngineShowFlags.MotionBlur),
+            static_cast<bool>(EngineShowFlags.DepthOfField),
+            static_cast<bool>(EngineShowFlags.EyeAdaptation)};
+    }
+
+    auto CalcSceneView(FSceneViewFamily* InViewFamily) -> FSceneView* override
+    {
+        auto* View = FUMGViewportClient::CalcSceneView(InViewFamily);
+        if (View != nullptr)
+        {
+            // CkPlugins disables AA project-wide. This inspection viewport owns a persistent view state, so it can
+            // opt into temporal AA locally without changing how any game or test viewport renders.
+            View->AntiAliasingMethod = ck_jolt_debugger_viewport::AntiAliasingMethod;
+        }
+
+        return View;
+    }
 
     auto Get_LookAt() const -> FVector
     { return _LookAt; }
@@ -1043,7 +1092,9 @@ private:
 
         FSceneView::DeprojectScreenToWorld(
             FVector2D(Mouse), ViewInitOptions.ViewRect,
-            ViewInitOptions.ViewRotationMatrix.InverseFast(), ViewInitOptions.ProjectionMatrix.InverseFast(),
+            ck_jolt_debugger_viewport::Make_InverseViewMatrix(
+                ViewInitOptions.ViewOrigin, ViewInitOptions.ViewRotationMatrix),
+            ViewInitOptions.ProjectionMatrix.InverseFast(),
             OutRayOrigin, OutRayDirection);
 
         return NOT OutRayDirection.IsNearlyZero();
@@ -1182,7 +1233,9 @@ auto
 {
     _PreviewScene = MakeShared<FPreviewScene>(
         FPreviewScene::ConstructionValues()
-            .SetCreateDefaultLighting(false)
+            .SetCreateDefaultLighting(true)
+            .SetSkyBrightness(1.0f)
+            .SetLightBrightness(UE_PI)
             .SetCreatePhysicsScene(false)
             .SetEditor(false));
 
@@ -1308,6 +1361,16 @@ auto
     -> UWorld*
 {
     return _PreviewScene.IsValid() ? _PreviewScene->GetWorld() : nullptr;
+}
+
+auto
+    SCkJoltDebugger_3dViewport::
+    Get_RenderFeatures() const
+    -> FCkJoltDebugger_ViewportRenderFeatures
+{
+    return _ViewportClient.IsValid()
+        ? _ViewportClient->Get_RenderFeatures()
+        : FCkJoltDebugger_ViewportRenderFeatures{};
 }
 
 auto

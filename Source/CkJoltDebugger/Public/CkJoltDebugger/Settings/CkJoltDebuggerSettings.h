@@ -11,8 +11,9 @@
 UENUM()
 enum class ECkJoltDebugger_RenderModePref : uint8
 {
-	Solid,
-	Wireframe
+	Solid UMETA(DisplayName = "Off"),
+	SensorWireframe UMETA(DisplayName = "Transparent Only"),
+	Wireframe UMETA(DisplayName = "All")
 };
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -106,7 +107,7 @@ public:
 	virtual auto GetCategoryName() const -> FName override { return TEXT("CkGameplayDebugger"); }
 
 	UPROPERTY(Config, EditAnywhere, Category = "Viewport",
-		meta = (ToolTip = "How the Jolt debugger viewport draws bodies. Wireframe swaps the facility's materials on the same instances."))
+		meta = (ToolTip = "Where the Jolt debugger draws wireframe: nowhere, around transparent sensor bodies only, or on every body. Materials swap on the same instances."))
 	ECkJoltDebugger_RenderModePref RenderMode = ECkJoltDebugger_RenderModePref::Solid;
 
 	UPROPERTY(Config, EditAnywhere, Category = "Viewport",
@@ -157,6 +158,11 @@ public:
 	UPROPERTY(Config, EditAnywhere, Category = "Draw",
 		meta = (ToolTip = "Draw the selected probe's current overlaps: contact points, contact normals, and a line to each overlapping entity."))
 	bool ShowProbeResults = false;
+
+	UPROPERTY(Config, EditAnywhere, Category = "Draw",
+		meta = (ClampMin = "0.25", ClampMax = "4.0", UIMin = "0.25", UIMax = "4.0",
+			ToolTip = "Scale direction-only glyphs such as contact normals and transform axes without changing physical vector magnitudes."))
+	float DirectionGlyphScale = 1.0f;
 
 	UPROPERTY(Config, EditAnywhere, Category = "Diagnostics",
 		meta = (ToolTip = "Linear speed, in cm/s, past which a body is reported as a runaway."))

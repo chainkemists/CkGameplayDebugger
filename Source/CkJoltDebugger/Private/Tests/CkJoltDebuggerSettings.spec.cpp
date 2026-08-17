@@ -27,6 +27,7 @@ namespace ck_jolt_debugger_settings_spec
             _FollowSelection = _Settings->FollowSelection;
             _ShowGrid = _Settings->ShowGrid;
             _ShowProbeResults = _Settings->ShowProbeResults;
+            _DirectionGlyphScale = _Settings->DirectionGlyphScale;
             _RunawayVelocityCmS = _Settings->RunawayVelocityCmS;
             _CameraBookmarks = _Settings->CameraBookmarks;
         }
@@ -45,6 +46,7 @@ namespace ck_jolt_debugger_settings_spec
             _Settings->FollowSelection = _FollowSelection;
             _Settings->ShowGrid = _ShowGrid;
             _Settings->ShowProbeResults = _ShowProbeResults;
+            _Settings->DirectionGlyphScale = _DirectionGlyphScale;
             _Settings->RunawayVelocityCmS = _RunawayVelocityCmS;
             _Settings->CameraBookmarks = _CameraBookmarks;
 
@@ -70,6 +72,7 @@ namespace ck_jolt_debugger_settings_spec
         bool _FollowSelection = false;
         bool _ShowGrid = true;
         bool _ShowProbeResults = false;
+        float _DirectionGlyphScale = 1.0f;
         float _RunawayVelocityCmS = 5000.0f;
         TArray<FCkJoltDebugger_CameraBookmark> _CameraBookmarks;
     };
@@ -100,7 +103,7 @@ auto FCkJoltDebuggerSettings_ConstructRestoresPreferences::RunTest(const FString
     Bookmark.OrthoWidth = 1234.0f;
     Bookmark.IsOrthographic = true;
 
-    Settings->RenderMode = ECkJoltDebugger_RenderModePref::Wireframe;
+    Settings->RenderMode = ECkJoltDebugger_RenderModePref::SensorWireframe;
     Settings->CameraPreset = ECkJoltDebugger_CameraPref::Top;
     Settings->ShowSensors = false;
     Settings->DrawFlags = NonDefaultDrawFlags;
@@ -108,6 +111,7 @@ auto FCkJoltDebuggerSettings_ConstructRestoresPreferences::RunTest(const FString
     Settings->IsolateActive = true;
     Settings->FollowSelection = true;
     Settings->ShowGrid = false;
+    Settings->DirectionGlyphScale = 2.5f;
     Settings->RunawayVelocityCmS = 1234.0f;
     Settings->CameraBookmarks = {Bookmark};
 
@@ -129,9 +133,16 @@ auto FCkJoltDebuggerSettings_ConstructRestoresPreferences::RunTest(const FString
     TestEqual(TEXT("the restored colour mode reached the facility target"),
         static_cast<int32>(Window->Get_TargetColorMode()),
         static_cast<int32>(ECk_Jolt_DebugDrawColorMode::ShapeType));
+    TestEqual(TEXT("the restored transparent-only wireframe mode reached the facility target"),
+        static_cast<int32>(Window->Get_TargetRenderMode()),
+        static_cast<int32>(ECk_Jolt_DebugDraw_RenderMode::SensorWireframe));
     TestTrue(TEXT("the restored isolate state reached the window"), Window->Get_IsolateActive());
     TestTrue(TEXT("the restored follow state reached the window"), Window->Get_FollowSelection());
     TestFalse(TEXT("the restored grid state reached the window"), Window->Get_ShowGrid());
+    TestEqual(TEXT("the restored direction-glyph scale reached the window"),
+        Window->Get_DirectionGlyphScale(), 2.5f);
+    TestEqual(TEXT("the restored direction-glyph scale reached the facility target"),
+        Window->Get_TargetDirectionGlyphScale(), 2.5f);
 
     // A grid the user turned off pushes NOTHING into its retained channel — the toggle is the push, not a
     // per-frame visibility test the capture would have to make.
@@ -142,9 +153,13 @@ auto FCkJoltDebuggerSettings_ConstructRestoresPreferences::RunTest(const FString
     TestEqual(TEXT("the draw flags survive the restore pass"), Settings->DrawFlags, NonDefaultDrawFlags);
     TestEqual(TEXT("the colour mode survives the restore pass"),
         static_cast<int32>(Settings->ColorMode), static_cast<int32>(ECkJoltDebugger_ColorModePref::ShapeType));
+    TestEqual(TEXT("the transparent-only wireframe preference survives the restore pass"),
+        static_cast<int32>(Settings->RenderMode),
+        static_cast<int32>(ECkJoltDebugger_RenderModePref::SensorWireframe));
     TestTrue(TEXT("the isolate preference survives the restore pass"), Settings->IsolateActive);
     TestTrue(TEXT("the follow-selection preference survives the restore pass"), Settings->FollowSelection);
     TestFalse(TEXT("the grid preference survives the restore pass"), Settings->ShowGrid);
+    TestEqual(TEXT("the direction-glyph scale survives the restore pass"), Settings->DirectionGlyphScale, 2.5f);
     TestEqual(TEXT("the runaway-velocity threshold survives the restore pass"),
         Settings->RunawayVelocityCmS, 1234.0f);
 
@@ -167,6 +182,61 @@ auto FCkJoltDebuggerSettings_ConstructRestoresPreferences::RunTest(const FString
     // 20 m of 1 m cells either side of the origin is 41 lines per axis, both axes: the shape is a constant,
     // and a grid that quietly grew or shrank would change what "1 m cell" means to the eye reading it.
     TestEqual(TEXT("a grid restored ON pushes its lattice once"), GridWindow->Get_NumGridLines(), 82);
+
+    return true;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FCkJoltDebuggerSettings_RenderModeCyclesAndPersists,
+    "Ck.JoltDebugger.Settings.RenderModeCyclesAndPersists",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+auto FCkJoltDebuggerSettings_RenderModeCyclesAndPersists::RunTest(const FString&) -> bool
+{
+    const auto Preferences = ck_jolt_debugger_settings_spec::FScopedPreferences{};
+    auto* Settings = Preferences.Get_Settings();
+
+    if (NOT TestNotNull(TEXT("the Jolt debugger settings object exists"), Settings))
+    { return false; }
+
+    Settings->RenderMode = ECkJoltDebugger_RenderModePref::Solid;
+
+    const auto Window = SNew(SCkJoltDebuggerWindow);
+    Window->SlatePrepass();
+
+    const auto ExpectMode = [this, &Window, Settings](
+        const TCHAR* InContext,
+        const ECk_Jolt_DebugDraw_RenderMode InTargetMode,
+        const ECkJoltDebugger_RenderModePref InPreference)
+    {
+        TestEqual(
+            FString::Printf(TEXT("%s reaches the facility target"), InContext),
+            static_cast<int32>(Window->Get_TargetRenderMode()),
+            static_cast<int32>(InTargetMode));
+        TestEqual(
+            FString::Printf(TEXT("%s persists its preference"), InContext),
+            static_cast<int32>(Settings->RenderMode),
+            static_cast<int32>(InPreference));
+    };
+
+    ExpectMode(TEXT("the initial off state"),
+        ECk_Jolt_DebugDraw_RenderMode::Solid, ECkJoltDebugger_RenderModePref::Solid);
+
+    Window->Cycle_RenderModeForTest();
+    ExpectMode(TEXT("the first click's transparent-only wireframe state"),
+        ECk_Jolt_DebugDraw_RenderMode::SensorWireframe,
+        ECkJoltDebugger_RenderModePref::SensorWireframe);
+
+    Window->Cycle_RenderModeForTest();
+    ExpectMode(TEXT("the second click's all-wireframe state"),
+        ECk_Jolt_DebugDraw_RenderMode::Wireframe,
+        ECkJoltDebugger_RenderModePref::Wireframe);
+
+    Window->Cycle_RenderModeForTest();
+    ExpectMode(TEXT("the third click's wrapped off state"),
+        ECk_Jolt_DebugDraw_RenderMode::Solid, ECkJoltDebugger_RenderModePref::Solid);
 
     return true;
 }

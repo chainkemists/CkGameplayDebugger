@@ -540,7 +540,7 @@ namespace ck_optimization_debugger_fixes_impl
         // The check fires on "Nanite is ON and some slot's material does not declare the usage". A mesh whose Nanite
         // was turned off since the scan has nothing to fix here — and flagging its materials anyway would compile
         // shaders for a claim nothing is making.
-        if (NOT Mesh->NaniteSettings.bEnabled)
+        if (NOT Mesh->GetNaniteSettings().bEnabled)
         {
             return Make_Failure(ck::Format_UE(
                 TEXT("{}: Nanite is no longer enabled on this mesh, so its materials do not need the usage flag. Re-scan."),

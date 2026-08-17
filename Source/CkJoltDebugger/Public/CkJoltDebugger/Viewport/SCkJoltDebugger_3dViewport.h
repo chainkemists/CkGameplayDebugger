@@ -8,15 +8,14 @@
 #include "SceneUtils.h"
 
 #include "CkJolt/Subsystem/CkJolt_DebugDrawTarget.h"
+#include "CkDebuggerCommon/Viewport/SCkDebug_3dPreviewViewport.h"
+#include "CkJoltDebugger/Viewport/CkJoltDebugger_3dPreviewAdapter.h"
 
 #include "Fonts/SlateFontInfo.h"
-#include "Widgets/SViewport.h"
+#include "Widgets/SCompoundWidget.h"
 
 // --------------------------------------------------------------------------------------------------------------------
 
-class FPreviewScene;
-class FSceneViewport;
-class FCkJoltDebugger_3dViewportClient;
 class UWorld;
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -152,7 +151,7 @@ DECLARE_DELEGATE_OneParam(FOnCkJoltDebugger_BodyHovered, TOptional<uint64>);
 // light supplies form without hiding features; a simulated preview world would fight the world being inspected.
 // --------------------------------------------------------------------------------------------------------------------
 
-class SCkJoltDebugger_3dViewport final : public SViewport
+class SCkJoltDebugger_3dViewport final : public SCompoundWidget
 {
 public:
     SLATE_BEGIN_ARGS(SCkJoltDebugger_3dViewport) {}
@@ -180,6 +179,8 @@ public:
 
     /** Framing source for FrameSelection. Unset makes the preset (and the F hotkey) inert. */
     auto Set_SelectionBounds(TOptional<FBox> InBounds) -> void;
+    auto Set_SelectionKeys(TArray<uint64> InKeys) -> void;
+    auto Set_IsolateSelection(bool InIsEnabled) -> void;
 
     /*
      * Whether the Ctrl+LMB drag gesture is live. Computed ONCE in the window from the selected world's net
@@ -225,6 +226,7 @@ public:
 
     /** The hovered body's name, shown as this viewport's tooltip. Empty text shows none. */
     auto Set_HoverLabel(FText InText) -> void;
+    auto Get_CommonAdapter() const -> TSharedPtr<FCkJoltDebugger_3dPreviewAdapter>;
 
     virtual auto Tick(const FGeometry& InAllottedGeometry, double InCurrentTime, float InDeltaTime) -> void override;
 
@@ -240,9 +242,8 @@ public:
 private:
     auto Get_HoverTooltip() const -> FText;
 
-    TSharedPtr<FPreviewScene> _PreviewScene;
-    TSharedPtr<FCkJoltDebugger_3dViewportClient> _ViewportClient;
-    TSharedPtr<FSceneViewport> _SceneViewport;
+    TSharedPtr<SCkDebug_3dPreviewViewport> _CommonViewport;
+    TSharedPtr<FCkJoltDebugger_3dPreviewAdapter> _CommonAdapter;
 
     // Held here as well as on the client: OnPaint reads the capture's labels, and the client is a private type
     // this widget cannot hand a paint pass through.

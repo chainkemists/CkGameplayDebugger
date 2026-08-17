@@ -56,7 +56,6 @@
 #include "Widgets/Images/SImage.h"
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Input/SSegmentedControl.h"
-#include "Widgets/Input/SSpinBox.h"
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/Layout/SScrollBox.h"
@@ -379,37 +378,6 @@ namespace ck_jolt_debugger
                 return ECk_Jolt_DebugDraw_RenderMode::Wireframe;
             default:
                 return ECk_Jolt_DebugDraw_RenderMode::Solid;
-        }
-    }
-
-    static auto Get_RenderModeLabel(
-        ECk_Jolt_DebugDraw_RenderMode InRenderMode) -> FText
-    {
-        switch (InRenderMode)
-        {
-            case ECk_Jolt_DebugDraw_RenderMode::SensorWireframe:
-                return FText::FromString(TEXT("Wire: Transparent"));
-            case ECk_Jolt_DebugDraw_RenderMode::Wireframe:
-                return FText::FromString(TEXT("Wire: All"));
-            default:
-                return FText::FromString(TEXT("Wire: Off"));
-        }
-    }
-
-    static auto Get_RenderModeTooltip(
-        ECk_Jolt_DebugDraw_RenderMode InRenderMode) -> FText
-    {
-        switch (InRenderMode)
-        {
-            case ECk_Jolt_DebugDraw_RenderMode::SensorWireframe:
-                return FText::FromString(TEXT(
-                    "Wireframe outlines transparent sensor bodies only; opaque bodies stay filled. Click for wireframe on every body."));
-            case ECk_Jolt_DebugDraw_RenderMode::Wireframe:
-                return FText::FromString(TEXT(
-                    "Every Jolt body draws as wireframe. Click to turn wireframe off."));
-            default:
-                return FText::FromString(TEXT(
-                    "Wireframe is off, including on transparent sensors. Click to outline transparent sensor bodies only."));
         }
     }
 
@@ -1408,20 +1376,13 @@ auto
 {
     return
     {
-        // Primary lane = what acts on THIS viewport. The CVar toggles paint the game viewport instead, so they
-        // sit in their own context group rather than reading as controls for the pane above them.
-        FCkDebug_CommandGroup::Primary(
-            TEXT("JoltRender"),
-            FText::FromString(TEXT("Jolt viewport render mode")),
-            BuildRenderGroup()),
         // Pause and Step act on the world the viewport is showing, so they belong beside it rather than in a
         // context lane — they are the two controls a physics debugger is opened to reach.
         FCkDebug_CommandGroup::Primary(
             TEXT("JoltSim"),
             FText::FromString(TEXT("Jolt simulation")),
             BuildSimGroup()),
-        // Isolate, Follow and Drag all act on the SELECTION as it is shown in the pane above, so they are
-        // Primary beside it rather than a property of the target.
+        // Drag is specialized Jolt state. Common owns isolate and follow presentation.
         FCkDebug_CommandGroup::Primary(
             TEXT("JoltSelection"),
             FText::FromString(TEXT("Jolt selection")),
@@ -1430,10 +1391,6 @@ auto
             TEXT("JoltTarget"),
             FText::FromString(TEXT("Jolt world selection")),
             BuildTargetGroup()),
-        FCkDebug_CommandGroup::Context(
-            TEXT("JoltCamera"),
-            FText::FromString(TEXT("Jolt viewport camera")),
-            BuildCameraGroup()),
         FCkDebug_CommandGroup::Context(
             TEXT("JoltDraw"),
             FText::FromString(TEXT("Jolt debug draw")),
@@ -1551,142 +1508,6 @@ auto
             SNew(SCkDebug_ViewportPickerControls)
             .Picker(_ViewportPicker)
             .PickTooltip(FText::FromString(TEXT("Enter pick mode: click a physics body in the GAME viewport to select it here.\nOnly Jolt bodies, baked static actors, sensors and characters (and their owning entity) are shown and pickable.")))
-        ];
-}
-
-auto
-    SCkJoltDebuggerWindow::
-    BuildCameraGroup()
-    -> TSharedRef<SWidget>
-{
-    const auto MakeCameraButton = [this](
-        FName InIconId,
-        const TCHAR* InToolTip,
-        ECkJoltDebugger_CameraPreset InPreset,
-        TOptional<ECkJoltDebugger_CameraPref> InPreference) -> TSharedRef<SWidget>
-    {
-        return SNew(SButton)
-            .ButtonStyle(FAppStyle::Get(), "SimpleButton")
-            .ToolTipText(FText::FromString(InToolTip))
-            .ContentPadding(FMargin{4.0f, 1.0f})
-            .OnClicked_Lambda([this, InPreset, InPreference]() -> FReply
-            {
-                if (_Viewport.IsValid())
-                { _Viewport->ApplyPreset(InPreset); }
-
-                // Only the ORIENTATION presets are a state to come back to; framing is an action against
-                // whatever happens to be in the world at the time.
-                if (InPreference.IsSet())
-                {
-                    auto* Settings = GetMutableDefault<UCkJoltDebuggerSettings>();
-                    Settings->CameraPreset = *InPreference;
-                    Settings->SaveConfig();
-                }
-
-                return FReply::Handled();
-            })
-            [
-                SNew(SImage).Image(FCkDebuggerCommonStyle::Get_IconBrush(InIconId))
-            ];
-    };
-
-    return SNew(SHorizontalBox)
-        + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-        [ MakeCameraButton(TEXT("ViewPerspective"), TEXT("Perspective camera"), ECkJoltDebugger_CameraPreset::Perspective, ECkJoltDebugger_CameraPref::Perspective) ]
-        + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-        [ MakeCameraButton(TEXT("ViewTop"), TEXT("Top orthographic camera"), ECkJoltDebugger_CameraPreset::Top, ECkJoltDebugger_CameraPref::Top) ]
-        + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-        [ MakeCameraButton(TEXT("ViewBottom"), TEXT("Bottom orthographic camera"), ECkJoltDebugger_CameraPreset::Bottom, ECkJoltDebugger_CameraPref::Bottom) ]
-        + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-        [ MakeCameraButton(TEXT("ViewLeft"), TEXT("Left orthographic camera"), ECkJoltDebugger_CameraPreset::Left, ECkJoltDebugger_CameraPref::Left) ]
-        + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-        [ MakeCameraButton(TEXT("ViewRight"), TEXT("Right orthographic camera"), ECkJoltDebugger_CameraPreset::Right, ECkJoltDebugger_CameraPref::Right) ]
-        + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-        [ MakeCameraButton(TEXT("ViewFront"), TEXT("Front orthographic camera"), ECkJoltDebugger_CameraPreset::Front, ECkJoltDebugger_CameraPref::Front) ]
-        + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-        [ MakeCameraButton(TEXT("ViewBack"), TEXT("Back orthographic camera"), ECkJoltDebugger_CameraPreset::Back, ECkJoltDebugger_CameraPref::Back) ]
-        + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-        [ MakeCameraButton(TEXT("FrameActor"), TEXT("Frame every drawn Jolt body (Home)"), ECkJoltDebugger_CameraPreset::FrameAll, {}) ]
-        + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-        [
-            SNew(SButton)
-            .ButtonStyle(FAppStyle::Get(), "SimpleButton")
-            .ToolTipText(FText::FromString(TEXT("Frame the selected body (F)")))
-            .ContentPadding(FMargin{4.0f, 1.0f})
-            .IsEnabled_Lambda([this]() { return _Selection.IsSet(); })
-            .OnClicked_Lambda([this]() -> FReply
-            {
-                if (_Viewport.IsValid())
-                { _Viewport->ApplyPreset(ECkJoltDebugger_CameraPreset::FrameSelection); }
-
-                return FReply::Handled();
-            })
-            [
-                SNew(SImage).Image(FCkDebuggerCommonStyle::Get_IconBrush(TEXT("SelectInViewport")))
-            ]
-        ];
-}
-
-auto
-    SCkJoltDebuggerWindow::
-    BuildRenderGroup()
-    -> TSharedRef<SWidget>
-{
-    return SNew(SHorizontalBox)
-
-        + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-        [
-            SNew(SButton)
-            .ButtonStyle(FAppStyle::Get(), "SimpleButton")
-            .ContentPadding(FMargin{4.0f, 1.0f})
-            .IsEnabled_Lambda([this]() { return _DebugDrawTarget.IsValid(); })
-            .ToolTipText_Lambda([this]()
-            {
-                return ck_jolt_debugger::Get_RenderModeTooltip(Get_TargetRenderMode());
-            })
-            .OnClicked_Lambda([this]() -> FReply
-            {
-                Cycle_RenderMode();
-                return FReply::Handled();
-            })
-            [
-                SNew(SHorizontalBox)
-
-                + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-                [
-                    SNew(SImage)
-                    .Image(FCkDebuggerCommonStyle::Get_IconBrush(TEXT("Grid")))
-                    .ColorAndOpacity_Lambda([this]() -> FSlateColor
-                    {
-                        return Get_TargetRenderMode() == ECk_Jolt_DebugDraw_RenderMode::Solid
-                            ? FSlateColor{CkStyle::TextMute()}
-                            : FSlateColor{CkStyle::Accent()};
-                    })
-                ]
-
-                + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(CkStyle::SpaceXS, 0.0f, 0.0f, 0.0f)
-                [
-                    SNew(STextBlock)
-                    .Font_Static(&ck_jolt_debugger::Font_RowLabel)
-                    .Text_Lambda([this]()
-                    {
-                        return ck_jolt_debugger::Get_RenderModeLabel(Get_TargetRenderMode());
-                    })
-                ]
-            ]
-        ]
-
-        // The ground grid is a PRIMARY control: it acts on this viewport and nothing else. It carries a
-        // different glyph from Wireframe beside it deliberately — two toggles sharing one icon in one lane are
-        // indistinguishable at a glance, and "Grid" was already spent on the wireframe lattice.
-        + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-        [
-            SNew(SCkDebug_IconToggle)
-            .IconId(TEXT("Net"))
-            .Label(FText::FromString(TEXT("Grid")))
-            .ToolTip(FText::FromString(TEXT("Draw a ground grid at Z=0 — 1 m cells over 20 m, a heavier line every 10, and the world axes through the origin. It gives an empty preview world a sense of scale; it is not part of the physics world.")))
-            .IsOn_Lambda([this]() { return _ShowGrid; })
-            .OnStateChanged_Lambda([this](const bool InIsEnabled) { Set_ShowGrid(InIsEnabled); })
         ];
 }
 
@@ -2116,8 +1937,7 @@ auto
 auto
     SCkJoltDebuggerWindow::
     Set_DirectionGlyphScale(
-        float InScale,
-        bool InPersist)
+        float InScale)
     -> void
 {
     const auto ClampedScale = FMath::Clamp(
@@ -2136,17 +1956,12 @@ auto
         DoUpdateProbeResults();
     }
 
-    // SSpinBox emits value changes continuously while its thumb is dragged. Preview those without I/O, then save
-    // once on commit/end-slide. The equality guard also makes the two completion delegates harmless together.
-    if (InPersist)
-    {
-        auto* Settings = GetMutableDefault<UCkJoltDebuggerSettings>();
+    auto* Settings = GetMutableDefault<UCkJoltDebuggerSettings>();
 
-        if (NOT FMath::IsNearlyEqual(Settings->DirectionGlyphScale, ClampedScale))
-        {
-            Settings->DirectionGlyphScale = ClampedScale;
-            Settings->SaveConfig();
-        }
+    if (NOT FMath::IsNearlyEqual(Settings->DirectionGlyphScale, ClampedScale))
+    {
+        Settings->DirectionGlyphScale = ClampedScale;
+        Settings->SaveConfig();
     }
 }
 
@@ -2452,27 +2267,6 @@ auto
     -> TSharedRef<SWidget>
 {
     return SNew(SHorizontalBox)
-
-        + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-        [
-            SNew(SCkDebug_IconToggle)
-            .IconId(TEXT("Lock"))
-            .Label(FText::FromString(TEXT("Isolate")))
-            .ToolTip(FText::FromString(TEXT("Draw ONLY the selected bodies, releasing every other body's instances (I). Inert while nothing is selected.")))
-            .IsOn_Lambda([this]() { return _IsolateActive; })
-            .OnStateChanged_Lambda([this](const bool InIsActive) { Set_IsolateActive(InIsActive); })
-        ]
-
-        + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-        [
-            SNew(SCkDebug_IconToggle)
-            .IconId(TEXT("Target"))
-            .Label(FText::FromString(TEXT("Follow")))
-            .ToolTip(FText::FromString(TEXT("Keep the camera's offset to the selection as it moves. The camera follows — it does not re-frame, so rotation and distance stay yours.")))
-            .IsOn_Lambda([this]() { return _FollowSelection; })
-            .OnStateChanged_Lambda([this](const bool InIsActive) { Set_FollowSelection(InIsActive); })
-        ]
-
         + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
         [
             /*
@@ -2604,6 +2398,11 @@ auto
         {
             const auto Flag = Toggle._Flag;
 
+            if (Flag == ECk_Jolt_DebugDrawFlags::Labels)
+            {
+                continue;
+            }
+
             Actions.Emplace(FCkDebug_IconToggleAction{
                 FName{ck::Format_UE(TEXT("JoltDraw.{}"), Toggle._Label)},
                 Toggle._IconId,
@@ -2617,6 +2416,11 @@ auto
                 {
                     Set_DrawFlag(Flag, InIsEnabled);
                 })});
+        }
+
+        if (Actions.IsEmpty())
+        {
+            continue;
         }
 
         Lane->AddSlot().AutoWidth().VAlign(VAlign_Center).Padding(0.0f, 0.0f, CkStyle::SpaceS, 0.0f)
@@ -2654,36 +2458,6 @@ auto
             "Read for the selection only: the overlap query returns a full copy of the probe's overlap set.")))
         .IsOn_Lambda([this]() { return _ShowProbeResults; })
         .OnStateChanged_Lambda([this](const bool InIsEnabled) { Set_ShowProbeResults(InIsEnabled); })
-    ];
-
-    Lane->AddSlot().AutoWidth().VAlign(VAlign_Center).Padding(0.0f, 0.0f, CkStyle::SpaceS, 0.0f)
-    [
-        SNew(STextBlock)
-        .Font_Static(&ck_jolt_debugger::Font_RowLabel)
-        .ColorAndOpacity(CkStyle::TextMute())
-        .Text(FText::FromString(TEXT("Glyph")))
-    ];
-
-    Lane->AddSlot().AutoWidth().VAlign(VAlign_Center).Padding(0.0f, 0.0f, CkStyle::SpaceM, 0.0f)
-    [
-        SNew(SBox).WidthOverride(64.0f)
-        [
-            SNew(SSpinBox<float>)
-            .MinValue(ck_jolt_debugger::DirectionGlyphScaleMin)
-            .MaxValue(ck_jolt_debugger::DirectionGlyphScaleMax)
-            .MinSliderValue(ck_jolt_debugger::DirectionGlyphScaleMin)
-            .MaxSliderValue(ck_jolt_debugger::DirectionGlyphScaleMax)
-            .Delta(0.25f)
-            .Value_Lambda([this]() { return _DirectionGlyphScale; })
-            .OnValueChanged_Lambda([this](const float InScale) { Set_DirectionGlyphScale(InScale, false); })
-            .OnValueCommitted_Lambda([this](const float InScale, ETextCommit::Type)
-            { Set_DirectionGlyphScale(InScale); })
-            .OnEndSliderMovement_Lambda([this](const float InScale)
-            { Set_DirectionGlyphScale(InScale); })
-            .ToolTipText(FText::FromString(TEXT(
-                "Scale direction-only glyphs: selected-body contact normals, transform axes, and selected-probe "
-                "contact normals. Physical vectors such as velocity keep their real magnitude.")))
-        ]
     ];
 
     using FColorModeControl = SSegmentedControl<ECk_Jolt_DebugDrawColorMode>;

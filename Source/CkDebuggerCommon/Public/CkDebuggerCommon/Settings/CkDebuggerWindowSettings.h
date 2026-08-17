@@ -5,9 +5,8 @@
 #include "CkDebuggerWindowSettings.generated.h"
 
 // ====================================================================================================================
-// Per-user (NOT checked into source) settings that control when each Ck debugger
-// window may refresh in Editor and packaged developer tools. Read via GetDefault<>; write via
-// GetMutableDefault<> + SaveConfig().
+// Per-user (NOT checked into source) settings for shared Ck debugger-window behavior in Editor and
+// packaged developer tools. Read via GetDefault<>; write via GetMutableDefault<> + SaveConfig().
 //
 // Two independent axes:
 //   - Refresh MODE: always-on vs only-when-visible. Controls whether the
@@ -73,6 +72,11 @@ public:
 	// this way are not persisted in the layout across editor restarts.
 	UPROPERTY(Config, EditAnywhere, Category = "Global")
 	bool DockNewDebuggersIntoExistingWindow = false;
+
+	UPROPERTY(Config, EditAnywhere, Category = "3D Viewport",
+		meta = (DisplayName = "Fly Camera Speed", ClampMin = "0.00001", ClampMax = "10000.0",
+			ToolTip = "Shared per-user flight speed for every common 3D debugger viewport. Hold RMB and use the mouse wheel to adjust it."))
+	float ViewportFlyCameraSpeed = 1.0f;
 
 	// ---- Per-window overrides ----------------------------------------------
 	// Keys are the window IDs returned by SCkDebugger_WindowBase::Get_WindowId().

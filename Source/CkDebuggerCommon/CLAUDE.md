@@ -630,7 +630,9 @@ If your module renders graph nodes via `SGraphEditor`, also add `GraphEditor`.
 ## Common 3D preview shell
 
 - `Viewport/SCkDebug_3dPreviewViewport` owns the runtime-safe preview world, scene viewport, camera/navigation,
-  camera presets and bookmarks, common render/grid/frame/follow/isolate controls, projection, and teardown.
+  camera presets and bookmarks, one icon-first common render/grid/frame/follow/isolate control strip, projection,
+  and teardown. Fly speed is a shared per-user `UCkDebuggerWindowSettings` preference adjusted by perspective
+  RMB + wheel and restored by every new Common preview client.
 - `Viewport/CkDebug3dInteractionRouter` owns neutral click, additive selection, drag sequencing, plane shifts,
   hover throttling, and focus-loss cleanup. Feature adapters resolve opaque identities and execute specialized
   behavior; they do not create a second viewport client.

@@ -87,6 +87,25 @@ auto
     return Indices;
 }
 
+namespace ck_jolt_debugger_viewport
+{
+auto
+Get_CameraPreference(ECkDebug3dCameraPreset InPreset) -> TOptional<ECkJoltDebugger_CameraPref>
+{
+    switch (InPreset)
+    {
+        case ECkDebug3dCameraPreset::Perspective: return ECkJoltDebugger_CameraPref::Perspective;
+        case ECkDebug3dCameraPreset::Top:         return ECkJoltDebugger_CameraPref::Top;
+        case ECkDebug3dCameraPreset::Bottom:      return ECkJoltDebugger_CameraPref::Bottom;
+        case ECkDebug3dCameraPreset::Left:        return ECkJoltDebugger_CameraPref::Left;
+        case ECkDebug3dCameraPreset::Right:       return ECkJoltDebugger_CameraPref::Right;
+        case ECkDebug3dCameraPreset::Front:       return ECkJoltDebugger_CameraPref::Front;
+        case ECkDebug3dCameraPreset::Back:        return ECkJoltDebugger_CameraPref::Back;
+        default:                                  return {};
+    }
+}
+} // namespace ck_jolt_debugger_viewport
+
 auto
     SCkJoltDebugger_3dViewport::
     Construct(const FArguments& InArgs)
@@ -168,6 +187,22 @@ auto
                                       Destination.IsOrthographic = Source._IsOrthographic;
                                       Destination.IsSet = Source._IsSet;
                                   }
+                                  Settings->SaveConfig();
+                              }))
+                          .OnCameraOrientationChanged(FOnCkDebug3dCameraOrientationChanged::CreateLambda(
+                              [](ECkDebug3dCameraPreset InPreset)
+                              {
+                                  const auto Preference = ck_jolt_debugger_viewport::Get_CameraPreference(InPreset);
+                                  if (NOT Preference.IsSet())
+                                  {
+                                      return;
+                                  }
+                                  auto* Settings = GetMutableDefault<UCkJoltDebuggerSettings>();
+                                  if (ck::Is_NOT_Valid(Settings))
+                                  {
+                                      return;
+                                  }
+                                  Settings->CameraPreset = *Preference;
                                   Settings->SaveConfig();
                               }));
     ChildSlot[_CommonViewport.ToSharedRef()];

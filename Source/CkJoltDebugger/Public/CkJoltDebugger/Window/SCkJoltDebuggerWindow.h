@@ -223,8 +223,6 @@ private:
     auto BuildCommandGroups() -> TArray<FCkDebug_CommandGroup>;
     auto BuildInWorldDrawToggles() const -> TSharedRef<SWidget>;
     auto BuildTargetGroup() -> TSharedRef<SWidget>;
-    auto BuildCameraGroup() -> TSharedRef<SWidget>;
-    auto BuildRenderGroup() -> TSharedRef<SWidget>;
     auto BuildSimGroup() -> TSharedRef<SWidget>;
     auto BuildSelectionGroup() -> TSharedRef<SWidget>;
     auto BuildDrawGroup() -> TSharedRef<SWidget>;
@@ -301,7 +299,7 @@ private:
 
     auto Set_ShowProbeResults(bool InIsEnabled) -> void;
     /** Applies a live glyph preview; persistence is deferred until the spinbox interaction commits. */
-    auto Set_DirectionGlyphScale(float InScale, bool InPersist = true) -> void;
+    auto Set_DirectionGlyphScale(float InScale) -> void;
 
     auto Set_ShowGrid(bool InIsEnabled) -> void;
 

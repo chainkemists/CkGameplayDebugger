@@ -1,6 +1,9 @@
 #include "CkDebuggerCommon/Viewport/SCkDebug_3dPreviewViewport.h"
 
+#include "CkDebuggerCommon/Settings/CkDebuggerWindowSettings.h"
+#include "CkDebuggerCommon/Styles/CkDebuggerCommonStyle.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_IconToggle.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_NumericEditor.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_OrientationCube.h"
 
 #include "CkCore/Macros/CkMacros.h"
@@ -9,8 +12,11 @@
 #include "Engine/LocalPlayer.h"
 #include "SceneView.h"
 #include "Slate/SceneViewport.h"
+#include "Styling/AppStyle.h"
 #include "UnrealClient.h"
+#include "Widgets/Images/SImage.h"
 #include "Widgets/Input/SButton.h"
+#include "Widgets/Input/SComboButton.h"
 #include "Widgets/Layout/SScrollBox.h"
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/SOverlay.h"
@@ -21,7 +27,18 @@ namespace ck_debug_3d_preview_viewport
 const auto DefaultLocation = FVector{-1600.0, -1600.0, 1200.0};
 const auto DefaultRotation = FRotator{-25.0, 45.0, 0.0};
 constexpr float DefaultOrbitDistance = 1600.0f;
+constexpr float DefaultCameraSpeed = 1.0f;
+constexpr float MinimumCameraSpeed = 0.00001f;
+constexpr float MaximumCameraSpeed = 10000.0f;
 constexpr int32 BookmarkCount = 10;
+
+auto
+SanitizeCameraSpeed(float InCameraSpeed) -> float
+{
+    return FMath::IsFinite(InCameraSpeed)
+               ? FMath::Clamp(InCameraSpeed, MinimumCameraSpeed, MaximumCameraSpeed)
+               : DefaultCameraSpeed;
+}
 
 auto
 TryGetBookmarkSlot(const FKey& InKey) -> TOptional<int32>
@@ -67,10 +84,13 @@ class FCkDebug3dPreviewViewportClient final : public FUMGViewportClient
     friend class SCkDebug_3dPreviewViewport;
     FCkDebug3dPreviewViewportClient(FPreviewScene& InScene, FCkDebug3dPreviewScenePolicy InPolicy,
                                     TSharedPtr<ICkDebug3dPreviewAdapter> InAdapter,
-                                    TFunction<void(int32)> InStoreBookmark, TFunction<void(int32)> InRecallBookmark)
+                                    TFunction<void(int32)> InStoreBookmark, TFunction<void(int32)> InRecallBookmark,
+                                    float InCameraSpeed, TFunction<void(float)> InCameraSpeedChanged)
         : FUMGViewportClient(&InScene), _Policy(InPolicy), _Adapter(InAdapter),
           _InteractionRouter(MakeUnique<FCkDebug3dInteractionRouter>(InAdapter, FCkDebug3dInteractionConfig{})),
-          _StoreBookmark(MoveTemp(InStoreBookmark)), _RecallBookmark(MoveTemp(InRecallBookmark))
+          _StoreBookmark(MoveTemp(InStoreBookmark)), _RecallBookmark(MoveTemp(InRecallBookmark)),
+          _OnCameraSpeedChanged(MoveTemp(InCameraSpeedChanged)),
+          _CameraSpeed(ck_debug_3d_preview_viewport::SanitizeCameraSpeed(InCameraSpeed))
     {
         EngineShowFlags.EnableAdvancedFeatures();
         EngineShowFlags.SetLighting(_Policy._Lighting);
@@ -262,7 +282,10 @@ class FCkDebug3dPreviewViewportClient final : public FUMGViewportClient
             }
             if (_RightMouseDown && ViewInfo.ProjectionMode == ECameraProjectionMode::Perspective)
             {
-                _CameraSpeed = FMath::Clamp(_CameraSpeed * (Sign > 0 ? 1.1f : 1.0f / 1.1f), 0.00001f, 10000.0f);
+                _CameraSpeed = ck_debug_3d_preview_viewport::SanitizeCameraSpeed(
+                    _CameraSpeed * (Sign > 0 ? 1.1f : 1.0f / 1.1f));
+                if (_OnCameraSpeedChanged)
+                { _OnCameraSpeedChanged(_CameraSpeed); }
             }
             else
             {
@@ -676,6 +699,7 @@ class FCkDebug3dPreviewViewportClient final : public FUMGViewportClient
     TUniquePtr<FCkDebug3dInteractionRouter> _InteractionRouter;
     TFunction<void(int32)> _StoreBookmark;
     TFunction<void(int32)> _RecallBookmark;
+    TFunction<void(float)> _OnCameraSpeedChanged;
     FVector _LookAt = FVector::ZeroVector;
     TOptional<FVector> _LastFollowCenter;
     float _OrbitDistance = 1.0f;
@@ -730,6 +754,7 @@ auto
     _CameraBookmarks = InArgs._CameraBookmarks;
     _CameraBookmarks.SetNum(ck_debug_3d_preview_viewport::BookmarkCount);
     _OnCameraBookmarksChanged = InArgs._OnCameraBookmarksChanged;
+    _OnCameraOrientationChanged = InArgs._OnCameraOrientationChanged;
     _ShowOrientationCube = _Descriptor._ShowOrientationCube;
     constexpr auto CreatePhysicsScene = false;
     constexpr auto IsEditorScene = false;
@@ -745,6 +770,10 @@ auto
     Args.IgnoreTextureAlpha(IgnoreTextureAlpha);
     Args.EnableBlending(EnableBlending);
     SViewport::Construct(Args);
+    const auto* Settings = GetDefault<UCkDebuggerWindowSettings>();
+    const auto InitialCameraSpeed = Settings != nullptr
+                                        ? Settings->ViewportFlyCameraSpeed
+                                        : ck_debug_3d_preview_viewport::DefaultCameraSpeed;
     _ViewportClient = MakeShared<FCkDebug3dPreviewViewportClient>(
         *_PreviewScene, _Descriptor._PreviewPolicy, InArgs._Adapter, [this](int32 InSlot)
         {
@@ -752,6 +781,14 @@ auto
         }, [this](int32 InSlot)
         {
             Recall_CameraBookmark(InSlot);
+        }, InitialCameraSpeed, [](float InCameraSpeed)
+        {
+            auto* MutableSettings = GetMutableDefault<UCkDebuggerWindowSettings>();
+            if (MutableSettings == nullptr)
+            { return; }
+            MutableSettings->ViewportFlyCameraSpeed =
+                ck_debug_3d_preview_viewport::SanitizeCameraSpeed(InCameraSpeed);
+            MutableSettings->SaveConfig();
         });
     _SceneViewport = MakeShared<FSceneViewport>(_ViewportClient.Get(), SharedThis(this));
     _ViewportClient->SetViewport(_SceneViewport.ToSharedRef());
@@ -813,31 +850,121 @@ auto
                                 }
                             }));
     }
-    auto CompleteControls = SNew(SHorizontalBox);
-    for (const auto ControlId : Build_CommonControlDescriptors())
+    Actions.Emplace(TEXT("Viewport3d.OrientationCube"), TEXT("Cube"), FText::FromString(TEXT("Orientation cube")),
+                    FText::FromString(TEXT("Show or hide the orientation cube.")),
+                    TAttribute<bool>::CreateLambda([this]() { return _ShowOrientationCube; }),
+                    FOnCkDebug_IconToggleChanged::CreateLambda([this](bool InIsOn) { _ShowOrientationCube = InIsOn; }));
+    if (EnumHasAnyFlags(Get_Capabilities(), ECkDebug3dViewportCapability::FollowSelection))
     {
-        auto Label = ControlId.ToString();
-        Label.RemoveFromStart(TEXT("Viewport3d."));
-        Label.ReplaceInline(TEXT("."), TEXT(" / "));
-        if (Label.StartsWith(TEXT("Bookmark / Store / ")))
-        {
-            Label = TEXT("Store B") + Label.RightChop(19);
-        }
-        else if (Label.StartsWith(TEXT("Bookmark / ")))
-        {
-            Label = TEXT("B") + Label.RightChop(11);
-        }
-        CompleteControls->AddSlot()
-            .AutoWidth()[SNew(SButton)
-                             .Text(FText::FromString(Label))
-                             .ToolTipText(FText::FromString(FString::Printf(TEXT("%s control"), *Label)))
-                             .OnClicked_Lambda(
-                                 [this, ControlId]()
-                                 {
-                                     Invoke_CommonControl(ControlId);
-                                     return FReply::Handled();
-                                 })];
+        Actions.Emplace(TEXT("Viewport3d.Follow"), TEXT("Target"), FText::FromString(TEXT("Follow selection")),
+                        FText::FromString(TEXT("Keep the camera offset while the selected item moves.")),
+                        TAttribute<bool>::CreateLambda([this]() { return _FollowSelection; }),
+                        FOnCkDebug_IconToggleChanged::CreateLambda([this](bool InIsOn) { Set_FollowSelection(InIsOn); }));
     }
+    if (EnumHasAnyFlags(Get_Capabilities(), ECkDebug3dViewportCapability::IsolateSelection))
+    {
+        Actions.Emplace(TEXT("Viewport3d.Isolate"), TEXT("SelectInViewport"), FText::FromString(TEXT("Isolate selection")),
+                        FText::FromString(TEXT("Render only selected items.")),
+                        TAttribute<bool>::CreateLambda([this]() { return _IsolateSelection; }),
+                        FOnCkDebug_IconToggleChanged::CreateLambda([this](bool InIsOn) { Set_IsolateSelection(InIsOn); }));
+    }
+    const auto MakeIconButton = [this](FName InIconId, FName InControlId, const TCHAR* InToolTip) -> TSharedRef<SWidget>
+    {
+        return SNew(SButton)
+            .ButtonStyle(FAppStyle::Get(), "SimpleButton")
+            .ToolTipText(FText::FromString(InToolTip))
+            .ContentPadding(FMargin{4.0f, 2.0f})
+            .OnClicked_Lambda([this, InControlId]()
+            {
+                Invoke_CommonControl(InControlId);
+                return FReply::Handled();
+            })
+            [SNew(SImage).Image(FCkDebuggerCommonStyle::Get_IconBrush(InIconId))];
+    };
+    const auto BookmarksMenu = SNew(SVerticalBox);
+    for (auto Index = 0; Index < ck_debug_3d_preview_viewport::BookmarkCount; ++Index)
+    {
+        const auto Slot = FString::FromInt(Index);
+        BookmarksMenu->AddSlot().AutoHeight()
+        [
+            SNew(SHorizontalBox)
+            + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(6.0f, 0.0f)
+            [SNew(STextBlock).Text(FText::AsNumber(Index))]
+            + SHorizontalBox::Slot().AutoWidth()
+            [MakeIconButton(TEXT("Camera"), FName{*(FString{TEXT("Viewport3d.Bookmark.")} + Slot)},
+                            *FString::Printf(TEXT("Recall bookmark %d"), Index))]
+            + SHorizontalBox::Slot().AutoWidth()
+            [MakeIconButton(TEXT("Pin"), FName{*(FString{TEXT("Viewport3d.Bookmark.Store.")} + Slot)},
+                            *FString::Printf(TEXT("Store bookmark %d"), Index))]
+        ];
+    }
+    struct FIconControl
+    {
+        FName _IconId;
+        FName _ControlId;
+        const TCHAR* _ToolTip;
+    };
+    const FIconControl CameraControls[] = {
+        {TEXT("ViewPerspective"), TEXT("Viewport3d.Camera.Perspective"), TEXT("Perspective camera")},
+        {TEXT("ViewTop"), TEXT("Viewport3d.Camera.Top"), TEXT("Top orthographic camera")},
+        {TEXT("ViewBottom"), TEXT("Viewport3d.Camera.Bottom"), TEXT("Bottom orthographic camera")},
+        {TEXT("ViewLeft"), TEXT("Viewport3d.Camera.Left"), TEXT("Left orthographic camera")},
+        {TEXT("ViewRight"), TEXT("Viewport3d.Camera.Right"), TEXT("Right orthographic camera")},
+        {TEXT("ViewFront"), TEXT("Viewport3d.Camera.Front"), TEXT("Front orthographic camera")},
+        {TEXT("ViewBack"), TEXT("Viewport3d.Camera.Back"), TEXT("Back orthographic camera")},
+        {TEXT("FrameActor"), TEXT("Viewport3d.FrameAll"), TEXT("Frame all content (Home)")}};
+    auto CompleteControls = SNew(SHorizontalBox);
+    for (const auto& Control : CameraControls)
+    {
+        CompleteControls->AddSlot().AutoWidth()
+        [MakeIconButton(Control._IconId, Control._ControlId, Control._ToolTip)];
+    }
+    if (EnumHasAnyFlags(Get_Capabilities(), ECkDebug3dViewportCapability::FrameSelection))
+    {
+        CompleteControls->AddSlot().AutoWidth()
+        [MakeIconButton(TEXT("SelectInViewport"), TEXT("Viewport3d.FrameSelection"),
+                        TEXT("Frame selected content (F)"))];
+    }
+    CompleteControls->AddSlot().AutoWidth()
+    [SNew(SComboButton)
+         .ToolTipText(FText::FromString(TEXT("Camera bookmarks: recall or store slots 0 through 9.")))
+         .ButtonContent()[SNew(SImage).Image(FCkDebuggerCommonStyle::Get_IconBrush(TEXT("Camera")))]
+         .MenuContent()[BookmarksMenu]];
+    if (EnumHasAnyFlags(Get_Capabilities(), ECkDebug3dViewportCapability::DirectionGlyphScale))
+    {
+        CompleteControls->AddSlot().AutoWidth()
+        [SNew(SComboButton)
+             .ToolTipText(FText::FromString(TEXT("Set direction-glyph scale.")))
+             .ButtonContent()[SNew(SImage).Image(FCkDebuggerCommonStyle::Get_IconBrush(TEXT("Scale")))]
+             .MenuContent()
+             [
+                 SNew(SHorizontalBox)
+                 + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(6.0f)
+                 [SNew(STextBlock).Text(FText::FromString(TEXT("Direction glyph scale")))]
+                 + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(6.0f)
+                 [
+                     SNew(SCkDebug_NumericEditor)
+                         .Value_Lambda([WeakAdapter]() -> double
+                         {
+                             const auto Adapter = WeakAdapter.Pin();
+                             return Adapter.IsValid() ? Adapter->Get_DirectionGlyphScale() : 1.0f;
+                         })
+                         .Kind(ECkDebug_NumericKind::Float)
+                         .MinValue(0.25)
+                         .MaxValue(4.0)
+                         .FractionalDigits(2)
+                         .OnValueCommitted(FOnCkDebug_NumericCommitted::CreateLambda(
+                             [WeakAdapter](double InValue)
+                             {
+                                 if (const auto Adapter = WeakAdapter.Pin())
+                                 {
+                                     Adapter->Set_DirectionGlyphScale(static_cast<float>(InValue));
+                                 }
+                             }))
+                 ]
+             ]];
+    }
+    CompleteControls->AddSlot().AutoWidth()[SNew(SCkDebug_IconToolbar).Actions(MoveTemp(Actions))];
     _CommonControls = CompleteControls;
     {
         ChildSlot[SNew(SOverlay) +
@@ -1159,6 +1286,7 @@ auto
     if (Id == TEXT("Viewport3d.Camera") || Id == TEXT("Viewport3d.Camera.Perspective"))
     {
         Apply_CameraPreset(ECkDebug3dCameraPreset::Perspective);
+        _OnCameraOrientationChanged.ExecuteIfBound(ECkDebug3dCameraPreset::Perspective);
         return true;
     }
     const TPair<const TCHAR*, ECkDebug3dCameraPreset> Presets[] = {
@@ -1170,6 +1298,7 @@ auto
         if (Id == FString::Printf(TEXT("Viewport3d.Camera.%s"), Name))
         {
             Apply_CameraPreset(Preset);
+            _OnCameraOrientationChanged.ExecuteIfBound(Preset);
             return true;
         }
     }

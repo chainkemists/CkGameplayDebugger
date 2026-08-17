@@ -610,23 +610,6 @@ auto SCkCrowdDebuggerWindow::BuildCommandGroups() -> TArray<FCkDebug_CommandGrou
 			[ SNew(STextBlock).Text(FText::FromString(InLabel)) ];
 	};
 
-	const auto MakeCameraButton = [this](FName InIconId, const TCHAR* InTooltip, ECkCrowdDebugger_CameraPreset InPreset) -> TSharedRef<SWidget>
-	{
-		return SNew(SButton)
-			.ButtonStyle(FAppStyle::Get(), "SimpleButton")
-			.ToolTipText(FText::FromString(InTooltip))
-			.ContentPadding(FMargin(4.0f, 1.0f))
-			.OnClicked_Lambda([this, InPreset]() -> FReply
-			{
-				if (_ViewportPanel.IsValid())
-				{ _ViewportPanel->Apply_CameraPreset(InPreset); }
-				return FReply::Handled();
-			})
-			[
-				SNew(SImage).Image(FCkDebuggerCommonStyle::Get_IconBrush(InIconId))
-			];
-	};
-
 #if WITH_EDITOR
 	const auto* AutoSourceLabel = TEXT("Auto (PIE when running, Editor otherwise)");
 #else
@@ -785,16 +768,6 @@ auto SCkCrowdDebuggerWindow::BuildCommandGroups() -> TArray<FCkDebug_CommandGrou
 		[ SNew(SComboButton).ToolTipText(FText::FromString(TEXT("Navigation display settings."))).ButtonContent()[SNew(STextBlock).Text(FText::FromString(TEXT("Navigation")))].MenuContent()[NavigationMenu] ]
 		+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(4, 0)
 		[ SNew(SComboButton).ToolTipText(FText::FromString(TEXT("Crowd display settings."))).ButtonContent()[SNew(STextBlock).Text(FText::FromString(TEXT("Crowd")))].MenuContent()[CrowdMenu] ];
-	const auto Camera = SNew(SHorizontalBox)
-		+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)[ MakeCameraButton(TEXT("ViewPerspective"), TEXT("Perspective camera"), ECkCrowdDebugger_CameraPreset::Perspective) ]
-		+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)[ MakeCameraButton(TEXT("ViewTop"), TEXT("Top orthographic camera"), ECkCrowdDebugger_CameraPreset::Top) ]
-		+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)[ MakeCameraButton(TEXT("ViewBottom"), TEXT("Bottom orthographic camera"), ECkCrowdDebugger_CameraPreset::Bottom) ]
-		+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)[ MakeCameraButton(TEXT("ViewLeft"), TEXT("Left orthographic camera"), ECkCrowdDebugger_CameraPreset::Left) ]
-		+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)[ MakeCameraButton(TEXT("ViewRight"), TEXT("Right orthographic camera"), ECkCrowdDebugger_CameraPreset::Right) ]
-		+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)[ MakeCameraButton(TEXT("ViewFront"), TEXT("Front orthographic camera"), ECkCrowdDebugger_CameraPreset::Front) ]
-		+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)[ MakeCameraButton(TEXT("ViewBack"), TEXT("Back orthographic camera"), ECkCrowdDebugger_CameraPreset::Back) ]
-		+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)[ MakeCameraButton(TEXT("FrameActor"), TEXT("Frame all VoxelNav and crowd-agent bounds"), ECkCrowdDebugger_CameraPreset::FrameAll) ]
-		+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)[ MakeCameraButton(TEXT("SelectInViewport"), TEXT("Frame the selected crowd agent"), ECkCrowdDebugger_CameraPreset::FrameSelection) ];
 	const auto Telemetry = SNew(SHorizontalBox)
 		+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0, 0, 8, 0)[ SNew(STextBlock).Text_Lambda([this]() { return FText::FromString(_VoxelSourceStatus); }).ColorAndOpacity(FSlateColor(CkStyle::Info())) ]
 		+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)[ SNew(STextBlock).Text_Lambda([this]() -> FText { return _ViewModel.IsValid() ? FText::FromString(FString::Printf(TEXT("Agents: %d"), _ViewModel->Get_AgentCount())) : FText::FromString(TEXT("(no view-model)")); }) ];
@@ -803,7 +776,6 @@ auto SCkCrowdDebuggerWindow::BuildCommandGroups() -> TArray<FCkDebug_CommandGrou
 		FCkDebug_CommandGroup::Context(TEXT("CrowdTarget"), FText::FromString(TEXT("Crowd target selection")), Target),
 		FCkDebug_CommandGroup::Context(TEXT("CrowdDiagnostics"), FText::FromString(TEXT("Crowd diagnostics")), Diagnostics),
 		FCkDebug_CommandGroup::Context(TEXT("CrowdDataView"), FText::FromString(TEXT("Crowd data and view settings")), DataView),
-		FCkDebug_CommandGroup::Context(TEXT("CrowdCamera"), FText::FromString(TEXT("Crowd viewport camera")), Camera),
 		FCkDebug_CommandGroup::Context(TEXT("CrowdTelemetry"), FText::FromString(TEXT("Crowd telemetry")), Telemetry)};
 }
 

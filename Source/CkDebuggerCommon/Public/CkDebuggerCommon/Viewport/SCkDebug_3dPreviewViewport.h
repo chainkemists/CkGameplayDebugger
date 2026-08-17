@@ -37,6 +37,7 @@ enum class ECkDebug3dCameraPreset : uint8
     FrameAll,
     FrameSelection
 };
+DECLARE_DELEGATE_OneParam(FOnCkDebug3dCameraOrientationChanged, ECkDebug3dCameraPreset);
 enum class ECkDebug3dFrameTarget : uint8
 {
     All,
@@ -195,6 +196,7 @@ class CKDEBUGGERCOMMON_API SCkDebug_3dPreviewViewport final : public SViewport
     SLATE_ARGUMENT(TSharedPtr<ICkDebug3dPreviewAdapter>, Adapter)
     SLATE_ARGUMENT(TArray<FCkDebug3dCameraBookmark>, CameraBookmarks)
     SLATE_EVENT(FOnCkDebug3dBookmarksChanged, OnCameraBookmarksChanged)
+    SLATE_EVENT(FOnCkDebug3dCameraOrientationChanged, OnCameraOrientationChanged)
     SLATE_END_ARGS()
 
     virtual ~SCkDebug_3dPreviewViewport() override;
@@ -276,6 +278,7 @@ class CKDEBUGGERCOMMON_API SCkDebug_3dPreviewViewport final : public SViewport
     FCkDebug3dPreviewDescriptor _Descriptor;
     TArray<FCkDebug3dCameraBookmark> _CameraBookmarks;
     FOnCkDebug3dBookmarksChanged _OnCameraBookmarksChanged;
+    FOnCkDebug3dCameraOrientationChanged _OnCameraOrientationChanged;
     TArray<uint64> _SelectionKeys;
     TArray<uint64> _IsolatedKeys;
     TSharedPtr<SWidget> _CommonControls;

@@ -52,10 +52,10 @@ Nothing here re-derives a colour, a bound, or a body count that the facility alr
 
 ## The viewport
 
-`SCkJoltDebugger_3dViewport` (`Public/CkJoltDebugger/Viewport/`) is an `SViewport` hosting an
-`FPreviewScene` (**directional + sky lighting, no physics scene, non-editor**) behind an `FSceneViewport` and a
-private `FCkJoltDebugger_3dViewportClient : FUMGViewportClient`. The shell is copied from
-`SCkCrowdDebugger_3dViewport` — camera math, input handling and per-frame invalidate transfer verbatim.
+`SCkJoltDebugger_3dViewport` (`Public/CkJoltDebugger/Viewport/`) is a thin presentation facade over Common's
+runtime-safe `SCkDebug_3dPreviewViewport`. Common owns the `FPreviewScene`, `FSceneViewport`, private viewport
+client, icon-first controls, camera math, input handling, and teardown; Jolt supplies the adapter, labels, and
+specialized physics callbacks.
 
 **The widget draws no 3D.** There is no `Draw` / PDI override. The facility's instanced static meshes are
 registered into `Get_PreviewWorld()` and render because they are *in* that world — and so does the ground
@@ -163,7 +163,7 @@ file is not to be edited. The divergence is a documented follow-up for the Crowd
 | Alt + LMB drag | orbit about the look-at — the eye moves, the pivot does not | inert (no rotation, ever) |
 | Alt + RMB drag | dolly | inert |
 | Wheel | dolly along the view — **eye AND pivot** | ortho-width zoom |
-| RMB + wheel | fly speed | — |
+| RMB + wheel | fly speed (shared per-user Common preference) | — |
 | **Ctrl + 0…9** | store this camera pose in that slot | same |
 | **bare 0…9** | recall that slot | same |
 | WASD / QE / arrows | fly — **only while RMB is held** | — |

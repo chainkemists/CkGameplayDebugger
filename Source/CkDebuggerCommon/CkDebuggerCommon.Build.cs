@@ -18,10 +18,14 @@ public class CkDebuggerCommon : CkModuleRules
             "Slate",
             "SlateCore",
             "AppFramework",
+            "RenderCore",
+            "RHI",
+            "UMG",
 
             // For UCk_Plugin_UserSettings_UE base class.
             "CkActorRelay", // ACk_ActorRelay_UE check behind the shared depth-transparency predicate
             "CkCore",
+            "CkDebugScene",
             "CkEcs",       // FCk_Handle in SCkDebug_EntityRef + the cross-debugger entity navigator
             "CkEcsExt",    // FFragment_Transform view in the shared entity-marker preview
             "CkEditorTools", // Shared CkStyle:: tokens + UCk_Style_UserSettings_UE (migrated from this module)

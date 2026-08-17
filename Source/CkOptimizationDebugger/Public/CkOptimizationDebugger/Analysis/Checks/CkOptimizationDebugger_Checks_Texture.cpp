@@ -150,15 +150,19 @@ namespace ck_optimization_debugger_checks_texture
             // ---- Texture.MaxSize ----
             if (HasDimensions && LargestSide > InThresholds.MaxTextureSize)
             {
+                const auto Graded = Get_Graded(LargestSide, InThresholds.MaxTextureSize,
+                    ECkOptimizationDebugger_Severity::Major);
+
                 auto Finding = Build_Finding(FName{TEXT("Texture.MaxSize")},
-                    Get_GraduatedSeverity(LargestSide, InThresholds.MaxTextureSize,
-                        ECkOptimizationDebugger_Severity::Major),
+                    Graded.Severity,
                     ECkOptimizationDebugger_Category::Texture,
                     Target,
                     TEXT("Texture larger than the budget"),
                     ck::Format_UE(TEXT("{}x{} against a largest-side budget of {}. Memory scales with the square of the side, so one step over budget is four times the residency.{}"),
                         Width, Height, InThresholds.MaxTextureSize, Usage),
                     TEXT("Re-author at a smaller size, or cap it with a Maximum Texture Size / LOD Bias if the source has to stay big."));
+
+                Finding.BudgetRatio = Graded.BudgetRatio;
 
                 OutFindings.Add(MoveTemp(Finding));
             }
@@ -186,15 +190,19 @@ namespace ck_optimization_debugger_checks_texture
 #if WITH_EDITORONLY_DATA
             if (Texture->MipGenSettings == TMGS_NoMipmaps && Texture->LODGroup != TEXTUREGROUP_UI)
             {
+                const auto Graded = Get_Graded(LargestSide, InThresholds.MaxTextureSize,
+                    ECkOptimizationDebugger_Severity::Major);
+
                 auto Finding = Build_Finding(FName{TEXT("Texture.MissingMipmaps")},
-                    Get_GraduatedSeverity(LargestSide, InThresholds.MaxTextureSize,
-                        ECkOptimizationDebugger_Severity::Major),
+                    Graded.Severity,
                     ECkOptimizationDebugger_Category::Texture,
                     Target,
                     TEXT("Texture has no mipmaps"),
                     ck::Format_UE(TEXT("Mip generation is set to NoMipmaps outside the UI texture group. Without mips the full {}x{} is sampled however few pixels the surface covers, which costs bandwidth AND aliases.{}"),
                         Width, Height, Usage),
                     TEXT("Set Mip Gen Settings back to FromTextureGroup unless this texture is genuinely never minified."));
+
+                Finding.BudgetRatio = Graded.BudgetRatio;
 
                 Finding.HasAutoFix = true;
                 Finding.FixDescription = TEXT("Set Mip Gen Settings to FromTextureGroup.");

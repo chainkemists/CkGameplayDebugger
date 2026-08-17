@@ -123,6 +123,17 @@ public:
     UPROPERTY(config)
     TArray<FString> MutedFindingKeys;
 
+    /**
+     * Check ids whose group the findings list draws folded. Driven by the group headers, never typed here — same
+     * reasoning as the two lists above, and stored sorted for the same reason.
+     *
+     * Persisted because it is how the reader arranged a list they will come back to, and a project with twenty-eight
+     * checks in it is one where "fold the four families I am not working on" is worth not doing twice a day. It says
+     * nothing about which findings matter: a folded group is still counted everywhere this window counts.
+     */
+    UPROPERTY(config)
+    TArray<FName> CollapsedCheckIds;
+
     // ----------------------------------------------------------------------------------------------------------------
     // ACCESSORS
     // ----------------------------------------------------------------------------------------------------------------
@@ -193,6 +204,36 @@ public:
         Settings->MutedFindingKeys.Sort([](const FString& InLhs, const FString& InRhs)
         {
             return InLhs.Compare(InRhs, ESearchCase::CaseSensitive) < 0;
+        });
+
+        Settings->SaveConfig();
+    }
+
+    // ----------------------------------------------------------------------------------------------------------------
+
+    /** The check groups the reader last left folded. */
+    static auto Load_CollapsedCheckIds() -> TSet<FName>
+    {
+        const auto* Settings = Get();
+
+        if (Settings == nullptr)
+        { return TSet<FName>{}; }
+
+        return TSet<FName>{Settings->CollapsedCheckIds};
+    }
+
+    /** Writes the collapsed set back out, SORTED — the same anti-spurious-diff rule the other two sets follow. */
+    static auto Save_CollapsedCheckIds(const TSet<FName>& InCheckIds) -> void
+    {
+        auto* Settings = GetMutableDefault<UCkOptimizationDebuggerSettings>();
+
+        if (Settings == nullptr)
+        { return; }
+
+        Settings->CollapsedCheckIds = InCheckIds.Array();
+        Settings->CollapsedCheckIds.Sort([](const FName& InLhs, const FName& InRhs)
+        {
+            return InLhs.Compare(InRhs) < 0;
         });
 
         Settings->SaveConfig();

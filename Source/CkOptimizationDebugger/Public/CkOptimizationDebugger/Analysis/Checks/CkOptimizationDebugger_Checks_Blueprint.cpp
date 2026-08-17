@@ -48,15 +48,19 @@ namespace ck_optimization_debugger_checks_blueprint
 
                 if (Tick.bCanEverTick && Tick.bStartWithTickEnabled)
                 {
+                    const auto Graded = Get_Graded(Asset.UsageCount, InThresholds.MinRepeatedActorsForInstancing,
+                        ECkOptimizationDebugger_Severity::Minor);
+
                     auto Finding = Build_Finding(FName{TEXT("Blueprint.TickEnabled")},
-                        Get_GraduatedSeverity(Asset.UsageCount, InThresholds.MinRepeatedActorsForInstancing,
-                            ECkOptimizationDebugger_Severity::Minor),
+                        Graded.Severity,
                         ECkOptimizationDebugger_Category::Blueprint,
                         Target,
                         TEXT("Blueprint ticks every frame"),
                         ck::Format_UE(TEXT("This class ticks from the moment it spawns, and the level places {} of them. A Blueprint tick is the most expensive per-frame unit in the engine — even an empty one pays the dispatch.{}"),
                             Asset.UsageCount, Usage),
                         TEXT("Turn Start With Tick Enabled off and drive the behaviour from a timer, an event, or a component that genuinely needs the frame."));
+
+                    Finding.BudgetRatio = Graded.BudgetRatio;
 
                     Finding.HasAutoFix = true;
                     Finding.FixDescription = TEXT("Turn off Start With Tick Enabled on the class default object. This CHANGES BEHAVIOUR — the class keeps the ability to tick, but stops ticking from spawn.");
@@ -88,15 +92,19 @@ namespace ck_optimization_debugger_checks_blueprint
             if (Dependencies.Num() <= InThresholds.MaxBlueprintDependencies)
             { continue; }
 
+            const auto Graded = Get_Graded(Dependencies.Num(), InThresholds.MaxBlueprintDependencies,
+                ECkOptimizationDebugger_Severity::Major);
+
             auto Finding = Build_Finding(FName{TEXT("Blueprint.DependencyChain")},
-                Get_GraduatedSeverity(Dependencies.Num(), InThresholds.MaxBlueprintDependencies,
-                    ECkOptimizationDebugger_Severity::Major),
+                Graded.Severity,
                 ECkOptimizationDebugger_Category::Blueprint,
                 Target,
                 TEXT("Blueprint pulls in a large dependency chain"),
                 ck::Format_UE(TEXT("{} hard package dependencies against a budget of {}. Every hard reference is loaded WITH this Blueprint, so the dependency count is the load cost — and the count is transitive in practice, because each of those pulls its own.{}"),
                     Dependencies.Num(), InThresholds.MaxBlueprintDependencies, Usage),
                 TEXT("Turn the references that are not needed at load time into soft references, and move shared data out into assets both sides reference."));
+
+            Finding.BudgetRatio = Graded.BudgetRatio;
 
             OutFindings.Add(MoveTemp(Finding));
         }

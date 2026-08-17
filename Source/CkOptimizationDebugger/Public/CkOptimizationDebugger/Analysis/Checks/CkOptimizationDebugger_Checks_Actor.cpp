@@ -129,9 +129,11 @@ namespace ck_optimization_debugger_checks_actor
                 return InLhs.Compare(InRhs, ESearchCase::IgnoreCase) < 0;
             });
 
+            const auto Graded = Get_Graded(Group.Count, InThresholds.MinRepeatedActorsForInstancing,
+                ECkOptimizationDebugger_Severity::Major);
+
             auto Finding = Build_Finding(FName{TEXT("Actor.InstancingCandidate")},
-                Get_GraduatedSeverity(Group.Count, InThresholds.MinRepeatedActorsForInstancing,
-                    ECkOptimizationDebugger_Severity::Major),
+                Graded.Severity,
                 ECkOptimizationDebugger_Category::Actor,
                 Build_AssetTarget(Group.MeshPath,
                     Group.MeshDisplayName.IsEmpty() ? Group.MeshPath.GetAssetName() : Group.MeshDisplayName),
@@ -140,6 +142,8 @@ namespace ck_optimization_debugger_checks_actor
                     Group.Count, InThresholds.MinRepeatedActorsForInstancing,
                     FString::Join(LevelNames, TEXT(", "))),
                 TEXT("Convert the group to a Hierarchical Instanced Static Mesh component on a single actor."));
+
+            Finding.BudgetRatio = Graded.BudgetRatio;
 
             Finding.HasAutoFix = true;
 

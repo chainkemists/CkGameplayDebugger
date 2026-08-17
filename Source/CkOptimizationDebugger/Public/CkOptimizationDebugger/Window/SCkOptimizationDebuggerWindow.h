@@ -54,6 +54,24 @@ struct FCkOptimizationDebugger_FindingListItem
 
     // Whether the Highlight query names this line. False draws it muted — highlight dims, it never hides.
     bool IsHighlightMatch = true;
+
+    /** Header lines only: whether the group is folded. A folded group still emits its HEADER — only its finding
+     *  lines are left out of the item source — so the count, the worst-severity glyph and the staged-count pill on
+     *  that header are what stop a fold from reading as findings disappearing. */
+    bool IsCollapsed = false;
+
+    /** Header lines only: every stable key the group holds, so the header's checkbox and its Select-all entry can
+     *  stage the whole group without the row generator re-deriving the membership the rebuild already walked.
+     *
+     *  It holds the group's VISIBLE findings, which is what the header's own count describes. A header that staged
+     *  rows the current filter excludes would queue work the reader cannot see to inspect. */
+    TArray<FString> GroupStableKeys;
+
+    // Header lines only: how many of `GroupStableKeys` are staged. Drives the tri-state checkbox and the pill.
+    int32 GroupQueuedCount = 0;
+
+    // Finding lines only: whether this finding is staged in the fix queue.
+    bool IsQueued = false;
 };
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -200,6 +218,40 @@ private:
      *  disagree on a mixed selection. */
     auto DoToggle_MuteOnSelected(bool InMute) -> void;
 
+    // ---- Collapse ----
+
+    /** Folds or unfolds one check's group and persists the set. Rebuilds the list; changes no count. */
+    auto DoSet_CheckCollapsed(FName InCheckId, bool InCollapsed) -> void;
+
+    auto DoSet_AllChecksCollapsed(bool InCollapsed) -> void;
+
+    // ---- Fix queue ----
+
+    /** Stages or unstages a set of findings and rebuilds. One entry point for the row checkbox, the group checkbox
+     *  and the context menu, so the three cannot drift on what staging means. */
+    auto DoSet_Queued(const TArray<FString>& InStableKeys, bool InQueued) -> void;
+
+    /** Stages every finding in the selection, or unstages them when the selection is already wholly staged — the
+     *  same "the verb follows the whole selection" rule the mute menu holds to. */
+    auto DoToggle_QueueOnSelected(bool InQueued) -> void;
+
+    auto DoClear_Queue() -> void;
+
+    /** Applies the queue. Runs the SAME pipeline the selection apply does, so the confirmation, the batch
+     *  partition, the transaction and the post-fix re-scan are shared rather than re-implemented per entry point. */
+    auto DoApply_Queue() -> void;
+
+    /** The tray body: one section per check, its fix verb as the heading, with a remove control per entry. Rebuilt
+     *  in place — a plain box rather than a list, because the queue is small and bounded by what a reader staged by
+     *  hand, and a plain box is what makes the per-entry remove button legal in a row at all. */
+    auto DoRebuild_FixQueue() -> void;
+
+    /** Recomputes what the queue's apply button says and whether it is enabled — the queue's twin of
+     *  `DoRefresh_SelectionCommands`, and never called from an attribute lambda for the same reason. */
+    auto DoRefresh_QueueCommands() -> void;
+
+    auto DoCreate_FixQueuePanel() -> TSharedRef<SWidget>;
+
     // ---- Rebuild entry points (never called from Tick) ----
 
     /** `InRefreshStatus == false` leaves the status strip alone. A style revision and a session invalidation both
@@ -225,6 +277,7 @@ private:
      *  that can only happen between a value being added and the first rebuild after it. */
     auto Get_CachedMemoryCount(ECkOptimizationDebugger_MemoryTable InTable) const -> int32;
     auto Get_CachedCleanupCount(ECkOptimizationDebugger_CleanupCategory InCategory) const -> int32;
+    auto Get_CachedCategoryCount(ECkOptimizationDebugger_Category InCategory) const -> int32;
 
     /** One-shot: runs a dashboard rebuild the threshold edit guard held back, on the frame AFTER the edit ended.
      *  Rebuilding inline would destroy the text box whose commit handler is still on the stack. Not a poll — it
@@ -236,6 +289,11 @@ private:
         -> TSharedRef<ITableRow>;
     auto DoOnFindingSelectionChanged(FFindingItem InItem, ESelectInfo::Type InSelectInfo) -> void;
     auto DoOnFindingContextMenu() -> TSharedPtr<SWidget>;
+
+    /** The menu a right-click on group HEADERS opens: stage, fix, mute and solo over whole checks. Separate from
+     *  the finding menu because every verb in it is scoped to a check rather than to a row, and one menu offering
+     *  both would have to say which of the two each entry meant. */
+    auto DoBuild_GroupContextMenu(const TArray<FFindingItem>& InHeaders) -> TSharedPtr<SWidget>;
     auto DoOnFindingDoubleClicked(FFindingItem InItem) -> void;
 
     auto TryGet_SelectedFinding() const -> const FCkOptimizationDebugger_FindingRow*;
@@ -339,12 +397,23 @@ private:
     TSharedPtr<SVerticalBox> _DashboardBox;
     TSharedPtr<SVerticalBox> _FindingDetailBox;
 
+    // The fix queue's own body, rebuilt in place by DoRebuild_FixQueue.
+    TSharedPtr<SVerticalBox> _FixQueueBox;
+
     TSharedPtr<SListView<FFindingItem>> _FindingList;
     TArray<FFindingItem> _FindingItems;
 
     // Stable row identity: SListView tracks selection by pointer, and a re-scan that reproduces a finding must not
     // move the user's selection. Keyed by FCkOptimizationDebugger_FindingListItem::Key.
+    //
+    // It holds every VISIBLE finding, including the ones inside folded groups, which `_FindingItems` deliberately
+    // does not — see the rebuild for why the identity cache and the rendered source are different sets.
     TMap<FString, FFindingItem> _FindingItemsByKey;
+
+    // The rendered key sequence as of the last rebuild. Folding a group changes what the list draws without changing
+    // what the identity map holds, so the refresh trigger has to compare the sequence — the same rule the memory
+    // list follows, where a sort reorders the rows without touching the set.
+    TArray<FString> _FindingRowOrder;
 
     // The stable key of the selected FINDING (never a group header), so a rebuild can restore the selection the
     // user made rather than the pointer that happened to hold it.
@@ -377,6 +446,22 @@ private:
     int32 _VisibleFindingCount = 0;
     FCkOptimizationDebugger_SeverityCounts _VisibleSeverityCounts;
     FCkOptimizationDebugger_SeverityCounts _TotalSeverityCounts;
+
+    // What each SEVERITY TOGGLE would give the reader: every filter axis honoured except the severity mask itself.
+    // Distinct from `_VisibleSeverityCounts` above, which honours the mask and is what the page bar reports.
+    FCkOptimizationDebugger_SeverityCounts _ToggleSeverityCounts;
+
+    // Per-category visible counts, indexed by the category's enum value and read through a bounds-checked helper.
+    // The category toggles print these in their tooltips, and those tooltips resolve on hover rather than at
+    // construction — so the number has to come off a field the rebuild maintains, not a projection walked on demand.
+    TArray<int32> _VisibleCategoryCounts;
+
+    // What the fix-queue tray and its apply button bind to, refreshed by the same rebuild that refills the tray.
+    int32 _QueuedCount = 0;
+    int32 _QueuedFixableCount = 0;
+    bool _QueueApplyEnabled = false;
+    FString _QueueApplyLabel = FString{TEXT("Review && Fix")};
+    FString _QueueApplyTooltip;
 
     // Indexed by the enum value, sized by the projection's own table/category list so a value added in the middle
     // cannot silently shift them.

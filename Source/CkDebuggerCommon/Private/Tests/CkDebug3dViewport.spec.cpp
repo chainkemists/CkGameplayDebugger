@@ -1,6 +1,9 @@
 #include "CkDebuggerCommon/Viewport/SCkDebug_3dPreviewViewport.h"
+#include "CkDebuggerCommon/Settings/CkDebuggerWindowSettings.h"
 
 #include "Misc/AutomationTest.h"
+
+#include <limits>
 
 // --------------------------------------------------------------------------------------------------------------------
 // Common 3D preview shell contract. Feature-specific physics, crowd rendering,
@@ -154,6 +157,89 @@ auto
     TestFalse(TEXT("dynamic shadows remain opt-in"), Features._DynamicShadows);
     TestFalse(TEXT("motion blur remains opt-in"), Features._MotionBlur);
     TestFalse(TEXT("eye adaptation remains opt-in"), Features._EyeAdaptation);
+    return true;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCkDebug3dViewport_FlySpeedPersistsOnlyFromRmbWheel,
+                                 "Ck.DebuggerCommon.Viewport3d.FlySpeedPersistsOnlyFromRmbWheel",
+                                 EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+auto
+    FCkDebug3dViewport_FlySpeedPersistsOnlyFromRmbWheel::
+    RunTest(const FString&)
+    -> bool
+{
+    using namespace ck_debug_3d_viewport_spec;
+    auto* Settings = GetMutableDefault<UCkDebuggerWindowSettings>();
+    if (Settings == nullptr)
+    {
+        AddError(TEXT("Common debugger window settings must exist for fly-speed persistence."));
+        return false;
+    }
+
+    const auto OriginalSpeed = Settings->ViewportFlyCameraSpeed;
+    Settings->ViewportFlyCameraSpeed = std::numeric_limits<float>::quiet_NaN();
+    const auto InvalidConfigViewport = MakeViewport(MakeShared<FConsumer>());
+    TestTrue(TEXT("non-finite user config falls back to a finite fly speed"),
+             FMath::IsFinite(InvalidConfigViewport->Get_CameraSpeed()));
+
+    constexpr auto PersistedSpeed = 12.5f;
+    Settings->ViewportFlyCameraSpeed = PersistedSpeed;
+    const auto Viewport = MakeViewport(MakeShared<FConsumer>());
+    TestTrue(TEXT("new preview client starts from per-user fly speed"),
+             FMath::IsNearlyEqual(Viewport->Get_CameraSpeed(), PersistedSpeed));
+
+    Viewport->Input_Key(EKeys::MouseScrollUp, IE_Pressed);
+    TestTrue(TEXT("plain perspective wheel does not overwrite the user fly speed"),
+             FMath::IsNearlyEqual(Settings->ViewportFlyCameraSpeed, PersistedSpeed));
+
+    Viewport->Input_Key(EKeys::RightMouseButton, IE_Pressed);
+    Viewport->Input_Key(EKeys::MouseScrollUp, IE_Pressed);
+    Viewport->Input_Key(EKeys::RightMouseButton, IE_Released);
+    TestTrue(TEXT("perspective RMB wheel persists the adjusted fly speed"),
+             Settings->ViewportFlyCameraSpeed > PersistedSpeed);
+    const auto AdjustedSpeed = Settings->ViewportFlyCameraSpeed;
+    const auto ReopenedViewport = MakeViewport(MakeShared<FConsumer>());
+    TestTrue(TEXT("a reopened preview client restores the adjusted per-user fly speed"),
+             FMath::IsNearlyEqual(ReopenedViewport->Get_CameraSpeed(), AdjustedSpeed));
+
+    Viewport->Apply_CameraPreset(ECkDebug3dCameraPreset::Top);
+    const auto AfterPerspectiveFlySpeed = Settings->ViewportFlyCameraSpeed;
+    Viewport->Input_Key(EKeys::MouseScrollUp, IE_Pressed);
+    TestTrue(TEXT("orthographic wheel zoom does not overwrite the user fly speed"),
+             FMath::IsNearlyEqual(Settings->ViewportFlyCameraSpeed, AfterPerspectiveFlySpeed));
+
+    Settings->ViewportFlyCameraSpeed = OriginalSpeed;
+    Settings->SaveConfig();
+    return true;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCkDebug3dViewport_OrientationCallbackExcludesFraming,
+                                 "Ck.DebuggerCommon.Viewport3d.OrientationCallbackExcludesFraming",
+                                 EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+auto
+    FCkDebug3dViewport_OrientationCallbackExcludesFraming::
+    RunTest(const FString&)
+    -> bool
+{
+    using namespace ck_debug_3d_viewport_spec;
+    auto Received = TOptional<ECkDebug3dCameraPreset>{};
+    const auto Viewport = SNew(SCkDebug_3dPreviewViewport)
+                              .Descriptor(MakeDescriptor())
+                              .Adapter(MakeShared<FConsumer>())
+                              .OnCameraOrientationChanged(FOnCkDebug3dCameraOrientationChanged::CreateLambda(
+                                  [&Received](ECkDebug3dCameraPreset InPreset) { Received = InPreset; }));
+    TestTrue(TEXT("orientation commands publish their selected preset"),
+             Viewport->Invoke_CommonControl(TEXT("Viewport3d.Camera.Top")) &&
+                 Received.IsSet() && *Received == ECkDebug3dCameraPreset::Top);
+    Received.Reset();
+    TestTrue(TEXT("frame-all remains an action rather than a persisted orientation"),
+             Viewport->Invoke_CommonControl(TEXT("Viewport3d.FrameAll")) && NOT Received.IsSet());
     return true;
 }
 

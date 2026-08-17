@@ -35,7 +35,7 @@ FCkDebug_IconToggleAction::FCkDebug_IconToggleAction(
     FName InId,
     FName InIconId,
     FText InLabel,
-    FText InToolTip,
+    TAttribute<FText> InToolTip,
     TAttribute<bool> InIsOn,
     FOnCkDebug_IconToggleChanged InOnStateChanged,
     TAttribute<bool> InIsEnabled)
@@ -175,12 +175,18 @@ auto
     -> FText
 {
     const auto State = _IsOn.Get(false) ? LOCTEXT("StateOn", "On") : LOCTEXT("StateOff", "Off");
-    if (_ToolTip.IsEmpty())
+
+    // Resolved on every call, which is the whole point of the attribute: this function is already bound as the
+    // widget's live tooltip delegate, so a caller that binds a lambda here gets a number that tracks the thing it
+    // describes instead of the value it had when the toolbar was built.
+    const auto ToolTip = _ToolTip.Get(FText::GetEmpty());
+
+    if (ToolTip.IsEmpty())
     {
         return FText::Format(LOCTEXT("LabelAndState", "{0}\nState: {1}"), _Label, State);
     }
 
-    return FText::Format(LOCTEXT("TooltipAndState", "{0}\n{1}\nState: {2}"), _Label, _ToolTip, State);
+    return FText::Format(LOCTEXT("TooltipAndState", "{0}\n{1}\nState: {2}"), _Label, ToolTip, State);
 }
 
 // ====================================================================================================================

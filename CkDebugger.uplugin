@@ -188,7 +188,7 @@
 		},
 		{
 			"Name": "CkIntentDebugger",
-			"Type": "UncookedOnly",
+			"Type": "DeveloperTool",
 			"LoadingPhase": "Default",
 			"WhitelistPlatforms": [
 				"Win64",

@@ -13,8 +13,10 @@
 
 #include "Framework/Docking/TabManager.h"
 #include "Widgets/Docking/SDockTab.h"
+#if WITH_EDITOR
 #include "WorkspaceMenuStructure.h"
 #include "WorkspaceMenuStructureModule.h"
+#endif
 
 // --------------------------------------------------------------------------------------------------------------------
 
@@ -69,12 +71,14 @@ auto
     StartupModule()
     -> void
 {
-    FGlobalTabmanager::Get()->RegisterNomadTabSpawner(
+    auto& TabSpawner = FGlobalTabmanager::Get()->RegisterNomadTabSpawner(
         _DebuggerTabName,
         FOnSpawnTab::CreateRaw(this, &FCkIntentDebuggerModule::OnSpawnDebuggerTab))
         .SetDisplayName(FText::FromString(TEXT("CK Intent Debugger")))
-        .SetTooltipText(FText::FromString(TEXT("Opens the CK Intent Debugger window")))
-        .SetGroup(WorkspaceMenu::GetMenuStructure().GetDeveloperToolsDebugCategory());
+        .SetTooltipText(FText::FromString(TEXT("Opens the CK Intent Debugger window")));
+#if WITH_EDITOR
+    TabSpawner.SetGroup(WorkspaceMenu::GetMenuStructure().GetDeveloperToolsDebugCategory());
+#endif
 
     _DebuggerToolRegistrationId = FCkDebuggerToolRegistry::Get().Register(FCkDebuggerToolDescriptor{
         TEXT("CkIntentDebugger"),

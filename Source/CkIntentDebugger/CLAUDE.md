@@ -135,11 +135,11 @@ payload, so a replayed history would be a fiction.
 
 ## Teardown — crash-grade, both contracts apply
 
-- **`FEditorDelegates::EndPIE`** — `FCkIntentDebugger_ViewModel` clears its whole snapshot
-  synchronously. Handles hold the registry by value; one outliving its PIE registry access-violates
-  on destruct at the NEXT PIE start. It also subscribes
-  `ck::DebugSessionLifecycle::Get_OnSessionInvalidated()` and the world selector's `OnWorldChanged`,
-  routing all three through the same reset.
+- **Session invalidation / world change** — `FCkIntentDebugger_ViewModel` clears its whole snapshot
+  synchronously through `ck::DebugSessionLifecycle::Get_OnSessionInvalidated()` and the world
+  selector's `OnWorldChanged`. `CkDebuggerCommon` translates editor BeginPIE/EndPIE into that shared,
+  package-safe lifecycle signal. Handles hold the registry by value; one outliving its world registry
+  access-violates on destruct at the next session start.
 - **`FCoreDelegates::OnEnginePreExit`** — `FCkIntentDebuggerModule::HandleEnginePreExit` drops the
   window and tab refs. NOT `ShutdownModule`: by then the registry's shared state is freed. No
   `RequestCloseTab` there either — the editor's window teardown runs first and the tab's weak-self

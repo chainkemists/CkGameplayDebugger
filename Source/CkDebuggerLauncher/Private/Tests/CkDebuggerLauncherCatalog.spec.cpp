@@ -162,6 +162,14 @@ bool FCkDebuggerLauncherPackaging_DevToolDescriptorsIncludeDevelopmentCookedWin6
                 EBuildTargetType::Game,
                 true,
                 true));
+        TestTrue(*ck::Format_UE(TEXT("{} descriptor includes Win64 Game DebugGame with developer tools and cooked data"), Prefix),
+            Module->IsCompiledInConfiguration(
+                TEXT("Win64"),
+                EBuildConfiguration::DebugGame,
+                TEXT("BusterBlock"),
+                EBuildTargetType::Game,
+                true,
+                true));
         TestFalse(*ck::Format_UE(TEXT("{} is excluded from Win64 Game Shipping"), Prefix),
             Module->IsCompiledInConfiguration(
                 TEXT("Win64"),
@@ -184,6 +192,7 @@ bool FCkDebuggerLauncherPackaging_DevToolDescriptorsIncludeDevelopmentCookedWin6
     TestExpectedModule(TEXT("CkDebugger"), TEXT("CkEcsDebugger"));
     TestExpectedModule(TEXT("CkDebugger"), TEXT("CkSmDebugger"));
     TestExpectedModule(TEXT("CkDebugger"), TEXT("CkDialogDebugger"));
+    TestExpectedModule(TEXT("CkDebugger"), TEXT("CkAudioDebugger"));
     TestExpectedModule(TEXT("CkDebugger"), TEXT("CkAggroDebugger"));
     TestExpectedModule(TEXT("CkDebugger"), TEXT("CkUIDebugger"));
     TestExpectedModule(TEXT("CkDebugger"), TEXT("CkSchedulerDebugger"));
@@ -192,6 +201,7 @@ bool FCkDebuggerLauncherPackaging_DevToolDescriptorsIncludeDevelopmentCookedWin6
     TestExpectedModule(TEXT("CkDebugger"), TEXT("CkCrowdDebugger"));
     TestExpectedModule(TEXT("CkDebugger"), TEXT("CkEqsDebugger"));
     TestExpectedModule(TEXT("CkDebugger"), TEXT("CkInputDebugger"));
+    TestExpectedModule(TEXT("CkDebugger"), TEXT("CkIntentDebugger"));
     TestExpectedModule(TEXT("CkDebugger"), TEXT("CkObjectPoolingDebugger"));
     TestExpectedModule(TEXT("CkDebugger"), TEXT("CkJoltDebugger"));
     TestExpectedModule(TEXT("CkDebugger"), TEXT("CkMapDebugger"));

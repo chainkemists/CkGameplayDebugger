@@ -165,9 +165,16 @@ public:
      */
     auto Get_TargetDrawFlags() const -> ECk_Jolt_DebugDrawFlags;
     auto Get_TargetColorMode() const -> ECk_Jolt_DebugDrawColorMode;
+    auto Get_TargetRenderMode() const -> ECk_Jolt_DebugDraw_RenderMode;
+    auto Get_TargetDirectionGlyphScale() const -> float;
+#if WITH_DEV_AUTOMATION_TESTS
+    /** The render button's one click path, exposed so its three-state cycle and persistence are pinned. */
+    auto Cycle_RenderModeForTest() -> void;
+#endif
     auto Get_IsolateActive() const -> bool { return _IsolateActive; }
     auto Get_FollowSelection() const -> bool { return _FollowSelection; }
     auto Get_ShowGrid() const -> bool { return _ShowGrid; }
+    auto Get_DirectionGlyphScale() const -> float { return _DirectionGlyphScale; }
     auto Get_NumGridLines() const -> int32;
 
     virtual ~SCkJoltDebuggerWindow() override;
@@ -237,6 +244,8 @@ private:
 
     auto Get_ColorMode() const -> ECk_Jolt_DebugDrawColorMode;
     auto Set_ColorMode(ECk_Jolt_DebugDrawColorMode InColorMode) -> void;
+    auto Cycle_RenderMode() -> void;
+    auto Set_RenderMode(ECk_Jolt_DebugDraw_RenderMode InRenderMode) -> void;
 
     auto Set_DrawFlag(ECk_Jolt_DebugDrawFlags InFlag, bool InIsEnabled) -> void;
 
@@ -291,6 +300,8 @@ private:
     auto DoUpdateProbeResults() -> void;
 
     auto Set_ShowProbeResults(bool InIsEnabled) -> void;
+    /** Applies a live glyph preview; persistence is deferred until the spinbox interaction commits. */
+    auto Set_DirectionGlyphScale(float InScale, bool InPersist = true) -> void;
 
     auto Set_ShowGrid(bool InIsEnabled) -> void;
 
@@ -375,6 +386,8 @@ private:
     TOptional<FVector> _DragLineAnchor;
 
     bool _ShowProbeResults = false;
+
+    float _DirectionGlyphScale = 1.0f;
 
     bool _ShowGrid = true;
 

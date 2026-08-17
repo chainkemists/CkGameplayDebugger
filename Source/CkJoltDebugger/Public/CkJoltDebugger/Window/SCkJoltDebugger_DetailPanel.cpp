@@ -7,6 +7,8 @@
 #include "CkDebuggerCommon/Widgets/SCkDebug_EntityRef.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_KeyValueRow.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_SectionHeader.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_StatusPill.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_StatPair.h"
 
 #include "CkEditorTools/Style/CkStyle.h"
 
@@ -50,6 +52,7 @@ namespace ck_jolt_debugger_detail_panel
             case ECkJoltDebugger_Population::BakedStatic: return FText::FromString(TEXT("Baked Static World"));
             case ECkJoltDebugger_Population::Sensor:      return FText::FromString(TEXT("Sensor (Probe)"));
             case ECkJoltDebugger_Population::Character:   return FText::FromString(TEXT("Character"));
+            case ECkJoltDebugger_Population::Constraint:  return FText::FromString(TEXT("Constraint"));
             default:                                      return Get_UnsetText();
         }
     }
@@ -186,24 +189,21 @@ auto
                 return Get_HasSelection() ? EVisibility::Visible : EVisibility::Collapsed;
             })
 
+            // ---- Identity ----
+
+            + SVerticalBox::Slot().AutoHeight()
+            [ MakeSection(TEXT("Identity")) ]
+
             + SVerticalBox::Slot().AutoHeight()
             [ MakeEntityRow() ]
 
+            + SVerticalBox::Slot().AutoHeight().Padding(CkStyle::SpaceM, 0.0f, CkStyle::SpaceM, CkStyle::SpaceS)
+            [ MakeIdentitySummary() ]
+
+            // ---- Simulation ----
+
             + SVerticalBox::Slot().AutoHeight()
-            [
-                MakeRow(TEXT("Population"), TAttribute<FText>::CreateLambda([WeakPanel]() -> FText
-                {
-                    const auto Panel = WeakPanel.Pin();
-
-                    if (NOT Panel.IsValid())
-                    { return Get_UnsetText(); }
-
-                    const auto& Selection = Panel->Get_Selection();
-                    return Selection.IsSet()
-                        ? Get_PopulationText(Selection->Population)
-                        : Get_UnsetText();
-                }))
-            ]
+            [ MakeSection(TEXT("Simulation")) ]
 
             + SVerticalBox::Slot().AutoHeight()
             [
@@ -218,7 +218,7 @@ auto
                     return Selection.IsSet() && Selection->HasSimulationState
                         ? Get_MotionText(Selection->MotionType)
                         : Get_UnsetText();
-                }))
+                }), CkStyle::Value_Enum())
             ]
 
             + SVerticalBox::Slot().AutoHeight()
@@ -234,23 +234,38 @@ auto
                     return Selection.IsSet() && Selection->HasSimulationState
                         ? Get_SleepText(Selection->SleepState)
                         : Get_UnsetText();
-                }))
+                }), CkStyle::Value_Enum())
             ]
 
             + SVerticalBox::Slot().AutoHeight()
             [
-                MakeRow(TEXT("Body Key"), TAttribute<FText>::CreateLambda([WeakPanel]() -> FText
+                MakeSampleRow(TEXT("Mass"), [](const FCk_Jolt_DebugDraw_BodySample& InSample)
+                { return Get_MassText(InSample.Get_Mass()); }, CkStyle::Value_Numeric())
+            ]
+
+            + SVerticalBox::Slot().AutoHeight()
+            [
+                MakeSampleRow(TEXT("Motion Quality"), [](const FCk_Jolt_DebugDraw_BodySample& InSample)
+                { return Get_MotionQualityText(InSample.Get_MotionQuality()); }, CkStyle::Value_Enum())
+            ]
+
+            + SVerticalBox::Slot().AutoHeight()
+            [
+                // UNSET for a static body, and only for one: Jolt dereferences MotionProperties without a
+                // guard, so the facility never asks a static body whether it may sleep.
+                MakeSampleRow(TEXT("Allows Sleeping"), [](const FCk_Jolt_DebugDraw_BodySample& InSample)
                 {
-                    const auto Panel = WeakPanel.Pin();
-
-                    if (NOT Panel.IsValid())
-                    { return Get_UnsetText(); }
-
-                    const auto& Selection = Panel->Get_Selection();
-                    return Selection.IsSet() && Selection->BodyKey.IsSet()
-                        ? FText::FromString(ck::Format_UE(TEXT("{}"), *Selection->BodyKey))
+                    const auto& Allows = InSample.Get_AllowsSleeping();
+                    return Allows.IsSet()
+                        ? FText::FromString(*Allows ? TEXT("Yes") : TEXT("No"))
                         : Get_UnsetText();
-                }))
+                })
+            ]
+
+            + SVerticalBox::Slot().AutoHeight()
+            [
+                MakeSampleRow(TEXT("Gravity Factor"), [](const FCk_Jolt_DebugDraw_BodySample& InSample)
+                { return Get_ScalarText(InSample.Get_GravityFactor()); }, CkStyle::Value_Numeric())
             ]
 
             // ---- Motion ----
@@ -275,84 +290,51 @@ auto
                     const auto& Velocity = Selection->LinearVelocity;
                     return FText::FromString(ck::Format_UE(TEXT("{:.1f}, {:.1f}, {:.1f}  ({:.1f})"),
                         Velocity.X, Velocity.Y, Velocity.Z, Velocity.Size()));
-                }))
+                }), CkStyle::Value_Math())
             ]
 
             + SVerticalBox::Slot().AutoHeight()
             [
                 MakeSampleRow(TEXT("Angular Velocity"), [](const FCk_Jolt_DebugDraw_BodySample& InSample)
-                { return Get_VectorText(InSample.Get_AngularVelocity()); })
+                { return Get_VectorText(InSample.Get_AngularVelocity()); }, CkStyle::Value_Math())
             ]
 
-            + SVerticalBox::Slot().AutoHeight()
-            [
-                MakeSampleRow(TEXT("Mass"), [](const FCk_Jolt_DebugDraw_BodySample& InSample)
-                { return Get_MassText(InSample.Get_Mass()); })
-            ]
+            // ---- Collision ----
 
             + SVerticalBox::Slot().AutoHeight()
-            [
-                MakeSampleRow(TEXT("Motion Quality"), [](const FCk_Jolt_DebugDraw_BodySample& InSample)
-                { return Get_MotionQualityText(InSample.Get_MotionQuality()); })
-            ]
-
-            + SVerticalBox::Slot().AutoHeight()
-            [
-                // UNSET for a static body, and only for one: Jolt dereferences MotionProperties without a
-                // guard, so the facility never asks a static body whether it may sleep.
-                MakeSampleRow(TEXT("Allows Sleeping"), [](const FCk_Jolt_DebugDraw_BodySample& InSample)
-                {
-                    const auto& Allows = InSample.Get_AllowsSleeping();
-                    return Allows.IsSet()
-                        ? FText::FromString(*Allows ? TEXT("Yes") : TEXT("No"))
-                        : Get_UnsetText();
-                })
-            ]
-
-            // ---- Material ----
-
-            + SVerticalBox::Slot().AutoHeight()
-            [ MakeSection(TEXT("Material")) ]
+            [ MakeSection(TEXT("Collision")) ]
 
             + SVerticalBox::Slot().AutoHeight()
             [
                 MakeSampleRow(TEXT("Friction"), [](const FCk_Jolt_DebugDraw_BodySample& InSample)
-                { return Get_ScalarText(InSample.Get_Friction()); })
+                { return Get_ScalarText(InSample.Get_Friction()); }, CkStyle::Value_Numeric())
             ]
 
             + SVerticalBox::Slot().AutoHeight()
             [
                 MakeSampleRow(TEXT("Restitution"), [](const FCk_Jolt_DebugDraw_BodySample& InSample)
-                { return Get_ScalarText(InSample.Get_Restitution()); })
+                { return Get_ScalarText(InSample.Get_Restitution()); }, CkStyle::Value_Numeric())
             ]
-
-            + SVerticalBox::Slot().AutoHeight()
-            [
-                MakeSampleRow(TEXT("Gravity Factor"), [](const FCk_Jolt_DebugDraw_BodySample& InSample)
-                { return Get_ScalarText(InSample.Get_GravityFactor()); })
-            ]
-
-            // ---- Layers ----
-
-            + SVerticalBox::Slot().AutoHeight()
-            [ MakeSection(TEXT("Layers")) ]
 
             + SVerticalBox::Slot().AutoHeight()
             [
                 MakeSampleRow(TEXT("Object Layer"), [](const FCk_Jolt_DebugDraw_BodySample& InSample)
-                { return FText::AsNumber(static_cast<int32>(InSample.Get_ObjectLayer())); })
+                { return FText::AsNumber(static_cast<int32>(InSample.Get_ObjectLayer())); }, CkStyle::Value_Numeric())
             ]
 
             + SVerticalBox::Slot().AutoHeight()
             [
                 MakeSampleRow(TEXT("Broad Phase Layer"), [](const FCk_Jolt_DebugDraw_BodySample& InSample)
-                { return FText::AsNumber(static_cast<int32>(InSample.Get_BroadPhaseLayer())); })
+                { return FText::AsNumber(static_cast<int32>(InSample.Get_BroadPhaseLayer())); }, CkStyle::Value_Numeric())
             ]
 
             + SVerticalBox::Slot().AutoHeight()
             [
-                MakeSampleRow(TEXT("Sensor"), [](const FCk_Jolt_DebugDraw_BodySample& InSample)
-                { return FText::FromString(InSample.Get_IsSensor() ? TEXT("Yes") : TEXT("No")); })
+                MakeSampleStatusRow(TEXT("Sensor"),
+                    [](const FCk_Jolt_DebugDraw_BodySample& InSample)
+                    { return FText::FromString(InSample.Get_IsSensor() ? TEXT("Sensor") : TEXT("Solid")); },
+                    [](const FCk_Jolt_DebugDraw_BodySample& InSample)
+                    { return InSample.Get_IsSensor() ? ECk_Tone::Info : ECk_Tone::Neutral; })
             ]
 
             // ---- Shape ----
@@ -367,7 +349,7 @@ auto
                     return InSample.Get_ShapeType().IsEmpty()
                         ? Get_UnsetText()
                         : FText::FromString(InSample.Get_ShapeType());
-                })
+                }, CkStyle::Value_Enum())
             ]
 
             + SVerticalBox::Slot().AutoHeight()
@@ -377,30 +359,30 @@ auto
                     return InSample.Get_ShapeSubType().IsEmpty()
                         ? Get_UnsetText()
                         : FText::FromString(InSample.Get_ShapeSubType());
-                })
+                }, CkStyle::Value_Enum())
             ]
 
             + SVerticalBox::Slot().AutoHeight()
             [
                 MakeSampleRow(TEXT("Shape Scale"), [](const FCk_Jolt_DebugDraw_BodySample& InSample)
-                { return Get_VectorText(InSample.Get_ShapeScale()); })
+                { return Get_VectorText(InSample.Get_ShapeScale()); }, CkStyle::Value_Math())
             ]
 
             + SVerticalBox::Slot().AutoHeight()
             [
                 MakeSampleRow(TEXT("World Bounds"), [](const FCk_Jolt_DebugDraw_BodySample& InSample)
-                { return Get_BoundsText(InSample.Get_WorldBounds()); })
+                { return Get_BoundsText(InSample.Get_WorldBounds()); }, CkStyle::Value_Math())
             ]
 
-            // ---- Misc ----
+            // ---- Provenance ----
 
             + SVerticalBox::Slot().AutoHeight()
-            [ MakeSection(TEXT("Misc")) ]
+            [ MakeSection(TEXT("Provenance")) ]
 
             + SVerticalBox::Slot().AutoHeight()
             [
                 MakeSampleRow(TEXT("User Data"), [](const FCk_Jolt_DebugDraw_BodySample& InSample)
-                { return FText::FromString(ck::Format_UE(TEXT("{}"), InSample.Get_UserData())); })
+                { return FText::FromString(ck::Format_UE(TEXT("{}"), InSample.Get_UserData())); }, CkStyle::Value_String())
             ]
 
             + SVerticalBox::Slot().AutoHeight()
@@ -416,7 +398,7 @@ auto
                     return Selection.IsSet() && NOT Selection->SourceActorName.IsEmpty()
                         ? FText::FromString(Selection->SourceActorName)
                         : Get_UnsetText();
-                }))
+                }), CkStyle::Value_String())
             ]
 
             + SVerticalBox::Slot().AutoHeight()
@@ -432,7 +414,7 @@ auto
                     return Selection.IsSet() && Selection->Population == ECkJoltDebugger_Population::BakedStatic
                         ? FText::AsNumber(Selection->NumBodies)
                         : Get_UnsetText();
-                }))
+                }), CkStyle::Value_Numeric())
             ]
 
             // ---- Character (collapsed for every rigid body) ----
@@ -453,32 +435,41 @@ auto
 
                 + SVerticalBox::Slot().AutoHeight()
                 [
-                    MakeCharacterRow(TEXT("Ground State"), [](const FCk_Jolt_DebugDraw_CharacterSample& InSample)
-                    { return Get_GroundStateText(InSample.Get_GroundState()); })
+                    MakeCharacterStatusRow(TEXT("Ground State"), [](const FCk_Jolt_DebugDraw_CharacterSample& InSample)
+                    { return Get_GroundStateText(InSample.Get_GroundState()); }, [](const FCk_Jolt_DebugDraw_CharacterSample& InSample)
+                    {
+                        switch (InSample.Get_GroundState())
+                        {
+                            case ECk_JoltCharacter_GroundState::OnGround:     return ECk_Tone::Ok;
+                            case ECk_JoltCharacter_GroundState::OnSteepSlope:
+                            case ECk_JoltCharacter_GroundState::NotSupported: return ECk_Tone::Warn;
+                            default:                                          return ECk_Tone::Info;
+                        }
+                    })
                 ]
 
                 + SVerticalBox::Slot().AutoHeight()
                 [
                     MakeCharacterRow(TEXT("Character Velocity"), [](const FCk_Jolt_DebugDraw_CharacterSample& InSample)
-                    { return Get_VectorText(InSample.Get_Velocity()); })
+                    { return Get_VectorText(InSample.Get_Velocity()); }, CkStyle::Value_Math())
                 ]
 
                 + SVerticalBox::Slot().AutoHeight()
                 [
                     MakeCharacterRow(TEXT("Ground Normal"), [](const FCk_Jolt_DebugDraw_CharacterSample& InSample)
-                    { return Get_VectorText(InSample.Get_GroundNormal()); })
+                    { return Get_VectorText(InSample.Get_GroundNormal()); }, CkStyle::Value_Math())
                 ]
 
                 + SVerticalBox::Slot().AutoHeight()
                 [
                     MakeCharacterRow(TEXT("Ground Velocity"), [](const FCk_Jolt_DebugDraw_CharacterSample& InSample)
-                    { return Get_VectorText(InSample.Get_GroundVelocity()); })
+                    { return Get_VectorText(InSample.Get_GroundVelocity()); }, CkStyle::Value_Math())
                 ]
 
                 + SVerticalBox::Slot().AutoHeight()
                 [
                     MakeCharacterRow(TEXT("Up Vector"), [](const FCk_Jolt_DebugDraw_CharacterSample& InSample)
-                    { return Get_VectorText(InSample.Get_Up()); })
+                    { return Get_VectorText(InSample.Get_Up()); }, CkStyle::Value_Math())
                 ]
 
                 + SVerticalBox::Slot().AutoHeight()
@@ -491,7 +482,7 @@ auto
                         return GroundKey.IsSet()
                             ? FText::FromString(ck::Format_UE(TEXT("{}"), *GroundKey))
                             : Get_UnsetText();
-                    })
+                    }, CkStyle::Value_Numeric())
                 ]
             ]
 
@@ -540,29 +531,96 @@ auto
     return Selection.IsSet() && Selection->Population == ECkJoltDebugger_Population::Character;
 }
 
+auto
+    SCkJoltDebugger_DetailPanel::
+    Get_PopulationStatusText() const
+    -> FText
+{
+    const auto& Selection = Get_Selection();
+    return Selection.IsSet()
+        ? ck_jolt_debugger_detail_panel::Get_PopulationText(Selection->Population)
+        : ck_jolt_debugger_detail_panel::Get_UnsetText();
+}
+
+auto
+    SCkJoltDebugger_DetailPanel::
+    Get_PopulationStatusTone() const
+    -> ECk_Tone
+{
+    const auto& Selection = Get_Selection();
+
+    if (NOT Selection.IsSet())
+    { return ECk_Tone::Neutral; }
+
+    switch (Selection->Population)
+    {
+        case ECkJoltDebugger_Population::JoltBody:    return ECk_Tone::Accent;
+        case ECkJoltDebugger_Population::Sensor:      return ECk_Tone::Info;
+        case ECkJoltDebugger_Population::Character:   return ECk_Tone::Ok;
+        default:                                      return ECk_Tone::Neutral;
+    }
+}
+
+auto
+    SCkJoltDebugger_DetailPanel::
+    Get_SimulationStatusText() const
+    -> FText
+{
+    const auto& Selection = Get_Selection();
+
+    if (NOT Selection.IsSet() || NOT Selection->HasSimulationState)
+    { return FText::FromString(TEXT("No Simulation State")); }
+
+    return ck_jolt_debugger_detail_panel::Get_SleepText(Selection->SleepState);
+}
+
+auto
+    SCkJoltDebugger_DetailPanel::
+    Get_SimulationStatusTone() const
+    -> ECk_Tone
+{
+    const auto& Selection = Get_Selection();
+    return Selection.IsSet() && Selection->HasSimulationState && Selection->SleepState == ECk_Jolt_SleepState::Awake
+        ? ECk_Tone::Ok
+        : ECk_Tone::Neutral;
+}
+
 // --------------------------------------------------------------------------------------------------------------------
 
 auto
     SCkJoltDebugger_DetailPanel::
     MakeRow(
         const FString&    InKey,
-        TAttribute<FText> InValue)
+        TAttribute<FText> InValue,
+        TAttribute<FLinearColor> InSetValueColor)
     -> TSharedRef<SWidget>
 {
     _RowValues.Add(InKey, InValue);
+
+    const auto SetValueColor = InSetValueColor.IsSet() || InSetValueColor.IsBound()
+        ? InSetValueColor
+        : TAttribute<FLinearColor>{CkStyle::Text()};
+    const auto ValueColor = TAttribute<FLinearColor>::CreateLambda([InValue, SetValueColor]() -> FLinearColor
+    {
+        return InValue.Get().EqualTo(ck_jolt_debugger_detail_panel::Get_UnsetText())
+            ? CkStyle::TextMute()
+            : SetValueColor.Get();
+    });
+    _RowValueColors.Add(InKey, ValueColor);
 
     return SNew(SCkDebug_KeyValueRow)
         .KeyText(FText::FromString(InKey))
         .ValueText(MoveTemp(InValue))
         .Tone(ECkDebug_KeyValueTone::Custom)
-        .CustomValueColor(CkStyle::Text());
+        .CustomValueColor(ValueColor);
 }
 
 auto
     SCkJoltDebugger_DetailPanel::
     MakeSampleRow(
         const FString& InKey,
-        TFunction<FText(const FCk_Jolt_DebugDraw_BodySample&)> InRead)
+        TFunction<FText(const FCk_Jolt_DebugDraw_BodySample&)> InRead,
+        TAttribute<FLinearColor> InSetValueColor)
     -> TSharedRef<SWidget>
 {
     const auto WeakPanel = TWeakPtr<SCkJoltDebugger_DetailPanel>{SharedThis(this)};
@@ -577,14 +635,60 @@ auto
         const auto& Sample = Panel->Get_SelectionFacts().BodySample;
 
         return Sample.IsSet() ? Read(*Sample) : ck_jolt_debugger_detail_panel::Get_UnsetText();
-    }));
+    }), MoveTemp(InSetValueColor));
+}
+
+auto
+    SCkJoltDebugger_DetailPanel::
+    MakeSampleStatusRow(
+        const FString& InKey,
+        TFunction<FText(const FCk_Jolt_DebugDraw_BodySample&)> InText,
+        TFunction<ECk_Tone(const FCk_Jolt_DebugDraw_BodySample&)> InTone)
+    -> TSharedRef<SWidget>
+{
+    const auto WeakPanel = TWeakPtr<SCkJoltDebugger_DetailPanel>{SharedThis(this)};
+    const auto Text = TAttribute<FText>::CreateLambda([WeakPanel, Read = MoveTemp(InText)]() -> FText
+    {
+        const auto Panel = WeakPanel.Pin();
+
+        if (NOT Panel.IsValid())
+        { return ck_jolt_debugger_detail_panel::Get_UnsetText(); }
+
+        const auto& Sample = Panel->Get_SelectionFacts().BodySample;
+        return Sample.IsSet() ? Read(*Sample) : ck_jolt_debugger_detail_panel::Get_UnsetText();
+    });
+
+    _RowValues.Add(InKey, Text);
+    const auto Tone = TAttribute<ECk_Tone>::CreateLambda([WeakPanel, Read = MoveTemp(InTone)]() -> ECk_Tone
+    {
+        const auto Panel = WeakPanel.Pin();
+
+        if (NOT Panel.IsValid())
+        { return ECk_Tone::Neutral; }
+
+        const auto& Sample = Panel->Get_SelectionFacts().BodySample;
+        return Sample.IsSet() ? Read(*Sample) : ECk_Tone::Neutral;
+    });
+    _RowStatusTones.Add(InKey, Tone);
+
+    return SNew(SCkDebug_KeyValueRow)
+        .KeyText(FText::FromString(InKey))
+        .Tone(ECkDebug_KeyValueTone::Custom)
+        .ValueWidget()
+        [
+            SNew(SCkDebug_StatusPill)
+            .ShowDot(true)
+            .Text(Text)
+            .Tone(Tone)
+        ];
 }
 
 auto
     SCkJoltDebugger_DetailPanel::
     MakeCharacterRow(
         const FString& InKey,
-        TFunction<FText(const FCk_Jolt_DebugDraw_CharacterSample&)> InRead)
+        TFunction<FText(const FCk_Jolt_DebugDraw_CharacterSample&)> InRead,
+        TAttribute<FLinearColor> InSetValueColor)
     -> TSharedRef<SWidget>
 {
     const auto WeakPanel = TWeakPtr<SCkJoltDebugger_DetailPanel>{SharedThis(this)};
@@ -599,7 +703,48 @@ auto
         const auto& Sample = Panel->Get_SelectionFacts().CharacterSample;
 
         return Sample.IsSet() ? Read(*Sample) : ck_jolt_debugger_detail_panel::Get_UnsetText();
-    }));
+    }), MoveTemp(InSetValueColor));
+}
+
+auto
+    SCkJoltDebugger_DetailPanel::
+    MakeCharacterStatusRow(
+        const FString& InKey,
+        TFunction<FText(const FCk_Jolt_DebugDraw_CharacterSample&)> InText,
+        TFunction<ECk_Tone(const FCk_Jolt_DebugDraw_CharacterSample&)> InTone)
+    -> TSharedRef<SWidget>
+{
+    const auto WeakPanel = TWeakPtr<SCkJoltDebugger_DetailPanel>{SharedThis(this)};
+    const auto Text = TAttribute<FText>::CreateLambda([WeakPanel, Read = MoveTemp(InText)]() -> FText
+    {
+        const auto Panel = WeakPanel.Pin();
+        if (NOT Panel.IsValid()) { return ck_jolt_debugger_detail_panel::Get_UnsetText(); }
+
+        const auto& Sample = Panel->Get_SelectionFacts().CharacterSample;
+        return Sample.IsSet() ? Read(*Sample) : ck_jolt_debugger_detail_panel::Get_UnsetText();
+    });
+    const auto Tone = TAttribute<ECk_Tone>::CreateLambda([WeakPanel, Read = MoveTemp(InTone)]() -> ECk_Tone
+    {
+        const auto Panel = WeakPanel.Pin();
+        if (NOT Panel.IsValid()) { return ECk_Tone::Neutral; }
+
+        const auto& Sample = Panel->Get_SelectionFacts().CharacterSample;
+        return Sample.IsSet() ? Read(*Sample) : ECk_Tone::Neutral;
+    });
+
+    _RowValues.Add(InKey, Text);
+    _RowStatusTones.Add(InKey, Tone);
+
+    return SNew(SCkDebug_KeyValueRow)
+        .KeyText(FText::FromString(InKey))
+        .Tone(ECkDebug_KeyValueTone::Custom)
+        .ValueWidget()
+        [
+            SNew(SCkDebug_StatusPill)
+            .ShowDot(true)
+            .Text(Text)
+            .Tone(Tone)
+        ];
 }
 
 auto
@@ -627,6 +772,26 @@ auto
 
 auto
     SCkJoltDebugger_DetailPanel::
+    Get_RowValueColor(
+        const FString& InKey) const
+    -> FLinearColor
+{
+    const auto* Color = _RowValueColors.Find(InKey);
+    return Color != nullptr ? Color->Get() : CkStyle::TextMute();
+}
+
+auto
+    SCkJoltDebugger_DetailPanel::
+    Get_RowStatusTone(
+        const FString& InKey) const
+    -> ECk_Tone
+{
+    const auto* Tone = _RowStatusTones.Find(InKey);
+    return Tone != nullptr ? Tone->Get() : ECk_Tone::Neutral;
+}
+
+auto
+    SCkJoltDebugger_DetailPanel::
     MakeEntityRow()
     -> TSharedRef<SWidget>
 {
@@ -649,6 +814,78 @@ auto
                 const auto& Selection = Panel->Get_Selection();
                 return Selection.IsSet() ? Selection->Handle : FCk_Handle{};
             })
+        ];
+}
+
+auto
+    SCkJoltDebugger_DetailPanel::
+    MakeIdentitySummary()
+    -> TSharedRef<SWidget>
+{
+    const auto WeakPanel = TWeakPtr<SCkJoltDebugger_DetailPanel>{SharedThis(this)};
+    const auto PopulationText = TAttribute<FText>::CreateLambda([WeakPanel]() -> FText
+    {
+        const auto Panel = WeakPanel.Pin();
+        return Panel.IsValid() ? Panel->Get_PopulationStatusText() : ck_jolt_debugger_detail_panel::Get_UnsetText();
+    });
+    const auto BodyKeyText = TAttribute<FText>::CreateLambda([WeakPanel]() -> FText
+    {
+        const auto Panel = WeakPanel.Pin();
+
+        if (NOT Panel.IsValid())
+        { return ck_jolt_debugger_detail_panel::Get_UnsetText(); }
+
+        const auto& Selection = Panel->Get_Selection();
+        return Selection.IsSet() && Selection->BodyKey.IsSet()
+            ? FText::FromString(ck::Format_UE(TEXT("{}"), *Selection->BodyKey))
+            : ck_jolt_debugger_detail_panel::Get_UnsetText();
+    });
+    const auto BodyKeyColor = TAttribute<FSlateColor>::CreateLambda([BodyKeyText]() -> FSlateColor
+    {
+        return FSlateColor(BodyKeyText.Get().EqualTo(ck_jolt_debugger_detail_panel::Get_UnsetText())
+            ? CkStyle::TextMute()
+            : CkStyle::Value_Numeric());
+    });
+
+    // These values deliberately remain inspectable through Get_RowValueText: the compact summary is the
+    // rendered representation of the same attributes, rather than a second derived copy of identity state.
+    _RowValues.Add(TEXT("Population"), PopulationText);
+    _RowValues.Add(TEXT("Body Key"), BodyKeyText);
+
+    return SNew(SHorizontalBox)
+        + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.0f, 0.0f, CkStyle::SpaceS, 0.0f)
+        [
+            SNew(SCkDebug_StatusPill)
+            .ShowDot(true)
+            .Text(PopulationText)
+            .Tone_Lambda([WeakPanel]() -> ECk_Tone
+            {
+                const auto Panel = WeakPanel.Pin();
+                return Panel.IsValid() ? Panel->Get_PopulationStatusTone() : ECk_Tone::Neutral;
+            })
+        ]
+        + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.0f, 0.0f, CkStyle::SpaceS, 0.0f)
+        [
+            SNew(SCkDebug_StatusPill)
+            .ShowDot(true)
+            .Text_Lambda([WeakPanel]() -> FText
+            {
+                const auto Panel = WeakPanel.Pin();
+                return Panel.IsValid() ? Panel->Get_SimulationStatusText() : ck_jolt_debugger_detail_panel::Get_UnsetText();
+            })
+            .Tone_Lambda([WeakPanel]() -> ECk_Tone
+            {
+                const auto Panel = WeakPanel.Pin();
+                return Panel.IsValid() ? Panel->Get_SimulationStatusTone() : ECk_Tone::Neutral;
+            })
+        ]
+        + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+        [
+            SNew(SCkDebug_StatPair)
+            .Value(BodyKeyText)
+            .Label(FText::FromString(TEXT("BODY KEY")))
+            .ValueColor(BodyKeyColor)
+            .Layout(ECkDebug_StatPairLayout::Inline_ValueFirst)
         ];
 }
 

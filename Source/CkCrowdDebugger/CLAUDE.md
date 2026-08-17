@@ -10,6 +10,10 @@
 - `FCkCrowdDebugger_3dSceneAdapter` owns Crowd-specific translation: capsule/status appearance, velocity and selected
   paths, Recast triangles, width-aware PathNetwork ribbons and opacity, Voxel layers/bounds/chunks/portals, and
   current-row pick mapping. Reusable component/material/reconciliation/picking mechanics belong in `CkDebugScene`.
+- Recast and PathNetwork fills use the shared Unlit translucent CkDebugScene material with two-sided sanitized
+  geometry. Recast remains at world depth/sort 0; PathNetwork preserves the legacy foreground pass with a stable
+  positive sort priority. Never substitute Engine `M_Simple*` materials, which lack the retained ISM shader usage
+  contract.
 - Preserve the `ck.CrowdDebugger.PathNetworkTrace` compatibility token and all specialized source/CVar/detail-panel
   controls when changing the adapter. Common controls are capability-driven and must not be recreated in the Crowd
   window.

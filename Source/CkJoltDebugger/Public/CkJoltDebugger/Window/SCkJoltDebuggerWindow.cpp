@@ -544,6 +544,29 @@ auto
     // After the tree, not before: the toggles read their state back off the target, so the restore has to be
     // the last word on it rather than something a freshly-built control overwrites.
     DoApplySavedPreferences();
+
+    if (const auto Adapter = _Viewport->Get_CommonAdapter(); Adapter.IsValid())
+    {
+        Adapter->Set_ShowGrid(_ShowGrid);
+        Adapter->Set_OnRenderModeChanged([this](ECk_Jolt_DebugDraw_RenderMode InMode)
+        { Set_RenderMode(InMode); });
+        Adapter->Set_OnGridChanged([this](bool InIsEnabled)
+        { Set_ShowGrid(InIsEnabled); });
+        Adapter->Set_OnLabelsChanged([this](bool InIsEnabled)
+        { Set_DrawFlag(ECk_Jolt_DebugDrawFlags::Labels, InIsEnabled); });
+        Adapter->Set_OnDirectionGlyphScaleChanged([this](float InScale)
+        { Set_DirectionGlyphScale(InScale); });
+        Adapter->Set_OnIsolatedKeysChanged([this](const TArray<uint64>& InKeys)
+        {
+            const auto IsActive = NOT InKeys.IsEmpty();
+            if (_IsolateActive == IsActive) { return; }
+            _IsolateActive = IsActive;
+            auto* Settings = GetMutableDefault<UCkJoltDebuggerSettings>();
+            Settings->IsolateActive = IsActive;
+            Settings->SaveConfig();
+        });
+    }
+    _Viewport->Set_IsolateSelection(_IsolateActive);
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -715,7 +738,10 @@ auto
     { _ViewportPicker->Deactivate(); }
 
     if (_Viewport.IsValid())
-    { _Viewport->Set_SelectionBounds(TOptional<FBox>{}); }
+    {
+        _Viewport->Set_SelectionBounds(TOptional<FBox>{});
+        _Viewport->Set_SelectionKeys({});
+    }
 
     if (_OutlinerPanel.IsValid())
     { _OutlinerPanel->Clear(); }
@@ -1139,6 +1165,8 @@ auto
             { Keys.AddUnique(ConstraintBodyKey); }
         }
 
+        if (_Viewport.IsValid())
+        { _Viewport->Set_SelectionKeys(Keys); }
         _DebugDrawTarget->Set_HighlightedBodies(MoveTemp(Keys));
 
         // The contacts query is a NarrowPhaseQuery::CollideShape the facility only runs while a consumer is
@@ -1817,6 +1845,9 @@ auto
     -> void
 {
     _IsolateActive = InIsActive;
+
+    if (_Viewport.IsValid())
+    { _Viewport->Set_IsolateSelection(InIsActive); }
 
     DoApplyIsolation();
 

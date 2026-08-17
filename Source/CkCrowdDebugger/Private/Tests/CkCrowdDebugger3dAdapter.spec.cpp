@@ -1,0 +1,463 @@
+#include "Misc/AutomationTest.h"
+
+#if WITH_EDITOR && WITH_DEV_AUTOMATION_TESTS
+
+// The adapter takes copied Crowd DTOs and submits only opaque uint64 identities and Foundation scene instances to
+// FCk_DebugScene_Target. No public CkDebugScene type may expose FCk_Handle or Crowd.
+#include "CkCrowdDebugger/Viewport/CkCrowdDebugger_3dSceneAdapter.h"
+#include "CkDebugScene/CkDebugScene_Target.h"
+
+#include "Engine/World.h"
+namespace ck_crowd_debugger_3d_adapter_spec
+{
+constexpr auto TestFlags = EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter;
+constexpr uint64 AgentA = 101;
+constexpr uint64 AgentB = 202;
+constexpr uint64 ReplacementAgent = 303;
+
+struct FScopedTarget
+{
+    FScopedTarget()
+    {
+        constexpr auto InformEngineOfWorld = false;
+        _World = UWorld::CreateWorld(EWorldType::Game, InformEngineOfWorld,
+                                    FName{TEXT("CkCrowdDebugger3dAdapter")});
+        _Target = MakeShared<FCk_DebugScene_Target>(
+            FCk_DebugScene_TargetConfig{}.Set_World(_World).Set_MaxItems(128).Set_MaxInstances(20000));
+    }
+
+    ~FScopedTarget()
+    {
+        _Target.Reset();
+        if (IsValid(_World))
+        {
+            constexpr auto InformEngineOfWorld = false;
+            _World->DestroyWorld(InformEngineOfWorld);
+            _World = nullptr;
+        }
+    }
+
+    UWorld* _World = nullptr;
+    TSharedPtr<FCk_DebugScene_Target> _Target;
+};
+
+auto
+MakeAgent(uint64 InIdentity, const FVector& InPosition) -> FCkCrowdDebugger_3dAgentSnapshot
+{
+    auto Agent = FCkCrowdDebugger_3dAgentSnapshot{};
+    Agent._Identity = InIdentity;
+    Agent._Position = InPosition;
+    Agent._Radius = 42.0f;
+    Agent._Height = 192.0f;
+    Agent._StatusColor = FLinearColor::Green;
+    return Agent;
+}
+
+auto
+MakeSnapshot() -> FCkCrowdDebugger_3dSceneSnapshot
+{
+    auto Snapshot = FCkCrowdDebugger_3dSceneSnapshot{};
+    Snapshot._WorldEpoch = 17;
+    Snapshot._Agents = {MakeAgent(AgentA, FVector::ZeroVector), MakeAgent(AgentB, FVector{400.0f, 0.0f, 0.0f})};
+    return Snapshot;
+}
+} // namespace ck_crowd_debugger_3d_adapter_spec
+
+// --------------------------------------------------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCkCrowdDebugger3dAdapter_CopiedInputsOutliveProducer,
+                                 "Ck.CrowdDebugger.Viewport3d.CopiedInputsOutliveProducer",
+                                 ck_crowd_debugger_3d_adapter_spec::TestFlags)
+
+auto
+    FCkCrowdDebugger3dAdapter_CopiedInputsOutliveProducer::
+    RunTest(const FString&)
+    -> bool
+{
+    using namespace ck_crowd_debugger_3d_adapter_spec;
+    auto Fixture = FScopedTarget{};
+    auto ProducerSnapshot = MakeSnapshot();
+    const auto CopiedSnapshot = ProducerSnapshot;
+    ProducerSnapshot = {};
+
+    auto Adapter = FCkCrowdDebugger_3dSceneAdapter{};
+    TestTrue(TEXT("a copied snapshot reconciles after the producer-side source is cleared"),
+             Adapter.Reconcile(CopiedSnapshot, *Fixture._Target));
+    TestEqual(TEXT("the target receives the copied agent population"), Fixture._Target->Get_Stats().Get_ItemCount(), 2);
+    return true;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCkCrowdDebugger3dAdapter_StableIdentitySurvivesReorder,
+                                 "Ck.CrowdDebugger.Viewport3d.StableIdentitySurvivesReorder",
+                                 ck_crowd_debugger_3d_adapter_spec::TestFlags)
+
+auto
+    FCkCrowdDebugger3dAdapter_StableIdentitySurvivesReorder::
+    RunTest(const FString&)
+    -> bool
+{
+    using namespace ck_crowd_debugger_3d_adapter_spec;
+    auto Fixture = FScopedTarget{};
+    auto First = MakeSnapshot();
+    auto Reordered = First;
+    Swap(Reordered._Agents[0], Reordered._Agents[1]);
+
+    auto Adapter = FCkCrowdDebugger_3dSceneAdapter{};
+    Adapter.Reconcile(First, *Fixture._Target);
+    Fixture._Target->Reset_FrameStats();
+    Adapter.Reconcile(Reordered, *Fixture._Target);
+
+    const auto& Stats = Fixture._Target->Get_Stats();
+    TestEqual(TEXT("reorder adds no target instances"), Stats.Get_InstancesAdded(), 0);
+    TestEqual(TEXT("reorder removes no target instances"), Stats.Get_InstancesRemoved(), 0);
+    const auto CurrentIndex = Adapter.Get_CurrentAgentIndex(AgentA);
+    TestTrue(TEXT("stable identity still has a current source row"), CurrentIndex.IsSet());
+    if (CurrentIndex.IsSet())
+    {
+        TestEqual(TEXT("identity maps to its new current index, not its old array slot"), *CurrentIndex, 1);
+    }
+    return true;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCkCrowdDebugger3dAdapter_AgentCapsuleAndPickMap,
+                                 "Ck.CrowdDebugger.Viewport3d.AgentCapsuleAndPickMap",
+                                 ck_crowd_debugger_3d_adapter_spec::TestFlags)
+
+auto
+    FCkCrowdDebugger3dAdapter_AgentCapsuleAndPickMap::
+    RunTest(const FString&)
+    -> bool
+{
+    using namespace ck_crowd_debugger_3d_adapter_spec;
+    auto Fixture = FScopedTarget{};
+    auto Adapter = FCkCrowdDebugger_3dSceneAdapter{};
+    Adapter.Reconcile(MakeSnapshot(), *Fixture._Target);
+
+    TestEqual(TEXT("each agent submits one capsule item"),
+              Adapter.Get_ItemCount(ECkCrowdDebugger_3dSceneRole::AgentCapsule), 2);
+    const TArray<FCk_DebugScene_Instance>& AgentInstances = Adapter.Get_SubmittedInstances(AgentA);
+    TestEqual(TEXT("an agent capsule submits one target instance"), AgentInstances.Num(), 1);
+    const TOptional<FCk_DebugScene_Pick> Pick =
+        Fixture._Target->TryPick(FVector{-500.0f, 0.0f, 96.0f}, FVector::ForwardVector);
+    TestTrue(TEXT("the target returns an opaque generic pick"), Pick.IsSet());
+    if (Pick.IsSet())
+    {
+        const auto Resolution = Adapter.Resolve_Pick(*Pick);
+        TestTrue(TEXT("the adapter resolves its generic target pick"), Resolution.IsSet());
+        if (Resolution.IsSet())
+        {
+            TestEqual(TEXT("the pick resolves stable Crowd identity"), Resolution->_Identity, AgentA);
+            TestEqual(TEXT("the pick resolves current Crowd row"), Resolution->_CurrentAgentIndex, 0);
+        }
+    }
+    return true;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCkCrowdDebugger3dAdapter_SelectionBoundsAndPath,
+                                 "Ck.CrowdDebugger.Viewport3d.SelectionBoundsAndPath",
+                                 ck_crowd_debugger_3d_adapter_spec::TestFlags)
+
+auto
+    FCkCrowdDebugger3dAdapter_SelectionBoundsAndPath::
+    RunTest(const FString&)
+    -> bool
+{
+    using namespace ck_crowd_debugger_3d_adapter_spec;
+    auto Fixture = FScopedTarget{};
+    auto Snapshot = MakeSnapshot();
+    Snapshot._SelectedIdentity = AgentB;
+    Snapshot._Agents[1]._PlannedPath = {FVector{500.0f, 0.0f, 0.0f}, FVector{600.0f, 100.0f, 0.0f}};
+
+    auto Adapter = FCkCrowdDebugger_3dSceneAdapter{};
+    Adapter.Reconcile(Snapshot, *Fixture._Target);
+    const auto Bounds = Adapter.Get_SelectionBounds(*Fixture._Target);
+    TestTrue(TEXT("selection bounds frame the selected capsule"),
+             Bounds.IsSet() && Bounds->IsInsideOrOn(FVector{400.0f, 0.0f, 96.0f}));
+    TestEqual(TEXT("only selected agent contributes planned path"),
+              Adapter.Get_ItemCount(ECkCrowdDebugger_3dSceneRole::SelectedPath), 1);
+    return true;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCkCrowdDebugger3dAdapter_AllBoundsUnionAndStaticLayerChurn,
+                                 "Ck.CrowdDebugger.Viewport3d.AllBoundsUnionAndStaticLayerChurn",
+                                 ck_crowd_debugger_3d_adapter_spec::TestFlags)
+
+auto
+    FCkCrowdDebugger3dAdapter_AllBoundsUnionAndStaticLayerChurn::
+    RunTest(const FString&)
+    -> bool
+{
+    using namespace ck_crowd_debugger_3d_adapter_spec;
+    auto Fixture = FScopedTarget{};
+    auto Snapshot = MakeSnapshot();
+    Snapshot._Voxel._NavigationBounds = FBox{FVector{-1000.0f, -1000.0f, -100.0f}, FVector{-800.0f, -800.0f, 100.0f}};
+    Snapshot._Recast._Revision = 41;
+    Snapshot._Recast._Triangles = {FVector{800.0f, 800.0f, 0.0f}, FVector{1000.0f, 800.0f, 0.0f},
+                                   FVector{800.0f, 1000.0f, 0.0f}};
+    Snapshot._PathNetwork._Revision = 73;
+    Snapshot._PathNetwork._Ribbons = {FCkCrowdDebugger_3dRibbonSnapshot{
+        {FVector{0.0f, -1000.0f, 0.0f}, FVector{0.0f, -800.0f, 0.0f}}, {50.0f, 50.0f}}};
+
+    auto Adapter = FCkCrowdDebugger_3dSceneAdapter{};
+    Adapter.Reconcile(Snapshot, *Fixture._Target);
+    const auto Bounds = Fixture._Target->Get_ContentBounds();
+    TestTrue(TEXT("content bounds include VoxelNav"), Bounds.IsInsideOrOn(FVector{-900.0f, -900.0f, 0.0f}));
+    TestTrue(TEXT("content bounds include Recast"), Bounds.IsInsideOrOn(FVector{900.0f, 900.0f, 0.0f}));
+    TestTrue(TEXT("content bounds include agents"), Bounds.IsInsideOrOn(FVector{400.0f, 0.0f, 96.0f}));
+    TestTrue(TEXT("content bounds include width-aware ribbons"), Bounds.IsInsideOrOn(FVector{50.0f, -900.0f, 0.0f}));
+
+    Fixture._Target->Reset_FrameStats();
+    Adapter.Reconcile(Snapshot, *Fixture._Target);
+    const auto& Stats = Fixture._Target->Get_Stats();
+    TestEqual(TEXT("unchanged nav/ribbon revisions add no topology"), Stats.Get_InstancesAdded(), 0);
+    TestEqual(TEXT("unchanged nav/ribbon revisions update no topology"), Stats.Get_InstancesUpdated(), 0);
+    TestEqual(TEXT("unchanged nav/ribbon revisions remove no topology"), Stats.Get_InstancesRemoved(), 0);
+    return true;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCkCrowdDebugger3dAdapter_RibbonGeometryPreservesOrderAndWidth,
+                                 "Ck.CrowdDebugger.Viewport3d.RibbonGeometryPreservesOrderAndWidth",
+                                 ck_crowd_debugger_3d_adapter_spec::TestFlags)
+
+auto
+    FCkCrowdDebugger3dAdapter_RibbonGeometryPreservesOrderAndWidth::
+    RunTest(const FString&)
+    -> bool
+{
+    using namespace ck_crowd_debugger_3d_adapter_spec;
+    auto Fixture = FScopedTarget{};
+    auto Snapshot = FCkCrowdDebugger_3dSceneSnapshot{};
+    Snapshot._WorldEpoch = 17;
+    Snapshot._PathNetwork._Revision = 1;
+    Snapshot._PathNetwork._Ribbons = {FCkCrowdDebugger_3dRibbonSnapshot{
+        {FVector{0.0f, 0.0f, 0.0f}, FVector{100.0f, 0.0f, 0.0f}, FVector{100.0f, 100.0f, 0.0f}},
+        {10.0f, 40.0f, 20.0f}}};
+
+    auto Adapter = FCkCrowdDebugger_3dSceneAdapter{};
+    Adapter.Reconcile(Snapshot, *Fixture._Target);
+    const auto RibbonItem = Adapter.Get_TargetItemId(ECkCrowdDebugger_3dSceneRole::PathNetworkRibbon, 0);
+    TestTrue(TEXT("a source ribbon has an opaque target item identity"), RibbonItem.IsSet());
+    if (RibbonItem.IsSet())
+    {
+        TestEqual(TEXT("one retained ribbon mesh occupies one scene instance"),
+                  Fixture._Target->Get_Stats().Get_InstanceCount(), 1);
+        TestEqual(TEXT("two ordered spans build four fill triangles"), Adapter.Get_RibbonTriangleCount(0), 4);
+        TestEqual(TEXT("the retained outline preserves all three authored points"),
+                  Adapter.Get_RibbonOutlinePointCount(0), 3);
+        const auto Bounds = Fixture._Target->Get_ItemBounds(*RibbonItem);
+        TestTrue(TEXT("widest authored point expands bounds"),
+                 Bounds.IsSet() && Bounds->IsInsideOrOn(FVector{100.0f, 40.0f, 0.0f}));
+    }
+    return true;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCkCrowdDebugger3dAdapter_VoxelContentAndCapsPreserved,
+                                 "Ck.CrowdDebugger.Viewport3d.VoxelContentAndCapsPreserved",
+                                 ck_crowd_debugger_3d_adapter_spec::TestFlags)
+
+auto
+    FCkCrowdDebugger3dAdapter_VoxelContentAndCapsPreserved::
+    RunTest(const FString&)
+    -> bool
+{
+    using namespace ck_crowd_debugger_3d_adapter_spec;
+    auto Fixture = FScopedTarget{};
+    auto Snapshot = FCkCrowdDebugger_3dSceneSnapshot{};
+    Snapshot._WorldEpoch = 17;
+    Snapshot._Voxel._AuthoredBounds = FBox{FVector{-100.0f}, FVector{100.0f}};
+    Snapshot._Voxel._Cells._Occupied = {FBox{FVector{-30.0f}, FVector{-10.0f}}};
+    Snapshot._Voxel._Cells._MergedFree = {FBox{FVector{-10.0f}, FVector{10.0f}}};
+    Snapshot._Voxel._Cells._RawFree = {FBox{FVector{10.0f}, FVector{30.0f}}};
+    Snapshot._Voxel._Chunks = {FBox{FVector{-50.0f}, FVector::ZeroVector}};
+    Snapshot._Voxel._Portals = {{FVector{-10.0f, 0.0f, 0.0f}, FVector{10.0f, 0.0f, 0.0f}}};
+    Snapshot._Voxel._RepairLinks = {{FVector{0.0f, -10.0f, 0.0f}, FVector{0.0f, 10.0f, 0.0f}}};
+    Snapshot._Voxel._RawFreeCellCap = 10000;
+
+    auto Adapter = FCkCrowdDebugger_3dSceneAdapter{};
+    Adapter.Reconcile(Snapshot, *Fixture._Target);
+    TestTrue(TEXT("VoxelNav bounds enter content framing"),
+             Fixture._Target->Get_ContentBounds().IsInsideOrOn(FVector{100.0f, 100.0f, 100.0f}));
+    TestTrue(TEXT("merged free remains independent"), Adapter.Has_Role(ECkCrowdDebugger_3dSceneRole::VoxelMergedFree));
+    TestTrue(TEXT("chunk bounds remain present"), Adapter.Has_Role(ECkCrowdDebugger_3dSceneRole::VoxelChunk));
+    TestTrue(TEXT("portals remain present"), Adapter.Has_Role(ECkCrowdDebugger_3dSceneRole::VoxelPortal));
+    TestTrue(TEXT("repair links remain present"), Adapter.Has_Role(ECkCrowdDebugger_3dSceneRole::VoxelRepair));
+    TestTrue(TEXT("raw free obeys Crowd cap"),
+             Adapter.Get_ItemCount(ECkCrowdDebugger_3dSceneRole::VoxelRawFree) <= 10000);
+    return true;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCkCrowdDebugger3dAdapter_ResetAndStaleIdentityFailClosed,
+                                 "Ck.CrowdDebugger.Viewport3d.ResetAndStaleIdentityFailClosed",
+                                 ck_crowd_debugger_3d_adapter_spec::TestFlags)
+
+auto
+    FCkCrowdDebugger3dAdapter_ResetAndStaleIdentityFailClosed::
+    RunTest(const FString&)
+    -> bool
+{
+    using namespace ck_crowd_debugger_3d_adapter_spec;
+    auto Fixture = FScopedTarget{};
+    auto Adapter = FCkCrowdDebugger_3dSceneAdapter{};
+    Adapter.Reconcile(MakeSnapshot(), *Fixture._Target);
+
+    Adapter.Reset_ForWorldChange(*Fixture._Target);
+    TestEqual(TEXT("world reset removes target scene"), Fixture._Target->Get_Stats().Get_ItemCount(), 0);
+    TestFalse(TEXT("world reset clears mappings"), Adapter.Get_CurrentAgentIndex(AgentA).IsSet());
+    TestFalse(TEXT("world reset clears selected identity"), Adapter.Get_SelectedIdentity().IsSet());
+
+    auto Replacement = MakeSnapshot();
+    Replacement._WorldEpoch = 18;
+    Replacement._Agents[0] = MakeAgent(ReplacementAgent, FVector::ZeroVector);
+    Adapter.Reconcile(Replacement, *Fixture._Target);
+    TestFalse(TEXT("stale identity cannot select same-position replacement"),
+              Adapter.TrySelect_Identity(AgentA, *Fixture._Target));
+    return true;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCkCrowdDebugger3dAdapter_SourceAppearanceStaysOwned,
+                                 "Ck.CrowdDebugger.Viewport3d.SourceAppearanceStaysOwned",
+                                 ck_crowd_debugger_3d_adapter_spec::TestFlags)
+
+auto
+    FCkCrowdDebugger3dAdapter_SourceAppearanceStaysOwned::
+    RunTest(const FString&)
+    -> bool
+{
+    using namespace ck_crowd_debugger_3d_adapter_spec;
+    auto Fixture = FScopedTarget{};
+    auto Snapshot = MakeSnapshot();
+    Snapshot._Agents[0]._StatusColor = FLinearColor::Red;
+    Snapshot._PathNetwork._Opacity = 0.35f;
+    Snapshot._Voxel._Cells._RawFree = {FBox{FVector{-10.0f}, FVector{10.0f}}};
+    constexpr auto IsLayerVisible = false;
+    Snapshot._Voxel._LayerVisibility.Add(ECkCrowdDebugger_3dVoxelLayer::RawFree, IsLayerVisible);
+
+    auto Adapter = FCkCrowdDebugger_3dSceneAdapter{};
+    Adapter.Reconcile(Snapshot, *Fixture._Target);
+    const FCk_DebugScene_Appearance AgentAppearance = Adapter.Get_Appearance(AgentA);
+    TestEqual(TEXT("status colour stays adapter-owned"), AgentAppearance.Get_Color(), FLinearColor::Red);
+    TestEqual(TEXT("ribbon opacity stays adapter-owned"),
+              Adapter.Get_RoleAppearance(ECkCrowdDebugger_3dSceneRole::PathNetworkRibbon).Get_Opacity(), 0.35f);
+    TestFalse(TEXT("source visibility stays adapter-owned"),
+              Adapter.Has_Role(ECkCrowdDebugger_3dSceneRole::VoxelRawFree));
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCkCrowdDebugger3dAdapter_LaterBadAgentAbortsWithoutPublishing,
+                                 "Ck.CrowdDebugger.Viewport3d.LaterBadAgentAbortsWithoutPublishing",
+                                 ck_crowd_debugger_3d_adapter_spec::TestFlags)
+
+auto
+    FCkCrowdDebugger3dAdapter_LaterBadAgentAbortsWithoutPublishing::
+    RunTest(const FString&)
+    -> bool
+{
+    using namespace ck_crowd_debugger_3d_adapter_spec;
+    auto Fixture = FScopedTarget{};
+    auto Adapter = FCkCrowdDebugger_3dSceneAdapter{};
+    const auto First = MakeSnapshot();
+    TestTrue(TEXT("baseline scene commits"), Adapter.Reconcile(First, *Fixture._Target));
+    TestTrue(TEXT("baseline retained line commits"),
+             Fixture._Target->Set_LineChannel(
+                 FName{TEXT("Baseline")},
+                 {FCk_DebugScene_Line{FVector::ZeroVector, FVector{100.0f, 0.0f, 0.0f}, FLinearColor::White, 1.0f}}));
+    const auto AgentItem = Adapter.Get_TargetItemId(ECkCrowdDebugger_3dSceneRole::AgentCapsule, 0);
+    TestTrue(TEXT("baseline agent item exists"), AgentItem.IsSet());
+    if (NOT AgentItem.IsSet())
+    {
+        return false;
+    }
+    const auto BeforeIds = Fixture._Target->Get_InstanceIds(*AgentItem);
+    const auto BeforeBounds = Fixture._Target->Get_ContentBounds();
+    const auto BeforeStats = Fixture._Target->Get_Stats();
+    const auto BeforeLines = Fixture._Target->Get_RenderedLineCount();
+
+    auto Invalid = First;
+    Invalid._Agents.Add(FCkCrowdDebugger_3dAgentSnapshot{});
+    AddExpectedError(TEXT("Crowd debug-scene adapter rejected"), EAutomationExpectedErrorFlags::Contains, 2);
+    TestFalse(TEXT("later invalid agent aborts the target transaction"), Adapter.Reconcile(Invalid, *Fixture._Target));
+    TestEqual(TEXT("prior target identity remains"), Fixture._Target->Get_InstanceIds(*AgentItem)[0], BeforeIds[0]);
+    TestTrue(TEXT("prior bounds remain"), Fixture._Target->Get_ContentBounds().Equals(BeforeBounds));
+    TestEqual(TEXT("prior rendered lines remain"), Fixture._Target->Get_RenderedLineCount(), BeforeLines);
+    TestEqual(TEXT("prior item count remains"), Fixture._Target->Get_Stats().Get_ItemCount(),
+              BeforeStats.Get_ItemCount());
+    TestTrue(TEXT("prior agent mapping remains"), Adapter.Get_CurrentAgentIndex(AgentA).IsSet());
+    return true;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCkCrowdDebugger3dAdapter_Scale240UsesStableInstancing,
+                                 "Ck.CrowdDebugger.Viewport3d.Scale240UsesStableInstancing",
+                                 ck_crowd_debugger_3d_adapter_spec::TestFlags)
+
+auto
+    FCkCrowdDebugger3dAdapter_Scale240UsesStableInstancing::
+    RunTest(const FString&)
+    -> bool
+{
+    using namespace ck_crowd_debugger_3d_adapter_spec;
+    constexpr auto InformEngineOfWorld = false;
+    auto* World = UWorld::CreateWorld(EWorldType::Game, InformEngineOfWorld,
+                                     FName{TEXT("CkCrowdDebugger3dScale")});
+    if (NOT TestNotNull(TEXT("scale world exists"), World))
+    {
+        return false;
+    }
+
+    {
+        auto Target = MakeShared<FCk_DebugScene_Target>(
+            FCk_DebugScene_TargetConfig{}.Set_World(World).Set_MaxItems(512).Set_MaxInstances(1024));
+        auto Snapshot = FCkCrowdDebugger_3dSceneSnapshot{};
+        Snapshot._WorldEpoch = 71;
+        constexpr auto AgentCount = 240;
+        Snapshot._Agents.Reserve(AgentCount);
+        for (auto Index = 0; Index < AgentCount; ++Index)
+        {
+            Snapshot._Agents.Add(
+                MakeAgent(static_cast<uint64>(Index + 1), FVector{static_cast<double>(Index % 24) * 150.0,
+                                                                  static_cast<double>(Index / 24) * 150.0, 0.0}));
+        }
+
+        auto Adapter = FCkCrowdDebugger_3dSceneAdapter{};
+        const auto FirstStart = FPlatformTime::Seconds();
+        TestTrue(TEXT("240-agent first reconcile succeeds"), Adapter.Reconcile(Snapshot, *Target));
+        const auto FirstMilliseconds = (FPlatformTime::Seconds() - FirstStart) * 1000.0;
+        TestEqual(TEXT("240 agents share one capsule component"), Target->Get_Stats().Get_ComponentCount(), 1);
+        TestEqual(TEXT("240 agents share one capsule bucket"), Target->Get_Stats().Get_BucketCount(), 1);
+        TestEqual(TEXT("all 240 instances are retained"), Target->Get_Stats().Get_InstanceCount(), AgentCount);
+
+        const auto SteadyStart = FPlatformTime::Seconds();
+        TestTrue(TEXT("240-agent steady reconcile succeeds"), Adapter.Reconcile(Snapshot, *Target));
+        const auto SteadyMilliseconds = (FPlatformTime::Seconds() - SteadyStart) * 1000.0;
+        TestEqual(TEXT("steady reconcile adds nothing"), Target->Get_Stats().Get_InstancesAdded(), 0);
+        TestEqual(TEXT("steady reconcile updates nothing"), Target->Get_Stats().Get_InstancesUpdated(), 0);
+        TestEqual(TEXT("steady reconcile removes nothing"), Target->Get_Stats().Get_InstancesRemoved(), 0);
+        TestEqual(TEXT("steady reconcile reuses every slot"), Target->Get_Stats().Get_InstancesUnchanged(), AgentCount);
+        UE_LOG(
+            LogTemp, Display,
+            TEXT("[CrowdDebugSceneBench] agents=%d first_ms=%.3f steady_ms=%.3f components=%d buckets=%d instances=%d"),
+            AgentCount, FirstMilliseconds, SteadyMilliseconds, Target->Get_Stats().Get_ComponentCount(),
+            Target->Get_Stats().Get_BucketCount(), Target->Get_Stats().Get_InstanceCount());
+    }
+    World->DestroyWorld(InformEngineOfWorld);
+    return true;
+}
+
+#endif

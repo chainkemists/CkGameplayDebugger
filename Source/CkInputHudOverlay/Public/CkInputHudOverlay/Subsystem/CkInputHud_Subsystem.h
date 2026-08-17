@@ -16,6 +16,12 @@ class UCommonInputSubsystem;
 
 enum class ECommonInputType : uint8;
 
+namespace ck::input_hud
+{
+    // Non-shipping builds present the keyboard overlay immediately; Shipping compiles the subsystem as a no-op.
+    inline constexpr auto DefaultOverlayMode = UE_BUILD_SHIPPING ? 0 : 1;
+}
+
 // ====================================================================================================================
 // UCk_InputHud_Subsystem
 //

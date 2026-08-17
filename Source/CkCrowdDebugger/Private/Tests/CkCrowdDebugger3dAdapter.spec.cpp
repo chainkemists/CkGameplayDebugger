@@ -5,6 +5,7 @@
 // The adapter takes copied Crowd DTOs and submits only opaque uint64 identities and Foundation scene instances to
 // FCk_DebugScene_Target. No public CkDebugScene type may expose FCk_Handle or Crowd.
 #include "CkCrowdDebugger/Viewport/CkCrowdDebugger_3dSceneAdapter.h"
+#include "CkDebugScene/CkDebugScene_Materials.h"
 #include "CkDebugScene/CkDebugScene_Target.h"
 
 #include "Engine/World.h"
@@ -304,6 +305,43 @@ auto
     TestEqual(TEXT("ribbon publishes reverse winding for two-sided rendering"),
               Adapter.Get_RibbonRenderedTriangleCount(1), 4);
     TestEqual(TEXT("ribbon outline retains its authored points"), Adapter.Get_RibbonOutlinePointCount(1), 3);
+    const auto RecastItem = Adapter.Get_TargetItemId(ECkCrowdDebugger_3dSceneRole::Recast, 0);
+    const auto RibbonItem = Adapter.Get_TargetItemId(ECkCrowdDebugger_3dSceneRole::PathNetworkRibbon, 0);
+    TestTrue(TEXT("Recast has a retained target item"), RecastItem.IsSet());
+    TestTrue(TEXT("PathNetwork has a retained target item"), RibbonItem.IsSet());
+    if (RecastItem.IsSet())
+    {
+        const auto Instances = Fixture._Target->Get_ItemInstances(*RecastItem);
+        TestEqual(TEXT("Recast submits one retained instance"), Instances.Num(), 1);
+        if (Instances.Num() == 1)
+        {
+            const auto& Appearance = Instances[0].Get_Appearance();
+            TestEqual(TEXT("Recast uses the shared translucent debug material"), Appearance.Get_BaseMaterial(),
+                      ck::debug_scene::materials::TryGet_Translucent());
+            TestEqual(TEXT("Recast remains world depth priority"), Appearance.Get_DepthPriority(),
+                      ECk_DebugScene_DepthPriority::World);
+            TestEqual(TEXT("Recast keeps default translucent sort priority"), Appearance.Get_TranslucencySortPriority(), 0);
+        }
+    }
+    if (RibbonItem.IsSet())
+    {
+        const auto Instances = Fixture._Target->Get_ItemInstances(*RibbonItem);
+        TestEqual(TEXT("PathNetwork submits one retained instance"), Instances.Num(), 1);
+        if (Instances.Num() == 1)
+        {
+            const auto& Appearance = Instances[0].Get_Appearance();
+            TestEqual(TEXT("PathNetwork uses the shared translucent debug material"), Appearance.Get_BaseMaterial(),
+                      ck::debug_scene::materials::TryGet_Translucent());
+            TestEqual(TEXT("PathNetwork preserves legacy foreground depth priority"), Appearance.Get_DepthPriority(),
+                      ECk_DebugScene_DepthPriority::Foreground);
+            TestTrue(TEXT("PathNetwork has a stable positive translucent sort priority"),
+                     Appearance.Get_TranslucencySortPriority() > 0);
+        }
+    }
+    TestEqual(TEXT("surface depth/sort separation uses dedicated retained buckets"),
+              Fixture._Target->Get_Stats().Get_BucketCount(), 3);
+    TestEqual(TEXT("surface overlap retains two agents and two static surfaces"),
+              Fixture._Target->Get_Stats().Get_ItemCount(), 4);
 
     Fixture._Target->Reset_FrameStats();
     TestTrue(TEXT("unchanged retained surfaces reconcile without topology churn"),
@@ -312,6 +350,8 @@ auto
     TestEqual(TEXT("unchanged retained surfaces add no instances"), SteadyStats.Get_InstancesAdded(), 0);
     TestEqual(TEXT("unchanged retained surfaces update no instances"), SteadyStats.Get_InstancesUpdated(), 0);
     TestEqual(TEXT("unchanged retained surfaces remove no instances"), SteadyStats.Get_InstancesRemoved(), 0);
+    TestEqual(TEXT("unchanged retained surfaces preserve dedicated buckets"), SteadyStats.Get_BucketCount(), 3);
+    TestEqual(TEXT("unchanged retained surfaces preserve overlap item count"), SteadyStats.Get_ItemCount(), 4);
 
     auto DegenerateOnly = Snapshot;
     DegenerateOnly._Recast._Revision = 2;

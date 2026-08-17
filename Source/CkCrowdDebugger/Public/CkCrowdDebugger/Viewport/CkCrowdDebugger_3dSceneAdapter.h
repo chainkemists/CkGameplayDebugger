@@ -156,7 +156,9 @@ class FCkCrowdDebugger_3dSceneAdapter
     auto
     MakeItemKey(ECkCrowdDebugger_3dSceneRole InRole, uint64 InIdentity) -> uint64;
     auto
-    MakeAppearance(FLinearColor InColor, bool InTransparent = false) const -> FCk_DebugScene_Appearance;
+    MakeAppearance(FLinearColor InColor, bool InTransparent = false,
+                   ECk_DebugScene_DepthPriority InDepthPriority = ECk_DebugScene_DepthPriority::World,
+                   int32 InTranslucencySortPriority = 0) const -> FCk_DebugScene_Appearance;
     auto
     GetOrCreateCapsuleMesh() -> TSharedPtr<FCk_DebugScene_Mesh>;
     auto

@@ -47,6 +47,19 @@ struct CKOPTIMIZATIONDEBUGGER_API FCkOptimizationDebugger_Thresholds
 
 // --------------------------------------------------------------------------------------------------------------------
 
+/** A graded finding: how severe, and how far over. Both come off ONE (value, budget) pair on purpose — the severity
+ *  is a three-bucket collapse of the ratio, so deriving them separately would be two places for the same rule to
+ *  drift, and the pair is exactly what a check has in hand at the point it decides to report. */
+struct CKOPTIMIZATIONDEBUGGER_API FCkOptimizationDebugger_GradedFinding
+{
+    ECkOptimizationDebugger_Severity Severity = ECkOptimizationDebugger_Severity::Minor;
+
+    // Zero when the budget is non-positive — a ratio against a budget that cannot be exceeded is not a measurement.
+    float BudgetRatio = 0.0f;
+};
+
+// --------------------------------------------------------------------------------------------------------------------
+
 namespace ck_optimization_debugger_thresholds
 {
     /** Copies the per-user settings object into a plain struct. Returns the defaults above when the CDO cannot be
@@ -79,6 +92,22 @@ namespace ck_optimization_debugger_thresholds
         double InValue,
         double InBudget,
         ECkOptimizationDebugger_Severity InAtBudgetSeverity) -> ECkOptimizationDebugger_Severity;
+
+    /** How badly a measured value misses its budget, graded AND measured from one (value, budget) pair.
+     *
+     *  The severity is `Get_GraduatedSeverity` unchanged — this calls it rather than restating the rule. What it adds
+     *  is the ratio that severity is a three-bucket collapse OF: past twice the budget the escalation saturates, so
+     *  "over budget" and "five times over budget" wear the same badge, and the ratio is the only thing left that
+     *  tells the reader which is which.
+     *
+     *  Both halves come off the same pair deliberately. A check that graded from one measurement and reported the
+     *  ratio of another would emit a row whose badge and number disagree, and nothing downstream could tell which of
+     *  the two was lying. */
+    CKOPTIMIZATIONDEBUGGER_API auto
+    Get_Graded(
+        double InValue,
+        double InBudget,
+        ECkOptimizationDebugger_Severity InAtBudgetSeverity) -> FCkOptimizationDebugger_GradedFinding;
 }
 
 // --------------------------------------------------------------------------------------------------------------------

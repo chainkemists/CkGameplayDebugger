@@ -84,15 +84,19 @@ namespace ck_optimization_debugger_checks_material
             // ---- Material.SlotCount ----
             if (SlotCount > InThresholds.MaxMaterialSlots)
             {
+                const auto Graded = Get_Graded(SlotCount, InThresholds.MaxMaterialSlots,
+                    ECkOptimizationDebugger_Severity::Major);
+
                 auto Finding = Build_Finding(FName{TEXT("Material.SlotCount")},
-                    Get_GraduatedSeverity(SlotCount, InThresholds.MaxMaterialSlots,
-                        ECkOptimizationDebugger_Severity::Major),
+                    Graded.Severity,
                     ECkOptimizationDebugger_Category::Material,
                     Target,
                     TEXT("Mesh has more material slots than the budget"),
                     ck::Format_UE(TEXT("{} material slots against a budget of {}. Each slot is a separate draw call per placement, and instancing cannot merge across slots.{}"),
                         SlotCount, InThresholds.MaxMaterialSlots, Usage),
                     TEXT("Atlas the textures and merge the slots, or split the mesh so each piece carries one material."));
+
+                Finding.BudgetRatio = Graded.BudgetRatio;
 
                 OutFindings.Add(MoveTemp(Finding));
             }
@@ -223,15 +227,19 @@ namespace ck_optimization_debugger_checks_material
 
             if (SamplerCount > InThresholds.MaxTextureSamplers)
             {
+                const auto Graded = Get_Graded(SamplerCount, InThresholds.MaxTextureSamplers,
+                    ECkOptimizationDebugger_Severity::Major);
+
                 auto Finding = Build_Finding(FName{TEXT("Material.SamplerBudget")},
-                    Get_GraduatedSeverity(SamplerCount, InThresholds.MaxTextureSamplers,
-                        ECkOptimizationDebugger_Severity::Major),
+                    Graded.Severity,
                     ECkOptimizationDebugger_Category::Material,
                     Target,
                     TEXT("Material samples more textures than the budget"),
                     ck::Format_UE(TEXT("{} distinct textures against a sampler budget of {}. The platform sampler limit is a hard ceiling — past it the material fails to compile rather than running slowly.{}"),
                         SamplerCount, InThresholds.MaxTextureSamplers, Usage),
                     TEXT("Pack channels together (ORM/RMA), share a sampler across nodes, or split the material."));
+
+                Finding.BudgetRatio = Graded.BudgetRatio;
 
                 OutFindings.Add(MoveTemp(Finding));
             }

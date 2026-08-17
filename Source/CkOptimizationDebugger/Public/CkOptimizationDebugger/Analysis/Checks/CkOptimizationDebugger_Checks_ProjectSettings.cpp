@@ -105,15 +105,19 @@ namespace ck_optimization_debugger_checks_project_settings
 
         if (Settings->bTextureStreaming == 0 && TextureCount >= InThresholds.MinTexturesForStreamingWarning)
         {
+            const auto Graded = Get_Graded(TextureCount, InThresholds.MinTexturesForStreamingWarning,
+                ECkOptimizationDebugger_Severity::Major);
+
             auto Finding = Build_Finding(FName{TEXT("ProjectSettings.TextureStreamingDisabled")},
-                Get_GraduatedSeverity(TextureCount, InThresholds.MinTexturesForStreamingWarning,
-                    ECkOptimizationDebugger_Severity::Major),
+                Graded.Severity,
                 ECkOptimizationDebugger_Category::ProjectSettings,
                 Build_ProjectSettingsTarget(k_RenderingSection, TEXT("Texture Streaming")),
                 TEXT("Texture streaming is off in a texture-heavy level"),
                 ck::Format_UE(TEXT("Texture streaming is disabled while the scanned levels reference {} distinct textures. With streaming off, every mip of every one of them is resident for as long as anything referencing it is loaded — the texture pool budget stops applying at all."),
                     TextureCount),
                 TEXT("Re-enable Texture Streaming and size the pool with r.Streaming.PoolSize."));
+
+            Finding.BudgetRatio = Graded.BudgetRatio;
 
             Finding.HasAutoFix = true;
             Finding.FixDescription = TEXT("Enable Texture Streaming in the project's rendering settings.");

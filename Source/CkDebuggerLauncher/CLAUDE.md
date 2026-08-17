@@ -19,14 +19,14 @@
 | AI | A*, GOAP, Crowd, EQS, Aggro |
 | Systems | Scheduler, Object Pooling, Jolt Physics |
 | Interface | UI Layer, Enhanced Input, Intent |
-| Tools | Insights Analyzer, Style Lab, Save |
+| Tools | Audio, Insights Analyzer, Style Lab, Save, Optimization |
 
 `CkInsightsDebugger` owns the Insights Analyzer tab spawner and registers its own descriptor.
 The Foundation analysis module supplies trace parsing and report data; it does not own debugger UI.
-In packaged Development/DebugGame targets, every catalog tool except the explicitly deferred
-`CkIntentDebugger` registers with the catalog. Their editor workspace-menu wiring is compiled out;
-the launcher invokes their runtime Slate tab spawners in floating windows. ECS, State Machine,
-Scheduler, and GOAP use the same runtime-Slate graph canvases in editor and packaged targets.
+In packaged Development/DebugGame targets, every catalog tool registers with the catalog. Their
+editor workspace-menu wiring is compiled out; the launcher invokes their runtime Slate tab
+spawners in floating windows. ECS, State Machine, Scheduler, and GOAP use the same runtime-Slate
+graph canvases in editor and packaged targets.
 
 ## Adding another standalone debugger
 

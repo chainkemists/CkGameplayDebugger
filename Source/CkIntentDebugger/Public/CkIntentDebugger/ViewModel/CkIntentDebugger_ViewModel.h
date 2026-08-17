@@ -43,8 +43,8 @@ public:
     // two public values per source and stores plain values only.
     auto Tick_WitnessDeviceEdges() -> void;
 
-    // Drops every handle-bearing row synchronously. Called from EndPIE and from the world-selector's own
-    // teardown notification, both of which fire while the registry is still alive.
+    // Drops every handle-bearing row synchronously when the shared session lifecycle or the world selector
+    // reports invalidation, while the registry is still alive.
     auto Reset_ForWorldChange() -> void;
 
 public:
@@ -120,7 +120,6 @@ private:
 
     FCkDebug_DeviceSnapshot _DeviceSnapshot;
 
-    FDelegateHandle _EndPieHandle;
     FDelegateHandle _SessionInvalidatedHandle;
     FDelegateHandle _WorldChangedHandle;
 };

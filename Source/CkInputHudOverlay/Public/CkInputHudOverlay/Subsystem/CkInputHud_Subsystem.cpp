@@ -24,6 +24,9 @@
 
 namespace ck_input_hud_subsystem
 {
+    static_assert(WITH_CK_INPUT_HUD == !UE_BUILD_SHIPPING,
+        "The input overlay must compile for every non-shipping configuration and compile out in Shipping");
+
     // Deliberately BELOW CkEntityDebugOverlay's 100: when both are on, the entity overlay owns the foreground.
     constexpr int32 HudZOrder = 90;
 
@@ -50,7 +53,7 @@ auto
     // that cannot be turned on in the build QA actually plays is worthless. Do not "fix" this to ECVF_Cheat.
     static TAutoConsoleVariable<int32> CVar_Master(
         TEXT("ck.InputOverlay"),
-        0,
+        ck::input_hud::DefaultOverlayMode,
         TEXT("Ck on-screen input overlay. 0 = off, 1 = keyboard only, 2 = follow the active device."),
         ECVF_Default);
 

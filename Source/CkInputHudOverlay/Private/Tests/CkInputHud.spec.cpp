@@ -1,6 +1,7 @@
 #include "Misc/AutomationTest.h"
 
 #include "CkInputHudOverlay/Model/CkInputHud_Model.h"
+#include "CkInputHudOverlay/Subsystem/CkInputHud_Subsystem.h"
 
 // --------------------------------------------------------------------------------------------------------------------
 
@@ -33,6 +34,19 @@ namespace ck_input_hud_spec
     {
         return FCk_InputHud_Model::Get_EventKind(InModel.Get_Events()[InIndex], InNow, TapHoldThresholdMs);
     }
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCkInputHud_DefaultEnabled_Test,
+    "Ck.InputHud.Config.DefaultEnabled",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCkInputHud_DefaultEnabled_Test::RunTest(const FString&)
+{
+    TestEqual(TEXT("editor and non-shipping builds default the keyboard overlay on"),
+        ck::input_hud::DefaultOverlayMode, 1);
+    return true;
 }
 
 // --------------------------------------------------------------------------------------------------------------------

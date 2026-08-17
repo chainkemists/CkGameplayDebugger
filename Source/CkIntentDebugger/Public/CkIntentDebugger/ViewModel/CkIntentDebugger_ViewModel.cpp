@@ -13,7 +13,6 @@
 #include "CkIntent/Debug/CkIntentDebugHistory_Utils.h"
 #include "CkIntent/CkIntentSampler_Utils.h"
 
-#include "Editor.h"
 #include "Engine/GameInstance.h"
 #include "Engine/LocalPlayer.h"
 #include "Engine/World.h"
@@ -42,25 +41,11 @@ FCkIntentDebugger_ViewModel::
 
     _SessionInvalidatedHandle = ck::DebugSessionLifecycle::Get_OnSessionInvalidated().AddRaw(
         this, &FCkIntentDebugger_ViewModel::Reset_ForWorldChange);
-
-    if (GEditor != nullptr)
-    {
-        _EndPieHandle = FEditorDelegates::EndPIE.AddLambda([this](const bool)
-        {
-            Reset_ForWorldChange();
-        });
-    }
 }
 
 FCkIntentDebugger_ViewModel::
     ~FCkIntentDebugger_ViewModel()
 {
-    if (_EndPieHandle.IsValid())
-    {
-        FEditorDelegates::EndPIE.Remove(_EndPieHandle);
-        _EndPieHandle.Reset();
-    }
-
     if (_SessionInvalidatedHandle.IsValid())
     {
         ck::DebugSessionLifecycle::Get_OnSessionInvalidated().Remove(_SessionInvalidatedHandle);

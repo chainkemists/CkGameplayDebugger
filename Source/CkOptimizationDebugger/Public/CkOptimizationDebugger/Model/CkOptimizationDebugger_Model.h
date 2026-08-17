@@ -105,6 +105,16 @@ struct CKOPTIMIZATIONDEBUGGER_API FCkOptimizationDebugger_FindingRow
     // worth listing — an explanation the reader acts on by hand is not a lesser finding.
     bool HasAutoFix = false;
     FString FixDescription;
+
+    /** How far past its budget the measured value was, as a multiple of that budget — 2.5 means "two and a half
+     *  times the budget". Zero means this finding has no budget behind it, which is the honest answer for every
+     *  check that fires on a boolean condition rather than a measurement.
+     *
+     *  It exists because `Get_GraduatedSeverity` already computes this ratio and then collapses it into three enum
+     *  values. "Over budget" and "five times over budget" land in the same severity bucket once the escalation
+     *  saturates, and the reader triaging a hundred findings wants the worst ones first. Carried on the row so the
+     *  ratio filter and the row's own badge read the same number the severity was derived from. */
+    float BudgetRatio = 0.0f;
 };
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -152,6 +162,13 @@ struct CKOPTIMIZATIONDEBUGGER_API FCkOptimizationDebugger_FilterState
      *  filter that can permanently hide findings with no way to see what it hid is a filter that makes the tool lie
      *  about the project, and the reader who muted something six months ago cannot audit their own past decisions. */
     bool ShowMuted = false;
+
+    /** Only findings at or past this multiple of their own budget. Zero — the resting state — admits everything.
+     *
+     *  A finding with no budget behind it (`BudgetRatio == 0`) is excluded by ANY non-zero threshold, on the same
+     *  reading that excludes a pathless `ProjectSettings` finding from a path scope: a reader asking "what is
+     *  furthest over budget" is not asking about the checks that have no budget to be over. */
+    float MinBudgetRatio = 0.0f;
 };
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -611,6 +628,29 @@ public:
     auto
     Get_VisibleCountsBySeverity() const -> FCkOptimizationDebugger_SeverityCounts;
 
+    /** Per-severity counts over what survived every filter axis EXCEPT the severity mask.
+     *
+     *  The severity toggles print these, and they need the same mask-lifting `Get_VisibleCountsByCategory` does and
+     *  for the same reason: a severity the reader has switched off must still report its true count, or the control
+     *  that switches it back on would be the one saying there is nothing to switch on for.
+     *
+     *  Deliberately NOT `Get_VisibleCountsBySeverity`, which honours every axis including the severity mask and is
+     *  what the page-bar count binds to. The two answer different questions — "what am I looking at" versus "what
+     *  would this button give me" — and one of them reading the other's number is the confusion this name prevents. */
+    auto
+    Get_VisibleCountsBySeverity_IgnoringSeverityMask() const -> FCkOptimizationDebugger_SeverityCounts;
+
+    /** Per-category counts over what survived the filter, indexed by the category's enum value.
+     *
+     *  The category toggles print these so the reader can see where the findings are before clicking anything. It is
+     *  the VISIBLE count on purpose, unlike the dashboard's severity headline: a category toggle sits beside the
+     *  list it narrows, so it answers "what would this button give me" rather than "how is the level doing". Each
+     *  count ignores the CATEGORY mask while honouring every other axis — otherwise a category the reader had
+     *  toggled off would read zero, and the control that turns it back on would be the one claiming there is
+     *  nothing there. */
+    auto
+    Get_VisibleCountsByCategory() const -> TArray<int32>;
+
     /** The findings the filter admits, grouped by the check that produced them. Rebuild path only — it materializes
      *  every visible finding twice over. */
     auto
@@ -695,6 +735,101 @@ public:
 
     auto
     Get_MutedStableKeys() const -> const TSet<FString>&;
+
+public:
+    auto
+    Get_MinBudgetRatio() const -> float;
+
+    auto
+    Set_MinBudgetRatio(
+        float InMinRatio) -> void;
+
+    /** How many of the CURRENT findings carry a budget ratio at all — what the ratio affordance prints so a reader
+     *  can tell "nothing is that far over" from "no check here measures anything". */
+    auto
+    Get_FindingsWithBudgetCount() const -> int32;
+
+public:
+    /** Whether this check's group is drawn collapsed.
+     *
+     *  Collapse is VIEW state, deliberately not filter state, and the difference is load-bearing: a collapsed group
+     *  still counts toward every count in this window. Collapsing hides rows the way a folded section does — the
+     *  header stays, carrying its count and its worst severity — whereas filtering answers "which findings am I
+     *  asking about". Folding one into the other would make collapsing a group read as findings disappearing, which
+     *  is the one thing a reader must never have to doubt. `Matches_Filter` therefore never consults this. */
+    auto
+    Get_IsCheckCollapsed(
+        FName InCheckId) const -> bool;
+
+    auto
+    Set_CheckCollapsed(
+        FName InCheckId,
+        bool InCollapsed) -> void;
+
+    /** Collapses or expands every check the CURRENT findings contain — what the Collapse all / Expand all controls
+     *  do. Expanding empties the set rather than filling it with every id, so a check nobody has seen yet comes up
+     *  expanded, which is the state a fresh scan should present. */
+    auto
+    Set_AllChecksCollapsed(
+        bool InCollapsed) -> void;
+
+    /** Replaces the whole collapsed set — how the persisted settings are loaded back in at window construction,
+     *  exactly as the level-exclusion and muted sets are. */
+    auto
+    Set_CollapsedCheckIds(
+        TSet<FName> InCheckIds) -> void;
+
+    auto
+    Get_CollapsedCheckIds() const -> const TSet<FName>&;
+
+public:
+    /** Whether this finding is staged in the fix queue.
+     *
+     *  The queue is WORK state, and it is deliberately neither the list's selection nor a filter. `SListView`
+     *  selection is transient — clicking any row replaces it — so a reader assembling a batch across several groups
+     *  and two filter changes had nowhere to put it and no way to see what they had gathered. Keyed by
+     *  `StableKey` for the same reason muting is: it is already the identity a row is reused by, so the queue
+     *  survives a filter pass, a group collapse and a rebuild.
+     *
+     *  It does NOT survive a re-scan unchanged — see `Set_Findings`, which prunes it to the findings that still
+     *  exist. A queue entry naming a finding the project no longer has would be a fix the reader cannot inspect
+     *  and the window cannot apply. */
+    auto
+    Get_IsQueued(
+        const FString& InStableKey) const -> bool;
+
+    auto
+    Set_Queued(
+        const FString& InStableKey,
+        bool InQueued) -> void;
+
+    /** Stages or unstages a whole set at once — what a group header's checkbox and its Select-all entry do. */
+    auto
+    Set_QueuedForKeys(
+        const TArray<FString>& InStableKeys,
+        bool InQueued) -> void;
+
+    auto
+    Clear_Queue() -> void;
+
+    /** The queued findings, in the order `Set_Findings` already sorted them — worst first, so the tray reads in the
+     *  same order the list does. Only findings that still exist in the current scan appear; the pruning in
+     *  `Set_Findings` is what keeps that true rather than this projection filtering silently. */
+    auto
+    Get_QueuedFindings() const -> TArray<FCkOptimizationDebugger_FindingRow>;
+
+    /** How many findings are queued, without materializing them — what the tray header and the apply button bind to. */
+    auto
+    Get_QueuedFindingCount() const -> int32;
+
+    /** The queued findings grouped by the check that produced them, worst group first. The tray labels each group
+     *  with the check's own fix verb, which the fix registry keys by check id — so grouping by check here is the
+     *  same partition the batch apply will make, without this layer knowing the registry exists. */
+    auto
+    Get_QueuedFindingsGroupedByCheck() const -> TArray<FCkOptimizationDebugger_FindingGroup>;
+
+    auto
+    Get_QueuedStableKeys() const -> const TSet<FString>&;
 
 public:
     /** Whether the NEXT scan will skip this level. Excluded levels still appear on the dashboard, greyed — a level
@@ -816,6 +951,18 @@ private:
     // exactly the same sense the filter state is, and clearing it under them would silently widen the next scan.
     // Persisted per-user through `UCkOptimizationDebuggerSettings::ExcludedLevelNames`.
     TSet<FName> _ExcludedLevelNames;
+
+    // Which check groups are drawn folded. View state, not filter state — see `Get_IsCheckCollapsed` for why the
+    // two must not be merged. Survives `Reset` for the same reason the filter does: a PIE boundary invalidates the
+    // answers, never the way the reader had arranged them. Persisted per-user.
+    TSet<FName> _CollapsedCheckIds;
+
+    // The fix queue: findings the reader has staged for a batch apply. Neither selection nor filter — see
+    // `Get_IsQueued`. Pruned to the surviving findings by `Set_Findings`, and dropped WHOLE by `Reset`: every entry
+    // names a finding in a world the boundary just invalidated, so keeping them would stage work against rows that
+    // no longer exist. Deliberately NOT persisted — a half-assembled batch is a thing you are doing right now, and
+    // one restored across an editor restart would apply fixes the reader had forgotten they queued.
+    TSet<FString> _QueuedStableKeys;
 
     // What was resident when the memory analyzer last ran. Independent of the level scan in both directions: a level
     // scan does not refresh it and it does not touch the findings, because "what is in this level" and "what is
@@ -999,6 +1146,37 @@ namespace ck_optimization_debugger_model
     CKOPTIMIZATIONDEBUGGER_API auto
     Get_CountsBySeverity(
         const TArray<FCkOptimizationDebugger_FindingRow>& InFindings) -> FCkOptimizationDebugger_SeverityCounts;
+
+    /** Findings per category, indexed by the category's own enum value so a caller reads it without a map lookup and
+     *  a category added in the middle cannot silently shift the others. Sized from `Get_AllCategories`. */
+    CKOPTIMIZATIONDEBUGGER_API auto
+    Get_CountsByCategory(
+        const TArray<FCkOptimizationDebugger_FindingRow>& InFindings) -> TArray<int32>;
+
+    /** The findings whose stable key is in the set, in the INPUT's order — which is the sorted order everywhere it
+     *  matters, so the fix queue reads worst-first exactly as the list does. */
+    CKOPTIMIZATIONDEBUGGER_API auto
+    Get_FindingsForKeys(
+        const TArray<FCkOptimizationDebugger_FindingRow>& InFindings,
+        const TSet<FString>& InStableKeys) -> TArray<FCkOptimizationDebugger_FindingRow>;
+
+    /** The subset of `InStableKeys` that names a finding in `InFindings`.
+     *
+     *  This is what a re-scan does to the fix queue. It is deliberately NOT what a re-scan does to the MUTED set: a
+     *  mute is a standing judgement about a problem that should survive the scan that happens not to reproduce it
+     *  (another level, another branch), while a queue entry is work staged against a finding the reader can see. A
+     *  queue holding keys nothing on screen matches would offer to apply fixes to rows that are not there. */
+    CKOPTIMIZATIONDEBUGGER_API auto
+    Prune_KeysToFindings(
+        const TSet<FString>& InStableKeys,
+        const TArray<FCkOptimizationDebugger_FindingRow>& InFindings) -> TSet<FString>;
+
+    /** How far over budget, worded for a badge: `2.4x`. One decimal below ten and none above it — `12.7x` and `13x`
+     *  are the same statement, and the second is shorter in a cell that has no room. Empty for a finding with no
+     *  budget behind it, so a caller renders nothing rather than a badge reading `0x`. */
+    CKOPTIMIZATIONDEBUGGER_API auto
+    Format_BudgetRatio(
+        float InRatio) -> FString;
 
     /** Groups findings by the check that produced them, keeping the input's order. Because the input is already
      *  severity-sorted, groups come out worst-first without a second sort — and a second sort here would be a second

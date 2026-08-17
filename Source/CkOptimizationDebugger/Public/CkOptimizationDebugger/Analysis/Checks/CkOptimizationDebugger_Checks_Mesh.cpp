@@ -81,15 +81,19 @@ namespace ck_optimization_debugger_checks_mesh
             // ---- Mesh.TriangleBudget ----
             if (TriangleCount > InThresholds.MaxTriangleCountLOD0)
             {
+                const auto Graded = Get_Graded(TriangleCount, InThresholds.MaxTriangleCountLOD0,
+                    ECkOptimizationDebugger_Severity::Major);
+
                 auto Finding = Build_Finding(FName{TEXT("Mesh.TriangleBudget")},
-                    Get_GraduatedSeverity(TriangleCount, InThresholds.MaxTriangleCountLOD0,
-                        ECkOptimizationDebugger_Severity::Major),
+                    Graded.Severity,
                     ECkOptimizationDebugger_Category::Mesh,
                     Target,
                     TEXT("LOD0 triangle count over budget"),
                     ck::Format_UE(TEXT("LOD0 carries {} triangles against a budget of {}. Every placement pays that vertex cost in full at close range, and Nanite is the only thing that changes the shape of that bill.{}"),
                         TriangleCount, InThresholds.MaxTriangleCountLOD0, Usage),
                     TEXT("Decimate the source mesh, split it into separate assets, or enable Nanite if this is a static prop."));
+
+                Finding.BudgetRatio = Graded.BudgetRatio;
 
                 OutFindings.Add(MoveTemp(Finding));
             }
@@ -99,15 +103,19 @@ namespace ck_optimization_debugger_checks_mesh
             // already doing the job that LODs would do.
             if (LodCount <= 1 && NOT NaniteEnabled && TriangleCount >= InThresholds.MinTrianglesForNanite)
             {
+                const auto Graded = Get_Graded(TriangleCount, InThresholds.MaxTriangleCountLOD0,
+                    ECkOptimizationDebugger_Severity::Major);
+
                 auto Finding = Build_Finding(FName{TEXT("Mesh.MissingLods")},
-                    Get_GraduatedSeverity(TriangleCount, InThresholds.MaxTriangleCountLOD0,
-                        ECkOptimizationDebugger_Severity::Major),
+                    Graded.Severity,
                     ECkOptimizationDebugger_Category::Mesh,
                     Target,
                     TEXT("Dense mesh with a single LOD"),
                     ck::Format_UE(TEXT("{} triangles across exactly one LOD, with Nanite off. The mesh renders at full density no matter how few pixels it covers.{}"),
                         TriangleCount, Usage),
                     TEXT("Generate LODs, or enable Nanite if the mesh is static and opaque."));
+
+                Finding.BudgetRatio = Graded.BudgetRatio;
 
                 Finding.HasAutoFix = true;
                 Finding.FixDescription = TEXT("Generate a default LOD chain for this mesh through the engine's own LOD reduction settings.");
@@ -118,15 +126,19 @@ namespace ck_optimization_debugger_checks_mesh
             // ---- Mesh.NaniteCandidate ----
             if (NOT NaniteEnabled && TriangleCount >= InThresholds.MinTrianglesForNanite)
             {
+                const auto Graded = Get_Graded(TriangleCount, InThresholds.MinTrianglesForNanite,
+                    ECkOptimizationDebugger_Severity::Minor);
+
                 auto Finding = Build_Finding(FName{TEXT("Mesh.NaniteCandidate")},
-                    Get_GraduatedSeverity(TriangleCount, InThresholds.MinTrianglesForNanite,
-                        ECkOptimizationDebugger_Severity::Minor),
+                    Graded.Severity,
                     ECkOptimizationDebugger_Category::Mesh,
                     Target,
                     TEXT("Nanite candidate"),
                     ck::Format_UE(TEXT("{} triangles with Nanite off. Above roughly {} triangles Nanite's cluster culling usually costs less than drawing the mesh outright.{}"),
                         TriangleCount, InThresholds.MinTrianglesForNanite, Usage),
                     TEXT("Enable Nanite — then confirm every material on the mesh is flagged Used With Nanite."));
+
+                Finding.BudgetRatio = Graded.BudgetRatio;
 
                 Finding.HasAutoFix = true;
                 Finding.FixDescription = TEXT("Enable Nanite on this static mesh.");
@@ -211,15 +223,19 @@ namespace ck_optimization_debugger_checks_mesh
 
             if (PrimitiveCount > InThresholds.MaxCollisionPrimitives)
             {
+                const auto Graded = Get_Graded(PrimitiveCount, InThresholds.MaxCollisionPrimitives,
+                    ECkOptimizationDebugger_Severity::Minor);
+
                 auto Finding = Build_Finding(FName{TEXT("Mesh.CollisionPrimitiveCount")},
-                    Get_GraduatedSeverity(PrimitiveCount, InThresholds.MaxCollisionPrimitives,
-                        ECkOptimizationDebugger_Severity::Minor),
+                    Graded.Severity,
                     ECkOptimizationDebugger_Category::Mesh,
                     Target,
                     TEXT("Simple collision built from many primitives"),
                     ck::Format_UE(TEXT("{} simple-collision primitives against a budget of {}. Each one is a separate broadphase entry and a separate narrowphase test per overlap.{}"),
                         PrimitiveCount, InThresholds.MaxCollisionPrimitives, Usage),
                     TEXT("Simplify the collision hull — a coarser shape that is queried once beats an exact one queried a dozen times."));
+
+                Finding.BudgetRatio = Graded.BudgetRatio;
 
                 OutFindings.Add(MoveTemp(Finding));
             }

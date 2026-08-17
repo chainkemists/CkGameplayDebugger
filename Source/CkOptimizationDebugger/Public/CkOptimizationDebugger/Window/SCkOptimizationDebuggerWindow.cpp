@@ -49,6 +49,7 @@
 #include <UObject/Class.h>
 #include <UObject/UnrealType.h>
 #include <Widgets/Input/SButton.h>
+#include <Widgets/Input/SCheckBox.h>
 #include <Widgets/Input/SEditableTextBox.h>
 #include <Widgets/Layout/SBox.h>
 #include <Widgets/Layout/SScrollBox.h>
@@ -74,6 +75,10 @@ namespace ck_optimization_debugger_window
     constexpr auto k_RowIconSize     = 12.0f;
     constexpr auto k_CategoryDotSize = 8.0f;
     constexpr auto k_RowIndent       = 16.0f;
+
+    // The over-budget filter's one step. It is the SAME multiple `Get_GraduatedSeverity` escalates at, so the
+    // narrowing and the colouring in the list agree about what "badly over" means rather than being two opinions.
+    constexpr auto k_OverBudgetRatioStep = 2.0f;
 
     // Dashboard geometry.
     constexpr auto k_EmptyStateIconSize      = 24.0f;
@@ -728,7 +733,7 @@ private:
                 ]
 
                 + SVerticalBox::Slot()
-                .AutoHeight()
+                .AutoHeight() 
                 .HAlign(HAlign_Right)
                 .Padding(0.0f, 1.0f, 0.0f, 0.0f)
                 [
@@ -770,6 +775,11 @@ auto
     // Restored for the same reason: a finding the reader triaged away last week must not reappear on the first scan
     // of this session, or muting would be a per-session gesture nobody would bother making.
     _Model.Set_MutedStableKeys(UCkOptimizationDebuggerSettings::Load_MutedStableKeys());
+
+    // And how they had the list folded. Unlike the two above this narrows nothing — it is purely how the reader
+    // arranged twenty-eight checks' worth of groups, which is exactly the kind of arrangement nobody wants to redo
+    // every time they open the tool.
+    _Model.Set_CollapsedCheckIds(UCkOptimizationDebuggerSettings::Load_CollapsedCheckIds());
 
     ChildSlot
     [
@@ -847,7 +857,20 @@ auto
             FName{*ck::Format_UE(TEXT("Severity.{}"), Label)},
             ck_optimization_debugger_window::Get_SeverityIconId(Severity),
             FText::FromString(Label),
-            FText::FromString(ck::Format_UE(TEXT("Show {} findings in the list"), Label.ToLower())),
+            // Reads the toggle-scoped count, never `_VisibleSeverityCounts` — the severity this button controls is
+            // exactly the axis that must be lifted, or a severity switched off would advertise zero.
+            TAttribute<FText>::CreateLambda([this, Severity, Label]() -> FText
+            {
+                const auto Counts = _ToggleSeverityCounts;
+
+                const auto Count = Severity == ECkOptimizationDebugger_Severity::Critical ? Counts.CriticalCount
+                    : Severity == ECkOptimizationDebugger_Severity::Major ? Counts.MajorCount
+                    : Counts.MinorCount;
+
+                return FText::FromString(ck::Format_UE(
+                    TEXT("Show {} findings in the list — {} match the other filters"),
+                    Label.ToLower(), Count));
+            }),
             TAttribute<bool>::CreateLambda([this, Severity]() -> bool
             {
                 return _Model.Get_SeverityVisible(Severity);
@@ -1122,7 +1145,15 @@ auto
             FName{*ck::Format_UE(TEXT("Category.{}"), Label)},
             ck_optimization_debugger_window::Get_CategoryIconId(Category),
             FText::FromString(Label),
-            FText::FromString(ck::Format_UE(TEXT("Show {} findings in the list"), Label.ToLower())),
+            // The count IGNORES the category mask while honouring every other axis, which is what makes it the
+            // count this button would GIVE you rather than the one it is currently showing. A category toggled off
+            // reporting zero would make the control that turns it back on the one claiming there is nothing there.
+            TAttribute<FText>::CreateLambda([this, Category, Label]() -> FText
+            {
+                return FText::FromString(ck::Format_UE(
+                    TEXT("Show {} findings in the list — {} match the other filters"),
+                    Label.ToLower(), Get_CachedCategoryCount(Category)));
+            }),
             TAttribute<bool>::CreateLambda([this, Category]() -> bool
             {
                 return _Model.Get_CategoryVisible(Category);
@@ -1216,6 +1247,40 @@ auto
             .OnStateChanged_Lambda([this](bool InNewState)
             {
                 _Model.Set_ShowMuted(InNewState);
+                DoRebuild_Findings();
+            })
+        ]
+
+        + SHorizontalBox::Slot()
+        .AutoWidth()
+        .VAlign(VAlign_Center)
+        .Padding(CkStyle::SpaceS, 0.0f, 0.0f, 0.0f)
+        [
+            SNew(SCkDebug_IconToggle)
+            .IconId(FName{TEXT("Flame")})
+            .Label(FText::FromString(TEXT("≥2× budget")))
+            .ToolTip(FText::FromString(
+                TEXT("Show only findings at least twice past their own budget — the ratio the severity grading ")
+                TEXT("already computes. Checks that fire on a condition rather than a measurement have no budget ")
+                TEXT("to be over, so this excludes them, exactly as a path scope excludes findings with no path.")))
+            .IsOn_Lambda([this]() -> bool
+            {
+                return _Model.Get_MinBudgetRatio() > 0.0f;
+            })
+            .IsEnabled_Lambda([this]() -> bool
+            {
+                // Nothing measured against a budget means nothing this can narrow to. Disabled rather than hidden,
+                // for the same reason the muted toggle is: a control that vanished would teach nobody it exists.
+                return _Model.Get_FindingsWithBudgetCount() > 0;
+            })
+            .OnStateChanged_Lambda([this](bool InNewState)
+            {
+                // One fixed step rather than a spinner. The grading rule's own escalation point is 2×, so this is
+                // the threshold the severities were already derived from — a free-typed number would invite the
+                // reader to pick one the list's own colouring does not agree with.
+                _Model.Set_MinBudgetRatio(InNewState
+                    ? ck_optimization_debugger_window::k_OverBudgetRatioStep
+                    : 0.0f);
                 DoRebuild_Findings();
             })
         ]
@@ -1360,16 +1425,53 @@ auto
                     .Underline(true)
                     .RightContent()
                     [
-                        SNew(SCkDebug_CountBadge)
-                        .ValueText_Lambda([this]() -> FText
-                        {
-                            // The cached count, not the projection — this badge paints whenever the Findings page is
-                            // up, and re-deriving it here would walk every finding once a frame.
-                            return FText::FromString(ck::Format_UE(TEXT("{}"), _VisibleFindingCount));
-                        })
-                        .ValueColor(CkStyle::Text())
-                        .BackgroundColor(CkStyle::Bg2())
-                        .BorderColor(CkStyle::Border())
+                        SNew(SHorizontalBox)
+
+                        + SHorizontalBox::Slot()
+                        .AutoWidth()
+                        .VAlign(VAlign_Center)
+                        .Padding(0.0f, 0.0f, CkStyle::SpaceXS, 0.0f)
+                        [
+                            SNew(SCkDebug_Chip)
+                            .Text(FText::FromString(TEXT("Fold all")))
+                            .Kind(ECkDebug_ChipKind::Neutral)
+                            .ShowDot(false)
+                            .OnClicked(FOnCkDebug_ChipClicked::CreateLambda([this]() -> void
+                            {
+                                DoSet_AllChecksCollapsed(true);
+                            }))
+                        ]
+
+                        + SHorizontalBox::Slot()
+                        .AutoWidth()
+                        .VAlign(VAlign_Center)
+                        .Padding(0.0f, 0.0f, CkStyle::SpaceS, 0.0f)
+                        [
+                            SNew(SCkDebug_Chip)
+                            .Text(FText::FromString(TEXT("Unfold all")))
+                            .Kind(ECkDebug_ChipKind::Neutral)
+                            .ShowDot(false)
+                            .OnClicked(FOnCkDebug_ChipClicked::CreateLambda([this]() -> void
+                            {
+                                DoSet_AllChecksCollapsed(false);
+                            }))
+                        ]
+
+                        + SHorizontalBox::Slot()
+                        .AutoWidth()
+                        .VAlign(VAlign_Center)
+                        [
+                            SNew(SCkDebug_CountBadge)
+                            .ValueText_Lambda([this]() -> FText
+                            {
+                                // The cached count, not the projection — this badge paints whenever the Findings page
+                                // is up, and re-deriving it here would walk every finding once a frame.
+                                return FText::FromString(ck::Format_UE(TEXT("{}"), _VisibleFindingCount));
+                            })
+                            .ValueColor(CkStyle::Text())
+                            .BackgroundColor(CkStyle::Bg2())
+                            .BorderColor(CkStyle::Border())
+                        ]
                     ]
                 ]
 
@@ -1389,12 +1491,144 @@ auto
             + SSplitter::Slot()
             .Value(0.38f)
             [
-                SNew(SScrollBox)
+                // Detail above, fix queue below. A splitter rather than a fixed split so a reader assembling a
+                // large batch can give the tray the room, and one reading a long explanation can take it back.
+                SNew(SSplitter)
+                .Orientation(Orient_Vertical)
 
-                + SScrollBox::Slot()
-                .Padding(CkStyle::SpaceM, CkStyle::SpaceS)
+                + SSplitter::Slot()
+                .Value(0.55f)
                 [
-                    SAssignNew(_FindingDetailBox, SVerticalBox)
+                    SNew(SScrollBox)
+
+                    + SScrollBox::Slot()
+                    .Padding(CkStyle::SpaceM, CkStyle::SpaceS)
+                    [
+                        SAssignNew(_FindingDetailBox, SVerticalBox)
+                    ]
+                ]
+
+                + SSplitter::Slot()
+                .Value(0.45f)
+                [
+                    DoCreate_FixQueuePanel()
+                ]
+            ]
+        ];
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkOptimizationDebuggerWindow::
+    DoCreate_FixQueuePanel()
+    -> TSharedRef<SWidget>
+{
+    using namespace ck_optimization_debugger_window;
+
+    // Built ONCE. Everything inside that can move is either an attribute over a cached field or lives in
+    // `_FixQueueBox`, which `DoRebuild_FixQueue` refills in place.
+    return SNew(SVerticalBox)
+
+        + SVerticalBox::Slot()
+        .AutoHeight()
+        .Padding(CkStyle::SpaceM, CkStyle::SpaceS, CkStyle::SpaceM, 0.0f)
+        [
+            SNew(SCkDebug_SectionHeader)
+            .Label(FText::FromString(TEXT("Fix queue")))
+            .ToolTip(FText::FromString(TEXT("Findings you staged. Survives filtering, folding and re-scans; cleared when a play session invalidates the scan.")))
+            .Underline(true)
+            .RightContent()
+            [
+                SNew(SHorizontalBox)
+
+                + SHorizontalBox::Slot()
+                .AutoWidth()
+                .VAlign(VAlign_Center)
+                .Padding(0.0f, 0.0f, CkStyle::SpaceS, 0.0f)
+                [
+                    SNew(SCkDebug_CountBadge)
+                    .ValueText_Lambda([this]() -> FText
+                    {
+                        return FText::FromString(ck::Format_UE(TEXT("{}"), _QueuedCount));
+                    })
+                    .ValueColor(CkStyle::Text())
+                    .BackgroundColor(CkStyle::Bg2())
+                    .BorderColor(CkStyle::Border())
+                ]
+
+                + SHorizontalBox::Slot()
+                .AutoWidth()
+                .VAlign(VAlign_Center)
+                [
+                    SNew(SCkDebug_Chip)
+                    .Text(FText::FromString(TEXT("Clear")))
+                    .Kind(ECkDebug_ChipKind::Neutral)
+                    .ShowDot(false)
+                    .Visibility_Lambda([this]() -> EVisibility
+                    {
+                        return _QueuedCount > 0 ? EVisibility::Visible : EVisibility::Collapsed;
+                    })
+                    .OnClicked(FOnCkDebug_ChipClicked::CreateLambda([this]() -> void
+                    {
+                        DoClear_Queue();
+                    }))
+                ]
+            ]
+        ]
+
+        + SVerticalBox::Slot()
+        .FillHeight(1.0f)
+        [
+            SNew(SScrollBox)
+
+            + SScrollBox::Slot()
+            [
+                SAssignNew(_FixQueueBox, SVerticalBox)
+            ]
+        ]
+
+        + SVerticalBox::Slot()
+        .AutoHeight()
+        .Padding(CkStyle::SpaceM, CkStyle::SpaceS)
+        [
+            SNew(SHorizontalBox)
+
+            + SHorizontalBox::Slot()
+            .FillWidth(1.0f)
+            .VAlign(VAlign_Center)
+            [
+                SNew(STextBlock)
+                .Font(CkStyle::RegularFont(CkStyle::FontSizeSmall()))
+                .ColorAndOpacity(FSlateColor{CkStyle::TextMute()})
+                .Text_Lambda([this]() -> FText
+                {
+                    if (_QueuedCount == 0)
+                    { return FText::GetEmpty(); }
+
+                    // Both numbers, always. "9 staged" alone would let a reader believe nine fixes are about to run
+                    // when only four of them have one, and the difference is the whole reason the button is a
+                    // different number from the badge above.
+                    return FText::FromString(ck::Format_UE(TEXT("{} staged · {} fixable"),
+                        _QueuedCount, _QueuedFixableCount));
+                })
+            ]
+
+            + SHorizontalBox::Slot()
+            .AutoWidth()
+            .VAlign(VAlign_Center)
+            [
+                SNew(SButton)
+                .IsEnabled_Lambda([this]() -> bool { return _QueueApplyEnabled; })
+                .ToolTipText_Lambda([this]() -> FText { return FText::FromString(_QueueApplyTooltip); })
+                .OnClicked_Lambda([this]() -> FReply
+                {
+                    DoApply_Queue();
+                    return FReply::Handled();
+                })
+                [
+                    SNew(STextBlock)
+                    .Text_Lambda([this]() -> FText { return FText::FromString(_QueueApplyLabel); })
                 ]
             ]
         ];
@@ -3443,6 +3677,12 @@ auto
     _VisibleFindingCount = _Model.Get_VisibleFindingCount();
     _VisibleSeverityCounts = _Model.Get_VisibleCountsBySeverity();
     _TotalSeverityCounts = _Model.Get_CountsBySeverity();
+    _ToggleSeverityCounts = _Model.Get_VisibleCountsBySeverity_IgnoringSeverityMask();
+    _VisibleCategoryCounts = _Model.Get_VisibleCountsByCategory();
+
+    // Every one of these counts is over what the FILTER admits, and none of them consults the collapse set. A folded
+    // group is still counted everywhere it appears — that is the difference between folding a section and filtering
+    // it out, and it is the whole reason collapse state does not live on the filter.
 
     // Stable row identity: reuse the TSharedPtr whose key matches, allocate only for genuinely new lines, and ask
     // the list to refresh only when the SET changed. Resetting and re-allocating per rebuild would destroy the
@@ -3452,6 +3692,11 @@ auto
     _FindingItems.Reset();
 
     auto SetChanged = false;
+
+    // Every finding the FILTER admits, whether or not its group is folded. The selection prune below tests this
+    // rather than the item map: a collapsed finding has no row, but it has not been filtered away, and clearing the
+    // detail panel when the reader folds the group they were reading would make folding destructive.
+    auto VisibleFindingKeys = TSet<FString>{};
 
     const auto TakeItem = [&Existing, &SetChanged](const FString& InKey) -> FFindingItem
     {
@@ -3469,6 +3714,24 @@ auto
     for (const auto& Group : Groups)
     {
         const auto GroupKey = k_GroupKeyPrefix + Group.CheckId.ToString();
+        const auto IsCollapsed = _Model.Get_IsCheckCollapsed(Group.CheckId);
+
+        auto GroupStableKeys = TArray<FString>{};
+        GroupStableKeys.Reserve(Group.Findings.Num());
+
+        auto GroupQueuedCount = 0;
+
+        // Walked for EVERY group, folded or not: the header's staged count is the one thing that has to keep being
+        // true while its rows are out of sight, or folding a group with staged work in it would make that work
+        // vanish from the screen entirely.
+        for (const auto& Finding : Group.Findings)
+        {
+            GroupStableKeys.Add(Finding.StableKey);
+            VisibleFindingKeys.Add(Finding.StableKey);
+
+            if (_Model.Get_IsQueued(Finding.StableKey))
+            { ++GroupQueuedCount; }
+        }
 
         auto HeaderItem = TakeItem(GroupKey);
 
@@ -3481,6 +3744,9 @@ auto
         HeaderItem->Title = Group.Title;
         HeaderItem->Finding = FCkOptimizationDebugger_FindingRow{};
         HeaderItem->IsHighlightMatch = true;
+        HeaderItem->IsCollapsed = IsCollapsed;
+        HeaderItem->GroupStableKeys = MoveTemp(GroupStableKeys);
+        HeaderItem->GroupQueuedCount = GroupQueuedCount;
 
         _FindingItemsByKey.Add(GroupKey, HeaderItem);
         _FindingItems.Add(MoveTemp(HeaderItem));
@@ -3498,9 +3764,18 @@ auto
             Item->Title = Finding.Title;
             Item->Finding = Finding;
             Item->IsHighlightMatch = ck_optimization_debugger_model::Matches_Highlight(Finding, Filter);
+            Item->IsCollapsed = false;
+            Item->GroupQueuedCount = 0;
+            Item->IsQueued = _Model.Get_IsQueued(Finding.StableKey);
 
+            // Every visible finding joins the identity MAP, folded or not, but only an unfolded one joins the item
+            // SOURCE. The two do different jobs: the map is what a row widget and the detail-panel selection are
+            // reused by, so keeping a folded finding in it means expanding the group again costs no re-allocation
+            // and never moves the reader's selection. The source is only what `SListView` renders.
             _FindingItemsByKey.Add(Finding.StableKey, Item);
-            _FindingItems.Add(MoveTemp(Item));
+
+            if (NOT IsCollapsed)
+            { _FindingItems.Add(MoveTemp(Item)); }
         }
     }
 
@@ -3508,16 +3783,39 @@ auto
     if (Existing.Num() > 0)
     { SetChanged = true; }
 
+    // The RENDERED sequence, compared separately from the identity map. Folding a group changes what the list draws
+    // without adding or removing anything the map holds, so `SetChanged` alone cannot see it — the same reason the
+    // memory list compares its row order rather than its membership, where a sort reorders without changing the set.
+    auto RowOrder = TArray<FString>{};
+    RowOrder.Reserve(_FindingItems.Num());
+
+    for (const auto& Item : _FindingItems)
+    {
+        RowOrder.Add(Item->Key);
+    }
+
+    if (RowOrder != _FindingRowOrder)
+    {
+        _FindingRowOrder = MoveTemp(RowOrder);
+        SetChanged = true;
+    }
+
     if (ck::IsValid(_FindingList) && SetChanged)
     { _FindingList->RequestListRefresh(); }
 
     // The selected finding may have been filtered out from under the user; the detail panel says so rather than
-    // keeping a stale row on screen.
-    if (NOT _SelectedFindingKey.IsEmpty() && NOT _FindingItemsByKey.Contains(_SelectedFindingKey))
+    // keeping a stale row on screen. Tested against what the FILTER admits, not against the rows that exist — a
+    // finding inside a folded group keeps its detail panel, because folding is not a statement about relevance.
+    if (NOT _SelectedFindingKey.IsEmpty() && NOT VisibleFindingKeys.Contains(_SelectedFindingKey))
     { _SelectedFindingKey.Empty(); }
 
     DoRefresh_SelectionCommands();
     DoRebuild_FindingDetail();
+
+    // The tray is refilled by the same rebuild that refills the list, because every one of the three things that can
+    // move it — a scan pruning it, a stage, an unstage — already lands here.
+    DoRefresh_QueueCommands();
+    DoRebuild_FixQueue();
 
     if (InRefreshStatus)
     { DoRefresh_Status(); }
@@ -3571,6 +3869,152 @@ auto
     _FixButtonTooltip = Confirmation.IsRequired
         ? ck::Format_UE(TEXT("{}\n\nYou will be asked to confirm."), Confirmation.Body)
         : Fixable[0].FixDescription;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkOptimizationDebuggerWindow::
+    DoRefresh_QueueCommands()
+    -> void
+{
+    using namespace ck_optimization_debugger_fixes;
+
+    const auto Queued = _Model.Get_QueuedFindings();
+    const auto Fixable = Get_FixableFindings(Queued);
+
+    _QueuedCount = Queued.Num();
+    _QueuedFixableCount = Fixable.Num();
+
+    _QueueApplyLabel = _QueuedFixableCount > 0
+        ? ck::Format_UE(TEXT("Review && Fix {}"), _QueuedFixableCount)
+        : FString{TEXT("Review && Fix")};
+
+    if (_QueuedCount == 0)
+    {
+        _QueueApplyEnabled = false;
+        _QueueApplyTooltip = FString{TEXT("Tick a finding to stage it here. The queue survives filtering and folding, so a batch can be assembled across several checks.")};
+        return;
+    }
+
+    // Same split as the selection commands: session availability is asked here, never inside the pure projection.
+    const auto Unavailable = Get_FixesUnavailableReason();
+
+    if (NOT Unavailable.IsEmpty())
+    {
+        _QueueApplyEnabled = false;
+        _QueueApplyTooltip = Unavailable;
+        return;
+    }
+
+    _QueueApplyEnabled = _QueuedFixableCount > 0;
+
+    if (_QueuedFixableCount == 0)
+    {
+        // Staging a finding with no automatic fix is legitimate — it is a shortlist of things to go and do by hand.
+        // The button says why it cannot act on them rather than the tray refusing to hold them.
+        _QueueApplyTooltip = FString{TEXT("Nothing in the queue has an automatic fix. These are staged for you to act on by hand.")};
+        return;
+    }
+
+    const auto Confirmation = Build_BatchConfirmation(Fixable);
+
+    _QueueApplyTooltip = Confirmation.IsRequired
+        ? ck::Format_UE(TEXT("{}\n\nYou will be asked to confirm."), Confirmation.Body)
+        : ck::Format_UE(TEXT("Apply {} staged fix(es) in one undoable step."), _QueuedFixableCount);
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkOptimizationDebuggerWindow::
+    DoRebuild_FixQueue()
+    -> void
+{
+    using namespace ck_optimization_debugger_fixes;
+
+    if (ck::Is_NOT_Valid(_FixQueueBox))
+    { return; }
+
+    _FixQueueBox->ClearChildren();
+
+    const auto Groups = _Model.Get_QueuedFindingsGroupedByCheck();
+
+    if (Groups.IsEmpty())
+    {
+        _FixQueueBox->AddSlot()
+        .AutoHeight()
+        .Padding(CkStyle::SpaceM, CkStyle::SpaceS)
+        [
+            SNew(STextBlock)
+            .Text(FText::FromString(TEXT("Nothing staged. Tick findings to build a batch.")))
+            .ColorAndOpacity(FSlateColor{CkStyle::TextMute()})
+            .AutoWrapText(true)
+        ];
+
+        return;
+    }
+
+    for (const auto& Group : Groups)
+    {
+        // The check's own fix VERB names the section, not the finding title: the tray answers "what is about to
+        // happen", and the verb is the sentence the undo record will carry. A check with no registered fix falls
+        // back to its title, because a heading reading "no fix" over rows the reader deliberately staged would be
+        // the tray arguing with them.
+        const auto* FixInfo = TryGet_FixInfo(Group.CheckId);
+
+        const auto Heading = FixInfo != nullptr
+            ? FixInfo->DisplayVerb
+            : Group.Title;
+
+        _FixQueueBox->AddSlot()
+        .AutoHeight()
+        .Padding(CkStyle::SpaceM, CkStyle::SpaceS, CkStyle::SpaceM, CkStyle::SpaceXS)
+        [
+            SNew(STextBlock)
+            .Text(FText::FromString(ck::Format_UE(TEXT("{} · {}"), Heading, Group.Findings.Num())))
+            .Font(CkStyle::BoldFont(CkStyle::FontSizeMicro()))
+            .ColorAndOpacity(FSlateColor{CkStyle::TextMute()})
+        ];
+
+        for (const auto& Finding : Group.Findings)
+        {
+            const auto StableKey = Finding.StableKey;
+
+            _FixQueueBox->AddSlot()
+            .AutoHeight()
+            .Padding(CkStyle::SpaceL, 0.0f, CkStyle::SpaceS, CkStyle::SpaceXS)
+            [
+                SNew(SHorizontalBox)
+
+                + SHorizontalBox::Slot()
+                .FillWidth(1.0f)
+                .VAlign(VAlign_Center)
+                [
+                    SNew(STextBlock)
+                    .Text(FText::FromString(Finding.Target.DisplayName))
+                    .ToolTipText(FText::FromString(Finding.Target.Path.ToString()))
+                ]
+
+                + SHorizontalBox::Slot()
+                .AutoWidth()
+                .VAlign(VAlign_Center)
+                [
+                    // A CLICKABLE chip, which is legal here and would not be in a list row: the tray is a fixed
+                    // panel, so there is no STableRow whose selection click this could eat — the same argument that
+                    // lets the profiling page's recent rail carry clickable chips.
+                    SNew(SCkDebug_Chip)
+                    .Text(FText::FromString(TEXT("Remove")))
+                    .Kind(ECkDebug_ChipKind::Neutral)
+                    .ShowDot(false)
+                    .OnClicked(FOnCkDebug_ChipClicked::CreateLambda([this, StableKey]() -> void
+                    {
+                        DoSet_Queued({StableKey}, false);
+                    }))
+                ]
+            ];
+        }
+    }
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -3807,7 +4251,79 @@ auto
                 .AutoWidth()
                 .HAlign(HAlign_Left)
                 .VAlign(VAlign_Center)
-                .Padding(CkStyle::SpaceS, 0.0f, CkStyle::SpaceS, 0.0f)
+                .Padding(CkStyle::SpaceXS, 0.0f, 0.0f, 0.0f)
+                [
+                    // A live button INSIDE a list row, which the row-safety rule otherwise forbids — legal here for
+                    // one specific reason: this header already sets `ShowSelection(false)`, so there is no selection
+                    // click for it to eat. It handles LMB only, leaving the right-click that opens the list's
+                    // context menu to pass through untouched.
+                    SNew(SButton)
+                    .ButtonStyle(FAppStyle::Get(), TEXT("NoBorder"))
+                    .ContentPadding(FMargin{CkStyle::SpaceXS, 0.0f})
+                    .ToolTipText(FText::FromString(TEXT("Fold this check. Folding hides rows — it changes no count and filters nothing.")))
+                    .OnClicked_Lambda([this, WeakRow]() -> FReply
+                    {
+                        const auto Row = WeakRow.Pin();
+
+                        if (NOT Row.IsValid())
+                        { return FReply::Handled(); }
+
+                        DoSet_CheckCollapsed(Row->CheckId, NOT Row->IsCollapsed);
+                        return FReply::Handled();
+                    })
+                    [
+                        SNew(STextBlock)
+                        .Text(FText::FromString(InItem->IsCollapsed ? TEXT("▸") : TEXT("▾")))
+                        .ColorAndOpacity(FSlateColor{CkStyle::TextMute()})
+                    ]
+                ]
+
+                + SHorizontalBox::Slot()
+                .AutoWidth()
+                .VAlign(VAlign_Center)
+                .Padding(0.0f, 0.0f, CkStyle::SpaceS, 0.0f)
+                [
+                    // Tri-state: ticked when the whole group is staged, undetermined when part of it is. Clicking
+                    // stages or unstages the WHOLE group, which is what the two-state reading of a partial group
+                    // has to resolve to — and unstaging is the safer of the two when the reader has already
+                    // gathered some of it.
+                    SNew(SCheckBox)
+                    .ToolTipText(FText::FromString(TEXT("Stage every finding in this check for the fix queue")))
+                    .IsChecked_Lambda([WeakRow]() -> ECheckBoxState
+                    {
+                        const auto Row = WeakRow.Pin();
+
+                        if (NOT Row.IsValid() || Row->GroupCount == 0)
+                        { return ECheckBoxState::Unchecked; }
+
+                        if (Row->GroupQueuedCount == 0)
+                        { return ECheckBoxState::Unchecked; }
+
+                        return Row->GroupQueuedCount == Row->GroupCount
+                            ? ECheckBoxState::Checked
+                            : ECheckBoxState::Undetermined;
+                    })
+                    .OnCheckStateChanged_Lambda([this, WeakRow](ECheckBoxState InState) -> void
+                    {
+                        const auto Row = WeakRow.Pin();
+
+                        if (NOT Row.IsValid())
+                        { return; }
+
+                        // Driven off what the group ALREADY is rather than the state Slate hands in: a tri-state box
+                        // reports `Checked` when leaving Undetermined, so trusting it would make a half-staged group
+                        // stage the rest when the reader's gesture on a partial group reads as "clear this".
+                        const auto ShouldQueue = Row->GroupQueuedCount < Row->GroupCount;
+
+                        DoSet_Queued(Row->GroupStableKeys, ShouldQueue);
+                    })
+                ]
+
+                + SHorizontalBox::Slot()
+                .AutoWidth()
+                .HAlign(HAlign_Left)
+                .VAlign(VAlign_Center)
+                .Padding(0.0f, 0.0f, CkStyle::SpaceS, 0.0f)
                 [
                     SNew(SCkDebug_CategoryDot)
                     .Color(Get_CategoryColor(InItem->Category))
@@ -3837,6 +4353,37 @@ auto
                     .Font(CkStyle::BoldFont(CkStyle::FontSizeBody()))
                     .ColorAndOpacity(FSlateColor{CkStyle::GetToneColor(
                         ck_optimization_debugger_model::Get_SeverityTone(InItem->Severity))})
+                ]
+
+                + SHorizontalBox::Slot()
+                .AutoWidth()
+                .VAlign(VAlign_Center)
+                .Padding(CkStyle::SpaceS, 0.0f, 0.0f, 0.0f)
+                [
+                    // What the group is holding staged, shown on the HEADER so folding a group never hides the fact
+                    // that there is work gathered inside it. Inert — the checkbox to its left is the control.
+                    SNew(SCkDebug_Chip)
+                    .Text(FText::FromString(ck::Format_UE(TEXT("{} staged"), InItem->GroupQueuedCount)))
+                    .Kind(ECkDebug_ChipKind::Effect)
+                    .ShowDot(false)
+                    .Visibility(InItem->GroupQueuedCount > 0 ? EVisibility::Visible : EVisibility::Collapsed)
+                ]
+
+                + SHorizontalBox::Slot()
+                .AutoWidth()
+                .VAlign(VAlign_Center)
+                .Padding(CkStyle::SpaceS, 0.0f, 0.0f, 0.0f)
+                [
+                    // The group's worst severity, drawn on the header for the same reason: a folded group must
+                    // still say how bad what it hides is, or folding would be a way to make a Critical disappear.
+                    SNew(SCkDebug_Icon)
+                    .Brush(Get_IconBrush(Get_SeverityIconId(InItem->Severity)))
+                    .Meaning(FText::FromString(
+                        ck_optimization_debugger_model::Get_SeverityLabel(InItem->Severity)))
+                    .ColorAndOpacity(FSlateColor{CkStyle::GetToneColor(
+                        ck_optimization_debugger_model::Get_SeverityTone(InItem->Severity))})
+                    .Size(FVector2D{k_RowIconSize, k_RowIconSize})
+                    .Visibility(InItem->IsCollapsed ? EVisibility::Visible : EVisibility::Collapsed)
                 ]
 
                 + SHorizontalBox::Slot()
@@ -3876,15 +4423,62 @@ auto
 
             + SHorizontalBox::Slot()
             .AutoWidth()
-            .HAlign(HAlign_Left)
             .VAlign(VAlign_Center)
             .Padding(k_RowIndent, 0.0f, CkStyle::SpaceS, 0.0f)
+            [
+                // The ONE interactive widget the row-safety rule admits into a finding row, and the exception is
+                // narrow on purpose: a checkbox consumes only the click that lands inside its own bounds, so the
+                // rest of the row still selects and still opens the context menu. It is what makes staging
+                // INDEPENDENT of selection — the reader can gather a batch across several groups and several filter
+                // changes without the list's own selection, which any click replaces, being the thing that holds it.
+                SNew(SCheckBox)
+                .ToolTipText(FText::FromString(TEXT("Stage this finding for the fix queue")))
+                .IsChecked_Lambda([WeakRow]() -> ECheckBoxState
+                {
+                    const auto Row = WeakRow.Pin();
+
+                    return Row.IsValid() && Row->IsQueued
+                        ? ECheckBoxState::Checked
+                        : ECheckBoxState::Unchecked;
+                })
+                .OnCheckStateChanged_Lambda([this, WeakRow](ECheckBoxState InState) -> void
+                {
+                    const auto Row = WeakRow.Pin();
+
+                    if (NOT Row.IsValid())
+                    { return; }
+
+                    DoSet_Queued({Row->Finding.StableKey}, InState == ECheckBoxState::Checked);
+                })
+            ]
+
+            + SHorizontalBox::Slot()
+            .AutoWidth()
+            .HAlign(HAlign_Left)
+            .VAlign(VAlign_Center)
+            .Padding(0.0f, 0.0f, CkStyle::SpaceS, 0.0f)
             [
                 SNew(SCkDebug_StatusPill)
                 .Text(FText::FromString(
                     ck_optimization_debugger_model::Get_SeverityLabel(InItem->Severity).ToUpper()))
                 .Tone(ck_optimization_debugger_model::Get_SeverityTone(InItem->Severity))
                 .ShowDot(false)
+            ]
+
+            // How far past its budget, when the finding has one. Inert, and hidden entirely rather than printing a
+            // placeholder: most checks fire on a condition rather than a measurement, and a badge on those would be
+            // claiming a number they never computed.
+            + SHorizontalBox::Slot()
+            .AutoWidth()
+            .VAlign(VAlign_Center)
+            .Padding(0.0f, 0.0f, CkStyle::SpaceS, 0.0f)
+            [
+                SNew(SCkDebug_Chip)
+                .Text(FText::FromString(
+                    ck_optimization_debugger_model::Format_BudgetRatio(InItem->Finding.BudgetRatio)))
+                .Kind(ECkDebug_ChipKind::Neutral)
+                .ShowDot(false)
+                .Visibility(InItem->Finding.BudgetRatio > 0.0f ? EVisibility::Visible : EVisibility::Collapsed)
             ]
 
             // A muted row only ever reaches the list while "Show muted" is on, and it MUST say so on the row itself.
@@ -3995,11 +4589,19 @@ auto
         FFindingItem InItem)
     -> void
 {
-    // Double-click is the discoverable twin of the Go To button — the gesture the reader already uses in every
-    // other list in the editor to open the thing a row names.
-    if (NOT InItem.IsValid() || InItem->IsGroupHeader)
+    if (NOT InItem.IsValid())
     { return; }
 
+    // On a HEADER the same gesture folds the group — the affordance every tree in the editor already carries, so
+    // the chevron is the discoverable control rather than the only one.
+    if (InItem->IsGroupHeader)
+    {
+        DoSet_CheckCollapsed(InItem->CheckId, NOT InItem->IsCollapsed);
+        return;
+    }
+
+    // Double-click is the discoverable twin of the Go To button — the gesture the reader already uses in every
+    // other list in the editor to open the thing a row names.
     DoNavigate_To(InItem->Finding);
 }
 
@@ -4052,6 +4654,124 @@ auto
 
 auto
     SCkOptimizationDebuggerWindow::
+    DoSet_CheckCollapsed(
+        FName InCheckId,
+        bool InCollapsed)
+    -> void
+{
+    if (_Model.Get_IsCheckCollapsed(InCheckId) == InCollapsed)
+    { return; }
+
+    _Model.Set_CheckCollapsed(InCheckId, InCollapsed);
+
+    UCkOptimizationDebuggerSettings::Save_CollapsedCheckIds(_Model.Get_CollapsedCheckIds());
+
+    // No status line. Folding a section is not news — it changes no count and no answer, and a strip that narrated
+    // it would overwrite whatever the last scan or fix had to say for a gesture the reader can see the result of.
+    DoRebuild_Findings(false);
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkOptimizationDebuggerWindow::
+    DoSet_AllChecksCollapsed(
+        bool InCollapsed)
+    -> void
+{
+    _Model.Set_AllChecksCollapsed(InCollapsed);
+
+    UCkOptimizationDebuggerSettings::Save_CollapsedCheckIds(_Model.Get_CollapsedCheckIds());
+
+    DoRebuild_Findings(false);
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkOptimizationDebuggerWindow::
+    DoSet_Queued(
+        const TArray<FString>& InStableKeys,
+        bool InQueued)
+    -> void
+{
+    if (InStableKeys.IsEmpty())
+    { return; }
+
+    _Model.Set_QueuedForKeys(InStableKeys, InQueued);
+
+    // Deliberately NOT persisted, unlike muting and collapsing. A queue is work in progress — a batch restored
+    // across an editor restart would be a set of fixes the reader had forgotten they staged, waiting behind one
+    // button press.
+    DoRebuild_Findings(false);
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkOptimizationDebuggerWindow::
+    DoToggle_QueueOnSelected(
+        bool InQueued)
+    -> void
+{
+    if (ck::Is_NOT_Valid(_FindingList))
+    { return; }
+
+    auto Keys = TArray<FString>{};
+
+    for (const auto& Item : _FindingList->GetSelectedItems())
+    {
+        if (NOT Item.IsValid())
+        { continue; }
+
+        // A selected group HEADER stages its whole group. Unlike muting — which refuses a header because muting a
+        // check is a different feature with a different persistence shape — staging every finding under a header is
+        // exactly what the header's own checkbox does, so the two gestures agree rather than one silently doing
+        // nothing.
+        if (Item->IsGroupHeader)
+        {
+            Keys.Append(Item->GroupStableKeys);
+            continue;
+        }
+
+        Keys.Add(Item->Finding.StableKey);
+    }
+
+    DoSet_Queued(Keys, InQueued);
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkOptimizationDebuggerWindow::
+    DoClear_Queue()
+    -> void
+{
+    if (_Model.Get_QueuedFindingCount() == 0)
+    { return; }
+
+    _Model.Clear_Queue();
+
+    DoRebuild_Findings(false);
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkOptimizationDebuggerWindow::
+    DoApply_Queue()
+    -> void
+{
+    // Routed through the SAME pipeline the selection apply uses, so the session gate, the confirmation dialog, the
+    // single-vs-batch split and the post-fix re-scan are shared. A second apply path is a second place for the
+    // confirmation rules to drift, and the confirmation is the whole safety story for a destructive fix.
+    DoApply_Fixes(_Model.Get_QueuedFindings(), TEXT("the fix queue"));
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkOptimizationDebuggerWindow::
     DoOnFindingContextMenu()
     -> TSharedPtr<SWidget>
 {
@@ -4066,11 +4786,18 @@ auto
     auto Paths = TArray<FString>{};
     auto Summaries = TArray<FString>{};
     auto Findings = TArray<FCkOptimizationDebugger_FindingRow>{};
+    auto Headers = TArray<FFindingItem>{};
 
     for (const auto& Item : Selected)
     {
-        if (NOT Item.IsValid() || Item->IsGroupHeader)
+        if (NOT Item.IsValid())
         { continue; }
+
+        if (Item->IsGroupHeader)
+        {
+            Headers.Add(Item);
+            continue;
+        }
 
         Findings.Add(Item->Finding);
         Titles.Add(Item->Finding.Title);
@@ -4079,6 +4806,12 @@ auto
             : Item->Finding.Target.Path.ToString());
         Summaries.Add(Build_FindingSummary(Item->Finding));
     }
+
+    // A header-only right-click gets the GROUP menu. This is where the batch verbs live rather than as buttons in
+    // the header itself: the row-safety rule admits the chevron and the checkbox because each consumes only its own
+    // bounds, and a row of action buttons would start eating the clicks the list needs.
+    if (Summaries.IsEmpty() && NOT Headers.IsEmpty())
+    { return DoBuild_GroupContextMenu(Headers); }
 
     if (Summaries.IsEmpty())
     { return nullptr; }
@@ -4108,6 +4841,32 @@ auto
                 : FString{TEXT("Apply every automatic fix in the selection, inside one transaction Undo can reverse")}),
             FSlateIcon{},
             FUIAction{FExecuteAction::CreateSP(this, &SCkOptimizationDebuggerWindow::DoApply_FixToSelected)});
+    }
+
+    // Staging, offered on the same "the verb follows the whole selection" rule as muting below. It is here as well
+    // as on the row checkbox because a rubber-banded selection is the fastest way to gather a batch, and reaching
+    // for twenty checkboxes to do what one menu entry does would make the tray feel like a tax.
+    {
+        auto QueuedCount = 0;
+
+        for (const auto& Finding : Findings)
+        {
+            if (_Model.Get_IsQueued(Finding.StableKey))
+            { ++QueuedCount; }
+        }
+
+        const auto UnstageInstead = QueuedCount == Findings.Num();
+
+        MenuBuilder.AddMenuEntry(
+            FText::FromString(UnstageInstead
+                ? ck::Format_UE(TEXT("Unstage ({})"), Findings.Num())
+                : ck::Format_UE(TEXT("Stage ({})"), Findings.Num())),
+            FText::FromString(UnstageInstead
+                ? FString{TEXT("Remove these findings from the fix queue.")}
+                : FString{TEXT("Add these findings to the fix queue. Staging survives filtering, folding and re-scans, so a batch can be gathered across several checks before anything is applied.")}),
+            FSlateIcon{},
+            FUIAction{FExecuteAction::CreateSP(this,
+                &SCkOptimizationDebuggerWindow::DoToggle_QueueOnSelected, NOT UnstageInstead)});
     }
 
     // Mute is offered as ONE entry over the whole selection, and its verb is decided by what the selection already
@@ -4154,6 +4913,157 @@ auto
         FText::FromString(TEXT("Copy Summary")),
         FText::FromString(TEXT("Copy severity, title, target and recommendation for each selected finding")),
         FString::Join(Summaries, TEXT("\n")));
+
+    return MenuBuilder.MakeWidget();
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkOptimizationDebuggerWindow::
+    DoBuild_GroupContextMenu(
+        const TArray<FFindingItem>& InHeaders)
+    -> TSharedPtr<SWidget>
+{
+    using namespace ck_optimization_debugger_window;
+
+    if (InHeaders.IsEmpty())
+    { return nullptr; }
+
+    auto Keys = TArray<FString>{};
+    auto Findings = TArray<FCkOptimizationDebugger_FindingRow>{};
+    auto QueuedCount = 0;
+
+    for (const auto& Header : InHeaders)
+    {
+        if (NOT Header.IsValid())
+        { continue; }
+
+        for (const auto& Key : Header->GroupStableKeys)
+        {
+            Keys.Add(Key);
+
+            if (_Model.Get_IsQueued(Key))
+            { ++QueuedCount; }
+
+            if (const auto* Item = _FindingItemsByKey.Find(Key); Item != nullptr && Item->IsValid())
+            { Findings.Add((*Item)->Finding); }
+        }
+    }
+
+    if (Keys.IsEmpty())
+    { return nullptr; }
+
+    auto MenuBuilder = FMenuBuilder{true, nullptr};
+
+    // The verb follows what the whole selection ALREADY is, exactly as the finding menu's mute entry does: fully
+    // staged offers to clear, anything else offers to stage.
+    const auto UnstageInstead = QueuedCount == Keys.Num();
+
+    MenuBuilder.AddMenuEntry(
+        FText::FromString(UnstageInstead
+            ? ck::Format_UE(TEXT("Unstage ({})"), Keys.Num())
+            : ck::Format_UE(TEXT("Stage ({})"), Keys.Num())),
+        FText::FromString(UnstageInstead
+            ? FString{TEXT("Remove every finding in this check from the fix queue.")}
+            : FString{TEXT("Add every finding in this check to the fix queue. Staging survives filtering, folding and re-scans.")}),
+        FSlateIcon{},
+        FUIAction{FExecuteAction::CreateLambda([this, Keys, UnstageInstead]() -> void
+        {
+            DoSet_Queued(Keys, NOT UnstageInstead);
+        })});
+
+    const auto Fixable = ck_optimization_debugger_fixes::Get_FixableFindings(Findings);
+
+    // Same gate the finding menu uses: present only when it would do something, session included, rather than a
+    // greyed line the reader learns to skip.
+    if (NOT Fixable.IsEmpty() && ck_optimization_debugger_fixes::Get_CanApplyFixes())
+    {
+        const auto Confirmation = ck_optimization_debugger_fixes::Build_BatchConfirmation(Fixable);
+
+        MenuBuilder.AddMenuEntry(
+            FText::FromString(ck::Format_UE(TEXT("Fix All In Group ({})"), Fixable.Num())),
+            FText::FromString(Confirmation.IsRequired
+                ? ck::Format_UE(TEXT("{}\n\nYou will be asked to confirm."), Confirmation.Body)
+                : FString{TEXT("Apply this check's fix to every finding under it, inside one transaction Undo can reverse")}),
+            FSlateIcon{},
+            FUIAction{FExecuteAction::CreateLambda([this, Fixable]() -> void
+            {
+                DoApply_Fixes(Fixable, TEXT("this check"));
+            })});
+    }
+
+    MenuBuilder.AddMenuSeparator();
+
+    // Solo ASSIGNS rather than toggles, the same rule `Set_SeveritySolo` holds to: a second press on the control
+    // that means "show me only this" must leave that answer standing rather than emptying the list.
+    if (InHeaders.Num() == 1 && InHeaders[0].IsValid())
+    {
+        const auto CheckId = InHeaders[0]->CheckId;
+        const auto Category = InHeaders[0]->Category;
+
+        MenuBuilder.AddMenuEntry(
+            FText::FromString(TEXT("Fold Every Other Check")),
+            FText::FromString(TEXT("Collapse every group except this one. Folding changes no count — it is a way to read the list, not to narrow it.")),
+            FSlateIcon{},
+            FUIAction{FExecuteAction::CreateLambda([this, CheckId]() -> void
+            {
+                _Model.Set_AllChecksCollapsed(true);
+                _Model.Set_CheckCollapsed(CheckId, false);
+
+                UCkOptimizationDebuggerSettings::Save_CollapsedCheckIds(_Model.Get_CollapsedCheckIds());
+
+                DoRebuild_Findings(false);
+            })});
+
+        MenuBuilder.AddMenuEntry(
+            FText::FromString(TEXT("Show Only This Category")),
+            FText::FromString(TEXT("Narrow the list to this check's category. This IS a filter — the counts move with it.")),
+            FSlateIcon{},
+            FUIAction{FExecuteAction::CreateLambda([this, Category]() -> void
+            {
+                for (const auto Each : ck_optimization_debugger_model::Get_AllCategories())
+                {
+                    _Model.Set_CategoryVisible(Each, Each == Category);
+                }
+
+                DoRebuild_Findings();
+            })});
+    }
+
+    MenuBuilder.AddMenuSeparator();
+
+    {
+        auto MutedCount = 0;
+
+        for (const auto& Key : Keys)
+        {
+            if (_Model.Get_IsMuted(Key))
+            { ++MutedCount; }
+        }
+
+        const auto UnmuteInstead = MutedCount == Keys.Num();
+
+        MenuBuilder.AddMenuEntry(
+            FText::FromString(UnmuteInstead
+                ? ck::Format_UE(TEXT("Unmute Group ({})"), Keys.Num())
+                : ck::Format_UE(TEXT("Mute Group ({})"), Keys.Num())),
+            FText::FromString(UnmuteInstead
+                ? FString{TEXT("Show this check's findings in the list again.")}
+                : FString{TEXT("Hide this check's findings until you unmute them. They stay muted across re-scans and editor restarts, and the 'Show muted' toggle always says how many this scan is hiding.")}),
+            FSlateIcon{},
+            FUIAction{FExecuteAction::CreateLambda([this, Keys, UnmuteInstead]() -> void
+            {
+                for (const auto& Key : Keys)
+                {
+                    _Model.Set_Muted(Key, NOT UnmuteInstead);
+                }
+
+                UCkOptimizationDebuggerSettings::Save_MutedStableKeys(_Model.Get_MutedStableKeys());
+
+                DoRebuild_Findings();
+            })});
+    }
 
     return MenuBuilder.MakeWidget();
 }
@@ -5372,6 +6282,19 @@ auto
     const auto Index = static_cast<int32>(InCategory);
 
     return _VisibleCleanupCountByCategory.IsValidIndex(Index) ? _VisibleCleanupCountByCategory[Index] : 0;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkOptimizationDebuggerWindow::
+    Get_CachedCategoryCount(
+        ECkOptimizationDebugger_Category InCategory) const
+    -> int32
+{
+    const auto Index = static_cast<int32>(InCategory);
+
+    return _VisibleCategoryCounts.IsValidIndex(Index) ? _VisibleCategoryCounts[Index] : 0;
 }
 
 // --------------------------------------------------------------------------------------------------------------------

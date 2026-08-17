@@ -47,6 +47,22 @@ namespace ck_optimization_debugger_filters_spec
         Finding.StableKey = ck_optimization_debugger_model::Build_StableKey(Finding.CheckId, Finding.Target);
         return Finding;
     }
+
+    // ----------------------------------------------------------------------------------------------------------------
+
+    auto
+        MakeRatioFinding(
+            const FString& InCheckId,
+            const FString& InAssetPath,
+            float InBudgetRatio)
+        -> FCkOptimizationDebugger_FindingRow
+    {
+        constexpr auto HasAutoFix = false;
+
+        auto Finding = MakeAssetFinding(InCheckId, InAssetPath, HasAutoFix);
+        Finding.BudgetRatio = InBudgetRatio;
+        return Finding;
+    }
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -161,6 +177,83 @@ bool FCkOptimizationDebugger_Filters_SuggestedFixAndMute::RunTest(const FString&
     Filter.PathScope = TEXT("/Game/A");
 
     TestTrue(TEXT("In scope and fixable is admitted"), Matches_Filter(Fixable, Filter));
+
+    return true;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FCkOptimizationDebugger_Filters_BudgetRatio,
+    "Ck.OptimizationDebugger.Filters.BudgetRatio",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCkOptimizationDebugger_Filters_BudgetRatio::RunTest(const FString& Parameters)
+{
+    using namespace ck_optimization_debugger_filters_spec;
+    using namespace ck_optimization_debugger_model;
+
+    const auto WayOver = MakeRatioFinding(TEXT("Mesh.Spec"), TEXT("/Game/A/SM_A.SM_A"), 4.0f);
+    const auto JustOver = MakeRatioFinding(TEXT("Mesh.Spec"), TEXT("/Game/B/SM_B.SM_B"), 1.2f);
+    const auto NoBudget = MakeRatioFinding(TEXT("Mesh.Spec"), TEXT("/Game/C/SM_C.SM_C"), 0.0f);
+
+    // ---- The resting threshold is not a filter ----
+    auto Filter = FCkOptimizationDebugger_FilterState{};
+
+    TestTrue(TEXT("A resting threshold admits a finding far over budget"), Matches_Filter(WayOver, Filter));
+    TestTrue(TEXT("...one barely over"), Matches_Filter(JustOver, Filter));
+    TestTrue(TEXT("...and one with no budget behind it at all"), Matches_Filter(NoBudget, Filter));
+
+    // ---- The threshold admits AT or past itself ----
+    Filter.MinBudgetRatio = 2.0f;
+
+    TestTrue(TEXT("A finding past the threshold is admitted"), Matches_Filter(WayOver, Filter));
+    TestFalse(TEXT("A finding short of it is excluded"), Matches_Filter(JustOver, Filter));
+
+    Filter.MinBudgetRatio = 4.0f;
+    TestTrue(TEXT("A finding exactly at the threshold is admitted"), Matches_Filter(WayOver, Filter));
+
+    // ---- ANY non-zero threshold excludes a finding with no budget behind it ----
+    // The same reading that excludes a pathless ProjectSettings finding from a path scope, and asserted explicitly so
+    // it cannot later be read as an oversight: a reader asking what is furthest over budget is not asking about the
+    // checks that measure nothing, and keeping those rows would make the threshold look like it had failed to apply.
+    Filter.MinBudgetRatio = 0.01f;
+
+    TestFalse(TEXT("The smallest non-zero threshold still excludes a finding with no budget"),
+        Matches_Filter(NoBudget, Filter));
+    TestTrue(TEXT("...while admitting every finding that has one"), Matches_Filter(JustOver, Filter));
+
+    // ---- The model clamps the threshold and counts what is behind it ----
+    auto Model = FCkOptimizationDebugger_Model{};
+    Model.Set_Findings({WayOver, JustOver, NoBudget});
+
+    TestEqual(TEXT("A fresh threshold rests at zero"), Model.Get_MinBudgetRatio(), 0.0f);
+    TestEqual(TEXT("...which admits everything, zero-ratio findings included"),
+        Model.Get_VisibleFindings().Num(), 3);
+
+    // A negative threshold is not a reader error to report — it is the same question as "no threshold".
+    Model.Set_MinBudgetRatio(-3.0f);
+
+    TestEqual(TEXT("A negative threshold clamps back to the resting zero"), Model.Get_MinBudgetRatio(), 0.0f);
+    TestEqual(TEXT("...and still admits everything"), Model.Get_VisibleFindings().Num(), 3);
+
+    Model.Set_MinBudgetRatio(2.0f);
+
+    TestEqual(TEXT("A real threshold narrows to the findings at or past it"), Model.Get_VisibleFindings().Num(), 1);
+    TestEqual(TEXT("...and it is the one furthest over"),
+        Model.Get_VisibleFindings()[0].StableKey, WayOver.StableKey);
+
+    // The affordance's own number: how many findings have a budget AT ALL, so a reader can tell "nothing is that far
+    // over" from "no check here measures anything". It follows the current findings, never the threshold.
+    TestEqual(TEXT("The budget count is over the CURRENT findings, not what survived the threshold"),
+        Model.Get_FindingsWithBudgetCount(), 2);
+
+    // ---- The badge's wording ----
+    TestEqual(TEXT("A finding with no budget renders no badge at all"), Format_BudgetRatio(0.0f), FString{});
+    TestEqual(TEXT("...and neither does a negative ratio"), Format_BudgetRatio(-1.0f), FString{});
+    TestEqual(TEXT("Below ten carries one decimal"), Format_BudgetRatio(2.4f), FString{TEXT("2.4x")});
+    TestEqual(TEXT("Ten itself drops it"), Format_BudgetRatio(10.0f), FString{TEXT("10x")});
+    TestEqual(TEXT("...as does anything above it"), Format_BudgetRatio(13.0f), FString{TEXT("13x")});
 
     return true;
 }

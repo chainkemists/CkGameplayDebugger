@@ -30,15 +30,19 @@ namespace ck_optimization_debugger_checks_lighting
             if (Level.MovableLightCount <= InThresholds.MaxMovableLights)
             { continue; }
 
+            const auto Graded = Get_Graded(Level.MovableLightCount, InThresholds.MaxMovableLights,
+                ECkOptimizationDebugger_Severity::Major);
+
             auto Finding = Build_Finding(FName{TEXT("Lighting.MovableLightCount")},
-                Get_GraduatedSeverity(Level.MovableLightCount, InThresholds.MaxMovableLights,
-                    ECkOptimizationDebugger_Severity::Major),
+                Graded.Severity,
                 ECkOptimizationDebugger_Category::Lighting,
                 Build_AssetTarget(Level.LevelPath, Level.LevelName),
                 TEXT("Too many movable lights in one level"),
                 ck::Format_UE(TEXT("{} movable lights against a budget of {}. Dynamic shadow cost scales with how many of them OVERLAP, not with the count alone, so this number is a ceiling on the worst view rather than an average."),
                     Level.MovableLightCount, InThresholds.MaxMovableLights),
                 TEXT("Make the lights that never move Stationary or Static, and bake what can be baked."));
+
+            Finding.BudgetRatio = Graded.BudgetRatio;
 
             Finding.HasAutoFix = true;
 
@@ -130,14 +134,18 @@ namespace ck_optimization_debugger_checks_lighting
                     MeshWord,
                     Usage.OverriddenLightMapRes);
 
+            const auto Graded = Get_Graded(Usage.OverriddenLightMapRes, InThresholds.MaxLightmapResolution,
+                ECkOptimizationDebugger_Severity::Major);
+
             auto Finding = Build_Finding(FName{TEXT("Lighting.LightmapResolution")},
-                Get_GraduatedSeverity(Usage.OverriddenLightMapRes, InThresholds.MaxLightmapResolution,
-                    ECkOptimizationDebugger_Severity::Major),
+                Graded.Severity,
                 ECkOptimizationDebugger_Category::Lighting,
                 Build_ActorTarget(Usage.ActorPath, Usage.ActorDisplayName, Usage.LevelName),
                 TEXT("Lightmap resolution override over budget"),
                 Explanation,
                 TEXT("Lower the override, or clear it and let the mesh asset's own lightmap resolution apply."));
+
+            Finding.BudgetRatio = Graded.BudgetRatio;
 
             Finding.HasAutoFix = true;
             Finding.FixDescription = TEXT("Clamp the override to the budget on every over-budget component of this actor.");

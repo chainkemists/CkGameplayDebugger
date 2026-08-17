@@ -18,6 +18,12 @@ auto
     _ScannedLevelNames.Empty();
     _LastScanTime = FDateTime{};
 
+    // The queue goes with the findings it staged. Every entry names a finding derived from the world this boundary
+    // just swapped, so a surviving queue would offer to apply fixes against rows the list no longer holds. The
+    // COLLAPSE set survives alongside the filter for the opposite reason: it is how the reader arranged the view,
+    // and a boundary invalidates the answers, never the arrangement.
+    _QueuedStableKeys.Empty();
+
     // The census describes a world that just changed underneath it, and so does the one before it — a delta against
     // a pre-PIE scan would put a number on a comparison nobody made. `_ExcludedLevelNames` deliberately survives:
     // it is the user's narrowing of the question, like the filter state.
@@ -50,6 +56,15 @@ auto
 {
     _Findings = ck_optimization_debugger_model::Get_SortedFindings(InFindings);
     _HasScanned = true;
+
+    // The queue is pruned to what the new scan still has. A staged fix names a finding the reader looked at and
+    // decided about; once that finding is gone — fixed, muted into irrelevance, or in a level this scan excluded —
+    // the entry would sit in the tray naming a row nothing on screen matches and offering to apply a fix against it.
+    //
+    // Deliberately NOT what happens to the muted set, which survives a scan that fails to reproduce it: a mute is a
+    // standing judgement about a PROBLEM, a queue entry is work staged against a ROW. Pruning the mute set here
+    // would silently un-mute every finding in a level nobody opened this session.
+    _QueuedStableKeys = ck_optimization_debugger_model::Prune_KeysToFindings(_QueuedStableKeys, _Findings);
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -171,6 +186,68 @@ auto
             case ECkOptimizationDebugger_Severity::Minor:    ++Counts.MinorCount;    break;
             default: break;
         }
+    }
+
+    return Counts;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    FCkOptimizationDebugger_Model::
+    Get_VisibleCountsBySeverity_IgnoringSeverityMask() const
+    -> FCkOptimizationDebugger_SeverityCounts
+{
+    auto Counts = FCkOptimizationDebugger_SeverityCounts{};
+
+    auto UnmaskedFilter = _Filter;
+    UnmaskedFilter.SeverityMask = ck_optimization_debugger_model::k_AllSeverityMask;
+
+    for (const auto& Finding : _Findings)
+    {
+        if (NOT ck_optimization_debugger_model::Matches_Filter(Finding, UnmaskedFilter))
+        { continue; }
+
+        switch (Finding.Severity)
+        {
+            case ECkOptimizationDebugger_Severity::Critical: ++Counts.CriticalCount; break;
+            case ECkOptimizationDebugger_Severity::Major:    ++Counts.MajorCount;    break;
+            case ECkOptimizationDebugger_Severity::Minor:    ++Counts.MinorCount;    break;
+            default: break;
+        }
+    }
+
+    return Counts;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    FCkOptimizationDebugger_Model::
+    Get_VisibleCountsByCategory() const
+    -> TArray<int32>
+{
+    const auto AllCategories = ck_optimization_debugger_model::Get_AllCategories();
+
+    auto Counts = TArray<int32>{};
+    Counts.SetNumZeroed(AllCategories.Num());
+
+    // The category mask is lifted OUT for this pass. A count printed on the control that toggles a category has to
+    // say what that control would give the reader, and a category currently toggled off would otherwise read zero —
+    // making the button that turns it back on the one claiming there is nothing behind it. Every other axis is
+    // honoured, so the counts still describe the filter the reader has built.
+    auto UnmaskedFilter = _Filter;
+    UnmaskedFilter.CategoryMask = ck_optimization_debugger_model::k_AllCategoryMask;
+
+    for (const auto& Finding : _Findings)
+    {
+        if (NOT ck_optimization_debugger_model::Matches_Filter(Finding, UnmaskedFilter))
+        { continue; }
+
+        const auto Index = static_cast<int32>(Finding.Category);
+
+        if (Counts.IsValidIndex(Index))
+        { ++Counts[Index]; }
     }
 
     return Counts;
@@ -411,6 +488,225 @@ auto
     -> const TSet<FString>&
 {
     return _Filter.MutedStableKeys;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    FCkOptimizationDebugger_Model::
+    Get_MinBudgetRatio() const
+    -> float
+{
+    return _Filter.MinBudgetRatio;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    FCkOptimizationDebugger_Model::
+    Set_MinBudgetRatio(
+        float InMinRatio)
+    -> void
+{
+    // Clamped at zero rather than ensured on: a negative threshold is not a reader error to report, it is the same
+    // question as "no threshold", and every ratio is non-negative by construction.
+    _Filter.MinBudgetRatio = FMath::Max(0.0f, InMinRatio);
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    FCkOptimizationDebugger_Model::
+    Get_FindingsWithBudgetCount() const
+    -> int32
+{
+    auto Count = 0;
+
+    for (const auto& Finding : _Findings)
+    {
+        if (Finding.BudgetRatio > 0.0f)
+        { ++Count; }
+    }
+
+    return Count;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    FCkOptimizationDebugger_Model::
+    Get_IsCheckCollapsed(
+        FName InCheckId) const
+    -> bool
+{
+    return _CollapsedCheckIds.Contains(InCheckId);
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    FCkOptimizationDebugger_Model::
+    Set_CheckCollapsed(
+        FName InCheckId,
+        bool InCollapsed)
+    -> void
+{
+    if (InCheckId.IsNone())
+    { return; }
+
+    if (InCollapsed)
+    { _CollapsedCheckIds.Add(InCheckId); }
+    else
+    { _CollapsedCheckIds.Remove(InCheckId); }
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    FCkOptimizationDebugger_Model::
+    Set_AllChecksCollapsed(
+        bool InCollapsed)
+    -> void
+{
+    // Expanding EMPTIES the set rather than listing every id as expanded. The set names what is folded, so a check
+    // this scan has never produced comes up expanded by default — which is the state a fresh answer should arrive
+    // in. Storing the inverse would make a new check inherit whatever the last Collapse-all decided about checks it
+    // was not part of.
+    if (NOT InCollapsed)
+    {
+        _CollapsedCheckIds.Empty();
+        return;
+    }
+
+    // Over the whole scan, not the visible subset: the reader pressing Collapse all is arranging the LIST, and a
+    // group that reappears when they widen the filter must not come back expanded on its own.
+    for (const auto& Finding : _Findings)
+    {
+        _CollapsedCheckIds.Add(Finding.CheckId);
+    }
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    FCkOptimizationDebugger_Model::
+    Set_CollapsedCheckIds(
+        TSet<FName> InCheckIds)
+    -> void
+{
+    _CollapsedCheckIds = MoveTemp(InCheckIds);
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    FCkOptimizationDebugger_Model::
+    Get_CollapsedCheckIds() const
+    -> const TSet<FName>&
+{
+    return _CollapsedCheckIds;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    FCkOptimizationDebugger_Model::
+    Get_IsQueued(
+        const FString& InStableKey) const
+    -> bool
+{
+    return _QueuedStableKeys.Contains(InStableKey);
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    FCkOptimizationDebugger_Model::
+    Set_Queued(
+        const FString& InStableKey,
+        bool InQueued)
+    -> void
+{
+    // Same guard as the muted set, and for the same reason: an empty key matches no finding that can ever be built,
+    // so it would sit in the queue forever contributing to a count nothing on screen explains.
+    if (InStableKey.IsEmpty())
+    { return; }
+
+    if (InQueued)
+    { _QueuedStableKeys.Add(InStableKey); }
+    else
+    { _QueuedStableKeys.Remove(InStableKey); }
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    FCkOptimizationDebugger_Model::
+    Set_QueuedForKeys(
+        const TArray<FString>& InStableKeys,
+        bool InQueued)
+    -> void
+{
+    for (const auto& Key : InStableKeys)
+    {
+        Set_Queued(Key, InQueued);
+    }
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    FCkOptimizationDebugger_Model::
+    Clear_Queue()
+    -> void
+{
+    _QueuedStableKeys.Empty();
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    FCkOptimizationDebugger_Model::
+    Get_QueuedFindings() const
+    -> TArray<FCkOptimizationDebugger_FindingRow>
+{
+    // Walked over the SORTED findings rather than over the key set, so the tray reads worst-first exactly as the
+    // list does. Iterating the set would order the tray by hash layout, which is an order nothing else in this
+    // window uses and which changes between sessions.
+    return ck_optimization_debugger_model::Get_FindingsForKeys(_Findings, _QueuedStableKeys);
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    FCkOptimizationDebugger_Model::
+    Get_QueuedFindingCount() const
+    -> int32
+{
+    // The SET's size is the right number here, and only because `Set_Findings` prunes it: every key in it names a
+    // finding the current scan holds. Counting the findings instead would walk the whole list to reach the same
+    // answer on the paint path.
+    return _QueuedStableKeys.Num();
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    FCkOptimizationDebugger_Model::
+    Get_QueuedFindingsGroupedByCheck() const
+    -> TArray<FCkOptimizationDebugger_FindingGroup>
+{
+    return ck_optimization_debugger_model::Get_FindingsGroupedByCheck(Get_QueuedFindings());
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    FCkOptimizationDebugger_Model::
+    Get_QueuedStableKeys() const
+    -> const TSet<FString>&
+{
+    return _QueuedStableKeys;
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -877,6 +1173,13 @@ namespace ck_optimization_debugger_model
         if (InFilter.ShowOnlyWithSuggestedFix && NOT InFinding.HasAutoFix)
         { return false; }
 
+        // A finding with no budget behind it carries a zero ratio and is excluded by ANY non-zero threshold — the
+        // same reading that excludes a pathless ProjectSettings finding from a path scope. A reader asking what is
+        // furthest over budget is not asking about the checks that measure nothing, and keeping those rows would
+        // make the threshold look like it had failed to apply.
+        if (InFilter.MinBudgetRatio > 0.0f && InFinding.BudgetRatio < InFilter.MinBudgetRatio)
+        { return false; }
+
         // Muting is a hide, not a delete: `ShowMuted` brings them back marked rather than un-muting them, so the
         // reader can always audit what they told the tool to stop showing. Checked before the path and text work
         // because it is a set lookup and they are string scans.
@@ -968,6 +1271,98 @@ namespace ck_optimization_debugger_model
         }
 
         return Counts;
+    }
+
+    // ----------------------------------------------------------------------------------------------------------------
+
+    auto
+        Get_CountsByCategory(
+            const TArray<FCkOptimizationDebugger_FindingRow>& InFindings)
+        -> TArray<int32>
+    {
+        auto Counts = TArray<int32>{};
+
+        // Sized from the category list rather than from the largest value seen, so a category with no findings still
+        // has an entry to read and a caller never has to distinguish "absent" from "zero".
+        Counts.SetNumZeroed(Get_AllCategories().Num());
+
+        for (const auto& Finding : InFindings)
+        {
+            const auto Index = static_cast<int32>(Finding.Category);
+
+            if (Counts.IsValidIndex(Index))
+            { ++Counts[Index]; }
+        }
+
+        return Counts;
+    }
+
+    // ----------------------------------------------------------------------------------------------------------------
+
+    auto
+        Get_FindingsForKeys(
+            const TArray<FCkOptimizationDebugger_FindingRow>& InFindings,
+            const TSet<FString>& InStableKeys)
+        -> TArray<FCkOptimizationDebugger_FindingRow>
+    {
+        auto Matching = TArray<FCkOptimizationDebugger_FindingRow>{};
+
+        if (InStableKeys.IsEmpty())
+        { return Matching; }
+
+        Matching.Reserve(InStableKeys.Num());
+
+        // Driven by the FINDINGS, not by the key set: the findings carry the sorted order every other list in this
+        // window renders in, while a set iterates in hash-layout order that changes between sessions.
+        for (const auto& Finding : InFindings)
+        {
+            if (InStableKeys.Contains(Finding.StableKey))
+            { Matching.Add(Finding); }
+        }
+
+        return Matching;
+    }
+
+    // ----------------------------------------------------------------------------------------------------------------
+
+    auto
+        Prune_KeysToFindings(
+            const TSet<FString>& InStableKeys,
+            const TArray<FCkOptimizationDebugger_FindingRow>& InFindings)
+        -> TSet<FString>
+    {
+        auto Kept = TSet<FString>{};
+
+        if (InStableKeys.IsEmpty())
+        { return Kept; }
+
+        for (const auto& Finding : InFindings)
+        {
+            if (InStableKeys.Contains(Finding.StableKey))
+            { Kept.Add(Finding.StableKey); }
+        }
+
+        return Kept;
+    }
+
+    // ----------------------------------------------------------------------------------------------------------------
+
+    auto
+        Format_BudgetRatio(
+            float InRatio)
+        -> FString
+    {
+        // Empty rather than `0x` for a finding with no budget: a badge that printed a number would claim this check
+        // measured something against a budget it does not have.
+        if (InRatio <= 0.0f)
+        { return FString{}; }
+
+        // One decimal below ten, none above it. `12.7x` and `13x` are the same statement to a reader triaging a
+        // list, and the shorter one fits a cell that has no room to spare.
+        if (InRatio < 10.0f)
+        { return FString::Printf(TEXT("%.1fx"), InRatio); }
+
+        return FString::Printf(TEXT("%.0fx"), InRatio);
     }
 
     // ----------------------------------------------------------------------------------------------------------------

@@ -1,13 +1,12 @@
 #include "CkCrowdDebugger/Viewport/CkCrowdDebugger_3dSceneAdapter.h"
 
 #include "CkCore/Ensure/CkEnsure.h"
-
-#include <Materials/MaterialInterface.h>
-#include <UObject/StrongObjectPtr.h>
+#include "CkDebugScene/CkDebugScene_Materials.h"
 
 namespace ck_crowd_debugger_3d_scene_adapter
 {
 constexpr auto IsTransparent = true;
+constexpr auto PathNetworkSortPriority = 100;
 
 const auto PathChannel = FName{TEXT("CrowdSelectedPath")};
 const auto VelocityChannel = FName{TEXT("CrowdVelocity")};
@@ -17,16 +16,6 @@ auto
 IsFinite(const FVector& InValue) -> bool
 {
     return FMath::IsFinite(InValue.X) && FMath::IsFinite(InValue.Y) && FMath::IsFinite(InValue.Z);
-}
-
-auto
-GetMaterial(bool InTransparent) -> UMaterialInterface*
-{
-    static auto Opaque = TStrongObjectPtr<UMaterialInterface>{
-        LoadObject<UMaterialInterface>(nullptr, TEXT("/Engine/EngineDebugMaterials/M_SimpleOpaque.M_SimpleOpaque"))};
-    static auto Transparent = TStrongObjectPtr<UMaterialInterface>{LoadObject<UMaterialInterface>(
-        nullptr, TEXT("/Engine/EngineDebugMaterials/M_SimpleTranslucent.M_SimpleTranslucent"))};
-    return InTransparent ? Transparent.Get() : Opaque.Get();
 }
 
 auto
@@ -194,17 +183,22 @@ auto
 
 auto
     FCkCrowdDebugger_3dSceneAdapter::
-    MakeAppearance(FLinearColor InColor, bool InTransparent) const
-        -> FCk_DebugScene_Appearance
-        {
-        return FCk_DebugScene_Appearance{}
-        .Set_BaseMaterial(ck_crowd_debugger_3d_scene_adapter::GetMaterial(InTransparent))
+    MakeAppearance(FLinearColor InColor, bool InTransparent, ECk_DebugScene_DepthPriority InDepthPriority,
+                   int32 InTranslucencySortPriority) const
+    -> FCk_DebugScene_Appearance
+{
+    return FCk_DebugScene_Appearance{}
+        .Set_BaseMaterial(InTransparent ? ck::debug_scene::materials::TryGet_Translucent()
+                                        : ck::debug_scene::materials::TryGet_Opaque())
         .Set_RenderClass(InTransparent ? ECk_DebugScene_RenderClass::Transparent : ECk_DebugScene_RenderClass::Opaque)
         .Set_RenderClassId(InTransparent ? 2 : 1)
-        .Set_Color(InColor);
-        }
-        auto
-        FCkCrowdDebugger_3dSceneAdapter::GetOrCreateCapsuleMesh()
+        .Set_Color(InColor)
+        .Set_DepthPriority(InDepthPriority)
+        .Set_TranslucencySortPriority(InTranslucencySortPriority);
+}
+auto
+    FCkCrowdDebugger_3dSceneAdapter::
+    GetOrCreateCapsuleMesh()
     -> TSharedPtr<FCk_DebugScene_Mesh>
 {
     if (_CapsuleMesh.IsValid())
@@ -453,15 +447,17 @@ auto
         }
     }
     auto SubmitStatic = [&](ECkCrowdDebugger_3dSceneRole Role, uint64 Identity, TSharedPtr<FCk_DebugScene_Mesh> Mesh,
-                            FLinearColor Color, bool Transparent,
-                            const FTransform& Transform = FTransform::Identity) -> bool
+                             FLinearColor Color, bool Transparent,
+                             const FTransform& Transform = FTransform::Identity,
+                             ECk_DebugScene_DepthPriority DepthPriority = ECk_DebugScene_DepthPriority::World,
+                             int32 TranslucencySortPriority = 0) -> bool
     {
         if (NOT Mesh.IsValid())
         {
             return false;
         }
         const auto Key = MakeItemKey(Role, Identity);
-        const auto Appearance = MakeAppearance(Color, Transparent);
+        const auto Appearance = MakeAppearance(Color, Transparent, DepthPriority, TranslucencySortPriority);
         auto Instances = TArray<FCk_DebugScene_Instance>{FCk_DebugScene_Instance{}
                                                              .Set_Mesh(Mesh)
                                                              .Set_Transform(Transform)
@@ -495,7 +491,8 @@ auto
         if (NOT Triangles.IsEmpty() && NOT SubmitStatic(ECkCrowdDebugger_3dSceneRole::Recast, 1,
                                                         FCk_DebugScene_Mesh::Create_FromTriangles(MoveTemp(Triangles)),
                                                         FLinearColor{0.27f, 0.78f, 0.43f, 0.15f},
-                                                        ck_crowd_debugger_3d_scene_adapter::IsTransparent))
+                                                        ck_crowd_debugger_3d_scene_adapter::IsTransparent,
+                                                        FTransform::Identity, ECk_DebugScene_DepthPriority::World))
         {
             InTarget.Abort_Reconcile();
             return RestoreAndFail();
@@ -567,9 +564,11 @@ auto
             _RibbonRenderedTriangleCounts[Index] = RenderedTriangleCount;
             _RibbonOutlinePointCounts[Index] = Ribbon._Points.Num();
             if (NOT SubmitStatic(ECkCrowdDebugger_3dSceneRole::PathNetworkRibbon, Index + 1,
-                                 FCk_DebugScene_Mesh::Create_FromTriangles(MoveTemp(Triangles)),
-                                 FLinearColor{0.0f, 0.8f, 0.9f, InSnapshot._PathNetwork._Opacity},
-                                 ck_crowd_debugger_3d_scene_adapter::IsTransparent))
+                                  FCk_DebugScene_Mesh::Create_FromTriangles(MoveTemp(Triangles)),
+                                  FLinearColor{0.0f, 0.8f, 0.9f, InSnapshot._PathNetwork._Opacity},
+                                  ck_crowd_debugger_3d_scene_adapter::IsTransparent, FTransform::Identity,
+                                  ECk_DebugScene_DepthPriority::Foreground,
+                                  ck_crowd_debugger_3d_scene_adapter::PathNetworkSortPriority))
             {
                 InTarget.Abort_Reconcile();
                 return RestoreAndFail();

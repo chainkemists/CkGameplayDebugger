@@ -17,7 +17,7 @@ struct CKDEBUGGERCOMMON_API FCkDebug_IconToggleAction
         FName InId,
         FName InIconId,
         FText InLabel,
-        FText InToolTip,
+        TAttribute<FText> InToolTip,
         TAttribute<bool> InIsOn,
         FOnCkDebug_IconToggleChanged InOnStateChanged,
         TAttribute<bool> InIsEnabled = true);
@@ -27,7 +27,13 @@ struct CKDEBUGGERCOMMON_API FCkDebug_IconToggleAction
     FName Id;
     FName IconId;
     FText Label;
-    FText ToolTip;
+
+    /** An ATTRIBUTE rather than a baked string, because a toolbar is built once per window and its tooltips would
+     *  otherwise be frozen at that moment. A toggle that narrows a list is exactly the control a reader wants a live
+     *  count on ("9 findings match the other filters"), and that number changes on every filter change without the
+     *  toolbar being rebuilt. Passing a plain `FText` still works and still means "this never changes". */
+    TAttribute<FText> ToolTip;
+
     TAttribute<bool> IsOn;
     FOnCkDebug_IconToggleChanged OnStateChanged;
     TAttribute<bool> IsEnabled = true;
@@ -60,7 +66,7 @@ public:
     {}
         SLATE_ARGUMENT(FName, IconId)
         SLATE_ARGUMENT(FText, Label)
-        SLATE_ARGUMENT(FText, ToolTip)
+        SLATE_ATTRIBUTE(FText, ToolTip)
         SLATE_ATTRIBUTE(bool, IsOn)
         SLATE_EVENT(FOnCkDebug_IconToggleChanged, OnStateChanged)
         SLATE_ATTRIBUTE(bool, IsEnabled)
@@ -73,7 +79,7 @@ private:
     auto Get_ToolTipText() const -> FText;
 
     FText _Label;
-    FText _ToolTip;
+    TAttribute<FText> _ToolTip;
     TAttribute<bool> _IsOn;
 };
 

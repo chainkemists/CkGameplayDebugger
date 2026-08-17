@@ -4,6 +4,8 @@
 
 #include "CkJoltDebugger/Window/SCkJoltDebugger_DetailPanel.h"
 
+#include "CkEditorTools/Style/CkStyle.h"
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
     FCkJoltDebuggerDetail_ConstructsWithoutEnsure,
     "Ck.JoltDebugger.Detail.ConstructsWithoutEnsure",
@@ -72,13 +74,31 @@ auto FCkJoltDebuggerDetail_RowsReflectTheSelection::RunTest(const FString&) -> b
         Panel->Get_RowValueText(TEXT("Population")).ToString(), FString{TEXT("Jolt Body")});
     TestEqual(TEXT("the motion-type row renders the selection's motion type"),
         Panel->Get_RowValueText(TEXT("Motion Type")).ToString(), FString{TEXT("Dynamic")});
+    TestEqual(TEXT("enum rows use the shared enum color"),
+        Panel->Get_RowValueColor(TEXT("Motion Type")), CkStyle::Value_Enum());
     TestEqual(TEXT("the sleep-state row renders the selection's sleep state"),
         Panel->Get_RowValueText(TEXT("Sleep State")).ToString(), FString{TEXT("Asleep")});
+    TestEqual(TEXT("the identity summary exposes the selected population"),
+        Panel->Get_PopulationStatusText().ToString(), FString{TEXT("Jolt Body")});
+    TestEqual(TEXT("a simulated body keeps the population's semantic tone"),
+        static_cast<int32>(Panel->Get_PopulationStatusTone()), static_cast<int32>(ECk_Tone::Accent));
+    TestEqual(TEXT("an asleep body exposes its simulation state in the summary"),
+        Panel->Get_SimulationStatusText().ToString(), FString{TEXT("Asleep")});
+    TestEqual(TEXT("an asleep body is visually quiet rather than healthy"),
+        static_cast<int32>(Panel->Get_SimulationStatusTone()), static_cast<int32>(ECk_Tone::Neutral));
+
+    Selection->SleepState = ECk_Jolt_SleepState::Awake;
+    TestEqual(TEXT("an awake body exposes its live simulation state"),
+        Panel->Get_SimulationStatusText().ToString(), FString{TEXT("Awake")});
+    TestEqual(TEXT("an awake body has the active-state tone"),
+        static_cast<int32>(Panel->Get_SimulationStatusTone()), static_cast<int32>(ECk_Tone::Ok));
 
     // Velocity is sampled by the facility's capture, so a selection without one must read unset rather than
     // rendering a zero the user would take for a measurement.
     TestEqual(TEXT("an unsampled velocity reads as unset"),
         Panel->Get_RowValueText(TEXT("Linear Velocity")).ToString(), FString{TEXT("--")});
+    TestEqual(TEXT("an unset value is visually muted rather than retaining its data-role color"),
+        Panel->Get_RowValueColor(TEXT("Linear Velocity")), CkStyle::TextMute());
 
     // A selection whose sample has not landed yet is the NORMAL state for the frame after a click, and for
     // a sleeping or static body between scene-revision passes — every facility row must degrade, not lie.
@@ -96,6 +116,8 @@ auto FCkJoltDebuggerDetail_RowsReflectTheSelection::RunTest(const FString&) -> b
 
     TestTrue(TEXT("a sampled velocity reaches the row"),
         Panel->Get_RowValueText(TEXT("Linear Velocity")).ToString().Contains(TEXT("100.0")));
+    TestEqual(TEXT("vector measurements use the shared math color"),
+        Panel->Get_RowValueColor(TEXT("Linear Velocity")), CkStyle::Value_Math());
 
     // ---- The facility's rigid-body sample, row by row ----
 
@@ -116,6 +138,8 @@ auto FCkJoltDebuggerDetail_RowsReflectTheSelection::RunTest(const FString&) -> b
         Panel->Get_RowValueText(TEXT("Angular Velocity")).ToString(), FString{TEXT("1.0, 0.0, 0.0")});
     TestEqual(TEXT("the mass row renders the sample"),
         Panel->Get_RowValueText(TEXT("Mass")).ToString(), FString{TEXT("12.50 kg")});
+    TestEqual(TEXT("scalar measurements use the shared numeric color"),
+        Panel->Get_RowValueColor(TEXT("Mass")), CkStyle::Value_Numeric());
     TestEqual(TEXT("the friction row renders the sample"),
         Panel->Get_RowValueText(TEXT("Friction")).ToString(), FString{TEXT("0.500")});
     TestEqual(TEXT("the restitution row renders the sample"),
@@ -124,8 +148,10 @@ auto FCkJoltDebuggerDetail_RowsReflectTheSelection::RunTest(const FString&) -> b
         Panel->Get_RowValueText(TEXT("Motion Quality")).ToString(), FString{TEXT("LinearCast (CCD)")});
     TestEqual(TEXT("the object-layer row renders the sample"),
         Panel->Get_RowValueText(TEXT("Object Layer")).ToString(), FString{TEXT("3")});
-    TestEqual(TEXT("the sensor row renders the sample"),
-        Panel->Get_RowValueText(TEXT("Sensor")).ToString(), FString{TEXT("Yes")});
+    TestEqual(TEXT("the sensor row renders the semantic sensor state"),
+        Panel->Get_RowValueText(TEXT("Sensor")).ToString(), FString{TEXT("Sensor")});
+    TestEqual(TEXT("a sensor status retains the information tone"),
+        static_cast<int32>(Panel->Get_RowStatusTone(TEXT("Sensor"))), static_cast<int32>(ECk_Tone::Info));
     TestEqual(TEXT("the shape-type row renders the sample"),
         Panel->Get_RowValueText(TEXT("Shape Type")).ToString(), FString{TEXT("Convex")});
     TestEqual(TEXT("an allowed-sleeping flag renders as a word, not a number"),
@@ -141,6 +167,15 @@ auto FCkJoltDebuggerDetail_RowsReflectTheSelection::RunTest(const FString&) -> b
     Facts.BodySample->Set_AllowsSleeping(TOptional<bool>{});
     TestEqual(TEXT("an unasked sleeping flag degrades"),
         Panel->Get_RowValueText(TEXT("Allows Sleeping")).ToString(), FString{TEXT("--")});
+
+    Selection->Population         = ECkJoltDebugger_Population::Sensor;
+    Selection->HasSimulationState = false;
+    TestEqual(TEXT("a sensor selection is identified as a sensor in the identity summary"),
+        Panel->Get_PopulationStatusText().ToString(), FString{TEXT("Sensor (Probe)")});
+    TestEqual(TEXT("a sensor selection has the sensor tone"),
+        static_cast<int32>(Panel->Get_PopulationStatusTone()), static_cast<int32>(ECk_Tone::Info));
+    TestEqual(TEXT("a sensor without simulation does not imply an asleep body"),
+        Panel->Get_SimulationStatusText().ToString(), FString{TEXT("No Simulation State")});
 
     // ---- Character group: collapsed for a rigid body, visible for a character ----
 
@@ -164,6 +199,12 @@ auto FCkJoltDebuggerDetail_RowsReflectTheSelection::RunTest(const FString&) -> b
 
     TestEqual(TEXT("the ground-state row renders the character sample"),
         Panel->Get_RowValueText(TEXT("Ground State")).ToString(), FString{TEXT("On Ground")});
+    TestEqual(TEXT("grounded is a healthy character state"),
+        static_cast<int32>(Panel->Get_RowStatusTone(TEXT("Ground State"))), static_cast<int32>(ECk_Tone::Ok));
+
+    Facts.CharacterSample->Set_GroundState(ECk_JoltCharacter_GroundState::OnSteepSlope);
+    TestEqual(TEXT("a steep slope is visually cautionary"),
+        static_cast<int32>(Panel->Get_RowStatusTone(TEXT("Ground State"))), static_cast<int32>(ECk_Tone::Warn));
     TestEqual(TEXT("the character-velocity row renders the character sample"),
         Panel->Get_RowValueText(TEXT("Character Velocity")).ToString(), FString{TEXT("0.0, 2.0, 0.0")});
     TestEqual(TEXT("the ground-body row renders the touched body's key"),

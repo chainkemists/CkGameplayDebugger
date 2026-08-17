@@ -53,7 +53,7 @@ Nothing here re-derives a colour, a bound, or a body count that the facility alr
 ## The viewport
 
 `SCkJoltDebugger_3dViewport` (`Public/CkJoltDebugger/Viewport/`) is an `SViewport` hosting an
-`FPreviewScene` (**no default lighting, no physics scene, non-editor**) behind an `FSceneViewport` and a
+`FPreviewScene` (**directional + sky lighting, no physics scene, non-editor**) behind an `FSceneViewport` and a
 private `FCkJoltDebugger_3dViewportClient : FUMGViewportClient`. The shell is copied from
 `SCkCrowdDebugger_3dViewport` — camera math, input handling and per-frame invalidate transfer verbatim.
 
@@ -73,8 +73,12 @@ three-quarter camera, and what a world-axis gizmo shows is the WORLD's orientati
 the camera left has to swing the axes right. The cube's own fixed camera offset stays, so the gizmo reads as a
 three-quarter view of the world axes rather than as a screen-aligned triad. There is no hand-drawn gizmo.
 
-The scene is unlit and physics-free on purpose: the debug-draw materials are unlit, so lighting would
-change nothing, and a preview world that simulated would fight the world being inspected.
+The scene is physics-free but uses `FPreviewScene`'s directional light plus a movable skylight. Advanced
+features, lighting and post processing are explicit, and the viewport forces temporal anti-aliasing locally even
+when the host project disables AA; motion blur, depth of field, eye adaptation and dynamic shadows stay off because
+they obscure an inspection surface. Every Jolt ISM also has
+`SetCastShadow(false)`, so the light supplies form without hiding features. A preview world that simulated would
+fight the world being inspected.
 
 ### Labels and hover (P8-D58)
 
@@ -84,7 +88,7 @@ client has.
 
 **Labels — `OnPaint`.**
 
-- The projection is built **the same way `GetCursorWorldRay` builds its inverse**: the same
+- The projection is built from **the same view inputs `GetCursorWorldRay` deprojects**: the same
   `FSceneViewInitOptions`, the same `FMinimalViewInfo::CalculateProjectionMatrixGivenView`, composed into
   one world→clip matrix (`TryGet_ViewProjection` on the client), then `FSceneView::ProjectWorldToScreen`.
   A projection derived any other way would put labels where clicks do not land. **Do not try to capture an
@@ -232,6 +236,12 @@ the hover, which wants a key and nothing else, keeps to the `TryPick_Body` wrapp
 the physics world** — the preview scene has no physics scene, and the game world's belongs to a step
 this module must not touch. A click on empty space clears the selection; a click that hits an instance
 no row can be found for leaves the selection alone, because the click did hit something.
+
+**Cursor deprojection's inverse view includes the camera world translation.** The split
+`FSceneView::DeprojectScreenToWorld` overload expects both rotation and `ViewOrigin` in its inverse-view
+matrix (`ViewRotationMatrix.GetTransposed() * FTranslationMatrix(ViewOrigin)`). Supplying only inverse
+rotation makes the ray originate around world zero while the preview renders from the actual camera, so
+both hover and click selection miss the same visible bodies.
 
 **The pick resolves on RELEASE, not press, and only within ~4 px of where the button went down.** A
 camera drag also opens with a button press, so a press alone cannot tell a click from the start of a
@@ -636,7 +646,7 @@ would.
 
 | Lane | Group | Contents |
 |---|---|---|
-| Primary | `JoltRender` | wireframe/solid toggle (`Grid`) — swaps the facility's materials, rebuilds no geometry — and the ground-grid toggle (`Net`) |
+| Primary | `JoltRender` | one cycling wireframe button (`Grid`): Off -> Transparent sensors only -> All; it swaps/overlays the facility's materials without rebuilding geometry — plus the ground-grid toggle (`Net`) |
 | Primary | `JoltSim` | Pause toggle + Step button; both disabled with a tooltip when no world has begun play |
 | Primary | `JoltSelection` | Isolate toggle (`Lock`, also `I`), Follow toggle (`Target`), and the Drag STATE chip (`Hand`) |
 | Context | `JoltTarget` | `SCkDebug_WorldSelector` |
@@ -760,7 +770,7 @@ This is the plugin-wide settings split, not a local choice: see `CkGameplayDebug
 
 | Preference | Restored into |
 |---|---|
-| `RenderMode` (Solid / Wireframe) | `Set_RenderMode` on the target |
+| `RenderMode` (Off / Transparent Only / All) | `Set_RenderMode` on the target; stored by reflected enum name so the old Solid/Wireframe preferences still restore as Off/All |
 | `ShowJoltBodies` / `ShowBakedStaticWorld` / `ShowSensors` / `ShowCharacters` | `Set_ClassVisibility` per colour class — **only while the mode is BodyClass** |
 | `CameraPreset` (the 7 orientations) | `ApplyPreset` on the viewport |
 | `DrawFlags` (raw `ECk_Jolt_DebugDrawFlags` bits) | `Set_DrawFlags` on the target |
@@ -807,7 +817,8 @@ whatever is in the world at that moment, not a camera state a window can be rest
 |---|---|
 | `Ck.JoltDebugger.Window.ConstructsWithoutSlotAttributeEnsure` | the window builds and prepasses with no slot-attribute ensure |
 | `Ck.JoltDebugger.Window.ConstraintIsADebuggerEntity` | the FIFTH clause of `Is_JoltDebuggerEntity` (P8-D55, pinned by P8-D74/F10): an entity carrying `FFragment_JoltConstraint_Current` answers TRUE, a bare entity FALSE, an invalid handle FALSE. That one predicate answers for both the entity-target route and the game-viewport picker's filter, and the four body-ish clauses cannot cover it — a constraint entity carries none of them |
-| `Ck.JoltDebugger.Viewport.ConstructsWithoutEnsure` | the viewport builds ensure-free and owns a preview world |
+| `Ck.JoltDebugger.Viewport.ConstructsWithoutEnsure` | the viewport builds ensure-free, owns a preview world, enables advanced lighting/post-processing/TAA, supplies directional + sky light, and keeps shadows, motion blur, depth of field, and eye adaptation disabled |
+| `Ck.JoltDebugger.Viewport.CursorRayUsesCameraTranslation` | the inverse view used for hover, click, and drag deprojection maps view-space origin back to the camera's world location, pinning the translation term that keeps cursor rays aligned with rendered bodies |
 | `Ck.JoltDebugger.Viewport.CameraPresets` | every preset sets its projection mode and points the camera down its expected axis (compared as forward vectors — rotator normalization must not make it flaky) |
 | `Ck.JoltDebugger.Viewport.FrameAllWithoutContentIsInert` | framing invalid bounds leaves the camera untouched instead of snapping to the origin |
 | `Ck.JoltDebugger.Viewport.CameraSchemeIsUnrealStyle` | the DISCRIMINATING facts of P7-D49 + P7-D71, driven through the client's own input entry points: RMB-drag leaves the eye exactly where it was while turning the camera; Alt+LMB-drag moves the eye while the look-at pivot stays put (the reverse of the first, which is what tells orbit from look-in-place); MMB-drag moves the eye with the rotation untouched; **the wheel moves the eye AND the pivot, leaving the distance between them untouched** (F6 — a wheel that shrank the orbit distance would stall at the pivot); **the same ortho pan covers more world zoomed out than zoomed in** (F5 — scaled off the ortho width, not the pivot distance); and an ortho preset refuses both a rotate gesture and an orbit gesture |
@@ -817,10 +828,11 @@ whatever is in the world at that moment, not a camera state a window can be rest
 | `Ck.JoltDebugger.Outliner.ListsConstraintRows` | a constraint row is listed beside the two bodies it joins and is selectable; it carries NO body key of its own; it names BOTH bodies with **A first** (which is what the facility samples) and reports its constraint flavour; a refresh over the same set keeps it selected; and its own row text answers the shared text filter |
 | `Ck.JoltDebugger.Outliner.ProblemsChipNarrowsToFlaggedRows` | three rows, one flagged: the chip is off to begin with and all three are listed; turning it on leaves exactly the flagged row; a SELECTED healthy row stays pinned beside it and renders dimmed (the pin rule outranks the chip exactly as it outranks the text filter); clearing the selection narrows to one again; clearing the chip restores three; and a row whose flags are cleared by the next collector pass leaves the chip with nothing to show |
 | `Ck.JoltDebugger.Viewport.LabelCapKeepsTheNearest` | the pure half of the label paint: under the cap every label survives in the CAPTURE's order (a camera move must not reshuffle the draw order); over it exactly the cap survives, **nearest first**, from a fixture authored farthest-first so a take-the-first-N implementation cannot pass; a zero cap paints nothing; no labels select nothing; and the shipped cap is 500 |
-| `Ck.JoltDebugger.Settings.ConstructRestoresPreferences` | the settings live in the `Editor` container, and the window constructs ensure-free with NON-DEFAULT preferences — which is what drives the restore path, camera preset included. Every preference the restore reads is asserted UNCHANGED afterwards, so a restore that quietly re-saved a default over the developer's own choice surfaces here rather than in an ini. Covers all seven new fields (draw flags, colour mode, isolate, follow, grid, runaway velocity, a bookmark). **And that the restore LANDED** (P7-D71/F10): the window's own read surface reports the draw flags and colour mode ON THE FACILITY TARGET, its isolate/follow/grid state, and that a grid restored OFF pushes no lines while a second window with it ON pushes exactly 82. The developer's own CDO values are saved and put back by an RAII guard **which then calls `SaveConfig()`** (P8-D74/F7) — every toggle these specs drive saves as it goes, so restoring the CDO alone left the test values, a slot-3 bookmark among them, sitting in the developer's real ini. The guard covers `ShowProbeResults` as well |
+| `Ck.JoltDebugger.Settings.ConstructRestoresPreferences` | the settings live in the `Editor` container, and the window constructs ensure-free with NON-DEFAULT preferences — which is what drives the restore path, camera preset included. Every preference the restore reads is asserted UNCHANGED afterwards, so a restore that quietly re-saved a default over the developer's own choice surfaces here rather than in an ini. Covers draw flags, colour/render modes, isolate, follow, grid, probe results, direction-glyph scale, runaway velocity, and a bookmark. **And that the restore LANDED** (P7-D71/F10): the window's own read surface reports the modes and scale ON THE FACILITY TARGET, its isolate/follow/grid state, and that a grid restored OFF pushes no lines while a second window with it ON pushes exactly 82. The developer's own CDO values are saved and put back by an RAII guard **which then calls `SaveConfig()`** (P8-D74/F7) — every toggle these specs drive saves as it goes, so restoring the CDO alone left the test values, a slot-3 bookmark among them, sitting in the developer's real ini. The guard covers `ShowProbeResults` as well |
+| `Ck.JoltDebugger.Settings.RenderModeCyclesAndPersists` | the toolbar's single wireframe button cycles Off → Transparent Only → All → Off, pushes each mode to the facility target, and persists the matching preference |
 | `Ck.JoltDebugger.Settings.CameraBookmarksStoreAndRecall` | bookmarks end to end through the REAL hotkeys (P8-D59): `Ctrl+3` stores the live pose in slot 3 and marks it set; moving to a different projection AND a different eye and pressing a bare `3` puts the projection, the eye and the rotation back; a slot nobody stored is inert rather than a snap to the origin; and `Ctrl+Alt+3` does not store, so a modified digit stays available to whatever else binds it. Under the same RAII guard |
 | `Ck.JoltDebugger.Detail.ConstructsWithoutEnsure` | every value lambda survives a completely unbound `GetSelection` AND an unbound `GetSelectionFacts` — including the rows that dereference a `TOptional` sample — and reads `--`; `Refresh_Contacts` on an unbound panel lists nothing |
-| `Ck.JoltDebugger.Detail.RowsReflectTheSelection` | the built rows render the bound selection's own values (population / motion / sleep / body key); an unsampled velocity reads `--` and a sampled one reaches the row; **every facility row degrades to `--` while the sample is unset** (mass, friction, object layer, shape type) and renders the sample once it lands (angular velocity, mass, friction, restitution, motion quality, object layer, sensor, shape type, allows-sleeping); a ZERO mass reads "Infinite" and an unasked sleeping flag reads `--`; the **character group flips visible** when the selection's population becomes Character and its rows render the character sample (ground state, velocity, ground body) while every rigid-body row degrades; an unset ground body key reads `--`; the contacts list takes one row per reported contact and empties with them; and clearing the selection empties every row and re-collapses the character group |
+| `Ck.JoltDebugger.Detail.RowsReflectTheSelection` | the built rows render the bound selection's own values and semantic presentation: numeric/math/enum roles use the shared value palette, unset values mute, population/simulation/sensor/character-ground states use status tones and dots; every facility row still degrades to `--` while its sample is unset; zero mass reads "Infinite"; the character group flips live with Character selection; contacts reconcile one row per reported contact and clear with the selection |
 
 Real entities for a row fixture come from `ck::FEcsWorld{}` + `UCk_Utils_EntityLifetime_UE::
 Request_CreateEntity(World.Get_Registry())` — the same shape the ECS-debugger specs use. Rows are
@@ -854,7 +866,7 @@ cap and in what order (`Ck.JoltDebugger.Viewport.LabelCapKeepsTheNearest`). Thes
   a row the filter is currently hiding
 - the game-viewport picker previews and picks only Jolt entities and their owner chain
 - the detail panel's velocity tracks a moving dynamic body, and reads `--` for a character
-- **preferences persist across an editor restart** — render mode, the four population toggles, and the
+- **preferences persist across an editor restart** — all three render modes, the four population toggles, and the
   camera orientation all come back as they were left
 - **a selected row stays visible, dimmed, when a filter typed afterwards excludes it**
 - **`Ctrl+F` / `Alt+F` do NOT frame; a drag-then-release does NOT pick; a click does**
@@ -913,7 +925,7 @@ cap and in what order (`Ck.JoltDebugger.Viewport.LabelCapKeepsTheNearest`). Thes
   to the cap without tanking the frame rate (the cap logs once)
 - **hovering a body highlights it subtly and shows its name**; the hover never fires mid-click or mid-drag,
   and leaving the viewport clears it
-- `[PACKAGED-VERIFY]` both engine debug materials render in a packaged Development build — exact
+- `[PACKAGED-VERIFY]` all three engine debug materials render in a packaged Development build — exact
   acceptance steps in `CkJolt/Claude.md` § "Colour + wireframe"
 
 ---

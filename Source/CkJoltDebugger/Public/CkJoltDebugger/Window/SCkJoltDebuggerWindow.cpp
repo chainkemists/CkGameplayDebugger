@@ -19,6 +19,7 @@
 #include "CkDebuggerCommon/Widgets/SCkDebug_CountBadge.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_IconToggle.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_SectionHeader.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_StatPair.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_StatusPill.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_WorldSelector.h"
 #include "CkDebuggerCommon/Window/CkDebuggerRefreshGate.h"
@@ -55,6 +56,7 @@
 #include "Widgets/Images/SImage.h"
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Input/SSegmentedControl.h"
+#include "Widgets/Input/SSpinBox.h"
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/Layout/SScrollBox.h"
@@ -153,6 +155,8 @@ namespace ck_jolt_debugger
     // sized to read beside a human-scale body rather than to be geometrically meaningful.
     static constexpr float ProbeContactPointRadius = 6.0f;
     static constexpr float ProbeContactNormalLength = 40.0f;
+    static constexpr float DirectionGlyphScaleMin = 0.25f;
+    static constexpr float DirectionGlyphScaleMax = 4.0f;
 
     /*
      * Where a cursor ray meets a plane. Unset when the ray is parallel to the plane, and when the hit is
@@ -333,6 +337,79 @@ namespace ck_jolt_debugger
             case ECk_Jolt_DebugDrawColorMode::ObjectLayer: return ECkJoltDebugger_ColorModePref::ObjectLayer;
             case ECk_Jolt_DebugDrawColorMode::ShapeType:   return ECkJoltDebugger_ColorModePref::ShapeType;
             default:                                       return ECkJoltDebugger_ColorModePref::BodyClass;
+        }
+    }
+
+    static auto Get_RenderMode(
+        ECkJoltDebugger_RenderModePref InPreference) -> ECk_Jolt_DebugDraw_RenderMode
+    {
+        switch (InPreference)
+        {
+            case ECkJoltDebugger_RenderModePref::SensorWireframe:
+                return ECk_Jolt_DebugDraw_RenderMode::SensorWireframe;
+            case ECkJoltDebugger_RenderModePref::Wireframe:
+                return ECk_Jolt_DebugDraw_RenderMode::Wireframe;
+            default:
+                return ECk_Jolt_DebugDraw_RenderMode::Solid;
+        }
+    }
+
+    static auto Get_RenderModePref(
+        ECk_Jolt_DebugDraw_RenderMode InRenderMode) -> ECkJoltDebugger_RenderModePref
+    {
+        switch (InRenderMode)
+        {
+            case ECk_Jolt_DebugDraw_RenderMode::SensorWireframe:
+                return ECkJoltDebugger_RenderModePref::SensorWireframe;
+            case ECk_Jolt_DebugDraw_RenderMode::Wireframe:
+                return ECkJoltDebugger_RenderModePref::Wireframe;
+            default:
+                return ECkJoltDebugger_RenderModePref::Solid;
+        }
+    }
+
+    static auto Get_NextRenderMode(
+        ECk_Jolt_DebugDraw_RenderMode InRenderMode) -> ECk_Jolt_DebugDraw_RenderMode
+    {
+        switch (InRenderMode)
+        {
+            case ECk_Jolt_DebugDraw_RenderMode::Solid:
+                return ECk_Jolt_DebugDraw_RenderMode::SensorWireframe;
+            case ECk_Jolt_DebugDraw_RenderMode::SensorWireframe:
+                return ECk_Jolt_DebugDraw_RenderMode::Wireframe;
+            default:
+                return ECk_Jolt_DebugDraw_RenderMode::Solid;
+        }
+    }
+
+    static auto Get_RenderModeLabel(
+        ECk_Jolt_DebugDraw_RenderMode InRenderMode) -> FText
+    {
+        switch (InRenderMode)
+        {
+            case ECk_Jolt_DebugDraw_RenderMode::SensorWireframe:
+                return FText::FromString(TEXT("Wire: Transparent"));
+            case ECk_Jolt_DebugDraw_RenderMode::Wireframe:
+                return FText::FromString(TEXT("Wire: All"));
+            default:
+                return FText::FromString(TEXT("Wire: Off"));
+        }
+    }
+
+    static auto Get_RenderModeTooltip(
+        ECk_Jolt_DebugDraw_RenderMode InRenderMode) -> FText
+    {
+        switch (InRenderMode)
+        {
+            case ECk_Jolt_DebugDraw_RenderMode::SensorWireframe:
+                return FText::FromString(TEXT(
+                    "Wireframe outlines transparent sensor bodies only; opaque bodies stay filled. Click for wireframe on every body."));
+            case ECk_Jolt_DebugDraw_RenderMode::Wireframe:
+                return FText::FromString(TEXT(
+                    "Every Jolt body draws as wireframe. Click to turn wireframe off."));
+            default:
+                return FText::FromString(TEXT(
+                    "Wireframe is off, including on transparent sensors. Click to outline transparent sensor bodies only."));
         }
     }
 
@@ -1531,30 +1608,44 @@ auto
 
         + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
         [
-            SNew(SCkDebug_IconToggle)
-            .IconId(TEXT("Grid"))
-            .Label(FText::FromString(TEXT("Wireframe")))
-            .ToolTip(FText::FromString(TEXT("Draw the Jolt bodies as wireframe instead of solid. Materials swap on the same instances — no geometry is rebuilt.")))
-            .IsOn_Lambda([this]()
+            SNew(SButton)
+            .ButtonStyle(FAppStyle::Get(), "SimpleButton")
+            .ContentPadding(FMargin{4.0f, 1.0f})
+            .IsEnabled_Lambda([this]() { return _DebugDrawTarget.IsValid(); })
+            .ToolTipText_Lambda([this]()
             {
-                return _DebugDrawTarget.IsValid() &&
-                    _DebugDrawTarget->Get_RenderMode() == ECk_Jolt_DebugDraw_RenderMode::Wireframe;
+                return ck_jolt_debugger::Get_RenderModeTooltip(Get_TargetRenderMode());
             })
-            .OnStateChanged_Lambda([this](const bool InIsWireframe)
+            .OnClicked_Lambda([this]() -> FReply
             {
-                if (NOT _DebugDrawTarget.IsValid())
-                { return; }
-
-                _DebugDrawTarget->Set_RenderMode(InIsWireframe
-                    ? ECk_Jolt_DebugDraw_RenderMode::Wireframe
-                    : ECk_Jolt_DebugDraw_RenderMode::Solid);
-
-                auto* Settings = GetMutableDefault<UCkJoltDebuggerSettings>();
-                Settings->RenderMode = InIsWireframe
-                    ? ECkJoltDebugger_RenderModePref::Wireframe
-                    : ECkJoltDebugger_RenderModePref::Solid;
-                Settings->SaveConfig();
+                Cycle_RenderMode();
+                return FReply::Handled();
             })
+            [
+                SNew(SHorizontalBox)
+
+                + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+                [
+                    SNew(SImage)
+                    .Image(FCkDebuggerCommonStyle::Get_IconBrush(TEXT("Grid")))
+                    .ColorAndOpacity_Lambda([this]() -> FSlateColor
+                    {
+                        return Get_TargetRenderMode() == ECk_Jolt_DebugDraw_RenderMode::Solid
+                            ? FSlateColor{CkStyle::TextMute()}
+                            : FSlateColor{CkStyle::Accent()};
+                    })
+                ]
+
+                + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(CkStyle::SpaceXS, 0.0f, 0.0f, 0.0f)
+                [
+                    SNew(STextBlock)
+                    .Font_Static(&ck_jolt_debugger::Font_RowLabel)
+                    .Text_Lambda([this]()
+                    {
+                        return ck_jolt_debugger::Get_RenderModeLabel(Get_TargetRenderMode());
+                    })
+                ]
+            ]
         ]
 
         // The ground grid is a PRIMARY control: it acts on this viewport and nothing else. It carries a
@@ -1993,6 +2084,43 @@ auto
 
 auto
     SCkJoltDebuggerWindow::
+    Set_DirectionGlyphScale(
+        float InScale,
+        bool InPersist)
+    -> void
+{
+    const auto ClampedScale = FMath::Clamp(
+        InScale, ck_jolt_debugger::DirectionGlyphScaleMin, ck_jolt_debugger::DirectionGlyphScaleMax);
+
+    if (NOT FMath::IsNearlyEqual(_DirectionGlyphScale, ClampedScale))
+    {
+        _DirectionGlyphScale = ClampedScale;
+
+        if (_DebugDrawTarget.IsValid())
+        { _DebugDrawTarget->Set_DirectionGlyphScale(ClampedScale); }
+
+        // The retained channel contains the old arrow lengths. Rebuild it now rather than waiting for contacts to
+        // change, and include the scale in its signature as a second guard against a stale retained drawing.
+        _ProbeResultsSignature.Reset();
+        DoUpdateProbeResults();
+    }
+
+    // SSpinBox emits value changes continuously while its thumb is dragged. Preview those without I/O, then save
+    // once on commit/end-slide. The equality guard also makes the two completion delegates harmless together.
+    if (InPersist)
+    {
+        auto* Settings = GetMutableDefault<UCkJoltDebuggerSettings>();
+
+        if (NOT FMath::IsNearlyEqual(Settings->DirectionGlyphScale, ClampedScale))
+        {
+            Settings->DirectionGlyphScale = ClampedScale;
+            Settings->SaveConfig();
+        }
+    }
+}
+
+auto
+    SCkJoltDebuggerWindow::
     Set_ShowGrid(
         bool InIsEnabled)
     -> void
@@ -2087,6 +2215,24 @@ auto
 
 auto
     SCkJoltDebuggerWindow::
+    Get_TargetRenderMode() const
+    -> ECk_Jolt_DebugDraw_RenderMode
+{
+    return _DebugDrawTarget.IsValid()
+        ? _DebugDrawTarget->Get_RenderMode()
+        : ECk_Jolt_DebugDraw_RenderMode::Solid;
+}
+
+auto
+    SCkJoltDebuggerWindow::
+    Get_TargetDirectionGlyphScale() const
+    -> float
+{
+    return _DebugDrawTarget.IsValid() ? _DebugDrawTarget->Get_DirectionGlyphScale() : 1.0f;
+}
+
+auto
+    SCkJoltDebuggerWindow::
     DoUpdateProbeResults()
     -> void
 {
@@ -2172,6 +2318,9 @@ auto
             Link._ContactNormal = Overlap.Get_ContactNormal();
 
             Signature = HashCombine(Signature, static_cast<uint32>(Link._ContactPoints.Num()));
+            // A resting overlap can keep both its members and contact points while its normal changes (for example,
+            // when a touched shape rotates). The retained arrow must follow that direction too.
+            Signature = HashCombine(Signature, GetTypeHash(Link._ContactNormal));
 
             for (const auto& Point : Link._ContactPoints)
             { Signature = HashCombine(Signature, GetTypeHash(Point)); }
@@ -2193,6 +2342,7 @@ auto
 
     Signature = HashCombine(Signature, static_cast<uint32>(Links.Num()));
     Signature = HashCombine(Signature, GetTypeHash(SelectedHandle));
+    Signature = HashCombine(Signature, GetTypeHash(_DirectionGlyphScale));
 
     // Every line STARTS at the origin, so a probe that moved while its overlap set held still moves the whole
     // drawing (P8-D74/F5).
@@ -2222,7 +2372,8 @@ auto
             { continue; }
 
             _DebugDrawTarget->Draw_ExternalArrow(Channel, Point,
-                Point + Link._ContactNormal.GetSafeNormal() * ProbeContactNormalLength, NormalColor);
+                Point + Link._ContactNormal.GetSafeNormal() * ProbeContactNormalLength * _DirectionGlyphScale,
+                NormalColor);
         }
     }
 }
@@ -2351,6 +2502,40 @@ auto
 
 auto
     SCkJoltDebuggerWindow::
+    Cycle_RenderMode()
+    -> void
+{
+    Set_RenderMode(ck_jolt_debugger::Get_NextRenderMode(Get_TargetRenderMode()));
+}
+
+#if WITH_DEV_AUTOMATION_TESTS
+auto
+    SCkJoltDebuggerWindow::
+    Cycle_RenderModeForTest()
+    -> void
+{
+    Cycle_RenderMode();
+}
+#endif
+
+auto
+    SCkJoltDebuggerWindow::
+    Set_RenderMode(
+        ECk_Jolt_DebugDraw_RenderMode InRenderMode)
+    -> void
+{
+    if (NOT _DebugDrawTarget.IsValid())
+    { return; }
+
+    _DebugDrawTarget->Set_RenderMode(InRenderMode);
+
+    auto* Settings = GetMutableDefault<UCkJoltDebuggerSettings>();
+    Settings->RenderMode = ck_jolt_debugger::Get_RenderModePref(InRenderMode);
+    Settings->SaveConfig();
+}
+
+auto
+    SCkJoltDebuggerWindow::
     Set_DrawFlag(
         ECk_Jolt_DebugDrawFlags InFlag,
         bool InIsEnabled)
@@ -2438,6 +2623,36 @@ auto
             "Read for the selection only: the overlap query returns a full copy of the probe's overlap set.")))
         .IsOn_Lambda([this]() { return _ShowProbeResults; })
         .OnStateChanged_Lambda([this](const bool InIsEnabled) { Set_ShowProbeResults(InIsEnabled); })
+    ];
+
+    Lane->AddSlot().AutoWidth().VAlign(VAlign_Center).Padding(0.0f, 0.0f, CkStyle::SpaceS, 0.0f)
+    [
+        SNew(STextBlock)
+        .Font_Static(&ck_jolt_debugger::Font_RowLabel)
+        .ColorAndOpacity(CkStyle::TextMute())
+        .Text(FText::FromString(TEXT("Glyph")))
+    ];
+
+    Lane->AddSlot().AutoWidth().VAlign(VAlign_Center).Padding(0.0f, 0.0f, CkStyle::SpaceM, 0.0f)
+    [
+        SNew(SBox).WidthOverride(64.0f)
+        [
+            SNew(SSpinBox<float>)
+            .MinValue(ck_jolt_debugger::DirectionGlyphScaleMin)
+            .MaxValue(ck_jolt_debugger::DirectionGlyphScaleMax)
+            .MinSliderValue(ck_jolt_debugger::DirectionGlyphScaleMin)
+            .MaxSliderValue(ck_jolt_debugger::DirectionGlyphScaleMax)
+            .Delta(0.25f)
+            .Value_Lambda([this]() { return _DirectionGlyphScale; })
+            .OnValueChanged_Lambda([this](const float InScale) { Set_DirectionGlyphScale(InScale, false); })
+            .OnValueCommitted_Lambda([this](const float InScale, ETextCommit::Type)
+            { Set_DirectionGlyphScale(InScale); })
+            .OnEndSliderMovement_Lambda([this](const float InScale)
+            { Set_DirectionGlyphScale(InScale); })
+            .ToolTipText(FText::FromString(TEXT(
+                "Scale direction-only glyphs: selected-body contact normals, transform axes, and selected-probe "
+                "contact normals. Physical vectors such as velocity keep their real magnitude.")))
+        ]
     ];
 
     using FColorModeControl = SSegmentedControl<ECk_Jolt_DebugDrawColorMode>;
@@ -2554,9 +2769,7 @@ auto
 
     if (_DebugDrawTarget.IsValid())
     {
-        _DebugDrawTarget->Set_RenderMode(Settings->RenderMode == ECkJoltDebugger_RenderModePref::Wireframe
-            ? ECk_Jolt_DebugDraw_RenderMode::Wireframe
-            : ECk_Jolt_DebugDraw_RenderMode::Solid);
+        _DebugDrawTarget->Set_RenderMode(ck_jolt_debugger::Get_RenderMode(Settings->RenderMode));
 
         _DebugDrawTarget->Set_DrawFlags(static_cast<ECk_Jolt_DebugDrawFlags>(Settings->DrawFlags));
 
@@ -2574,6 +2787,11 @@ auto
     _IsolateActive     = Settings->IsolateActive;
     _FollowSelection   = Settings->FollowSelection;
     _ShowProbeResults  = Settings->ShowProbeResults;
+    _DirectionGlyphScale = FMath::Clamp(
+        Settings->DirectionGlyphScale,
+        ck_jolt_debugger::DirectionGlyphScaleMin,
+        ck_jolt_debugger::DirectionGlyphScaleMax);
+    _DebugDrawTarget->Set_DirectionGlyphScale(_DirectionGlyphScale);
     _ShowGrid          = Settings->ShowGrid;
 
     DoApplyIsolation();
@@ -2778,6 +2996,55 @@ auto
         + SVerticalBox::Slot().AutoHeight().Padding(CkStyle::SpaceM, 0.0f)
             [ ck::debug_axes::Make_AxisSeparator() ]
 
+        + SVerticalBox::Slot().AutoHeight().Padding(CkStyle::SpaceM, CkStyle::SpaceS)
+            [
+                SNew(SHorizontalBox)
+
+                + SHorizontalBox::Slot().FillWidth(1.0f).HAlign(HAlign_Center)
+                [
+                    SNew(SCkDebug_StatPair)
+                    .Layout(ECkDebug_StatPairLayout::Stacked_ValueOnTop)
+                    .ValueColor(FSlateColor{CkStyle::Value_Numeric()})
+                    .Value_Lambda([this]() { return _Stats.HasWorld
+                        ? ck_jolt_debugger::MillisecondsText(_Stats.LastStepMs)
+                        : FText::FromString(TEXT("--")); })
+                    .Label(FText::FromString(TEXT("LAST STEP")))
+                ]
+
+                + SHorizontalBox::Slot().FillWidth(1.0f).HAlign(HAlign_Center)
+                [
+                    SNew(SCkDebug_StatPair)
+                    .Layout(ECkDebug_StatPairLayout::Stacked_ValueOnTop)
+                    .ValueColor(FSlateColor{CkStyle::Value_Numeric()})
+                    .Value_Lambda([this]() { return _Stats.HasWorld
+                        ? FText::AsNumber(_Stats.NumActiveRigidBodies)
+                        : FText::FromString(TEXT("--")); })
+                    .Label(FText::FromString(TEXT("ACTIVE")))
+                ]
+
+                + SHorizontalBox::Slot().FillWidth(1.0f).HAlign(HAlign_Center)
+                [
+                    SNew(SCkDebug_StatPair)
+                    .Layout(ECkDebug_StatPairLayout::Stacked_ValueOnTop)
+                    .ValueColor(FSlateColor{CkStyle::Value_Numeric()})
+                    .Value_Lambda([this]() { return _Stats.HasWorld
+                        ? FText::AsNumber(_Stats.ContactPairsLastStep)
+                        : FText::FromString(TEXT("--")); })
+                    .Label(FText::FromString(TEXT("CONTACTS")))
+                ]
+
+                + SHorizontalBox::Slot().FillWidth(1.0f).HAlign(HAlign_Center)
+                [
+                    SNew(SCkDebug_StatPair)
+                    .Layout(ECkDebug_StatPairLayout::Stacked_ValueOnTop)
+                    .ValueColor(FSlateColor{CkStyle::Value_Numeric()})
+                    .Value_Lambda([this]() { return _Stats.HasWorld
+                        ? FText::AsNumber(_Stats.NumBodies)
+                        : FText::FromString(TEXT("--")); })
+                    .Label(FText::FromString(TEXT("BODIES")))
+                ]
+            ]
+
         + SVerticalBox::Slot().FillHeight(1.0f)
             [
                 SNew(SScrollBox)
@@ -2797,22 +3064,8 @@ auto
                 + SScrollBox::Slot().Padding(CkStyle::SpaceM, CkStyle::SpaceS)
                     [ MakeSectionHeader(TEXT("Simulation")) ]
                 + SScrollBox::Slot()
-                    [ MakeStatRow(TEXT("Jolt Paused:"), TAttribute<FText>::CreateLambda([this]()
-                        { return FText::FromString(_Stats.HasWorld ? (_Stats.IsPaused ? TEXT("Yes") : TEXT("No")) : TEXT("--")); })) ]
-                + SScrollBox::Slot()
-                    [ MakeStatRow(TEXT("Last Step:"), TAttribute<FText>::CreateLambda([this]()
-                        { return _Stats.HasWorld
-                            ? ck_jolt_debugger::MillisecondsText(_Stats.LastStepMs)
-                            : FText::FromString(TEXT("--")); })) ]
-                + SScrollBox::Slot()
-                    [ MakeStatRow(TEXT("Active Rigid Bodies:"), TAttribute<FText>::CreateLambda([this]()
-                        { return _Stats.HasWorld ? FText::AsNumber(_Stats.NumActiveRigidBodies) : FText::FromString(TEXT("--")); })) ]
-                + SScrollBox::Slot()
                     [ MakeStatRow(TEXT("Active Soft Bodies:"), TAttribute<FText>::CreateLambda([this]()
                         { return _Stats.HasWorld ? FText::AsNumber(_Stats.NumActiveSoftBodies) : FText::FromString(TEXT("--")); })) ]
-                + SScrollBox::Slot()
-                    [ MakeStatRow(TEXT("Contact Pairs (last step):"), TAttribute<FText>::CreateLambda([this]()
-                        { return _Stats.HasWorld ? FText::AsNumber(_Stats.ContactPairsLastStep) : FText::FromString(TEXT("--")); })) ]
 
                 // Everything below is refreshed every 30th capture, not every frame: GetBodyStats walks every
                 // body and GetConstraints copies the constraint array. The label is the disclosure — a
@@ -2847,9 +3100,6 @@ auto
 
                 + SScrollBox::Slot().Padding(CkStyle::SpaceM, CkStyle::SpaceS)
                     [ MakeSectionHeader(TEXT("Rigid Bodies")) ]
-                + SScrollBox::Slot()
-                    [ MakeStatRow(TEXT("JoltBody Entities:"), TAttribute<FText>::CreateLambda([this]()
-                        { return _Stats.HasWorld ? FText::AsNumber(_Stats.NumBodies) : FText::FromString(TEXT("--")); })) ]
                 + SScrollBox::Slot()
                     [ MakeStatRow(TEXT("Dynamic:"), TAttribute<FText>::CreateLambda([this]()
                         { return _Stats.HasWorld ? FText::AsNumber(_Stats.NumDynamic) : FText::FromString(TEXT("--")); })) ]

@@ -129,7 +129,7 @@ namespace ck_optimization_debugger_window
 
     /** The glyph a category is named by, everywhere it is named: the filter toggle, the group header and the row.
      *  One mapping so a category cannot mean two different pictures in two places. Every id resolves against
-     *  `Resources/Icons/**`; `Ck.OptimizationDebugger.Window.CategoryIcons` pins the set as distinct. */
+     *  the typed registry; `Ck.OptimizationDebugger.Window.CategoryIcons` pins the set as distinct. */
     auto
         Get_CategoryIcon(
             ECkOptimizationDebugger_Category InCategory)
@@ -172,7 +172,7 @@ namespace ck_optimization_debugger_window
 
     /** One glyph per profiling shelf, not one per entry. Five Nanite modes drawn with five different pictures would
      *  be five pictures that mean nothing; the LABEL is what tells them apart, and the glyph says which shelf the
-     *  reader's eye is on. Every id below exists under `Resources/Icons/**`. */
+     *  reader's eye is on. Every identifier below is a compile-checked ECk_Icon. */
     auto
         Get_ProfileGroupIcon(
             ECkOptimizationDebugger_ProfileGroup InGroup)
@@ -438,7 +438,7 @@ namespace ck_optimization_debugger_window
     // ----------------------------------------------------------------------------------------------------------------
 
     /** The glyph a cleanup category is named by, on its sub-tab and on its rows. One mapping, so a category cannot
-     *  mean two pictures. Every id exists under `Resources/Icons/**`. */
+     *  mean two pictures. Every identifier is a compile-checked ECk_Icon. */
     auto
         Get_CleanupCategoryIcon(
             ECkOptimizationDebugger_CleanupCategory InCategory)

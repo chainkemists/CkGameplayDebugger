@@ -161,6 +161,7 @@ private:
     auto DoCreate_MemoryPage() -> TSharedRef<SWidget>;
     auto DoCreate_ProfilingPage() -> TSharedRef<SWidget>;
     auto DoCreate_CleanupPage() -> TSharedRef<SWidget>;
+    auto DoCreate_SnapshotsPage() -> TSharedRef<SWidget>;
 
     auto DoCreate_CategoryFilters() -> TSharedRef<SWidget>;
     auto DoCreate_ScopeFilters() -> TSharedRef<SWidget>;
@@ -435,6 +436,10 @@ private:
     // rebuild — the buttons' attributes read these fields and never walk the selection themselves.
     bool _HasSelectedFinding = false;
     bool _OpenAssetButtonEnabled = false;
+
+    // The Snapshots tab's badge. Cached for the same reason every other tab count is: the tab bar sits outside the
+    // page switcher, so its attributes run on every page on every frame.
+    int32 _SnapshotCount = 0;
     int32 _SelectedFixableCount = 0;
     int32 _VisibleFixableCount = 0;
     bool _FixButtonEnabled = false;

@@ -396,6 +396,21 @@ namespace ck_optimization_debugger_window
             if (NOT Property->HasAnyPropertyFlags(CPF_Config))
             { continue; }
 
+#if WITH_EDITORONLY_DATA
+            // And only the ones the settings class files under "Thresholds". This class also carries config ints
+            // that are NOT budgets — the snapshot cap and capture width — and a panel headed "Analysis thresholds"
+            // listing them would claim the scan judges something against them.
+            //
+            // Metadata is stripped from a cooked build, so in packaged Development/DebugGame the panel falls back to
+            // listing every config int under its raw property name. That is the same fallback the labels above
+            // already take, and the alternative — a hard-coded name list — is a second copy of this class's contents
+            // waiting to drift from it.
+            static const auto k_CategoryKey = FName{TEXT("Category")};
+
+            if (Property->GetMetaData(k_CategoryKey) != TEXT("Thresholds"))
+            { continue; }
+#endif
+
             auto Entry = FThresholdEntry{};
             Entry.Property = Property;
             Entry.Label = Property->GetName();
@@ -1005,6 +1020,15 @@ auto
                 return Count > 0 ? FText::AsNumber(Count) : FText::GetEmpty();
             });
         }
+        else if (Page == ECkOptimizationDebugger_Page::Snapshots)
+        {
+            // How many captures are stored. No warn dot: a snapshot is a picture the reader asked for, and there is
+            // nothing about having taken one that is wrong.
+            Tab.CountText = TAttribute<FText>::CreateLambda([this]() -> FText
+            {
+                return _SnapshotCount > 0 ? FText::AsNumber(_SnapshotCount) : FText::GetEmpty();
+            });
+        }
 
         Tabs.Add(MoveTemp(Tab));
     }
@@ -1071,6 +1095,11 @@ auto
             + SWidgetSwitcher::Slot()
             [
                 DoCreate_CleanupPage()
+            ]
+
+            + SWidgetSwitcher::Slot()
+            [
+                DoCreate_SnapshotsPage()
             ]
         ];
 }
@@ -2412,6 +2441,53 @@ auto
             {
                 return _Model.Get_HasCleanupScan() ? EVisibility::Visible : EVisibility::Collapsed;
             })
+        ];
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkOptimizationDebuggerWindow::
+    DoCreate_SnapshotsPage()
+    -> TSharedRef<SWidget>
+{
+    using namespace ck_optimization_debugger_window;
+
+    return SNew(SVerticalBox)
+
+        + SVerticalBox::Slot()
+        .AutoHeight()
+        .Padding(CkStyle::SpaceM, CkStyle::SpaceM, CkStyle::SpaceM, 0.0f)
+        [
+            SNew(SCkDebug_Card)
+            [
+                SNew(SHorizontalBox)
+
+                + SHorizontalBox::Slot()
+                .AutoWidth()
+                .HAlign(HAlign_Left)
+                .VAlign(VAlign_Center)
+                .Padding(0.0f, 0.0f, CkStyle::SpaceM, 0.0f)
+                [
+                    SNew(SCkDebug_Icon)
+                    .Brush(Get_IconBrush(ECk_Icon::Camera))
+                    .Meaning(FText::FromString(TEXT("No snapshots yet")))
+                    .ColorAndOpacity(FSlateColor{CkStyle::TextMute()})
+                    .Size(FVector2D{k_EmptyStateIconSize, k_EmptyStateIconSize})
+                ]
+
+                + SHorizontalBox::Slot()
+                .FillWidth(1.0f)
+                .VAlign(VAlign_Center)
+                [
+                    SNew(STextBlock)
+                    .Text(FText::FromString(TEXT("No snapshots yet. Capture takes a picture of what the camera ")
+                            TEXT("sees; selection mode then identifies every mesh in it — in the editor or a ")
+                            TEXT("Development build.")))
+                    .AutoWrapText(true)
+                    .ColorAndOpacity(FSlateColor{CkStyle::TextDim()})
+                ]
+            ]
         ];
 }
 

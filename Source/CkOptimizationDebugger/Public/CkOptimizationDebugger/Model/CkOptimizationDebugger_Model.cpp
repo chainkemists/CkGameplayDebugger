@@ -44,6 +44,105 @@ auto
     // whether or not somebody pressed Play. Dropping the census at a PIE boundary would throw away a scan that is
     // still true. The dirty-package rows inside it are live state and go stale — which is why that category is
     // refresh-on-demand and says so.
+    //
+    // `_Snapshots` survives for a stronger version of the same reason: a snapshot is a picture of a moment that has
+    // already passed, and every number in it was captured with the image. Dropping them at the boundary would delete
+    // exactly the evidence a reader took a snapshot in order to compare against what came after.
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    FCkOptimizationDebugger_Model::
+    Add_Snapshot(
+        FCkOptimizationDebugger_Snapshot&& InSnapshot,
+        int32 InMaxStored)
+    -> void
+{
+    _Snapshots.Add(MoveTemp(InSnapshot));
+
+    // Floored at one: a cap of zero would evict the capture the reader just asked for, which reads as the button
+    // being broken rather than as a setting being wrong.
+    const auto MaxStored = FMath::Max(1, InMaxStored);
+
+    while (_Snapshots.Num() > MaxStored)
+    { _Snapshots.RemoveAt(0); }
+
+    _ActiveSnapshotIndex = _Snapshots.Num() - 1;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    FCkOptimizationDebugger_Model::
+    Remove_ActiveSnapshot()
+    -> void
+{
+    if (NOT _Snapshots.IsValidIndex(_ActiveSnapshotIndex))
+    { return; }
+
+    _Snapshots.RemoveAt(_ActiveSnapshotIndex);
+
+    // Clamped rather than cleared: deleting one of several leaves the reader looking at the one that took its place,
+    // which is what every other list in this window does.
+    _ActiveSnapshotIndex = _Snapshots.IsEmpty()
+        ? INDEX_NONE
+        : FMath::Min(_ActiveSnapshotIndex, _Snapshots.Num() - 1);
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    FCkOptimizationDebugger_Model::
+    Set_ActiveSnapshotIndex(
+        int32 InIndex)
+    -> void
+{
+    _ActiveSnapshotIndex = _Snapshots.IsEmpty()
+        ? INDEX_NONE
+        : FMath::Clamp(InIndex, 0, _Snapshots.Num() - 1);
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    FCkOptimizationDebugger_Model::
+    Cycle_ActiveSnapshot(
+        int32 InDelta)
+    -> void
+{
+    if (_Snapshots.IsEmpty())
+    {
+        _ActiveSnapshotIndex = INDEX_NONE;
+        return;
+    }
+
+    const auto Count = _Snapshots.Num();
+    const auto Current = _Snapshots.IsValidIndex(_ActiveSnapshotIndex) ? _ActiveSnapshotIndex : 0;
+
+    // Modulo twice, because C++ keeps the sign of the dividend: cycling backwards off the front has to arrive at the
+    // last snapshot, not at a negative index.
+    _ActiveSnapshotIndex = ((Current + InDelta) % Count + Count) % Count;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    FCkOptimizationDebugger_Model::
+    TryGet_ActiveSnapshot() const
+    -> const FCkOptimizationDebugger_Snapshot*
+{
+    return _Snapshots.IsValidIndex(_ActiveSnapshotIndex) ? &_Snapshots[_ActiveSnapshotIndex] : nullptr;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    FCkOptimizationDebugger_Model::
+    TryGet_MutableActiveSnapshot()
+    -> FCkOptimizationDebugger_Snapshot*
+{
+    return _Snapshots.IsValidIndex(_ActiveSnapshotIndex) ? &_Snapshots[_ActiveSnapshotIndex] : nullptr;
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -923,6 +1022,7 @@ namespace ck_optimization_debugger_model
             ECkOptimizationDebugger_Page::Memory,
             ECkOptimizationDebugger_Page::Profiling,
             ECkOptimizationDebugger_Page::Cleanup,
+            ECkOptimizationDebugger_Page::Snapshots,
         };
     }
 
@@ -972,6 +1072,7 @@ namespace ck_optimization_debugger_model
             case ECkOptimizationDebugger_Page::Memory:    return FName{TEXT("Memory")};
             case ECkOptimizationDebugger_Page::Profiling: return FName{TEXT("Profiling")};
             case ECkOptimizationDebugger_Page::Cleanup:   return FName{TEXT("Cleanup")};
+            case ECkOptimizationDebugger_Page::Snapshots: return FName{TEXT("Snapshots")};
             default:                                     return FName{TEXT("Dashboard")};
         }
     }
@@ -990,6 +1091,7 @@ namespace ck_optimization_debugger_model
             case ECkOptimizationDebugger_Page::Memory:    return TEXT("Memory");
             case ECkOptimizationDebugger_Page::Profiling: return TEXT("Profiling");
             case ECkOptimizationDebugger_Page::Cleanup:   return TEXT("Cleanup");
+            case ECkOptimizationDebugger_Page::Snapshots: return TEXT("Snapshots");
             default:                                     return TEXT("Dashboard");
         }
     }

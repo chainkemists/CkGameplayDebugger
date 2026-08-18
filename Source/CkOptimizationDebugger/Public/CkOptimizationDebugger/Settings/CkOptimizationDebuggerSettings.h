@@ -99,6 +99,24 @@ public:
     int32 MinTexturesForStreamingWarning = 50;
 
     // ----------------------------------------------------------------------------------------------------------------
+    // SNAPSHOTS
+    //
+    // Deliberately NOT in the "Thresholds" category: neither is a budget anything is judged against, and the
+    // dashboard's threshold editor lists exactly that category. A snapshot setting appearing among the budgets would
+    // read as one.
+    // ----------------------------------------------------------------------------------------------------------------
+
+    UPROPERTY(config, EditAnywhere, Category = "Snapshots",
+        meta = (DisplayName = "Max Stored Snapshots", ClampMin = "1", ClampMax = "64",
+            ToolTip = "Oldest snapshots are dropped past this count. Each stored snapshot holds a compressed image and a per-pixel mesh-ID map."))
+    int32 MaxStoredSnapshots = 8;
+
+    UPROPERTY(config, EditAnywhere, Category = "Snapshots",
+        meta = (DisplayName = "Snapshot Capture Width", ClampMin = "256", ClampMax = "4096",
+            ToolTip = "Snapshot image width in pixels; height follows the camera's aspect ratio."))
+    int32 SnapshotCaptureWidth = 1280;
+
+    // ----------------------------------------------------------------------------------------------------------------
     // SCAN SCOPE
     // ----------------------------------------------------------------------------------------------------------------
 

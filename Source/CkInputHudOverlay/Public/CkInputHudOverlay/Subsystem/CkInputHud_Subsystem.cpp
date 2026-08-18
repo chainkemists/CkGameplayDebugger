@@ -60,7 +60,7 @@ auto
     static TAutoConsoleVariable<float> CVar_Scale(
         TEXT("ck.InputOverlay.Scale"),
         1.0f,
-        TEXT("Render scale of the Ck input overlay."),
+        TEXT("Render scale of the Ck input overlay. Any finite non-negative value is accepted; zero hides it."),
         ECVF_Default);
 
     static TAutoConsoleVariable<int32> CVar_Corner(

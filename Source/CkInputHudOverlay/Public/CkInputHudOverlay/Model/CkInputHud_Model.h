@@ -64,10 +64,6 @@ struct FCk_InputHud_Event
 class CKINPUTHUDOVERLAY_API FCk_InputHud_Model
 {
 public:
-    // The fraction of a released entry's fade lifetime it holds FULL opacity for, before the linear ramp to zero.
-    static constexpr float FadeHoldFraction = 0.3f;
-
-public:
     /** Drop every volatile reading. Called on deactivate and whenever the input source stops resolving. */
     auto Reset() -> void;
 
@@ -141,7 +137,7 @@ public:
         double                    InNowSeconds,
         float                     InTapHoldThresholdMs) -> ECk_InputHud_EventKind;
 
-    /** 1 while held or inside the hold fraction, then linear to 0 at the end of the lifetime. */
+    /** 1 while held; released entries fade linearly from 1 at release to 0 at the end of the lifetime. */
     static auto Get_FadeOpacity(
         const FCk_InputHud_Event& InEvent,
         double                    InNowSeconds,
@@ -158,6 +154,8 @@ public:
         const TArray<TPair<int32, FString>>& InLayers) -> bool;
 
     auto Get_LayerLine() const -> const FString& { return _LayerLine; }
+    auto Get_LayerPrimary() const -> const FString& { return _LayerPrimary; }
+    auto Get_LayerRemainder() const -> const FString& { return _LayerRemainder; }
 
 public:
     // ---- Live readings ----
@@ -187,6 +185,8 @@ private:
     // only when the stack really changed, not on every tick.
     FString _LayerCompareKey;
     FString _LayerLine;
+    FString _LayerPrimary;
+    FString _LayerRemainder;
 
     ECommonInputType _ActiveInputType = ECommonInputType::MouseAndKeyboard;
 

@@ -19,7 +19,16 @@ class CKINPUTHUDOVERLAY_API UCk_InputHud_Settings : public UDeveloperSettings
     GENERATED_BODY()
 
 public:
-    virtual FName GetCategoryName() const override { return TEXT("Ck"); }
+    virtual auto
+    GetCategoryName() const -> FName override
+    {
+        return TEXT("Ck");
+    }
+
+#if WITH_EDITOR
+    virtual auto
+    PostEditChangeProperty(FPropertyChangedEvent& InPropertyChangedEvent) -> void override;
+#endif
 
 public:
     // How many RELEASED chips the ribbon keeps. Held chips are pinned and never counted against this.

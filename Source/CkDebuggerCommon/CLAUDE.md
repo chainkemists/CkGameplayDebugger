@@ -20,10 +20,12 @@ provides:
   THE registered brush set for the suite: `CkDebugger.Background.*`,
   `Panel.*`, `Row.*`, `Graph.*`, `Badge.Rounded`, the `CkDebugger.Text.*` text
   styles, the translucent `CkDebugger.TableView.Row` selection style, and the
-  SVG icon registry scanned out of the plugin's `Resources/Icons/**`. Promoted
-  out of CkEcsDebugger; `CkDebuggerCommon` owns its `Initialize`/`Shutdown`, so
-  a feature module must never call either. Adopt it instead of registering a
-  module-local `FSlateStyleSet`.
+  Brushes and text styles for the suite. ICONS moved to the CkFoundation typed
+  registry (`FCkIconStyle::Get_Brush(ECk_Icon, size)` in CkEditorTools) — icons are
+  referenced by the GENERATED, compile-checked `ECk_Icon` identifier, never by a
+  string key or an SVG basename. `CkDebuggerCommon` owns this set's
+  `Initialize`/`Shutdown`; a feature module must never call either. Adopt it
+  instead of registering a module-local `FSlateStyleSet`.
 - **Shared Slate widgets** (`Widgets/`) — composable building blocks for rows,
   pills, headers, status indicators, copy / selectable text.
 - **Search bars** (`Search/`) — `SCkDebug_DualSearchBar` (side-by-side Filter +
@@ -49,7 +51,7 @@ probably already exists.
 
 ## Severity iconography — one axis, one meaning
 
-`ck::debug_axes::Get_ToneIconId(ECk_Tone)` is the single rule mapping a tone to its glyph, and it lives beside the
+`ck::debug_axes::Get_ToneIcon(ECk_Tone)` is the single rule mapping a tone to its glyph (a typed `ECk_Icon`), and it lives beside the
 colour ramps because tone → colour and tone → glyph are one axis wearing two hats. A tool that picks its own severity
 pictures while binding the shared tone colour is a tool whose picture and colour can drift apart.
 
@@ -63,10 +65,9 @@ pictures while binding the shared tone colour is a tool whose picture and colour
 
 Four rules worth knowing before touching them:
 
-- **They live at `Resources/Icons/` ROOT, never in `General/`.** Only `Icons/General/**` feeds
-  `Get_GeneralIconPool`, the deterministic pool a feature without a bespoke glyph is assigned from at random. A
-  severity picture handed out as somebody's arbitrary decoration would make the one thing on screen that must mean
-  exactly one thing mean anything at all.
+- **They are never in the generated decorative pool** (`ck::icons::Get_GeneratedPool()`, the deterministic pool a
+  feature without a bespoke glyph is assigned from at random). A severity picture handed out as somebody's arbitrary
+  decoration would make the one thing on screen that must mean exactly one thing mean anything at all.
 - **Severity reads from SHAPE, not colour.** Every icon in this suite is a monochrome stroke tinted by its
   `ColorAndOpacity`, so the four must stay distinguishable with the tint removed — hence triangle-vs-circle outlines
   rather than four circles with different marks.
@@ -74,8 +75,8 @@ Four rules worth knowing before touching them:
   and is literally the engine's art, and it loses on two counts: an `FAppStyle` brush sits outside Style Lab, so it
   would be the one icon in a window a style revision cannot restyle; and it is an editor style set, while several of
   these modules also ship in packaged Development/DebugGame builds.
-- **`Neutral` and `Accent` return `NAME_None` and callers must draw nothing.** `Get_IconBrush` returns null for an
-  empty id, which `SCkDebug_Icon` and `SCkDebug_IconToggle` already handle.
+- **`Neutral` and `Accent` return `ECk_Icon::None` and callers must draw nothing.** `FCkIconStyle::Get_Brush`
+  returns null for `None`, which `SCkDebug_Icon` and `SCkDebug_IconToggle` already handle.
 
 `Ck.DebuggerCommon.Axes.ToneIcons` pins the mapping, the distinctness, that every glyph resolves to a real brush in
 **both** style sets (the silent-nullptr class of bug: a typo'd filename draws nothing and reports nothing), and that

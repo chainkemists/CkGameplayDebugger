@@ -54,11 +54,9 @@ public:
 
     // Resolves a monochrome debugger glyph from Resources/Icons. The brush is
     // white and should be tinted through the widget foreground color.
-    static auto Get_IconBrush(FName InIconId) -> const FSlateBrush*;
 
 private:
     static auto Create() -> TSharedRef<FSlateStyleSet>;
-    static auto CreateIconBrushes(TSharedRef<FSlateStyleSet> InStyle, const FString& InPluginBaseDir) -> void;
 
     static TSharedPtr<FSlateStyleSet> StyleInstance;
 };

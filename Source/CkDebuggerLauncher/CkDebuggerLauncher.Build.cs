@@ -24,13 +24,5 @@ public class CkDebuggerLauncher : CkModuleRules
         {
             PublicDependencyModuleNames.Add("WorkspaceMenuStructure");
         }
-
-        foreach (var IconPath in Directory.EnumerateFiles(
-            Path.Combine(PluginDirectory, "Resources", "Icons"),
-            "*.svg",
-            SearchOption.AllDirectories))
-        {
-            RuntimeDependencies.Add(IconPath, StagedFileType.NonUFS);
-        }
     }
 }

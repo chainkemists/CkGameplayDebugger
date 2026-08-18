@@ -12,8 +12,9 @@
 // swaps its #include. Feature modules adopt this set instead of registering module-local equivalents.
 //
 // Division of labour:
-//   CkStyle::                (CkEditorTools) colors + typography tokens — tunable, no Slate objects
-//   FCkDebuggerStyle         registered BRUSHES / text styles / the SVG icon registry (this file)
+//   CkStyle::                (CkEditorTools) colors + typography tokens — tunable
+//   FCkIconStyle             (CkEditorTools) THE typed icon registry — every glyph resolves through ECk_Icon
+//   FCkDebuggerStyle         registered BRUSHES / text styles (this file)
 //   FCkDebuggerCommonStyle   brushes only the common widgets need (glow halos, flat button, toggle)
 //
 // Everything here is SlateCore-only, so the set builds and registers in a non-editor target — which
@@ -27,22 +28,6 @@ public:
     static auto Shutdown() -> void;
     static auto Get() -> const ISlateStyle&;
     static auto GetStyleSetName() -> FName;
-
-    /**
-     * Resolves "CkDebugger.Icon.<InIconId>" — the monochrome feature glyphs registered
-     * from Resources/Icons/*.svg. They are white by design: tint per-feature at draw
-     * time via SImage.ColorAndOpacity so one asset serves every color/state.
-     * Unknown ids yield nullptr — pass registered ids only.
-     */
-    static auto Get_IconBrush(FName InIconId) -> const FSlateBrush*;
-
-    /**
-     * The general archetype glyph library (Resources/Icons/General/*.svg, sorted by
-     * name). Archetypes without a bespoke or dominant-feature icon hash their key into
-     * this pool for a stable, distinct glyph. Game archetype descriptors may also name
-     * any of these directly via their IconSvgPath.
-     */
-    static auto Get_GeneralIconPool() -> const TArray<FName>&;
 
     /**
      * Shape variants for the CornerStyle axis. Rounded resolves through CkStyle's own rounded
@@ -78,11 +63,9 @@ public:
 
 private:
     static TSharedPtr<FSlateStyleSet> StyleInstance;
-    static TArray<FName> GeneralIconPool;
 
     static auto Create() -> TSharedRef<FSlateStyleSet>;
     static auto CreateBrushes(TSharedRef<FSlateStyleSet> InStyle) -> void;
-    static auto CreateIconBrushes(TSharedRef<FSlateStyleSet> InStyle) -> void;
     static auto CreateTextStyles(TSharedRef<FSlateStyleSet> InStyle) -> void;
 };
 

@@ -44,15 +44,6 @@ auto FCkDebuggerLauncherStyle::GetStyleSetName() -> FName
     return StyleSetName;
 }
 
-auto FCkDebuggerLauncherStyle::Get_IconBrush(FName InIconId) -> const FSlateBrush*
-{
-    if (InIconId.IsNone() || NOT _StyleInstance.IsValid())
-    { return nullptr; }
-
-    return _StyleInstance->GetOptionalBrush(
-        FName{FString{TEXT("CkDebuggerLauncher.Icon.")} + InIconId.ToString()});
-}
-
 auto FCkDebuggerLauncherStyle::Create() -> TSharedRef<FSlateStyleSet>
 {
     auto Style = MakeShared<FSlateStyleSet>(GetStyleSetName());
@@ -63,7 +54,6 @@ auto FCkDebuggerLauncherStyle::Create() -> TSharedRef<FSlateStyleSet>
 
     Style->SetContentRoot(Plugin->GetBaseDir() / TEXT("Resources"));
     CreateBrushes(Style);
-    CreateIconBrushes(Style);
     return Style;
 }
 
@@ -106,28 +96,6 @@ auto FCkDebuggerLauncherStyle::CreateBrushes(TSharedRef<FSlateStyleSet> InStyle)
     InStyle->Set("CkDebuggerLauncher.ToolText", FTextBlockStyle{}
         .SetFont(FCoreStyle::GetDefaultFontStyle(TEXT("Regular"), 9))
         .SetColorAndOpacity(FSlateColor::UseForeground()));
-}
-
-auto FCkDebuggerLauncherStyle::CreateIconBrushes(TSharedRef<FSlateStyleSet> InStyle) -> void
-{
-    const auto RegisterDirectory = [&InStyle](const FString& InDirectory) -> void
-    {
-        auto Files = TArray<FString>{};
-        IFileManager::Get().FindFiles(Files, *(InDirectory / TEXT("*.svg")), true, false);
-        Files.Sort();
-
-        for (const auto& File : Files)
-        {
-            const auto IconId = FPaths::GetBaseFilename(File);
-            InStyle->Set(
-                FName{FString{TEXT("CkDebuggerLauncher.Icon.")} + IconId},
-                new FSlateVectorImageBrush{InDirectory / File, FVector2D{24.0f, 24.0f}});
-        }
-    };
-
-    const auto IconsDirectory = InStyle->GetContentRootDir() / TEXT("Icons");
-    RegisterDirectory(IconsDirectory);
-    RegisterDirectory(IconsDirectory / TEXT("General"));
 }
 
 // --------------------------------------------------------------------------------------------------------------------

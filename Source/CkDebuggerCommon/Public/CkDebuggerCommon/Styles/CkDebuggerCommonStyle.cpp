@@ -102,20 +102,6 @@ auto
     return Get().GetWidgetStyle<FCheckBoxStyle>(TEXT("CkCommon.IconToggle"));
 }
 
-auto
-    FCkDebuggerCommonStyle::
-    Get_IconBrush(FName InIconId)
-    -> const FSlateBrush*
-{
-    if (InIconId.IsNone() || NOT StyleInstance.IsValid())
-    { return nullptr; }
-
-    return StyleInstance->GetOptionalBrush(
-        FName{FString{TEXT("CkCommon.Icon.")} + InIconId.ToString()},
-        nullptr,
-        nullptr);
-}
-
 // ====================================================================================================================
 
 auto
@@ -133,7 +119,6 @@ auto
     { return Style; }
 
     Style->SetContentRoot(Plugin->GetBaseDir() / TEXT("Source/CkDebuggerCommon/Resources"));
-    CreateIconBrushes(Style, Plugin->GetBaseDir());
 
     // ---- Glow halos (white, tint at use site) ----------------------------------------------------------------------
     Style->Set("CkCommon.Glow.Soft", new FSlateBoxBrush(
@@ -171,31 +156,6 @@ auto
         .SetPadding(FMargin{6.0f, 4.0f}));
 
     return Style;
-}
-
-auto
-    FCkDebuggerCommonStyle::
-    CreateIconBrushes(TSharedRef<FSlateStyleSet> InStyle, const FString& InPluginBaseDir)
-    -> void
-{
-    const auto RegisterDirectory = [&InStyle](const FString& InDirectory) -> void
-    {
-        auto Files = TArray<FString>{};
-        IFileManager::Get().FindFiles(Files, *(InDirectory / TEXT("*.svg")), true, false);
-        Files.Sort();
-
-        for (const auto& File : Files)
-        {
-            const auto IconId = FPaths::GetBaseFilename(File);
-            InStyle->Set(
-                FName{FString{TEXT("CkCommon.Icon.")} + IconId},
-                new FSlateVectorImageBrush{InDirectory / File, FVector2D{16.0f, 16.0f}});
-        }
-    };
-
-    const auto IconsDirectory = InPluginBaseDir / TEXT("Resources/Icons");
-    RegisterDirectory(IconsDirectory);
-    RegisterDirectory(IconsDirectory / TEXT("General"));
 }
 
 // ====================================================================================================================

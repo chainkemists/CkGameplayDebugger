@@ -103,7 +103,7 @@ bool FCkDebuggerStyle_ProfileRegistryIntegrity::RunTest(const FString& Parameter
 
     TestEqual(TEXT("Four curated profiles are registered"), Profiles.Num(), 4);
 
-    if (Profiles.Num() == 0)
+    if (Profiles.Num() != 4)
     { return false; }
 
     TestEqual(TEXT("Classic is first"), Profiles[0].Name, FString{TEXT("Classic")});
@@ -184,8 +184,8 @@ bool FCkDebuggerStyle_GraphMotionSelection::RunTest(const FString& Parameters)
     TestTrue(TEXT("Graph Motion includes Measured"), Options.Contains(ECkDebugAxis_GraphMotion::Measured));
     TestTrue(TEXT("Graph Motion includes Deliberate"), Options.Contains(ECkDebugAxis_GraphMotion::Deliberate));
 
-    TestEqual(TEXT("Current style schema includes Graph Motion"),
-        UCkDebuggerStyleSettings::CurrentSchemaVersion, 7);
+    TestEqual(TEXT("Current style schema retains the retired Input HUD axis migration"),
+        UCkDebuggerStyleSettings::CurrentSchemaVersion, 9);
 
     return true;
 }
@@ -798,10 +798,11 @@ bool FCkDebuggerStyle_SchemaV4AxesResolveDistinctly::RunTest(const FString& Para
     Settings->Selection = FCkDebuggerStyleSelection{};
 
     // v5 split EntityIdStyle (composition) from EntityRefStyle (treatment); v6 added GraphMotion;
-    // v7 added GraphEventEmphasis.
+    // v7 added GraphEventEmphasis; v8 temporarily added InputHudStyle; v9 retires it because Signal Strip is
+    // feature-local rather than a shared debugger axis.
     // The catalog schema check makes either accidental regression a test failure rather than a silent revert.
     TestEqual(TEXT("Schema version tracks the current axis catalog"),
-        UCkDebuggerStyleSettings::CurrentSchemaVersion, 7);
+        UCkDebuggerStyleSettings::CurrentSchemaVersion, 9);
 
     // ---- TextScale -----------------------------------------------------------
     const auto RoleSize = CkStyle::FontSizeSmall();

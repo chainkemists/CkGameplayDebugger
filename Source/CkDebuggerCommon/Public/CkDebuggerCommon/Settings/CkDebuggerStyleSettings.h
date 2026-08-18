@@ -37,7 +37,10 @@ public:
     //     falls back to the NameAndId default and keeps whatever EntityRefStyle it already had.
     // v6: + GraphMotion (state-machine graph feedback pacing).
     // v7: + GraphEventEmphasis (colorless state-machine graph event geometry).
-    static constexpr int32 CurrentSchemaVersion = 7;
+    // v8: + InputHudStyle (colorless on-screen input HUD visual grammar).
+    // v9: - InputHudStyle. Signal Strip is now the sole feature-local Input HUD layout; its palette and
+    //     presentation settings belong to the Input HUD rather than the shared debugger style selection.
+    static constexpr int32 CurrentSchemaVersion = 9;
 
 public:
     UCkDebuggerStyleSettings();

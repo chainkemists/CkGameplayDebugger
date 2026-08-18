@@ -991,7 +991,7 @@ specific to this module:
   Minor → `Info`. Nothing here is ever `Ok`-toned: a finding is by definition something the reader may want to act
   on, and painting one green says the opposite. `Ck.OptimizationDebugger.Model.SeverityTones` pins the mapping and
   its distinctness.
-- **The severity GLYPH comes off that same tone**, through `ck::debug_axes::Get_ToneIconId` — so colour and picture
+- **The severity GLYPH comes off that same tone**, through `ck::debug_axes::Get_ToneIcon` — so colour and picture
   cannot drift, and this tool no longer owns an opinion about what severity looks like. It used to name `Skull` /
   `Flame` / `Note` out of the decorative `Icons/General/**` set, which had two problems: those are not the pictures
   UE uses for severity anywhere else, so a reader had to learn them here; and `Skull` simultaneously meant "Critical"
@@ -1001,7 +1001,7 @@ specific to this module:
   glyphs on the chrome's icon-action row — `Skull` Critical, `Flame` Major, `Note` Minor — and each category has
   one, used in the filter row AND on the group header so a category never means two pictures: `Cube` mesh,
   `Palette` texture, `Brush` material, `Bulb` lighting, `Person` actor, `Puzzle` blueprint, `Gear` project
-  settings. Every id resolves through `FCkDebuggerStyle::Get_IconBrush` and renders through `SCkDebug_Icon` —
+  settings. Every id resolves through `FCkIconStyle::Get_Brush` and renders through `SCkDebug_Icon` —
   never a bare `SImage`. (The `SCkDebug_IconToggle`/`SCkDebug_IconToolbar` path resolves the same ids through
   `FCkDebuggerCommonStyle`, which scans the same `Resources/Icons/**` tree under a different prefix.)
 - **Category colour comes from the shared categorical ramp** (`ck::debug_axes::Get_CategoricalColor`), indexed by

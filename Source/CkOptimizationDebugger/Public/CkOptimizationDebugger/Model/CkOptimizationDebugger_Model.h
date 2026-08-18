@@ -1,5 +1,7 @@
 ﻿#pragma once
 
+#include "CkOptimizationDebugger/Model/CkOptimizationDebugger_Snapshot.h"
+
 #include "CkCore/Macros/CkMacros.h"
 
 #include "CkEditorTools/Style/CkStyle.h"
@@ -14,8 +16,10 @@
 
 // --------------------------------------------------------------------------------------------------------------------
 
-/** The window's five pages. The page bar and the body switcher are both driven from this enum IN DECLARATION ORDER —
- *  `Get_PageIndex` is the enum's own value, so a switcher slot must be added per page in exactly this order. */
+/** The window's six pages. The page bar and the body switcher are both driven from this enum IN DECLARATION ORDER —
+ *  `Get_PageIndex` is the enum's own value, so a switcher slot must be added per page in exactly this order, and a
+ *  new page is APPENDED. Inserting one mid-enum renumbers every page after it and silently points each tab at its
+ *  neighbour's body. */
 enum class ECkOptimizationDebugger_Page : uint8
 {
     Dashboard,
@@ -23,6 +27,7 @@ enum class ECkOptimizationDebugger_Page : uint8
     Memory,
     Profiling,
     Cleanup,
+    Snapshots,
 };
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -586,6 +591,33 @@ public:
     auto
     Reset() -> void;
 
+    /** Stores a capture and makes it the active one. `InMaxStored` is handed IN — the model reads no settings object,
+     *  for the same reason a check does not: a cap edited half way through would make two stores disagree. Past the
+     *  cap the OLDEST is evicted, which is the only eviction order that keeps "the last N you took". */
+    auto
+    Add_Snapshot(
+        FCkOptimizationDebugger_Snapshot&& InSnapshot,
+        int32 InMaxStored) -> void;
+
+    auto
+    Remove_ActiveSnapshot() -> void;
+
+    auto
+    Set_ActiveSnapshotIndex(
+        int32 InIndex) -> void;
+
+    /** Wraps in both directions: cycling past the newest returns to the oldest. A no-op when there are none. */
+    auto
+    Cycle_ActiveSnapshot(
+        int32 InDelta) -> void;
+
+    auto
+    TryGet_ActiveSnapshot() const -> const FCkOptimizationDebugger_Snapshot*;
+
+    /** The mutable twin, for the one thing that legitimately writes into a stored snapshot: the reader's selection. */
+    auto
+    TryGet_MutableActiveSnapshot() -> FCkOptimizationDebugger_Snapshot*;
+
     /** Replaces the findings with the deterministic sort of what was passed in, and marks the model as scanned. */
     auto
     Set_Findings(
@@ -998,6 +1030,14 @@ private:
     // shared one search box would each narrow when the reader typed into another.
     FString _CleanupFilterString;
 
+    // Captures, oldest first. They are HISTORY — pictures of what the camera saw at a moment — so like the cleanup
+    // rows they survive a PIE boundary; unlike everything else on this window they DESCRIBE a world that is meant to
+    // have moved on. The cap that evicts the oldest is handed in by the caller, never read off the settings CDO.
+    TArray<FCkOptimizationDebugger_Snapshot> _Snapshots;
+
+    // Which one the viewer is showing. `INDEX_NONE` when there are none.
+    int32 _ActiveSnapshotIndex = INDEX_NONE;
+
 public:
     CK_PROPERTY(_ActivePage);
     CK_PROPERTY_GET(_Findings);
@@ -1018,13 +1058,15 @@ public:
     CK_PROPERTY_GET(_HasCleanupScan);
     CK_PROPERTY_GET(_LastCleanupScanTime);
     CK_PROPERTY(_CleanupFilterString);
+    CK_PROPERTY_GET(_Snapshots);
+    CK_PROPERTY_GET(_ActiveSnapshotIndex);
 };
 
 // --------------------------------------------------------------------------------------------------------------------
 
 namespace ck_optimization_debugger_model
 {
-    constexpr auto k_PageCount         = 5;
+    constexpr auto k_PageCount         = 6;
     constexpr auto k_SeverityCount     = 3;
     constexpr auto k_CategoryCount     = 7;
     constexpr auto k_DiskCategoryCount = 8;

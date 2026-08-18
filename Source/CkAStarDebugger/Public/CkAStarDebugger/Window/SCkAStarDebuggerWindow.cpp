@@ -115,7 +115,7 @@ auto
             .CommandGroups({
                 FCkDebug_CommandGroup::Primary(TEXT("Capture"), FText::FromString(TEXT("Capture controls")),
                 SNew(SCkDebug_IconToggle)
-                .IconId(TEXT("Hourglass"))
+                .IconId(ECk_Icon::Waiting)
                 .Label(FText::FromString(TEXT("Pause capture")))
                 .ToolTip(FText::FromString(TEXT("Freeze A* debugger capture; gameplay continues running.")))
                 .IsOn_Lambda([this]() { return _ViewModel.IsValid() && _ViewModel->Get_Paused(); })

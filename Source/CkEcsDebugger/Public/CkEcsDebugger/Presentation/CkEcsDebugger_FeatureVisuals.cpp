@@ -16,68 +16,68 @@ auto
 
         for (const auto& Metadata : FCkDebuggerInspectorRegistry::Get().Get_AllMetadata())
         {
-            if (Metadata.FeatureFlagId.IsNone() || Metadata.IconName.IsNone())
+            if (Metadata.FeatureFlagId.IsNone() || Metadata.Icon == ECk_Icon::None)
             { continue; }
 
             Map.Add(Metadata.FeatureFlagId, FFeatureVisual{
-                Metadata.IconName,
+                Metadata.Icon,
                 Metadata.Color.Get(FLinearColor::White) });
         }
 
-        Map.Add(TEXT("StateMachine"),     FFeatureVisual{ TEXT("StateMachine"), FLinearColor::FromSRGBColor(FColor::FromHex(TEXT("8F6FE8"))) });
-        Map.Add(TEXT("Aggro"),            FFeatureVisual{ TEXT("Aggro"),        FLinearColor::FromSRGBColor(FColor::FromHex(TEXT("C94F4F"))) });
-        Map.Add(TEXT("AudioTrack"),       FFeatureVisual{ TEXT("Audio"),        FLinearColor::FromSRGBColor(FColor::FromHex(TEXT("4FA3C9"))) });
-        Map.Add(TEXT("Label"),            FFeatureVisual{ TEXT("Label"),        FLinearColor::FromSRGBColor(FColor::FromHex(TEXT("8B93A1"))) });
-        Map.Add(TEXT("Objective"),        FFeatureVisual{ TEXT("Objective"),    FLinearColor::FromSRGBColor(FColor::FromHex(TEXT("D9B23F"))) });
-        Map.Add(TEXT("VfxCue"),           FFeatureVisual{ TEXT("Vfx"),          FLinearColor::FromSRGBColor(FColor::FromHex(TEXT("F06FD0"))) });
-        Map.Add(TEXT("Camera"),           FFeatureVisual{ TEXT("Camera"),       FLinearColor::FromSRGBColor(FColor::FromHex(TEXT("6FA8E8"))) });
-        Map.Add(TEXT("Goap"),             FFeatureVisual{ TEXT("Goap"),         FLinearColor::FromSRGBColor(FColor::FromHex(TEXT("B06FE8"))) });
-        Map.Add(TEXT("Eqs"),              FFeatureVisual{ TEXT("Eqs"),          FLinearColor::FromSRGBColor(FColor::FromHex(TEXT("5FD0A0"))) });
-        Map.Add(TEXT("IsmProxy"),         FFeatureVisual{ TEXT("IsmRenderer"),  FLinearColor::FromSRGBColor(FColor::FromHex(TEXT("7F8FE8"))) });
-        Map.Add(TEXT("IskmProxy"),        FFeatureVisual{ TEXT("IsmRenderer"),  FLinearColor::FromSRGBColor(FColor::FromHex(TEXT("9F7FE8"))) });
-        Map.Add(TEXT("ActorBridge"),      FFeatureVisual{ TEXT("ActorBridge"),  FLinearColor::FromSRGBColor(FColor::FromHex(TEXT("E8985F"))) });
-        Map.Add(TEXT("Tween"),            FFeatureVisual{ TEXT("Tween"),        FLinearColor::FromSRGBColor(FColor::FromHex(TEXT("5FBFE8"))) });
-        Map.Add(TEXT("EntityCollection"), FFeatureVisual{ TEXT("EntityCollection"), FLinearColor::FromSRGBColor(FColor::FromHex(TEXT("8FB25F"))) });
+        Map.Add(TEXT("StateMachine"),     FFeatureVisual{ ECk_Icon::StateMachine, FLinearColor::FromSRGBColor(FColor::FromHex(TEXT("8F6FE8"))) });
+        Map.Add(TEXT("Aggro"),            FFeatureVisual{ ECk_Icon::Aggro,        FLinearColor::FromSRGBColor(FColor::FromHex(TEXT("C94F4F"))) });
+        Map.Add(TEXT("AudioTrack"),       FFeatureVisual{ ECk_Icon::Audio,        FLinearColor::FromSRGBColor(FColor::FromHex(TEXT("4FA3C9"))) });
+        Map.Add(TEXT("Label"),            FFeatureVisual{ ECk_Icon::Label,        FLinearColor::FromSRGBColor(FColor::FromHex(TEXT("8B93A1"))) });
+        Map.Add(TEXT("Objective"),        FFeatureVisual{ ECk_Icon::Objective,    FLinearColor::FromSRGBColor(FColor::FromHex(TEXT("D9B23F"))) });
+        Map.Add(TEXT("VfxCue"),           FFeatureVisual{ ECk_Icon::Vfx,          FLinearColor::FromSRGBColor(FColor::FromHex(TEXT("F06FD0"))) });
+        Map.Add(TEXT("Camera"),           FFeatureVisual{ ECk_Icon::Camera,       FLinearColor::FromSRGBColor(FColor::FromHex(TEXT("6FA8E8"))) });
+        Map.Add(TEXT("Goap"),             FFeatureVisual{ ECk_Icon::Goap,         FLinearColor::FromSRGBColor(FColor::FromHex(TEXT("B06FE8"))) });
+        Map.Add(TEXT("Eqs"),              FFeatureVisual{ ECk_Icon::Eqs,          FLinearColor::FromSRGBColor(FColor::FromHex(TEXT("5FD0A0"))) });
+        Map.Add(TEXT("IsmProxy"),         FFeatureVisual{ ECk_Icon::IsmRenderer,  FLinearColor::FromSRGBColor(FColor::FromHex(TEXT("7F8FE8"))) });
+        Map.Add(TEXT("IskmProxy"),        FFeatureVisual{ ECk_Icon::IsmRenderer,  FLinearColor::FromSRGBColor(FColor::FromHex(TEXT("9F7FE8"))) });
+        Map.Add(TEXT("ActorBridge"),      FFeatureVisual{ ECk_Icon::ActorBridge,  FLinearColor::FromSRGBColor(FColor::FromHex(TEXT("E8985F"))) });
+        Map.Add(TEXT("Tween"),            FFeatureVisual{ ECk_Icon::Tween,        FLinearColor::FromSRGBColor(FColor::FromHex(TEXT("5FBFE8"))) });
+        Map.Add(TEXT("EntityCollection"), FFeatureVisual{ ECk_Icon::EntityCollection, FLinearColor::FromSRGBColor(FColor::FromHex(TEXT("8FB25F"))) });
         // Attribute types read apart: distinct glyphs AND distinct hues per value type.
-        Map.Add(TEXT("FloatAttribute"),   FFeatureVisual{ TEXT("AttributeFloat"),   FLinearColor::FromSRGBColor(FColor::FromHex(TEXT("3FA1AD"))) });
-        Map.Add(TEXT("ByteAttribute"),    FFeatureVisual{ TEXT("AttributeByte"),    FLinearColor::FromSRGBColor(FColor::FromHex(TEXT("C9884F"))) });
-        Map.Add(TEXT("IntegerAttribute"), FFeatureVisual{ TEXT("AttributeInteger"), FLinearColor::FromSRGBColor(FColor::FromHex(TEXT("4F7DC9"))) });
-        Map.Add(TEXT("VectorAttribute"),  FFeatureVisual{ TEXT("AttributeVector"),  FLinearColor::FromSRGBColor(FColor::FromHex(TEXT("7DC94F"))) });
-        Map.Add(TEXT("RotatorAttribute"), FFeatureVisual{ TEXT("AttributeRotator"), FLinearColor::FromSRGBColor(FColor::FromHex(TEXT("C95F9E"))) });
+        Map.Add(TEXT("FloatAttribute"),   FFeatureVisual{ ECk_Icon::AttributeFloat,   FLinearColor::FromSRGBColor(FColor::FromHex(TEXT("3FA1AD"))) });
+        Map.Add(TEXT("ByteAttribute"),    FFeatureVisual{ ECk_Icon::AttributeByte,    FLinearColor::FromSRGBColor(FColor::FromHex(TEXT("C9884F"))) });
+        Map.Add(TEXT("IntegerAttribute"), FFeatureVisual{ ECk_Icon::AttributeInteger, FLinearColor::FromSRGBColor(FColor::FromHex(TEXT("4F7DC9"))) });
+        Map.Add(TEXT("VectorAttribute"),  FFeatureVisual{ ECk_Icon::AttributeVector,  FLinearColor::FromSRGBColor(FColor::FromHex(TEXT("7DC94F"))) });
+        Map.Add(TEXT("RotatorAttribute"), FFeatureVisual{ ECk_Icon::AttributeRotator, FLinearColor::FromSRGBColor(FColor::FromHex(TEXT("C95F9E"))) });
 
         // Third flag batch (2026-07-11 audit): bespoke glyphs where the feature earned one,
         // otherwise a hand-picked semantic match from the general pool (Icons/General/).
-        Map.Add(TEXT("EntityExtension"),    FFeatureVisual{ TEXT("Plug"),            FLinearColor::FromSRGBColor(FColor::FromHex(TEXT("8FA0C9"))) });
-        Map.Add(TEXT("UnrealComponent"),    FFeatureVisual{ TEXT("Gear"),            FLinearColor::FromSRGBColor(FColor::FromHex(TEXT("9AA6B8"))) });
-        Map.Add(TEXT("Snapshot"),           FFeatureVisual{ TEXT("Key"),             FLinearColor::FromSRGBColor(FColor::FromHex(TEXT("4FC9B8"))) });
-        Map.Add(TEXT("TagSet"),             FFeatureVisual{ TEXT("Ticket"),          FLinearColor::FromSRGBColor(FColor::FromHex(TEXT("C9A44F"))) });
-        Map.Add(TEXT("EntityTag"),          FFeatureVisual{ TEXT("Pencil"),          FLinearColor::FromSRGBColor(FColor::FromHex(TEXT("D9BC5F"))) });
-        Map.Add(TEXT("CrowdAgent"),         FFeatureVisual{ TEXT("People"),          FLinearColor::FromSRGBColor(FColor::FromHex(TEXT("E8A05F"))) });
-        Map.Add(TEXT("Grid"),               FFeatureVisual{ TEXT("Grid"),            FLinearColor::FromSRGBColor(FColor::FromHex(TEXT("5F9FD0"))) });
-        Map.Add(TEXT("Marker"),             FFeatureVisual{ TEXT("Crosshair"),       FLinearColor::FromSRGBColor(FColor::FromHex(TEXT("E86F6B"))) });
-        Map.Add(TEXT("Sensor"),             FFeatureVisual{ TEXT("Antenna"),         FLinearColor::FromSRGBColor(FColor::FromHex(TEXT("5FD0C9"))) });
-        Map.Add(TEXT("RaySense"),           FFeatureVisual{ TEXT("Bolt"),            FLinearColor::FromSRGBColor(FColor::FromHex(TEXT("E8D05F"))) });
-        Map.Add(TEXT("Velocity"),           FFeatureVisual{ TEXT("Wind"),            FLinearColor::FromSRGBColor(FColor::FromHex(TEXT("7FC9E8"))) });
-        Map.Add(TEXT("Spline"),             FFeatureVisual{ TEXT("Wave"),            FLinearColor::FromSRGBColor(FColor::FromHex(TEXT("5FB8D9"))) });
-        Map.Add(TEXT("InteractSource"),     FFeatureVisual{ TEXT("Hand"),            FLinearColor::FromSRGBColor(FColor::FromHex(TEXT("E8B45F"))) });
-        Map.Add(TEXT("InteractTarget"),     FFeatureVisual{ TEXT("Target"),          FLinearColor::FromSRGBColor(FColor::FromHex(TEXT("5FC97D"))) });
-        Map.Add(TEXT("Inventory"),          FFeatureVisual{ TEXT("Backpack"),        FLinearColor::FromSRGBColor(FColor::FromHex(TEXT("B8895F"))) });
-        Map.Add(TEXT("Item"),               FFeatureVisual{ TEXT("Coin"),            FLinearColor::FromSRGBColor(FColor::FromHex(TEXT("E0B93F"))) });
-        Map.Add(TEXT("Team"),               FFeatureVisual{ TEXT("Flag"),            FLinearColor::FromSRGBColor(FColor::FromHex(TEXT("4F9FE0"))) });
-        Map.Add(TEXT("Player"),             FFeatureVisual{ TEXT("Person"),          FLinearColor::FromSRGBColor(FColor::FromHex(TEXT("5FD08F"))) });
-        Map.Add(TEXT("Projectile"),         FFeatureVisual{ TEXT("ArrowProjectile"), FLinearColor::FromSRGBColor(FColor::FromHex(TEXT("E8845F"))) });
-        Map.Add(TEXT("ResolverSource"),     FFeatureVisual{ TEXT("Sword"),           FLinearColor::FromSRGBColor(FColor::FromHex(TEXT("E86F5F"))) });
-        Map.Add(TEXT("ResolverTarget"),     FFeatureVisual{ TEXT("Shield"),          FLinearColor::FromSRGBColor(FColor::FromHex(TEXT("5F8FE8"))) });
-        Map.Add(TEXT("GeometryCollection"), FFeatureVisual{ TEXT("Bomb"),            FLinearColor::FromSRGBColor(FColor::FromHex(TEXT("D96F5F"))) });
-        Map.Add(TEXT("AnimPlan"),           FFeatureVisual{ TEXT("Book"),            FLinearColor::FromSRGBColor(FColor::FromHex(TEXT("A87FE8"))) });
-        Map.Add(TEXT("MontagePlayer"),      FFeatureVisual{ TEXT("FilmReel"),        FLinearColor::FromSRGBColor(FColor::FromHex(TEXT("D97FB8"))) });
-        Map.Add(TEXT("VatProxy"),           FFeatureVisual{ TEXT("Cassette"),        FLinearColor::FromSRGBColor(FColor::FromHex(TEXT("9F8FD9"))) });
-        Map.Add(TEXT("RenderTarget"),       FFeatureVisual{ TEXT("Tv"),              FLinearColor::FromSRGBColor(FColor::FromHex(TEXT("6F9FE8"))) });
-        Map.Add(TEXT("WorldSpaceWidget"),   FFeatureVisual{ TEXT("Monitor"),         FLinearColor::FromSRGBColor(FColor::FromHex(TEXT("8FD0E8"))) });
-        Map.Add(TEXT("CameraShake"),        FFeatureVisual{ TEXT("Camcorder"),       FLinearColor::FromSRGBColor(FColor::FromHex(TEXT("E87F9F"))) });
-        Map.Add(TEXT("Vfx"),                FFeatureVisual{ TEXT("Flame"),           FLinearColor::FromSRGBColor(FColor::FromHex(TEXT("E87FD0"))) });
-        Map.Add(TEXT("AudioDirector"),      FFeatureVisual{ TEXT("Radio"),           FLinearColor::FromSRGBColor(FColor::FromHex(TEXT("D9A45F"))) });
-        Map.Add(TEXT("Sfx"),                FFeatureVisual{ TEXT("SpeakerBox"),      FLinearColor::FromSRGBColor(FColor::FromHex(TEXT("E8A87F"))) });
+        Map.Add(TEXT("EntityExtension"),    FFeatureVisual{ ECk_Icon::Connection,            FLinearColor::FromSRGBColor(FColor::FromHex(TEXT("8FA0C9"))) });
+        Map.Add(TEXT("UnrealComponent"),    FFeatureVisual{ ECk_Icon::Settings,            FLinearColor::FromSRGBColor(FColor::FromHex(TEXT("9AA6B8"))) });
+        Map.Add(TEXT("Snapshot"),           FFeatureVisual{ ECk_Icon::SaveKey,             FLinearColor::FromSRGBColor(FColor::FromHex(TEXT("4FC9B8"))) });
+        Map.Add(TEXT("TagSet"),             FFeatureVisual{ ECk_Icon::Ticket,          FLinearColor::FromSRGBColor(FColor::FromHex(TEXT("C9A44F"))) });
+        Map.Add(TEXT("EntityTag"),          FFeatureVisual{ ECk_Icon::Edit,          FLinearColor::FromSRGBColor(FColor::FromHex(TEXT("D9BC5F"))) });
+        Map.Add(TEXT("CrowdAgent"),         FFeatureVisual{ ECk_Icon::Crowd,          FLinearColor::FromSRGBColor(FColor::FromHex(TEXT("E8A05F"))) });
+        Map.Add(TEXT("Grid"),               FFeatureVisual{ ECk_Icon::Grid,            FLinearColor::FromSRGBColor(FColor::FromHex(TEXT("5F9FD0"))) });
+        Map.Add(TEXT("Marker"),             FFeatureVisual{ ECk_Icon::Aim,       FLinearColor::FromSRGBColor(FColor::FromHex(TEXT("E86F6B"))) });
+        Map.Add(TEXT("Sensor"),             FFeatureVisual{ ECk_Icon::Broadcast,         FLinearColor::FromSRGBColor(FColor::FromHex(TEXT("5FD0C9"))) });
+        Map.Add(TEXT("RaySense"),           FFeatureVisual{ ECk_Icon::Power,            FLinearColor::FromSRGBColor(FColor::FromHex(TEXT("E8D05F"))) });
+        Map.Add(TEXT("Velocity"),           FFeatureVisual{ ECk_Icon::Wind,            FLinearColor::FromSRGBColor(FColor::FromHex(TEXT("7FC9E8"))) });
+        Map.Add(TEXT("Spline"),             FFeatureVisual{ ECk_Icon::Signal,            FLinearColor::FromSRGBColor(FColor::FromHex(TEXT("5FB8D9"))) });
+        Map.Add(TEXT("InteractSource"),     FFeatureVisual{ ECk_Icon::Grab,            FLinearColor::FromSRGBColor(FColor::FromHex(TEXT("E8B45F"))) });
+        Map.Add(TEXT("InteractTarget"),     FFeatureVisual{ ECk_Icon::Target,          FLinearColor::FromSRGBColor(FColor::FromHex(TEXT("5FC97D"))) });
+        Map.Add(TEXT("Inventory"),          FFeatureVisual{ ECk_Icon::Loadout,        FLinearColor::FromSRGBColor(FColor::FromHex(TEXT("B8895F"))) });
+        Map.Add(TEXT("Item"),               FFeatureVisual{ ECk_Icon::Currency,            FLinearColor::FromSRGBColor(FColor::FromHex(TEXT("E0B93F"))) });
+        Map.Add(TEXT("Team"),               FFeatureVisual{ ECk_Icon::Objective,            FLinearColor::FromSRGBColor(FColor::FromHex(TEXT("4F9FE0"))) });
+        Map.Add(TEXT("Player"),             FFeatureVisual{ ECk_Icon::Actor,          FLinearColor::FromSRGBColor(FColor::FromHex(TEXT("5FD08F"))) });
+        Map.Add(TEXT("Projectile"),         FFeatureVisual{ ECk_Icon::Projectile, FLinearColor::FromSRGBColor(FColor::FromHex(TEXT("E8845F"))) });
+        Map.Add(TEXT("ResolverSource"),     FFeatureVisual{ ECk_Icon::Combat,           FLinearColor::FromSRGBColor(FColor::FromHex(TEXT("E86F5F"))) });
+        Map.Add(TEXT("ResolverTarget"),     FFeatureVisual{ ECk_Icon::Protection,          FLinearColor::FromSRGBColor(FColor::FromHex(TEXT("5F8FE8"))) });
+        Map.Add(TEXT("GeometryCollection"), FFeatureVisual{ ECk_Icon::Destructive,            FLinearColor::FromSRGBColor(FColor::FromHex(TEXT("D96F5F"))) });
+        Map.Add(TEXT("AnimPlan"),           FFeatureVisual{ ECk_Icon::Catalog,            FLinearColor::FromSRGBColor(FColor::FromHex(TEXT("A87FE8"))) });
+        Map.Add(TEXT("MontagePlayer"),      FFeatureVisual{ ECk_Icon::Cinematic,        FLinearColor::FromSRGBColor(FColor::FromHex(TEXT("D97FB8"))) });
+        Map.Add(TEXT("VatProxy"),           FFeatureVisual{ ECk_Icon::SaveSlot,        FLinearColor::FromSRGBColor(FColor::FromHex(TEXT("9F8FD9"))) });
+        Map.Add(TEXT("RenderTarget"),       FFeatureVisual{ ECk_Icon::Screen,              FLinearColor::FromSRGBColor(FColor::FromHex(TEXT("6F9FE8"))) });
+        Map.Add(TEXT("WorldSpaceWidget"),   FFeatureVisual{ ECk_Icon::Display,         FLinearColor::FromSRGBColor(FColor::FromHex(TEXT("8FD0E8"))) });
+        Map.Add(TEXT("CameraShake"),        FFeatureVisual{ ECk_Icon::Recording,       FLinearColor::FromSRGBColor(FColor::FromHex(TEXT("E87F9F"))) });
+        Map.Add(TEXT("Vfx"),                FFeatureVisual{ ECk_Icon::HotPath,           FLinearColor::FromSRGBColor(FColor::FromHex(TEXT("E87FD0"))) });
+        Map.Add(TEXT("AudioDirector"),      FFeatureVisual{ ECk_Icon::Channel,           FLinearColor::FromSRGBColor(FColor::FromHex(TEXT("D9A45F"))) });
+        Map.Add(TEXT("Sfx"),                FFeatureVisual{ ECk_Icon::Speaker,      FLinearColor::FromSRGBColor(FColor::FromHex(TEXT("E8A87F"))) });
 
         return Map;
     }();

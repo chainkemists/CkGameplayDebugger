@@ -107,7 +107,7 @@ auto
         _DebuggerTabName,
         FText::FromString(TEXT("[CK] GOAP Debugger")),
         FText::FromString(TEXT("Inspect GOAP planning, world state, actions, and plan history")),
-        TEXT("Goap"),
+        ECk_Icon::Goap,
         ECkDebuggerToolCategory::Ai,
         20}
         .Set_TabFactory(FCkDebuggerToolTabFactory::CreateLambda([this]

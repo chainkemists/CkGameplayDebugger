@@ -64,7 +64,7 @@ auto
         _DebuggerTabName,
         FText::FromString(TEXT("[CK] EQS Debugger")),
         FText::FromString(TEXT("Inspect environmental queries, generators, tests, and scores")),
-        TEXT("Eqs"),
+        ECk_Icon::Eqs,
         ECkDebuggerToolCategory::Ai,
         40}
         .Set_TabFactory(FCkDebuggerToolTabFactory::CreateLambda([this]

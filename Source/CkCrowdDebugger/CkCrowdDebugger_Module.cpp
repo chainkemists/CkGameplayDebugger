@@ -58,7 +58,7 @@ void FCkCrowdDebuggerModule::StartupModule()
 		_TabId,
 		LOCTEXT("LauncherDisplayName", "[CK] Crowd Debugger"),
 		LOCTEXT("LauncherTooltip", "Inspect crowd agents, navigation, paths, and avoidance"),
-		TEXT("People"),
+		ECk_Icon::Crowd,
 		ECkDebuggerToolCategory::Ai,
 		30}
         .Set_TabFactory(FCkDebuggerToolTabFactory::CreateLambda([this]

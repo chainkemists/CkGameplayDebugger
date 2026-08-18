@@ -68,7 +68,7 @@ auto FCkSchedulerDebuggerModule::StartupModule() -> void
         _DebuggerTabName,
         FText::FromString(TEXT("[CK] Scheduler Debugger")),
         FText::FromString(TEXT("Inspect processor scheduling, phases, and frame execution")),
-        TEXT("Stopwatch"),
+        ECk_Icon::ProfileTiming,
         ECkDebuggerToolCategory::Systems,
         10}
         .Set_TabFactory(FCkDebuggerToolTabFactory::CreateLambda([this]

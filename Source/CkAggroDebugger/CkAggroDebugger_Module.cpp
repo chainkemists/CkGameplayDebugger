@@ -59,9 +59,7 @@ auto FCkAggroDebuggerModule::StartupModule() -> void
         _DebuggerTabName,
         FText::FromString(TEXT("[CK] Aggro Debugger")),
         FText::FromString(TEXT("Inspect threat tables, target scoring, perception, and active-target selection")),
-        // Must be the basename of an SVG that ships under CkDebugger/Resources/Icons (or Icons/General) — an unknown
-        // id resolves to nullptr and the launcher silently falls back to the generic warning brush. Aggro.svg exists.
-        TEXT("Aggro"),
+        ECk_Icon::Aggro,
         // Ai/50 — the Ai category already uses 10 (AStar), 20 (Goap), 30 (Crowd), 40 (Eqs). The launcher census spec
         // asserts every category/order slot is unique, so this must stay distinct.
         ECkDebuggerToolCategory::Ai,

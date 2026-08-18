@@ -320,7 +320,7 @@ auto
                 .Actions({
                     FCkDebug_IconToggleAction{
                         TEXT("UiActiveLayerOnly"),
-                        TEXT("Target"),
+                        ECk_Icon::Target,
                         FText::FromString(TEXT("Active Layer Only")),
                         FText::FromString(TEXT("Show only the layout's active layer.")),
                         TAttribute<bool>::CreateLambda([this]() { return _ShowActiveLayerOnly; }),

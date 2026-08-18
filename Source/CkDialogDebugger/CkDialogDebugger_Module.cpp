@@ -57,10 +57,8 @@ auto FCkDialogDebuggerModule::StartupModule() -> void
         _DebuggerTabName,
         FText::FromString(TEXT("[CK] Dialog Debugger")),
         FText::FromString(TEXT("Inspect dialogue-line registry, emitters, cooldowns, and query history")),
-        // Must be the basename of an SVG that actually ships under CkDebugger/Resources/Icons (or Icons/General).
-        // An unknown id resolves to nullptr and the launcher silently falls back to the generic warning brush —
         // there is no Dialog.svg, and Speech.svg is the existing icon for this domain.
-        TEXT("Speech"),
+        ECk_Icon::Dialog,
         // Core/40 — 20 is CkSmDebugger's and 30 is CkMapDebugger's. The launcher census spec asserts every
         // category/order slot is unique, so a duplicate here fails the catalog test rather than just mis-sorting.
         ECkDebuggerToolCategory::Core,

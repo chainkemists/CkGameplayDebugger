@@ -1,5 +1,6 @@
 #pragma once
 
+#include "CkEditorTools/Style/CkIcons_Generated.h"
 #include "CkDebuggerCommon/Styles/CkDebuggerStyleSelection.h"
 
 #include "CkEditorTools/Style/CkStyle.h"
@@ -303,8 +304,8 @@ namespace ck::debug_axes
     CKDEBUGGERCOMMON_API auto Get_CategoricalPaletteSize() -> int32;
 
     /**
-     * The glyph that means this tone, resolved through `FCkDebuggerStyle::Get_IconBrush` /
-     * `FCkDebuggerCommonStyle::Get_IconBrush` like any other icon id.
+     * The glyph that means this tone, resolved through `FCkIconStyle::Get_Brush` like any
+     * other typed icon.
      *
      * It lives HERE, beside the colour ramps, because tone → colour and tone → glyph are one axis wearing two hats.
      * A tool that picked its own severity glyphs while binding the shared tone colour is a tool whose picture and
@@ -322,11 +323,11 @@ namespace ck::debug_axes
      * `ColorAndOpacity`, so the four must stay distinguishable with the tint removed — which is why they differ in
      * outline (triangle vs circle) and not only in the mark inside.
      *
-     * `Neutral` and `Accent` deliberately have NO glyph and return `NAME_None`: one says "nothing to report" and the
-     * other says "look here", and neither is a severity — a picture for either would be a claim the tone does not
-     * make. A caller must handle the empty id by drawing nothing.
+     * `Neutral` and `Accent` deliberately have NO glyph and return `ECk_Icon::None`: one says "nothing to report"
+     * and the other says "look here", and neither is a severity — a picture for either would be a claim the tone
+     * does not make. The registry draws nothing for `None`.
      */
-    CKDEBUGGERCOMMON_API auto Get_ToneIconId(ECk_Tone InTone) -> FName;
+    CKDEBUGGERCOMMON_API auto Get_ToneIcon(ECk_Tone InTone) -> ECk_Icon;
 }
 
 // ====================================================================================================================

@@ -127,7 +127,7 @@ auto
         .Actions({
             FCkDebug_IconToggleAction{
                 TEXT("StyleLabShowAllTones"),
-                TEXT("Palette"),
+                ECk_Icon::TextureAsset,
                 FText::FromString(TEXT("All Tones")),
                 FText::FromString(TEXT("Show one sample chip per semantic tone instead of the three the real surfaces use most.")),
                 TAttribute<bool>::CreateSP(this, &SCkStyleLabWindow::Get_ShowAllTones),

@@ -1,4 +1,5 @@
 #include "../../CkDebuggerLauncher_Module.h"
+#include "CkEditorTools/Style/CkIconStyle.h"
 
 #include "Styles/CkDebuggerLauncherStyle.h"
 
@@ -67,13 +68,13 @@ bool FCkDebuggerLauncherCatalog_AllDebuggersHaveLaunchableDescriptors::RunTest(c
         TestTrue(*ExpectedMessage, ExpectedTabIds.Remove(TabId) == 1);
         TestFalse(*DisplayNameMessage, Tool.Get_DisplayName().IsEmpty());
         TestFalse(*TooltipMessage, Tool.Get_Tooltip().IsEmpty());
-        TestFalse(*IconMessage, Tool.Get_IconId().IsNone());
+        TestFalse(*IconMessage, Tool.Get_IconId() == ECk_Icon::None);
         TestTrue(*CategoryMessage,
             Tool.Get_Category() != ECkDebuggerToolCategory::Invalid);
         TestTrue(*SpawnerMessage,
             FGlobalTabmanager::Get()->HasTabSpawner(TabId));
         TestNotNull(*BrushMessage,
-            FCkDebuggerLauncherStyle::Get_IconBrush(Tool.Get_IconId()));
+            FCkIconStyle::Get_Brush(Tool.Get_IconId(), ECk_Icon_BrushSize::Size_24x24));
 
         if (TabId == TEXT("CkInsightsAnalyzerTab"))
         {
@@ -83,8 +84,8 @@ bool FCkDebuggerLauncherCatalog_AllDebuggersHaveLaunchableDescriptors::RunTest(c
                 Tool.Get_DisplayName().ToString(), FString{TEXT("[CK] Insights Analyzer")});
             TestEqual(TEXT("Insights Analyzer descriptor keeps its tooltip"),
                 Tool.Get_Tooltip().ToString(), FString{TEXT("Open .utrace files and analyze frame performance")});
-            TestEqual(TEXT("Insights Analyzer descriptor keeps its icon"),
-                Tool.Get_IconId(), FName{TEXT("Hourglass")});
+            TestTrue(TEXT("Insights Analyzer descriptor keeps its icon"),
+                Tool.Get_IconId() == ECk_Icon::Waiting);
             TestEqual(TEXT("Insights Analyzer descriptor stays in the Tools category"),
                 Tool.Get_Category(), ECkDebuggerToolCategory::Tools);
             TestEqual(TEXT("Insights Analyzer descriptor keeps its launcher order"),

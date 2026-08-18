@@ -59,9 +59,7 @@ auto FCkAudioDebuggerModule::StartupModule() -> void
         _DebuggerTabName,
         FText::FromString(TEXT("[CK] Audio Debugger")),
         FText::FromString(TEXT("Inspect audio directors and live tracks — state, volume, crossfades, virtualization")),
-        // Must be the basename of an SVG shipped under CkDebugger/Resources/Icons (or Icons/General) — an unknown id
-        // resolves to nullptr and the launcher silently falls back to the generic warning brush. Audio.svg exists.
-        TEXT("Audio"),
+        ECk_Icon::Audio,
         // Systems/40 — the Systems category already uses 10 (Scheduler), 20 (Object Pooling) and 30 (Jolt). The
         // launcher census spec asserts every category/order slot is unique, so this must stay distinct.
         ECkDebuggerToolCategory::Systems,

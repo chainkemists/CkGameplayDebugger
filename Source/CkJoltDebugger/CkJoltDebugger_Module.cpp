@@ -78,7 +78,7 @@ auto FCkJoltDebuggerModule::StartupModule() -> void
         Get_DebuggerTabName(),
         FText::FromString(TEXT("[CK] Jolt Physics Debugger")),
         FText::FromString(TEXT("World-level Jolt physics stats: bodies, characters, and the baked static world")),
-        TEXT("Cube"),
+        ECk_Icon::Entity,
         ECkDebuggerToolCategory::Systems,
         30}
         .Set_TabFactory(FCkDebuggerToolTabFactory::CreateLambda([this]

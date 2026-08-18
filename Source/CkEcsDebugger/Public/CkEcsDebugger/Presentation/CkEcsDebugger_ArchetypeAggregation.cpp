@@ -1,5 +1,7 @@
 #include "CkEcsDebugger_ArchetypeAggregation.h"
 
+#include "CkEditorTools/Style/CkIconStyle.h"
+
 #include "CkCore/Validation/CkIsValid.h"
 #include "CkDebuggerCommon/Utils/CkDebug_NameClean_Utils.h"
 #include "CkEcs/Archetype/CkArchetype_Registry.h"
@@ -81,11 +83,11 @@ auto
             {
                 if (const auto Descriptor = archetype_registry::Find(Registered); Descriptor.IsSet())
                 {
-                    // IconSvgPath resolution is game-plugin territory; the id doubles as
-                    // a style icon name (feature glyphs and the general pool both work).
+                    // A game archetype names its own glyph (IconSvgPath); resolution goes through the
+                    // typed registry's dynamic side-lane, which also accepts generated semantic names.
                     const auto BespokeIcon = FName{FPaths::GetBaseFilename(Descriptor->Get_IconSvgPath())};
-                    if (FCkDebuggerStyle::Get_IconBrush(BespokeIcon) != nullptr)
-                    { Bucket.IconName = BespokeIcon; }
+                    if (FCkIconStyle::Get_DynamicBrush(BespokeIcon, ECk_Icon_BrushSize::Size_16x16) != nullptr)
+                    { Bucket.DynamicIcon = BespokeIcon; }
 
                     if (Descriptor->Get_Color() != FLinearColor::White)
                     { FeatureColor = Descriptor->Get_Color(); }
@@ -104,7 +106,7 @@ auto
                 {
                     if (const auto* Visual = visuals::Get_FeatureVisuals().Find(DominantFeature))
                     {
-                        Bucket.IconName = Visual->IconName;
+                        Bucket.Icon = Visual->Icon;
                         FeatureColor = Visual->Color;
                     }
                 }
@@ -117,13 +119,12 @@ auto
 
             // General-pool assignment: stable hash of the archetype key picks a glyph —
             // distinct identity instead of anonymous cubes. Cube only if the pool is empty.
-            if (Bucket.IconName.IsNone())
+            if (Bucket.Icon == ECk_Icon::None && Bucket.DynamicIcon.IsNone())
             {
-                const auto& Pool = FCkDebuggerStyle::Get_GeneralIconPool();
-                if (Pool.Num() > 0)
-                { Bucket.IconName = Pool[FCrc::StrCrc32(*Key) % static_cast<uint32>(Pool.Num())]; }
-                else
-                { Bucket.IconName = TEXT("Cube"); }
+                const auto Pool = ck::icons::Get_GeneratedPool();
+                Bucket.Icon = Pool.Num() > 0
+                    ? Pool[FCrc::StrCrc32(*Key) % static_cast<uint32>(Pool.Num())]
+                    : ECk_Icon::Entity;
             }
 
             // Color: feature/descriptor hue when one exists, else a stable palette pick —
@@ -151,4 +152,15 @@ auto
     });
 
     return Sorted;
+}
+
+auto
+    ck::ecs_debugger_aggregation::FArchetypeBucket::
+    Get_IconBrush() const
+    -> const FSlateBrush*
+{
+    if (NOT DynamicIcon.IsNone())
+    { return FCkIconStyle::Get_DynamicBrush(DynamicIcon, ECk_Icon_BrushSize::Size_16x16); }
+
+    return FCkIconStyle::Get_Brush(Icon, ECk_Icon_BrushSize::Size_16x16);
 }

@@ -1,5 +1,7 @@
 #pragma once
 
+#include "CkEditorTools/Style/CkIcons_Generated.h"
+#include "CkEditorTools/Style/CkIconStyle.h"
 #include "CkCore/Macros/CkMacros.h"
 
 #include "CkSnapshot/Inspection/CkSnapshot_Inspection_Data.h"
@@ -68,9 +70,9 @@ struct CKSAVEDEBUGGER_API FCkSaveDebugger_TreeNode
     FString ProvenanceText;
     FString SearchText;
 
-    // The registered suite icon id this row renders (see Get_ProvenanceIconId / Get_NodeKindIconId). Kept on the row
+    // The registered suite icon id this row renders (see Get_ProvenanceIcon / Get_NodeKindIcon). Kept on the row
     // so the glyph survives row reuse without the widget having to re-derive it from the document.
-    FName IconId;
+    ECk_Icon Icon;
 
     bool HasProblems = false;
     bool IsVisible = true;
@@ -464,17 +466,17 @@ namespace ck_save_debugger_model
     Get_SeverityTone(
         ECk_SnapshotInspection_Severity InSeverity) -> ECk_Tone;
 
-    /** The registered suite icon id (`FCkDebuggerStyle::Get_IconBrush`) that stands for a capture provenance. The four
+    /** The typed icon (`FCkIconStyle::Get_Brush`) that stands for a capture provenance. The four
      *  provenances must map to four DISTINCT glyphs — a shared glyph turns the tree's provenance column into
      *  decoration. Slate-free on purpose: the id is a name, resolving it to a brush is the window's job. */
     CKSAVEDEBUGGER_API auto
-    Get_ProvenanceIconId(
-        ECk_Snapshot_V3_Provenance InProvenance) -> FName;
+    Get_ProvenanceIcon(
+        ECk_Snapshot_V3_Provenance InProvenance) -> ECk_Icon;
 
     /** The icon id a synthetic ownership root renders. Entity rows carry a provenance glyph instead. */
     CKSAVEDEBUGGER_API auto
-    Get_NodeKindIconId(
-        ECkSaveDebugger_NodeKind InKind) -> FName;
+    Get_NodeKindIcon(
+        ECkSaveDebugger_NodeKind InKind) -> ECk_Icon;
 
     /** Tone of an ownership row's own kind. A Non-Persisted Owner group is the loader-sanctioned encoding of "owned
      *  by the transient/world root" and renders NEUTRAL; only an owner cycle is a defect in the file. */
@@ -507,7 +509,7 @@ namespace ck_save_debugger_model
         const TMap<FGuid, FString>& InSaveKeyAnnotations = {}) -> TArray<FCkSaveDebugger_VisualizationRow>;
 
     /** The viewport tint that stands for a capture provenance — four DISTINCT colors (CkStyle tokens), same
-     *  reasoning as Get_ProvenanceIconId: a shared tint turns the census-at-a-glance into decoration. Problem rows
+     *  reasoning as Get_ProvenanceIcon: a shared tint turns the census-at-a-glance into decoration. Problem rows
      *  override to CkStyle::Err() at the draw site, exactly like tree rows do. */
     CKSAVEDEBUGGER_API auto
     Get_ProvenanceVisualizationColor(

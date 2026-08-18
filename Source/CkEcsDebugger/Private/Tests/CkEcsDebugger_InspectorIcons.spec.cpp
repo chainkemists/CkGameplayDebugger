@@ -1,4 +1,5 @@
 #include "Misc/AutomationTest.h"
+#include "CkEditorTools/Style/CkIconStyle.h"
 
 #include "CkCore/Format/CkFormat.h"
 
@@ -41,11 +42,11 @@ bool FCkEcsDebuggerInspectorIcons_EveryInspectorHasAResolvableIcon::RunTest(cons
     {
         const auto DeclaredMessage = ck::Format_UE(TEXT("Icon id declared: {}"), Metadata.ID);
         const auto BrushMessage    = ck::Format_UE(
-            TEXT("Icon id '{}' declared by inspector '{}' resolves to a registered brush"),
-            Metadata.IconName, Metadata.ID);
+            TEXT("Icon '{}' declared by inspector '{}' resolves to a registered brush"),
+            Metadata.Icon, Metadata.ID);
 
-        TestFalse(*DeclaredMessage, Metadata.IconName.IsNone());
-        TestNotNull(*BrushMessage, FCkDebuggerStyle::Get_IconBrush(Metadata.IconName));
+        TestFalse(*DeclaredMessage, Metadata.Icon == ECk_Icon::None);
+        TestNotNull(*BrushMessage, FCkIconStyle::Get_Brush(Metadata.Icon, ECk_Icon_BrushSize::Size_16x16));
     }
 
     return true;

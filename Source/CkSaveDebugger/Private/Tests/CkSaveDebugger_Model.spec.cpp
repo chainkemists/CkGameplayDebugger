@@ -489,24 +489,24 @@ bool FCkSaveDebugger_Model_RowPresentation::RunTest(const FString& Parameters)
     using namespace ck_save_debugger_model;
     using namespace ck_save_debugger_model_spec;
 
-    const auto ProvenanceIcons = TSet<FName>
+    const auto ProvenanceIcons = TSet<ECk_Icon>
     {
-        Get_ProvenanceIconId(ECk_Snapshot_V3_Provenance::EngineOwned),
-        Get_ProvenanceIconId(ECk_Snapshot_V3_Provenance::ConstructSpawned),
-        Get_ProvenanceIconId(ECk_Snapshot_V3_Provenance::RuntimeSpawned),
-        Get_ProvenanceIconId(ECk_Snapshot_V3_Provenance::DefinitionBuilt),
+        Get_ProvenanceIcon(ECk_Snapshot_V3_Provenance::EngineOwned),
+        Get_ProvenanceIcon(ECk_Snapshot_V3_Provenance::ConstructSpawned),
+        Get_ProvenanceIcon(ECk_Snapshot_V3_Provenance::RuntimeSpawned),
+        Get_ProvenanceIcon(ECk_Snapshot_V3_Provenance::DefinitionBuilt),
     };
 
     // A shared glyph turns the tree's provenance column into decoration, so the four must stay distinct.
     TestEqual(TEXT("Every provenance has its own glyph"), ProvenanceIcons.Num(), 4);
 
     TestTrue(TEXT("A synthetic root does not borrow a provenance glyph"),
-        NOT ProvenanceIcons.Contains(Get_NodeKindIconId(ECkSaveDebugger_NodeKind::NonPersistedOwnerRoot)) &&
-        NOT ProvenanceIcons.Contains(Get_NodeKindIconId(ECkSaveDebugger_NodeKind::CycleRoot)));
+        NOT ProvenanceIcons.Contains(Get_NodeKindIcon(ECkSaveDebugger_NodeKind::NonPersistedOwnerRoot)) &&
+        NOT ProvenanceIcons.Contains(Get_NodeKindIcon(ECkSaveDebugger_NodeKind::CycleRoot)));
 
     TestTrue(TEXT("The two synthetic roots are told apart by glyph"),
-        Get_NodeKindIconId(ECkSaveDebugger_NodeKind::NonPersistedOwnerRoot) !=
-        Get_NodeKindIconId(ECkSaveDebugger_NodeKind::CycleRoot));
+        Get_NodeKindIcon(ECkSaveDebugger_NodeKind::NonPersistedOwnerRoot) !=
+        Get_NodeKindIcon(ECkSaveDebugger_NodeKind::CycleRoot));
 
     // The reclassification that matters: a transient-owned group is normal shape, only a cycle is a defect.
     TestEqual(TEXT("A Non-Persisted Owner group renders neutral"),
@@ -533,11 +533,10 @@ bool FCkSaveDebugger_Model_RowPresentation::RunTest(const FString& Parameters)
     TestEqual(TEXT("The materialized save has one root"), Model.Get_TreeRoots().Num(), 1);
 
     const auto& Root = Model.Get_TreeRoots()[0];
-    TestEqual(TEXT("The root row carries its provenance glyph"),
-        Root->IconId.ToString(), Get_ProvenanceIconId(ECk_Snapshot_V3_Provenance::EngineOwned).ToString());
-    TestEqual(TEXT("The child row carries its own provenance glyph"),
-        Root->Children[0]->IconId.ToString(),
-        Get_ProvenanceIconId(ECk_Snapshot_V3_Provenance::RuntimeSpawned).ToString());
+    TestTrue(TEXT("The root row carries its provenance glyph"),
+        Root->Icon == Get_ProvenanceIcon(ECk_Snapshot_V3_Provenance::EngineOwned));
+    TestTrue(TEXT("The child row carries its own provenance glyph"),
+        Root->Children[0]->Icon == Get_ProvenanceIcon(ECk_Snapshot_V3_Provenance::RuntimeSpawned));
 
     return true;
 }

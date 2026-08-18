@@ -14,7 +14,7 @@ namespace ck_gallery_icon_toggles
 {
 auto MakeAction(
     FName InId,
-    FName InIconId,
+    ECk_Icon InIconId,
     const TCHAR* InLabel,
     const TCHAR* InToolTip,
     bool InInitialState,
@@ -35,14 +35,14 @@ auto MakeAction(
 auto MakeToolbarActions() -> TArray<FCkDebug_IconToggleAction>
 {
     return {
-        MakeAction(TEXT("Overlay"), TEXT("World"), TEXT("Overlay"), TEXT("Show the world overlay"), true),
-        MakeAction(TEXT("Grid"), TEXT("Grid"), TEXT("Grid"), TEXT("Show grid lines"), true),
-        MakeAction(TEXT("Candidates"), TEXT("People"), TEXT("Candidates"), TEXT("Show candidate markers"), true),
-        MakeAction(TEXT("Best"), TEXT("Target"), TEXT("Best result"), TEXT("Highlight the best result"), true),
-        MakeAction(TEXT("Failed"), TEXT("Severity_Error"), TEXT("Failed"), TEXT("Show failed results"), false),
-        MakeAction(TEXT("Querier"), TEXT("Person"), TEXT("Querier"), TEXT("Show the querier marker"), true),
-        MakeAction(TEXT("Line"), TEXT("Rail"), TEXT("Best line"), TEXT("Draw a line to the best result"), true),
-        MakeAction(TEXT("Bounds"), TEXT("Cube"), TEXT("Bounds"), TEXT("Show result bounds"), false),
+        MakeAction(TEXT("Overlay"), ECk_Icon::World, TEXT("Overlay"), TEXT("Show the world overlay"), true),
+        MakeAction(TEXT("Grid"), ECk_Icon::Grid, TEXT("Grid"), TEXT("Show grid lines"), true),
+        MakeAction(TEXT("Candidates"), ECk_Icon::Crowd, TEXT("Candidates"), TEXT("Show candidate markers"), true),
+        MakeAction(TEXT("Best"), ECk_Icon::Target, TEXT("Best result"), TEXT("Highlight the best result"), true),
+        MakeAction(TEXT("Failed"), ECk_Icon::Error, TEXT("Failed"), TEXT("Show failed results"), false),
+        MakeAction(TEXT("Querier"), ECk_Icon::Actor, TEXT("Querier"), TEXT("Show the querier marker"), true),
+        MakeAction(TEXT("Line"), ECk_Icon::Rail, TEXT("Best line"), TEXT("Draw a line to the best result"), true),
+        MakeAction(TEXT("Bounds"), ECk_Icon::Entity, TEXT("Bounds"), TEXT("Show result bounds"), false),
     };
 }
 } // namespace ck_gallery_icon_toggles
@@ -64,11 +64,11 @@ public:
         using namespace ck_gallery_icon_toggles;
 
         const auto OnState = MakeAction(
-            TEXT("OnExample"), TEXT("Grid"), TEXT("Grid"), TEXT("Checked state"), true);
+            TEXT("OnExample"), ECk_Icon::Grid, TEXT("Grid"), TEXT("Checked state"), true);
         const auto OffState = MakeAction(
-            TEXT("OffExample"), TEXT("World"), TEXT("Overlay"), TEXT("Unchecked state"), false);
+            TEXT("OffExample"), ECk_Icon::World, TEXT("Overlay"), TEXT("Unchecked state"), false);
         const auto DisabledState = MakeAction(
-            TEXT("DisabledExample"), TEXT("Target"), TEXT("Best result"), TEXT("Disabled state"), true, false);
+            TEXT("DisabledExample"), ECk_Icon::Target, TEXT("Best result"), TEXT("Disabled state"), true, false);
 
         return SNew(SVerticalBox)
 

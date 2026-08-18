@@ -230,7 +230,7 @@ auto
             const auto& Summary = Entities[LayoutNode.EntityIndex];
             Item->DisplayText = Build_EntityDisplayText(Summary, _SaveKeyAnnotations);
             Item->ProvenanceText = ck::snapshot::Get_ProvenanceText(Summary.Get_Entry().Get_Provenance());
-            Item->IconId = Get_ProvenanceIconId(Summary.Get_Entry().Get_Provenance());
+            Item->Icon = Get_ProvenanceIcon(Summary.Get_Entry().Get_Provenance());
             Item->SearchText = Build_EntitySearchText(Summary, _SaveKeyAnnotations);
             Item->HasProblems = Summary.Get_HasProblems();
         }
@@ -238,7 +238,7 @@ auto
         {
             Item->DisplayText = Get_SyntheticDisplayText(LayoutNode.Kind, LayoutNode.SavedId);
             Item->ProvenanceText = FString{};
-            Item->IconId = Get_NodeKindIconId(LayoutNode.Kind);
+            Item->Icon = Get_NodeKindIcon(LayoutNode.Kind);
             Item->SearchText = Item->DisplayText;
             // A cycle is always a defect; a non-persisted owner is a normal top-level shape, so the group only
             // carries a problem badge when one of its member rows does.
@@ -1024,32 +1024,32 @@ namespace ck_save_debugger_model
     // ----------------------------------------------------------------------------------------------------------------
 
     auto
-        Get_ProvenanceIconId(
+        Get_ProvenanceIcon(
             ECk_Snapshot_V3_Provenance InProvenance)
-        -> FName
+        -> ECk_Icon
     {
         switch (InProvenance)
         {
-            case ECk_Snapshot_V3_Provenance::EngineOwned:      return FName{TEXT("World")};
-            case ECk_Snapshot_V3_Provenance::ConstructSpawned: return FName{TEXT("Cube")};
-            case ECk_Snapshot_V3_Provenance::RuntimeSpawned:   return FName{TEXT("Rocket")};
-            case ECk_Snapshot_V3_Provenance::DefinitionBuilt:  return FName{TEXT("Factory")};
-            default:                                           return FName{TEXT("EntityInfo")};
+            case ECk_Snapshot_V3_Provenance::EngineOwned:      return ECk_Icon::World;
+            case ECk_Snapshot_V3_Provenance::ConstructSpawned: return ECk_Icon::Entity;
+            case ECk_Snapshot_V3_Provenance::RuntimeSpawned:   return ECk_Icon::RuntimeSpawned;
+            case ECk_Snapshot_V3_Provenance::DefinitionBuilt:  return ECk_Icon::DefinitionBuilt;
+            default:                                           return ECk_Icon::EntityInfo;
         }
     }
 
     // ----------------------------------------------------------------------------------------------------------------
 
     auto
-        Get_NodeKindIconId(
+        Get_NodeKindIcon(
             ECkSaveDebugger_NodeKind InKind)
-        -> FName
+        -> ECk_Icon
     {
         switch (InKind)
         {
-            case ECkSaveDebugger_NodeKind::NonPersistedOwnerRoot: return FName{TEXT("Ghost")};
-            case ECkSaveDebugger_NodeKind::CycleRoot:             return FName{TEXT("Trap")};
-            default:                                              return FName{TEXT("EntityInfo")};
+            case ECkSaveDebugger_NodeKind::NonPersistedOwnerRoot: return ECk_Icon::Orphaned;
+            case ECkSaveDebugger_NodeKind::CycleRoot:             return ECk_Icon::CycleRoot;
+            default:                                              return ECk_Icon::EntityInfo;
         }
     }
 

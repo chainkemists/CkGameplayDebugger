@@ -6,7 +6,7 @@ class FCkInspector_PathNetworkFollower : public ICkDebuggerComponentInspector_Ba
 {
 public:
     auto Get_ComponentName() const -> FText override;
-    auto Get_IconName() const -> FName override { return TEXT("PathNetworkFollower"); }
+    auto Get_Icon() const -> ECk_Icon override { return ECk_Icon::PathNetworkFollower; }
     auto Get_FeatureFlagId() const -> FName override { return TEXT("PathNetworkFollower"); }
     auto Get_FeatureColor() const -> TOptional<FLinearColor> override { return FLinearColor::FromSRGBColor(FColor::FromHex(TEXT("58C0A8"))); }
     auto CanInspect(const FCk_Handle& Entity) const -> bool override;

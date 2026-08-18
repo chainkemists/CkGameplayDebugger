@@ -139,7 +139,7 @@ auto
             .CommandGroups({
                 FCkDebug_CommandGroup::Primary(TEXT("AggroView"), FText::FromString(TEXT("Aggro view controls")),
                 SNew(SCkDebug_IconToggle)
-                .IconId(TEXT("Target"))
+                .IconId(ECk_Icon::Target)
                 .Label(FText::FromString(TEXT("Engaged owners only")))
                 .ToolTip(FText::FromString(TEXT("Show only owners with an active tracked target.")))
                 .IsOn_Lambda([this]() { return _ShowEngagedOwnersOnly; })

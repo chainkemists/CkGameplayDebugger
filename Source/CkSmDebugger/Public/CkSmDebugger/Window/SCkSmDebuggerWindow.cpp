@@ -1533,7 +1533,7 @@ auto
     const auto DisplayActions = TArray<FCkDebug_IconToggleAction>{
         FCkDebug_IconToggleAction{
             TEXT("Tasks"),
-            TEXT("StateMachine"),
+            ECk_Icon::StateMachine,
             FText::FromString(TEXT("Tasks")),
             FText::FromString(TEXT("Show task nodes in the state machine graph.")),
             TAttribute<bool>::CreateLambda([this]() -> bool
@@ -1551,7 +1551,7 @@ auto
             TAttribute<bool>::CreateLambda([this]() -> bool { return _RuntimeGraph.IsValid(); })},
         FCkDebug_IconToggleAction{
             TEXT("CompactLayout"),
-            TEXT("Grid"),
+            ECk_Icon::Grid,
             FText::FromString(TEXT("Compact Layout")),
             FText::FromString(TEXT("Use a compact, undirected layout for the state machine graph.")),
             TAttribute<bool>::CreateLambda([this]() -> bool
@@ -1569,7 +1569,7 @@ auto
             TAttribute<bool>::CreateLambda([this]() -> bool { return _RuntimeGraph.IsValid(); })},
         FCkDebug_IconToggleAction{
             TEXT("ShowFrames"),
-            TEXT("Calendar"),
+            ECk_Icon::Schedule,
             NSLOCTEXT("CkSmDebugger", "ShowFrames", "Show frames"),
             NSLOCTEXT("CkSmDebugger", "ShowFramesTooltip",
                 "Show timeline labels as frame numbers (on) or seconds (off)."),

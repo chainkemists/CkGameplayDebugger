@@ -88,7 +88,7 @@ auto
         .CommandGroups({
             FCkDebug_CommandGroup::Primary(TEXT("CooldownView"), FText::FromString(TEXT("Cooldown view controls")),
             SNew(SCkDebug_IconToggle)
-            .IconId(TEXT("Hourglass"))
+            .IconId(ECk_Icon::Waiting)
             .Label(FText::FromString(TEXT("Active cooldowns only")))
             .ToolTip(FText::FromString(TEXT("Show only cooldowns still withholding a line, including forever cooldowns.")))
             .IsOn_Lambda([this]() { return _ShowActiveCooldownsOnly; })

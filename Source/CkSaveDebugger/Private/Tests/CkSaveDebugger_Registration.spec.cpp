@@ -47,8 +47,8 @@ bool FCkSaveDebugger_Registration_TabSpawnerAndDescriptor::RunTest(const FString
     TestEqual(TEXT("Descriptor keeps its tooltip"),
         Descriptor->Get_Tooltip().ToString(),
         FString{TEXT("Inspect CK .sav snapshot files offline — census, diagnostics, payloads")});
-    TestEqual(TEXT("Descriptor keeps its icon"),
-        Descriptor->Get_IconId(), FName{TEXT("Cassette")});
+    TestTrue(TEXT("Descriptor keeps its icon"),
+        Descriptor->Get_IconId() == ECk_Icon::SaveSlot);
     TestEqual(TEXT("Descriptor stays in the Tools category"),
         Descriptor->Get_Category(), ECkDebuggerToolCategory::Tools);
     TestEqual(TEXT("Descriptor keeps its launcher order"),

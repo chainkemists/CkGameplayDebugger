@@ -75,7 +75,7 @@ auto FCkSmDebuggerModule::StartupModule() -> void
         _DebuggerTabName,
         FText::FromString(TEXT("[CK] State Machine Debugger")),
         FText::FromString(TEXT("Inspect state-machine graphs, transitions, and history")),
-        TEXT("StateMachine"),
+        ECk_Icon::StateMachine,
         ECkDebuggerToolCategory::Core,
         20}
         .Set_TabFactory(FCkDebuggerToolTabFactory::CreateLambda([this]

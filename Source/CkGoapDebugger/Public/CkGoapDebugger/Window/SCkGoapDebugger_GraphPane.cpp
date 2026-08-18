@@ -806,7 +806,7 @@ auto SCkGoapDebugger_GraphPane::BuildHeader() -> TSharedRef<SWidget>
                                     return FReply::Handled();
                                 })] +
               SHorizontalBox::Slot().AutoWidth()[SNew(SCkDebug_IconToggle)
-                                                     .IconId(TEXT("Moon"))
+                                                     .IconId(ECk_Icon::Dormant)
                                                      .Label(FText::FromString(TEXT("Hide dimmed")))
                                                      .ToolTip(FText::FromString(
                                                          TEXT("Hide off-plan nodes and their edges.")))

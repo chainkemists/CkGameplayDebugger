@@ -59,7 +59,7 @@ auto FCkObjectPoolingDebuggerModule::StartupModule() -> void
         _DebuggerTabName,
         FText::FromString(TEXT("[CK] Object Pooling Debugger")),
         FText::FromString(TEXT("Inspect object pools, occupancy, allocations, and tuning data")),
-        TEXT("Package"),
+        ECk_Icon::Payload,
         ECkDebuggerToolCategory::Systems,
         20}
         .Set_TabFactory(FCkDebuggerToolTabFactory::CreateLambda([this]

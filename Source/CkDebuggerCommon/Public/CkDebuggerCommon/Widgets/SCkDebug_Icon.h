@@ -17,7 +17,7 @@
 // skip this widget — one surface, one tooltip.
 //
 // Brushes stay owned by each debugger's own style registry (e.g.
-// FCkDebuggerStyle::Get_IconBrush in CkEcsDebugger) — pass the pointer in.
+// FCkIconStyle::Get_Brush) — pass the pointer in.
 //
 // The IconTreatment axis draws a live backdrop behind the glyph (bare / tinted
 // well / thin ring). Plain costs zero padding and paints nothing, so the

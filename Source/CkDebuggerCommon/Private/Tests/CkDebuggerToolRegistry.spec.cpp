@@ -20,7 +20,7 @@ auto MakeDescriptor(FName InTabId, int32 InSortOrder, const TCHAR* InDisplayName
         InTabId,
         FText::FromString(InDisplayName),
         FText::FromString(TEXT("Test debugger tool")),
-        TEXT("Bug"),
+        ECk_Icon::Diagnostics,
         ECkDebuggerToolCategory::Core,
         InSortOrder};
 }

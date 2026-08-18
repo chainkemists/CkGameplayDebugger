@@ -1,5 +1,6 @@
 #pragma once
 
+#include "CkEditorTools/Style/CkIcons_Generated.h"
 #include "CkEcsDebugger/Inspectors/CkDebuggerInspector_Base.h"
 
 /** Lightweight description of a registered inspector — does not pin a live instance. */
@@ -8,8 +9,8 @@ struct FCkDebuggerInspectorMetadata
     FName ID;
     FText DisplayName;
 
-    /** See ICkDebuggerComponentInspector_Base::Get_IconName / Get_FeatureColor. */
-    FName IconName;
+    /** See ICkDebuggerComponentInspector_Base::Get_Icon / Get_FeatureColor. */
+    ECk_Icon Icon = ECk_Icon::None;
     TOptional<FLinearColor> Color;
 
     /** See ICkDebuggerComponentInspector_Base::Get_FeatureFlagId (NAME_None = no bit parity). */

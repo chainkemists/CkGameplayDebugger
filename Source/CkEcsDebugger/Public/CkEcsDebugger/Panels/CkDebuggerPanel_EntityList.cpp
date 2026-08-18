@@ -1,4 +1,5 @@
 #include "CkDebuggerPanel_EntityList.h"
+#include "CkEditorTools/Style/CkIconStyle.h"
 
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SBox.h"
@@ -306,7 +307,7 @@ auto SCkDebuggerPanel_EntityList::Build_FeatureRail(bool InRightFlank) -> TShare
         for (const auto& FeatureId : *Features)
         {
             const auto* Visual = visuals::Get_FeatureVisuals().Find(FeatureId);
-            const auto* Brush = Visual != nullptr ? FCkDebuggerStyle::Get_IconBrush(Visual->IconName) : nullptr;
+            const auto* Brush = Visual != nullptr ? FCkIconStyle::Get_Brush(Visual->Icon, ECk_Icon_BrushSize::Size_16x16) : nullptr;
             if (Brush == nullptr)
             { continue; }
 
@@ -604,7 +605,7 @@ auto SCkDebuggerPanel_EntityList::Build_Toolbar() -> TSharedRef<SWidget>
                 .Padding(0.0f, 0.0f, FCkDebuggerStyle::Padding_Small, 0.0f)
                 [
                     SNew(SCkDebug_IconToggle)
-                    .IconId(TEXT("Package"))
+                    .IconId(ECk_Icon::Payload)
                     .Label(FText::FromString(TEXT("Fold Internals")))
                     .ToolTip(FText::FromString(TEXT("Fold internal entities (timers, scene nodes, attributes ...) under their owner with a +N chip")))
                     .IsOn_Lambda([this]() -> bool
@@ -622,7 +623,7 @@ auto SCkDebuggerPanel_EntityList::Build_Toolbar() -> TSharedRef<SWidget>
                 .AutoWidth()
                 [
                     SNew(SCkDebug_IconToggle)
-                    .IconId(TEXT("EntityCollection"))
+                    .IconId(ECk_Icon::EntityCollection)
                     .Label(FText::FromString(TEXT("Group Siblings")))
                     .ToolTip(FText::FromString(TEXT("Coalesce runs of same-archetype siblings into one \"Name xN\" row")))
                     .IsOn_Lambda([this]() -> bool

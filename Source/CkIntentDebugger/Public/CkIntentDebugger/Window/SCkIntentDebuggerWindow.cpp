@@ -124,7 +124,7 @@ auto
                     .Actions({
                         FCkDebug_IconToggleAction{
                             TEXT("InputHudOverlay"),
-                            TEXT("World"),
+                            ECk_Icon::World,
                             FText::FromString(TEXT("Input HUD overlay")),
                             FText::FromString(TEXT("Toggle the on-screen QA input overlay (ck.InputOverlay).\n"
                                  "Off (0) hides it, on (2) shows the auto device visual.")),

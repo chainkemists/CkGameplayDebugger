@@ -1,4 +1,5 @@
 #include "CkDebuggerPanel_Inspector.h"
+#include "CkEditorTools/Style/CkIconStyle.h"
 
 #include "CkCore/Validation/CkIsValid.h"
 #include "CkEcs/EntityLifetime/CkEntityLifetime_Utils.h"
@@ -51,7 +52,7 @@ namespace ck_debugger_panel_inspector
     // icon language). Nullptr brush = inspector declared no glyph; header unchanged.
     static auto Get_InspectorIconBrush(const TSharedPtr<ICkDebuggerComponentInspector_Base>& InInspector) -> const FSlateBrush*
     {
-        return FCkDebuggerStyle::Get_IconBrush(InInspector->Get_IconName());
+        return FCkIconStyle::Get_Brush(InInspector->Get_Icon(), ECk_Icon_BrushSize::Size_16x16);
     }
 
     static auto Get_InspectorIconColor(const TSharedPtr<ICkDebuggerComponentInspector_Base>& InInspector) -> FLinearColor
@@ -615,7 +616,7 @@ auto SCkDebuggerPanel_Inspector::Build_DiffModeControls() -> TSharedRef<SWidget>
         .VAlign(VAlign_Center)
         [
             SNew(SCkDebug_IconToggle)
-            .IconId(TEXT("Scale"))
+            .IconId(ECk_Icon::Size)
             .Label(FText::FromString(TEXT("Diff Values")))
             .ToolTip(FText::FromString(ck::Format_UE(
                 TEXT("Tint every row whose value DIFFERS across the selected entities. Compares up to {} of them; a label missing from an entity counts as a difference."),

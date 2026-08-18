@@ -555,7 +555,7 @@ auto
 
     Actions.Add(FCkDebug_IconToggleAction{
         TEXT("NamedEvents"),
-        TEXT("Mic"),
+        ECk_Icon::Microphone,
         FText::FromString(TEXT("Named events")),
         FText::FromString(TEXT("Globally enable or disable stat-backed named CPU events while profiling.")),
         TAttribute<bool>::CreateLambda([Capture]() { return Capture->Get_NamedEventsEnabled(); }),
@@ -576,7 +576,7 @@ auto
     const auto AddStatProfile = [this, &Actions, Capture](
         ECkInsightsStatProfile InProfile,
         FName InId,
-        FName InIcon,
+        ECk_Icon InIcon,
         const TCHAR* InLabel,
         const TCHAR* InToolTip)
     {
@@ -611,43 +611,43 @@ auto
     AddStatProfile(
         ECkInsightsStatProfile::CkProcessors,
         TEXT("CkProcessorStats"),
-        TEXT("Chip"),
+        ECk_Icon::Hardware,
         TEXT("CK processor stats"),
         TEXT("Run stat CkProcessors and stat CkProcessors_Details for the active viewport."));
     AddStatProfile(
         ECkInsightsStatProfile::CkScheduler,
         TEXT("CkSchedulerStats"),
-        TEXT("Timer"),
+        ECk_Icon::Timer,
         TEXT("CK scheduler stats"),
         TEXT("Run stat CkScheduler for the active viewport."));
     AddStatProfile(
         ECkInsightsStatProfile::Script,
         TEXT("ScriptStats"),
-        TEXT("Scroll"),
+        ECk_Icon::Log,
         TEXT("Script stats"),
         TEXT("Run stat CkScript for the active viewport."));
     AddStatProfile(
         ECkInsightsStatProfile::UObjects,
         TEXT("UObjectStats"),
-        TEXT("Package"),
+        ECk_Icon::Payload,
         TEXT("UObject stats"),
         TEXT("Run stat UObjects for the active viewport."));
     AddStatProfile(
         ECkInsightsStatProfile::Rhi,
         TEXT("RhiStats"),
-        TEXT("Gear"),
+        ECk_Icon::Settings,
         TEXT("RHI stats"),
         TEXT("Run stat RHI for the active viewport."));
     AddStatProfile(
         ECkInsightsStatProfile::Rendering,
         TEXT("RenderingStats"),
-        TEXT("Monitor"),
+        ECk_Icon::Display,
         TEXT("Rendering stats"),
         TEXT("Run stat SceneRendering and the render-thread stat groups for the active viewport."));
 
     Actions.Add(FCkDebug_IconToggleAction{
         TEXT("ShowAllChildren"),
-        TEXT("Tree"),
+        ECk_Icon::Foliage,
         FText::FromString(TEXT("Show all")),
         FText::FromString(TEXT(
             "Show every child in the hot-path tree instead of folding small ones into "

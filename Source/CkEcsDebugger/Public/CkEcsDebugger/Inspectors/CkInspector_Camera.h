@@ -17,7 +17,7 @@ class FCkInspector_Camera : public ICkDebuggerComponentInspector_Base
 {
 public:
     auto Get_ComponentName() const -> FText override;
-    auto Get_IconName() const -> FName override { return TEXT("Camera"); }
+    auto Get_Icon() const -> ECk_Icon override { return ECk_Icon::Camera; }
     auto Get_FeatureColor() const -> TOptional<FLinearColor> override { return FLinearColor::FromSRGBColor(FColor::FromHex(TEXT("B8A1E3"))); }
     auto CanInspect(const FCk_Handle& Entity) const -> bool override;
     auto Build_Inspector(const FCk_Handle& Entity) -> TSharedRef<SWidget> override;

@@ -83,7 +83,7 @@ auto FCkEcsDebuggerModule::StartupModule() -> void
         DebuggerTabName,
         FText::FromString(TEXT("[CK] ECS Debugger")),
         FText::FromString(TEXT("Browse ECS entities, archetypes, fragments, and relationships")),
-        TEXT("EntityCollection"),
+        ECk_Icon::EntityCollection,
         ECkDebuggerToolCategory::Core,
         10}
         .Set_TabFactory(FCkDebuggerToolTabFactory::CreateLambda([this]

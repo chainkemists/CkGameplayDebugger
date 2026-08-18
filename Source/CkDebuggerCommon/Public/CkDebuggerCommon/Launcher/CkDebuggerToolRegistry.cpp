@@ -32,7 +32,7 @@ auto FCkDebuggerToolRegistry::Register(FCkDebuggerToolDescriptor InDescriptor) -
         InDescriptor.Get_TabId())
     { return 0; }
 
-    CK_ENSURE_IF_NOT(NOT InDescriptor.Get_IconId().IsNone(),
+    CK_ENSURE_IF_NOT(InDescriptor.Get_IconId() != ECk_Icon::None,
         TEXT("Cannot register debugger tool [{}] without an icon id"),
         InDescriptor.Get_TabId())
     { return 0; }

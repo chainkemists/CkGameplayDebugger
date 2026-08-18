@@ -747,7 +747,7 @@ bool FCkDebuggerStyle_CommonWidgetsAreLive::RunTest(const FString& Parameters)
 
     // ---- SCkDebug_IconToggle: IconSize on the glyph box ----------------------
     const auto Toggle = SNew(SCkDebug_IconToggle)
-        .IconId(TEXT("Grid"))
+        .IconId(ECk_Icon::Grid)
         .Label(FText::FromString(TEXT("Live icon")))
         .ShowLabel(false)
         .IsOn(false)

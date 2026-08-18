@@ -69,7 +69,7 @@ Production CkIntent/CkInput state remains untouchable.
 
 ```
 SCkIntentDebuggerWindow  (SCkDebug_WindowChrome)
-├── toolbar    world selector · local-player source selector · refresh controls
+├── toolbar    Input HUD toggle/settings · world selector · local-player source selector · refresh controls
 ├── LEFT       SCkIntentDebugger_LayerStackPanel — the selection surface
 └── RIGHT
     ├── SCkIntentDebugger_TimelineDock   (shared SCkDebug_EventTimeline)
@@ -78,6 +78,12 @@ SCkIntentDebuggerWindow  (SCkDebug_WindowChrome)
         ├── SCkIntentDebugger_ResolutionPanel
         └── SCkIntentDebugger_NearMissPanel
 ```
+
+The **HUD settings** popover owns operational QA controls: Metadata/Frame notation (the same
+per-user values previewed in Style Lab), overlay mode/scale/corner/opacity, and the shared project
+history/fade/tap-hold/frame defaults. Palette, density, borders and semantic colors remain in
+Style Lab. Both surfaces edit `UCk_InputHud_UserSettings` in the Runtime overlay module; the
+runtime module never depends back on either DeveloperTool UI.
 
 | View | Shows | Reads |
 |---|---|---|

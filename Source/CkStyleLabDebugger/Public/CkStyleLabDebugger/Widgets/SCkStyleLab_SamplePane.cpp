@@ -15,8 +15,12 @@
 #include "CkEntityDebugOverlay/Slate/SCkDebugOverlay_FocusCard.h"
 #include "CkEntityDebugOverlay/Style/CkDebugOverlay_RenderStyle.h"
 
+#include "CkInputHudOverlay/Model/CkInputHud_Model.h"
+#include "CkInputHudOverlay/Widgets/SCkInputHud_Root.h"
+
 #include "GameplayTagContainer.h"
 
+#include "Misc/App.h"
 #include "Styling/AppStyle.h"
 #include "Widgets/SNullWidget.h"
 #include "Widgets/Layout/SBorder.h"
@@ -41,6 +45,36 @@ namespace ck_style_lab_sample
     // Enough rows in one section to overrun the focus card's per-section budget, which is what
     // produces the omission line the sample is supposed to exercise.
     constexpr auto CrowdRowCount = 7;
+
+    // Released sample events live one year ahead of the process clock. A negative press age
+    // is stable history, not a newly pressed key, so they remain fully visible for a
+    // long-lived Style Lab session while retaining their authored duration and frame range.
+    constexpr auto InputHudPreviewFutureSeconds = 365.0 * 24.0 * 60.0 * 60.0;
+
+    auto Make_InputHudPreviewModel() -> TSharedPtr<FCk_InputHud_Model>
+    {
+        auto Model = MakeShared<FCk_InputHud_Model>();
+        const auto Now = FApp::GetCurrentTime();
+        const auto StableReleasedTime = Now + InputHudPreviewFutureSeconds;
+
+        const auto Move = Model->Open_Event(TEXT("W"), TEXT("W"), 2871, Now - 0.72, false);
+        Model->Set_EventResolution(Move, TEXT("Move"), true);
+
+        const auto Modifier = Model->Open_Event(TEXT("LShift"), TEXT("LeftShift"), 2874, Now - 0.16, true);
+        Model->Set_EventResolution(Modifier, TEXT("Sprint"), true);
+
+        const auto Jump = Model->Open_Event(TEXT("Space"), TEXT("SpaceBar"), 2860, StableReleasedTime - 0.48, false);
+        Model->Close_Event(Jump, 2868, StableReleasedTime);
+        Model->Set_EventResolution(Jump, TEXT("Jump"), true);
+
+        const auto Unresolved = Model->Open_Event(TEXT("F"), TEXT("F"), 2852, StableReleasedTime - 0.08, false);
+        Model->Close_Event(Unresolved, 2853, StableReleasedTime);
+        Model->Set_EventResolution(Unresolved, TEXT("Unrouted"), false);
+
+        Model->Set_ActiveInputType(ECommonInputType::MouseAndKeyboard);
+        Model->Set_Layers({{10, TEXT("Gameplay 10")}, {20, TEXT("GLOBAL")}});
+        return Model;
+    }
 
     auto Get_ProviderTag(const TCHAR* InTagName) -> FGameplayTag
     {
@@ -298,6 +332,8 @@ auto
         const FArguments& InArgs)
     -> void
 {
+    _InputHudPreviewModel = ck_style_lab_sample::Make_InputHudPreviewModel();
+
     ChildSlot
     [
         SAssignNew(_Root, SBorder)
@@ -367,6 +403,11 @@ auto
 
         + SVerticalBox::Slot().AutoHeight().Padding(0.0f, CkStyle::SpaceS, 0.0f, 0.0f)
             [
+                Build_InputHudPreview(Selection)
+            ]
+
+        + SVerticalBox::Slot().AutoHeight().Padding(0.0f, CkStyle::SpaceS, 0.0f, 0.0f)
+            [
                 ck::debug_axes::Make_SectionHeader(
                     Selection, FText::FromString(TEXT("Entity tree")), ECk_Tone::Accent)
             ]
@@ -394,6 +435,39 @@ auto
         + SVerticalBox::Slot().AutoHeight().Padding(0.0f, CkStyle::SpaceS, 0.0f, 0.0f)
             [
                 Build_ShapesAndSurfaces(Selection)
+            ];
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkStyleLab_SamplePane::
+    Build_InputHudPreview(
+        const FCkDebuggerStyleSelection& InSelection) const
+    -> TSharedRef<SWidget>
+{
+    return SNew(SVerticalBox)
+
+        + SVerticalBox::Slot().AutoHeight()
+            [
+                ck::debug_axes::Make_SectionHeader(
+                    InSelection, FText::FromString(TEXT("Input HUD")), ECk_Tone::Accent)
+            ]
+
+        + SVerticalBox::Slot().AutoHeight().Padding(0.0f, CkStyle::SpaceS)
+            [
+                SNew(SBorder)
+                    .BorderImage(ck::debug_axes::Get_SurfaceBrush(2))
+                    .BorderBackgroundColor(FSlateColor{ck::debug_axes::Get_SurfaceTint(2)})
+                    .Padding(FMargin{CkStyle::SpaceM})
+                    [
+                        SNew(SCkInputHud_Root)
+                            .Model(_InputHudPreviewModel)
+                            .Corner(0)
+                            .Scale(1.0f)
+                            .Mode(2)
+                            .Opacity(1.0f)
+                    ]
             ];
 }
 

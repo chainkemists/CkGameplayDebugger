@@ -48,6 +48,10 @@ public class CkOptimizationDebugger : CkModuleRules
                 // through DeveloperSettings: that module declares settings objects, this one shows them.
                 "Settings",
 
+                // UTexture::GetBuiltTextureSize takes an ITargetPlatform, and the running one comes from this
+                // module's manager. The texture checks are its only consumer.
+                "TargetPlatform",
+
                 "WorkspaceMenuStructure",
             });
         }

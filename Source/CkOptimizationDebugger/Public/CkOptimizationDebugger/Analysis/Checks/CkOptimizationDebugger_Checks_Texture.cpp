@@ -8,6 +8,9 @@
 #include "Engine/Texture.h"
 #include "Engine/Texture2D.h"
 #include "Engine/TextureDefines.h"
+#include "Interfaces/ITargetPlatform.h"
+#include "Interfaces/ITargetPlatformManagerModule.h"
+#include "Misc/CoreMisc.h"
 
 // --------------------------------------------------------------------------------------------------------------------
 
@@ -15,46 +18,59 @@
 // would collide with the identically-shaped helpers in the other check files.
 namespace ck_optimization_debugger_checks_texture
 {
-    /** Width and height as AUTHORED, preferring the editor-side source over the built platform data.
-     *
-     *  `UTexture2D::GetSizeX()` reads platform data, which in the editor can mean waiting on a DDC build for a
-     *  texture nobody has touched this session — an audit tool must not make the editor build things to describe
-     *  them. `FTextureSource` is serialized header data and is free to read. Dynamic textures have no valid
-     *  source, which is why the platform-data path is still here as the fallback. */
     auto
-        TryGet_TextureDimensions(
-            UTexture* InTexture,
-            int32& OutWidth,
-            int32& OutHeight)
-        -> bool
+        TryGet_TextureDims(
+            UTexture* InTexture)
+        -> TOptional<FCkOptimizationDebugger_TextureDims>
     {
-        OutWidth = 0;
-        OutHeight = 0;
-
         if (InTexture == nullptr)
-        { return false; }
+        { return {}; }
+
+        auto Dims = FCkOptimizationDebugger_TextureDims{};
 
 #if WITH_EDITORONLY_DATA
         if (InTexture->Source.IsValid())
         {
             // FTextureSource sizes are int64 in 5.7 — narrowed deliberately: a texture dimension past int32 is not
             // a thing this tool has to be right about.
-            OutWidth = static_cast<int32>(InTexture->Source.GetSizeX());
-            OutHeight = static_cast<int32>(InTexture->Source.GetSizeY());
+            Dims.SourceWidth = static_cast<int32>(InTexture->Source.GetSizeX());
+            Dims.SourceHeight = static_cast<int32>(InTexture->Source.GetSizeY());
 
-            return OutWidth > 0 && OutHeight > 0;
+            const auto* RunningPlatform = GetTargetPlatformManagerRef().GetRunningTargetPlatform();
+
+            if (RunningPlatform == nullptr)
+            {
+                // Nothing to ask. It should not happen in an editor session, but a null deref inside an audit tool
+                // is worse than a conservative answer: judge by the source, as this check did before.
+                Dims.BuiltWidth = Dims.SourceWidth;
+                Dims.BuiltHeight = Dims.SourceHeight;
+
+                return Dims;
+            }
+
+            // Reads the serialized source header and the build settings, nothing else (engine Texture.cpp:4048), so
+            // it cannot start a texture build — which is the whole reason the source path exists.
+            InTexture->GetBuiltTextureSize(RunningPlatform, Dims.BuiltWidth, Dims.BuiltHeight);
+
+            return Dims;
         }
 #endif
 
+        // Reached only by a texture with no source at all — a dynamic or runtime-created one. Nothing built it, so
+        // there is no build size to ask for and the platform data is the only answer there is.
         if (auto* Texture2D = Cast<UTexture2D>(InTexture))
         {
-            OutWidth = Texture2D->GetSizeX();
-            OutHeight = Texture2D->GetSizeY();
+            Dims.SourceWidth = Texture2D->GetSizeX();
+            Dims.SourceHeight = Texture2D->GetSizeY();
 
-            return OutWidth > 0 && OutHeight > 0;
+            Dims.BuiltWidth = Dims.SourceWidth;
+            Dims.BuiltHeight = Dims.SourceHeight;
+
+            if (Dims.SourceWidth > 0 && Dims.SourceHeight > 0)
+            { return Dims; }
         }
 
-        return false;
+        return {};
     }
 
     // ----------------------------------------------------------------------------------------------------------------
@@ -142,10 +158,18 @@ namespace ck_optimization_debugger_checks_texture
             const auto Target = Build_AssetTarget(Asset.Path, Asset.DisplayName);
             const auto Usage = Build_UsageSentence(Asset);
 
-            auto Width = 0;
-            auto Height = 0;
-            const auto HasDimensions = TryGet_TextureDimensions(Texture, Width, Height);
+            const auto Dims = TryGet_TextureDims(Texture);
+            const auto HasDimensions = Dims.IsSet();
+
+            // Every size judgement below is about what the build PRODUCES. A 4096 source that Resize During Build or
+            // Maximum Texture Size caps to 2048 already ships inside a 2048 budget, and flagging it would report an
+            // artist for having done the thing the finding asks for.
+            const auto Width = HasDimensions ? Dims->BuiltWidth : 0;
+            const auto Height = HasDimensions ? Dims->BuiltHeight : 0;
             const auto LargestSide = FMath::Max(Width, Height);
+
+            const auto IsCappedAtBuild = HasDimensions &&
+                (Dims->BuiltWidth != Dims->SourceWidth || Dims->BuiltHeight != Dims->SourceHeight);
 
             // ---- Texture.MaxSize ----
             if (HasDimensions && LargestSide > InThresholds.MaxTextureSize)
@@ -153,13 +177,20 @@ namespace ck_optimization_debugger_checks_texture
                 const auto Graded = Get_Graded(LargestSide, InThresholds.MaxTextureSize,
                     ECkOptimizationDebugger_Severity::Major);
 
+                // Naming both sizes is what stops the reader re-opening a texture they already capped: the sentence
+                // has to say the cap was seen and the result is still over.
+                const auto Explanation = IsCappedAtBuild
+                    ? ck::Format_UE(TEXT("Builds to {}x{} from a {}x{} source, against a largest-side budget of {}. Memory scales with the square of the side, so one step over budget is four times the residency.{}"),
+                        Width, Height, Dims->SourceWidth, Dims->SourceHeight, InThresholds.MaxTextureSize, Usage)
+                    : ck::Format_UE(TEXT("{}x{} against a largest-side budget of {}. Memory scales with the square of the side, so one step over budget is four times the residency.{}"),
+                        Width, Height, InThresholds.MaxTextureSize, Usage);
+
                 auto Finding = Build_Finding(FName{TEXT("Texture.MaxSize")},
                     Graded.Severity,
                     ECkOptimizationDebugger_Category::Texture,
                     Target,
                     TEXT("Texture larger than the budget"),
-                    ck::Format_UE(TEXT("{}x{} against a largest-side budget of {}. Memory scales with the square of the side, so one step over budget is four times the residency.{}"),
-                        Width, Height, InThresholds.MaxTextureSize, Usage),
+                    Explanation,
                     TEXT("Re-author at a smaller size, or cap it with a Maximum Texture Size / LOD Bias if the source has to stay big."));
 
                 Finding.BudgetRatio = Graded.BudgetRatio;
@@ -170,6 +201,8 @@ namespace ck_optimization_debugger_checks_texture
             // ---- Texture.NonPowerOfTwo ----
             // Only worth saying when it actually costs something: a non-power-of-two texture cannot be mipped or
             // streamed, so on a texture that would otherwise have mips it is a real defect rather than a style note.
+            // A non-POT SOURCE that the build pads or resizes to POT costs nothing, which is why the built size is
+            // what is tested.
             if (HasDimensions && (NOT Is_PowerOfTwo(Width) || NOT Is_PowerOfTwo(Height)))
             {
                 auto Finding = Build_Finding(FName{TEXT("Texture.NonPowerOfTwo")},

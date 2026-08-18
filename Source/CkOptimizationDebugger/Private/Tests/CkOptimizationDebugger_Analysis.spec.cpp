@@ -1,11 +1,15 @@
 #include "CkOptimizationDebugger/Analysis/CkOptimizationDebugger_ScanContext.h"
 #include "CkOptimizationDebugger/Analysis/CkOptimizationDebugger_Thresholds.h"
 #include "CkOptimizationDebugger/Analysis/Checks/CkOptimizationDebugger_Checks_Lighting.h"
+#include "CkOptimizationDebugger/Analysis/Checks/CkOptimizationDebugger_Checks_Texture.h"
 #include "CkOptimizationDebugger/Model/CkOptimizationDebugger_Model.h"
 #include "CkOptimizationDebugger/Settings/CkOptimizationDebuggerSettings.h"
 
 #include "CkCore/Format/CkFormat.h"
 #include "CkCore/Macros/CkMacros.h"
+
+#include "Engine/Texture2D.h"
+#include "Engine/TextureDefines.h"
 
 #include "Misc/AutomationTest.h"
 
@@ -292,6 +296,85 @@ bool FCkOptimizationDebugger_Analysis_LightmapFindingIdentity::RunTest(const FSt
     ck_optimization_debugger_checks_lighting::Run_Checks(AtBudget, Thresholds, Findings);
 
     TestEqual(TEXT("An override exactly at the budget is not a finding"), Findings.Num(), 0);
+
+    return true;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FCkOptimizationDebugger_Analysis_EffectiveTextureDims,
+    "Ck.OptimizationDebugger.Analysis.EffectiveTextureDims",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCkOptimizationDebugger_Analysis_EffectiveTextureDims::RunTest(const FString& Parameters)
+{
+    using namespace ck_optimization_debugger_checks_texture;
+
+    // A texture budget is a statement about what SHIPS. An artist who imports at 4096 and caps the build at 2048 has
+    // already done the thing the finding would ask for, so judging the imported size reports them as over budget for
+    // being conservative — the false positive this case exists to keep out.
+    //
+    // The fixtures are transient in-memory textures: a spec whose answer depends on an asset in /Game is a spec that
+    // fails on somebody else's branch.
+    const auto MakeTexture = []() -> UTexture2D*
+    {
+        auto* Texture = NewObject<UTexture2D>(GetTransientPackage(), NAME_None, RF_Transient);
+
+        Texture->Source.Init(4096, 4096, 1, 1, TSF_BGRA8);
+
+        // Platform-independence pin: TMGS_NoMipmaps makes CalculateLODBias return 0 outright
+        // (engine TextureLODSettings.cpp:191), so no device profile on the running machine can bias the built size
+        // and turn these expectations into whatever this workstation happens to be configured for.
+        Texture->MipGenSettings = TMGS_NoMipmaps;
+        Texture->LODBias = 0;
+
+        return Texture;
+    };
+
+    const auto TestBuiltSize = [this](const FString& InCase, UTexture2D* InTexture, int32 InExpectedWidth, int32 InExpectedHeight)
+        -> void
+    {
+        const auto Dims = TryGet_TextureDims(InTexture);
+
+        if (NOT TestTrue(ck::Format_UE(TEXT("{}: the dimensions are readable"), InCase), Dims.IsSet()))
+        { return; }
+
+        TestEqual(ck::Format_UE(TEXT("{}: the SOURCE width is what was imported"), InCase), Dims->SourceWidth, 4096);
+        TestEqual(ck::Format_UE(TEXT("{}: the SOURCE height is what was imported"), InCase), Dims->SourceHeight, 4096);
+
+        TestEqual(ck::Format_UE(TEXT("{}: the BUILT width is what ships"), InCase), Dims->BuiltWidth, InExpectedWidth);
+        TestEqual(ck::Format_UE(TEXT("{}: the BUILT height is what ships"), InCase), Dims->BuiltHeight, InExpectedHeight);
+    };
+
+    // A: nothing caps the build, so the two sizes agree.
+    TestBuiltSize(TEXT("Uncapped"), MakeTexture(), 4096, 4096);
+
+    // B: Resize During Build — the texture editor's "Max In-Game" line, and the case that produced the false positive.
+    auto* Resized = MakeTexture();
+    Resized->PowerOfTwoMode = ETexturePowerOfTwoSetting::ResizeToSpecificResolution;
+    Resized->ResizeDuringBuildX = 2048;
+    Resized->ResizeDuringBuildY = 2048;
+
+    TestBuiltSize(TEXT("ResizeDuringBuild"), Resized, 2048, 2048);
+
+    // C: Maximum Texture Size — the other build-time cap, and the one the finding's own recommendation names.
+    auto* Capped = MakeTexture();
+    Capped->MaxTextureSize = 1024;
+
+    TestBuiltSize(TEXT("MaxTextureSize"), Capped, 1024, 1024);
+
+    // D: both, where the tighter one has to win — a rule applied in the wrong order would report 2048 here.
+    auto* Both = MakeTexture();
+    Both->PowerOfTwoMode = ETexturePowerOfTwoSetting::ResizeToSpecificResolution;
+    Both->ResizeDuringBuildX = 2048;
+    Both->ResizeDuringBuildY = 2048;
+    Both->MaxTextureSize = 1024;
+
+    TestBuiltSize(TEXT("ResizeAndMaxSize"), Both, 1024, 1024);
+
+    // A texture that is not a texture is not a finding either.
+    TestFalse(TEXT("A null texture reports no dimensions"), TryGet_TextureDims(nullptr).IsSet());
 
     return true;
 }

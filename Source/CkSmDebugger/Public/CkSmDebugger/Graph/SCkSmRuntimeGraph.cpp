@@ -1,4 +1,5 @@
 #include "CkSmDebugger/Graph/SCkSmRuntimeGraph.h"
+#include "CkEditorTools/Style/CkIconStyle.h"
 
 #include "Brushes/SlateRoundedBoxBrush.h"
 #include "CkDebuggerCommon/Graph/SCkDebug_GraphCanvas.h"
@@ -703,8 +704,8 @@ auto SCkSmRuntimeGraph::MakeCard(
                                                     : CkStyle::TextStrong();
                                      })]
              + SOverlay::Slot()[SNew(SImage)
-                                     .Image(FCkDebuggerStyle::Get().GetBrush(
-                                         TEXT("CkDebugger.Graph.TransitionNode.Icon")))]
+                                     .Image(FCkIconStyle::Get_Brush(
+                                         ECk_Icon::Tween, ECk_Icon_BrushSize::Size_16x16))]
              + SOverlay::Slot()[SNew(ck_sm_runtime_graph::SCkSmRuntimeBreakpointOverlay)
                                      .Presentation(WeakPresentation)
                                      .Style(_TransitionBreakpointStyle)

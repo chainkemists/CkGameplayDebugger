@@ -61,16 +61,5 @@ public class CkDebuggerCommon : CkModuleRules
         {
             RuntimeDependencies.Add(GraphEditorResource, StagedFileType.NonUFS);
         }
-
-        // Common owns the runtime icon registries consumed by every debugger surface.
-        // Stage the source SVGs from here as well as from the launcher so a packaged
-        // debugger never depends on another feature module to provide its brushes.
-        foreach (var IconResource in Directory.EnumerateFiles(
-            Path.Combine(PluginDirectory, "Resources", "Icons"),
-            "*.svg",
-            SearchOption.AllDirectories))
-        {
-            RuntimeDependencies.Add(IconResource, StagedFileType.NonUFS);
-        }
     }
 }

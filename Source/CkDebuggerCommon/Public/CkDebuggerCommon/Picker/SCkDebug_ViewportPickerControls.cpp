@@ -1,4 +1,5 @@
 #include "SCkDebug_ViewportPickerControls.h"
+#include "CkEditorTools/Style/CkIconStyle.h"
 
 #include "CkDebuggerCommon/Markers/CkDebug_EntityMarkers.h"
 #include "CkDebuggerCommon/Picker/CkDebug_ViewportPicker.h"
@@ -160,9 +161,9 @@ auto
                     return FReply::Handled();
                 })
                 [
-                    SNew(STextBlock)
-                    .Text(FText::FromString(TEXT("⚙"))) // gear glyph
-                    .Font_Static(&ck_debug_viewport_picker_controls::Get_GlyphFont)
+                    SNew(SImage)
+                    .Image(FCkIconStyle::Get_Brush(ECk_Icon::Settings, ECk_Icon_BrushSize::Size_16x16))
+                    .ColorAndOpacity(FSlateColor::UseForeground())
                 ]
             ]
         ]

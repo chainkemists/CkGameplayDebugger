@@ -1,4 +1,5 @@
 #include "CkDebug_CopyMenu_Utils.h"
+#include "CkEditorTools/Style/CkIconStyle.h"
 
 #include "Framework/Application/SlateApplication.h"
 #include "Framework/Commands/UIAction.h"
@@ -21,7 +22,7 @@ namespace ck::DebugCopyMenu
     {
         auto Get_CopyIcon() -> FSlateIcon
         {
-            return FSlateIcon(FAppStyle::GetAppStyleSetName(), TEXT("GenericCommands.Copy"));
+            return FSlateIcon(FCkIconStyle::GetStyleSetName(), FCkIconStyle::Get_StyleKey(ECk_Icon::Copy, ECk_Icon_BrushSize::Size_16x16));
         }
 
         auto Make_CopyAction(FString InTextToCopy) -> FUIAction

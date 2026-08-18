@@ -99,7 +99,7 @@ The window owns no bespoke look. Every surface is a `CkDebuggerCommon` widget ov
 `CkStyle::` tokens — see [CkDebuggerCommon/CLAUDE.md](../CkDebuggerCommon/CLAUDE.md) for the binding rules. What is
 specific to this module:
 
-- **Icon vocabulary** (all ids resolve through `FCkDebuggerStyle::Get_IconBrush`, all rendered through
+- **Icon vocabulary** (all ids resolve through `FCkIconStyle::Get_Brush`, all rendered through
   `SCkDebug_Icon` — never a bare `SImage`). `Cassette` is this tool's identity (launcher descriptor, toolbar file
   slot, File & Header panel); `Chest`/`Disc`/`Scroll`/`Clipboard` are open/reload/export/copy; `Scale` the save
   diff (toolbar command, panel header, group detail) with `Door` closing it and `Anchor` the show-unchanged
@@ -108,8 +108,8 @@ specific to this module:
   `Bulb` load-the-type, `Bug` diagnostics, `TreasureMap` the empty ownership selection; `Pin` the viewport
   visualizer and `Crosshair` its frame-selected command.
 - **Provenance and node-kind glyphs are model rules, not widget rules.**
-  `ck_save_debugger_model::Get_ProvenanceIconId` maps the four provenances to four DISTINCT ids and
-  `Get_NodeKindIconId` gives the synthetic roots their own (`Ghost` non-persisted, `Trap` cycle). Rows carry the
+  `ck_save_debugger_model::Get_ProvenanceIcon` maps the four provenances to four DISTINCT ids and
+  `Get_NodeKindIcon` gives the synthetic roots their own (`Ghost` non-persisted, `Trap` cycle). Rows carry the
   resolved id in `FCkSaveDebugger_TreeNode::IconId`, so a reused row never re-derives it.
   `Ck.SaveDebugger.Model.RowPresentation` pins the distinctness.
 - **`Get_NodeKindTone` is the tone authority for a row's own kind**: `NonPersistedOwnerRoot` is NEUTRAL (normal
@@ -209,7 +209,7 @@ EdMode pulls an immutable snapshot of plain rows and pushes raw saved ids back.
   fallback) — an entity the loader would not place draws no diamond, and the status line states the
   placed/total split rather than pretending coverage. `Ck.SaveDebugger.Viz.PlacementRule` pins it.
 - **Diamond tint is a model rule**: `Get_ProvenanceVisualizationColor` maps the four provenances to four
-  DISTINCT `CkStyle::` tokens (same reasoning as `Get_ProvenanceIconId`); `HasProblems` overrides to
+  DISTINCT `CkStyle::` tokens (same reasoning as `Get_ProvenanceIcon`); `HasProblems` overrides to
   `CkStyle::Err()` at the draw site. `Ck.SaveDebugger.Viz.ProvenanceColors` pins the distinctness.
 - **The level prompt** compares the header's `_WorldAssetPath` package against the open editor level
   (`Get_LevelMatch`, PIE-prefix-stripped on both sides — `Ck.SaveDebugger.Viz.LevelMatch`). Only a genuine

@@ -33,9 +33,9 @@ public:
     static auto GetStyleSetName() -> FName;
 
     // ----------------------------------------------------------------------------------------------------------------
-    // Brush accessors are lifetime-safe. Fixed common brushes return the
-    // style's missing brush before initialization; named icons return nullptr
-    // so descriptor validation can reject the whole toolbar atomically.
+    // Brush accessors are lifetime-safe: they return the style's missing brush
+    // before initialization. (Icons are NOT here — they resolve through the
+    // typed FCkIconStyle::Get_Brush in CkEditorTools.)
     // ----------------------------------------------------------------------------------------------------------------
 
     // Wide soft halo — card emphasis, active-chain leaf glow.
@@ -51,9 +51,6 @@ public:
     // Suite-wide icon toggle surface used by debugger toolbars and contextual
     // boolean controls. Feature modules bind state; Common owns presentation.
     static auto Get_IconToggleStyle() -> const FCheckBoxStyle&;
-
-    // Resolves a monochrome debugger glyph from Resources/Icons. The brush is
-    // white and should be tinted through the widget foreground color.
 
 private:
     static auto Create() -> TSharedRef<FSlateStyleSet>;

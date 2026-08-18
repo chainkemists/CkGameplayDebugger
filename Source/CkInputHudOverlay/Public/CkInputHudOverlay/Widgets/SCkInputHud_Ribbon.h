@@ -50,9 +50,12 @@ private:
 
         ECk_InputHud_EventKind Kind = ECk_InputHud_EventKind::Press;
 
-        float Width      = 0.0f;
-        float BarWidth   = 0.0f;
-        float Opacity    = 1.0f;
+        float Width    = 0.0f;
+        float BarWidth = 0.0f;
+        float Opacity  = 1.0f;
+
+        double DownTimeSeconds = 0.0;
+        double UpTimeSeconds   = 0.0;
 
         bool Resolved = false;
         bool Modifier = false;
@@ -65,6 +68,7 @@ private:
         TArray<FChip> Released;
 
         float LabelRowHeight    = 0.0f;
+        float GlyphRowHeight    = 0.0f;
         float DurationRowHeight = 0.0f;
         float FrameRowHeight    = 0.0f;
 
@@ -72,6 +76,7 @@ private:
         float TotalHeight = 0.0f;
 
         bool ShowFrameNumbers = true;
+        bool ShowDuration     = true;
     };
 
 private:

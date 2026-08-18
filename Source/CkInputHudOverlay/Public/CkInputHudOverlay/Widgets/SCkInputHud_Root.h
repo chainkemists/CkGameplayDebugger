@@ -1,11 +1,14 @@
 #pragma once
 
+#include "CkInputHudOverlay/Style/CkInputHud_RenderStyle.h"
+
 #include "CoreMinimal.h"
 
 #include "Widgets/DeclarativeSyntaxSupport.h"
 #include "Widgets/SCompoundWidget.h"
 
 class FCk_InputHud_Model;
+class SBorder;
 class SBox;
 class SCkInputHud_Ribbon;
 class SWidget;
@@ -62,7 +65,9 @@ private:
     TAttribute<float> _Opacity;
 
     TSharedPtr<SBox>    _AnchorBox;
-    TSharedPtr<SWidget> _Panel;
+    TSharedPtr<SBorder> _Panel;
+    TSharedPtr<SBorder> _PanelFill;
+    TSharedPtr<SCkInputHud_Ribbon> _Ribbon;
 
     // Cached so Tick only touches Slate when the value actually moved.
     int32 _AppliedCorner = INDEX_NONE;
@@ -71,6 +76,11 @@ private:
     // The idle-fade state, normalized 0..1 — the base opacity multiplies in only at apply time.
     float _PanelOpacity = 0.0f;
     float _AppliedOpacityProduct = -1.0f;
+    FVector2f _AppliedPanelPadding = FVector2f{-1.0f, -1.0f};
+    ECk_InputHud_BrushShape _AppliedPanelBrushShape = ECk_InputHud_BrushShape::Square;
+    FLinearColor _AppliedPanelFillTint = FLinearColor::Transparent;
+    FLinearColor _AppliedPanelOutlineTint = FLinearColor::Transparent;
+    uint32 _AppliedSettingsRevision = MAX_uint32;
 };
 
 // --------------------------------------------------------------------------------------------------------------------

@@ -13,6 +13,8 @@ auto
 
     _LayerCompareKey.Reset();
     _LayerLine.Reset();
+    _LayerPrimary.Reset();
+    _LayerRemainder.Reset();
 
     _ActiveInputType = ECommonInputType::MouseAndKeyboard;
 
@@ -40,6 +42,8 @@ auto
 
     _LayerCompareKey.Reset();
     _LayerLine.Reset();
+    _LayerPrimary.Reset();
+    _LayerRemainder.Reset();
 
     _LeftStick  = FVector2f::ZeroVector;
     _RightStick = FVector2f::ZeroVector;
@@ -249,14 +253,7 @@ auto
     const auto Lifetime = static_cast<double>(FMath::Max(InFadeLifetimeSeconds, UE_KINDA_SMALL_NUMBER));
     const auto Elapsed  = FMath::Max(0.0, InNowSeconds - InEvent.UpTimeSeconds);
 
-    const auto FullUntil = Lifetime * static_cast<double>(FadeHoldFraction);
-
-    if (Elapsed <= FullUntil)
-    { return 1.0f; }
-
-    const auto RampSpan = Lifetime - FullUntil;
-
-    return static_cast<float>(FMath::Clamp(1.0 - (Elapsed - FullUntil) / RampSpan, 0.0, 1.0));
+    return static_cast<float>(FMath::Clamp(1.0 - Elapsed / Lifetime, 0.0, 1.0));
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -279,12 +276,25 @@ auto
     _LayerCompareKey = MoveTemp(CompareKey);
 
     _LayerLine.Reset();
+    _LayerPrimary.Reset();
+    _LayerRemainder.Reset();
     for (auto Index = 0; Index < InLayers.Num(); ++Index)
     {
         if (Index > 0)
-        { _LayerLine.Append(TEXT(" > ")); }
+        { _LayerLine.Append(TEXT(" · ")); }
 
         _LayerLine.Append(InLayers[Index].Value);
+
+        if (Index == 0)
+        {
+            _LayerPrimary = InLayers[Index].Value;
+            continue;
+        }
+
+        if (Index > 1)
+        { _LayerRemainder.Append(TEXT(" · ")); }
+
+        _LayerRemainder.Append(InLayers[Index].Value);
     }
 
     return true;

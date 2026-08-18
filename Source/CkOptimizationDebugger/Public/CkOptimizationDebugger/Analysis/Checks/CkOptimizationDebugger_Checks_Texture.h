@@ -24,6 +24,27 @@ namespace ck_optimization_debugger_checks_texture
         const FCkOptimizationDebugger_Thresholds& InThresholds,
         TArray<FCkOptimizationDebugger_FindingRow>& OutFindings) -> void;
 
+    /** A texture's authored size and the size the build will actually produce.
+     *
+     *  `Built*` is the top-mip size after PowerOfTwoMode / ResizeDuringBuild, MaxTextureSize and the
+     *  LOD-group + LODBias mip drop — the number the texture editor prints as "Max In-Game", and the
+     *  only number a budget can honestly judge. `Source*` is what the artist imported; the two differ
+     *  exactly when some build-time cap is doing its job. */
+    struct CKOPTIMIZATIONDEBUGGER_API FCkOptimizationDebugger_TextureDims
+    {
+        int32 SourceWidth = 0;
+        int32 SourceHeight = 0;
+
+        int32 BuiltWidth = 0;
+        int32 BuiltHeight = 0;
+    };
+
+    /** Unset for a texture with neither a valid source nor platform data. Reads serialized header
+     *  data only — never platform data on the source path, so it can never trigger a DDC build. */
+    CKOPTIMIZATIONDEBUGGER_API auto
+    TryGet_TextureDims(
+        UTexture* InTexture) -> TOptional<FCkOptimizationDebugger_TextureDims>;
+
     /** Whether this texture carries DATA rather than colour — packed masks, roughness, metallic, AO. Two signals,
      *  either of which is enough: the compression setting says so outright, or the name follows the packed-channel
      *  convention.

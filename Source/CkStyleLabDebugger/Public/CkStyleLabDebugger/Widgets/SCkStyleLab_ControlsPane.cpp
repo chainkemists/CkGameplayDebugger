@@ -1,6 +1,7 @@
 #include "CkStyleLabDebugger/Widgets/SCkStyleLab_ControlsPane.h"
 
 #include "CkStyleLabDebugger/Styles/CkStyleLab_AxisMetadata.h"
+#include "CkStyleLabDebugger/Widgets/SCkStyleLab_InputHudControls.h"
 
 #include "CkCore/Format/CkFormat.h"
 #include "CkCore/Macros/CkMacros.h"
@@ -157,6 +158,13 @@ auto
                 + SVerticalBox::Slot().AutoHeight()
                     [
                         Build_ProfileControls()
+                    ]
+
+                + SVerticalBox::Slot().AutoHeight().Padding(0.0f, CkStyle::SpaceM, 0.0f, 0.0f)
+                    [
+                        SNew(SCkStyleLab_InputHudControls)
+                            .OnChanged(FOnCkStyleLab_InputHudChanged::CreateSP(
+                                this, &SCkStyleLab_ControlsPane::Notify_SelectionChanged))
                     ]
 
                 + SVerticalBox::Slot().AutoHeight().Padding(0.0f, CkStyle::SpaceM, 0.0f, CkStyle::SpaceS)

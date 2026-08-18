@@ -4,6 +4,7 @@
 #include "Widgets/SCompoundWidget.h"
 
 struct FCkDebuggerStyleSelection;
+class FCk_InputHud_Model;
 class SBorder;
 
 // ====================================================================================================================
@@ -37,12 +38,17 @@ private:
     auto Build_TreeRows(const FCkDebuggerStyleSelection& InSelection) const -> TSharedRef<SWidget>;
     auto Build_Inspector(const FCkDebuggerStyleSelection& InSelection) const -> TSharedRef<SWidget>;
     auto Build_Separator(const FCkDebuggerStyleSelection& InSelection) const -> TSharedRef<SWidget>;
+    auto Build_InputHudPreview(const FCkDebuggerStyleSelection& InSelection) const -> TSharedRef<SWidget>;
 
     // Shapes, surfaces, glyph backdrops and graph nodes — the axes whose effect is a BOX rather
     // than a row, so the document above cannot show them without contriving one.
     auto Build_ShapesAndSurfaces(const FCkDebuggerStyleSelection& InSelection) const -> TSharedRef<SWidget>;
 
     TSharedPtr<SBorder> _Root;
+
+    // SCkInputHud_Root intentionally keeps only a weak model, so the Style Lab owns this canned
+    // model for the preview's complete Slate lifetime.
+    TSharedPtr<FCk_InputHud_Model> _InputHudPreviewModel;
 
     bool _ShowAllTones = false;
 };

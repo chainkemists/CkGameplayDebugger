@@ -105,6 +105,10 @@ remain (see Open issues).
   keybinds go in the Input class, never the project class. The same storage/migration contract
   covers common debugger style/window preferences, ECS filters, Crowd viewport preferences, and
   EQS view toggles so Editor and packaged tools persist the same categories of user choice.
+  `CkInputHudOverlay` follows the same rule: shared capture behavior remains in project
+  `UCk_InputHud_Settings`, while palette, density, semantic colors, borders, readout metadata and
+  frame notation live in packaged-capable per-user `UCk_InputHud_UserSettings`. Style Lab and
+  Intent Debugger edit that one runtime-owned store; neither owns a duplicate or becomes a runtime dependency.
 - **DeveloperTool debuggers are not runtime dependencies**: game modules and the three Runtime
   modules here must never depend on them. Editor-only workspace-menu and `UnrealEd` dependencies
   stay behind `Target.bBuildEditor` / `WITH_EDITOR`; packaged windows use runtime Slate's global

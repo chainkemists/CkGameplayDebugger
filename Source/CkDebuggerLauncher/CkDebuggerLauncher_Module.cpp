@@ -1,5 +1,6 @@
-#include "CkEditorTools/Style/CkIconStyle.h"
 #include "CkDebuggerLauncher_Module.h"
+
+#include "CkEditorTools/Style/CkIconStyle.h"
 
 #include "CkCore/Macros/CkMacros.h"
 

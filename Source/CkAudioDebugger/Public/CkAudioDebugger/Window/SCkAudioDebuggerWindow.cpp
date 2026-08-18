@@ -1,4 +1,5 @@
 #include "CkAudioDebugger/Window/SCkAudioDebuggerWindow.h"
+#include "CkEditorTools/Style/CkIconStyle.h"
 
 #include "CkAudioDebugger/Window/SCkAudioDebugger_FalloffCurve.h"
 #include "CkAudioDebugger/Window/SCkAudioDebugger_Radar.h"
@@ -238,7 +239,7 @@ auto
         .CommandGroups({
             FCkDebug_CommandGroup::Primary(TEXT("AudioView"), FText::FromString(TEXT("Audio view controls")),
             SNew(SCkDebug_IconToggle)
-            .IconId(TEXT("Audio"))
+            .IconId(ECk_Icon::Audio)
             .Label(FText::FromString(TEXT("Active tracks only")))
             .ToolTip(FText::FromString(
                 TEXT("Hide stopped tracks. A director legitimately holds configured-but-stopped tracks, and ")
@@ -1483,7 +1484,7 @@ auto
         .Padding(0.0f, 0.0f, CkStyle::SpaceS, 0.0f)
         [
             SNew(SCkDebug_Icon)
-            .Brush(FCkDebuggerCommonStyle::Get_IconBrush(FName{TEXT("Audio")}))
+            .Brush(FCkIconStyle::Get_Brush(ECk_Icon::Audio, ECk_Icon_BrushSize::Size_16x16))
             .Meaning(FText::FromString(TEXT("Audio director — owns a concurrency budget and the tracks under it")))
             .ColorAndOpacity(FSlateColor{CkStyle::TextDim()})
         ]
@@ -1737,8 +1738,8 @@ auto
             .Padding(0.0f, 0.0f, CkStyle::SpaceS, 0.0f)
             [
                 SNew(SCkDebug_Icon)
-                .Brush(FCkDebuggerCommonStyle::Get_IconBrush(
-                    ck::debug_axes::Get_ToneIconId(ECk_Tone::Err)))
+                .Brush(FCkIconStyle::Get_Brush(
+                    ck::debug_axes::Get_ToneIcon(ECk_Tone::Err), ECk_Icon_BrushSize::Size_16x16))
                 .Meaning(FText::FromString(TEXT("This track is playing and cannot be heard")))
                 .ColorAndOpacity(FSlateColor{CkStyle::Err()})
             ]

@@ -199,7 +199,7 @@ auto
             .Padding(FMargin(0.0f, 0.0f, 0.0f, FCkDebuggerStyle::Padding_Small))
             [
                 SNew(SCkDebug_IconToggle)
-                .IconId(TEXT("Ghost"))
+                .IconId(ECk_Icon::Orphaned)
                 .Label(FText::FromString(TEXT("Ignore Self")))
                 .ToolTip(FText::FromString(TEXT(
                     "Ignore entities that belong to the locally controlled pawn\n"
@@ -223,7 +223,7 @@ auto
             .Padding(FMargin(0.0f, 0.0f, 0.0f, FCkDebuggerStyle::Padding_Small))
             [
                 SNew(SCkDebug_IconToggle)
-                .IconId(TEXT("SceneNode"))
+                .IconId(ECk_Icon::SceneNode)
                 .Label(FText::FromString(TEXT("Meshes First")))
                 .ToolTip(FText::FromString(TEXT(
                     "Hide the diamond billboards of entities that are pickable by their\n"

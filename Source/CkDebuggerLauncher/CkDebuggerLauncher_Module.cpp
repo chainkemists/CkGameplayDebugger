@@ -1,3 +1,4 @@
+#include "CkEditorTools/Style/CkIconStyle.h"
 #include "CkDebuggerLauncher_Module.h"
 
 #include "CkCore/Macros/CkMacros.h"
@@ -51,8 +52,8 @@ auto FCkDebuggerLauncherModule::StartupModule() -> void
         .SetDisplayName(LOCTEXT("LauncherTabTitle", "CK Debugger Launcher"))
         .SetTooltipText(LOCTEXT("LauncherTabTooltip", "Open and focus the available CK debugger tools"))
         .SetIcon(FSlateIcon{
-            FCkDebuggerLauncherStyle::GetStyleSetName(),
-            TEXT("CkDebuggerLauncher.Icon.Bug")});
+            FCkIconStyle::GetStyleSetName(),
+            FCkIconStyle::Get_StyleKey(ECk_Icon::Diagnostics, ECk_Icon_BrushSize::Size_24x24)});
 
 #if WITH_EDITOR
     TabSpawner.SetGroup(WorkspaceMenu::GetMenuStructure().GetDeveloperToolsDebugCategory());

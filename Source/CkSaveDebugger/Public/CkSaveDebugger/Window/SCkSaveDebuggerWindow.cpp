@@ -24,6 +24,7 @@
 #include "CkDebuggerCommon/Widgets/SCkDebug_CopyableContainer.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_CountBadge.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_Icon.h"
+#include "CkEditorTools/Style/CkIconStyle.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_IconToggle.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_InspectorPanel.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_KeyValueRow.h"
@@ -117,10 +118,10 @@ namespace ck_save_debugger_window
 
     auto
         Get_IconBrush(
-            FName InIconId)
+            ECk_Icon InIcon)
         -> const FSlateBrush*
     {
-        return FCkDebuggerStyle::Get_IconBrush(InIconId);
+        return FCkIconStyle::Get_Brush(InIcon, ECk_Icon_BrushSize::Size_16x16);
     }
 
     auto
@@ -161,7 +162,7 @@ namespace ck_save_debugger_window
      *  without a Meaning of its own — one surface, one tooltip. */
     auto
         Build_CommandButton(
-            FName InIconId,
+            ECk_Icon InIconId,
             const FString& InLabel,
             const FString& InTooltip,
             FOnClicked InOnClicked,
@@ -201,7 +202,7 @@ namespace ck_save_debugger_window
 
     auto
         Build_EmptyState(
-            FName InIconId,
+            ECk_Icon InIconId,
             const FString& InText)
         -> TSharedRef<SWidget>
     {
@@ -366,7 +367,7 @@ auto
     -> TSharedRef<SWidget>
 {
     return SNew(SCkDebug_IconToggle)
-        .IconId(TEXT("Bug"))
+        .IconId(ECk_Icon::Diagnostics)
         .Label(FText::FromString(TEXT("Problems only")))
         .ToolTip(FText::FromString(TEXT("Show only entities an Error or Warning diagnostic names.")))
         .IsOn_Lambda([this]() -> bool { return _Model.Get_ProblemsOnly(); })
@@ -398,7 +399,7 @@ auto
         .VAlign(VAlign_Center)
         .Padding(0.0f, 0.0f, CkStyle::SpaceS, 0.0f)
         [
-            Build_CommandButton(FName{TEXT("Chest")},
+            Build_CommandButton(ECk_Icon::Storage,
                 TEXT("Open Save..."),
                 TEXT("Open a CK .sav snapshot file for offline inspection"),
                 FOnClicked::CreateSP(this, &SCkSaveDebuggerWindow::DoOnOpenClicked),
@@ -410,7 +411,7 @@ auto
         .VAlign(VAlign_Center)
         .Padding(0.0f, 0.0f, CkStyle::SpaceS, 0.0f)
         [
-            Build_CommandButton(FName{TEXT("Disc")},
+            Build_CommandButton(ECk_Icon::Media,
                 TEXT("Reload"),
                 TEXT("Re-read the current file from disk"),
                 FOnClicked::CreateSP(this, &SCkSaveDebuggerWindow::DoOnReloadClicked),
@@ -422,7 +423,7 @@ auto
         .VAlign(VAlign_Center)
         .Padding(0.0f)
         [
-            Build_CommandButton(FName{TEXT("Scale")},
+            Build_CommandButton(ECk_Icon::Size,
                 TEXT("Compare Against..."),
                 TEXT("Pick an OLDER save as the baseline and diff the open file against it. The open file is the current side"),
                 FOnClicked::CreateSP(this, &SCkSaveDebuggerWindow::DoOnCompareAgainstClicked),
@@ -461,7 +462,7 @@ auto
                 .Padding(0.0f, 0.0f, CkStyle::SpaceS, 0.0f)
                 [
                     SNew(SCkDebug_Icon)
-                    .Brush(Get_IconBrush(FName{TEXT("Pin")}))
+                    .Brush(Get_IconBrush(ECk_Icon::Pin))
                     .ColorAndOpacity(FSlateColor{CkStyle::TextDim()})
                     .Size(FVector2D{k_PanelIconSize, k_PanelIconSize})
                 ]
@@ -483,7 +484,7 @@ auto
         .AutoWidth()
         .VAlign(VAlign_Center)
         [
-            Build_CommandButton(FName{TEXT("Crosshair")},
+            Build_CommandButton(ECk_Icon::Aim,
                 TEXT("Frame"),
                 TEXT("Move the level-editor camera to the selected entity's diamond"),
                 FOnClicked::CreateSP(this, &SCkSaveDebuggerWindow::DoOnFrameSelectedClicked),
@@ -512,7 +513,7 @@ auto
         .VAlign(VAlign_Center)
         .Padding(0.0f, 0.0f, CkStyle::SpaceS, 0.0f)
         [
-            Build_CommandButton(FName{TEXT("Scroll")},
+            Build_CommandButton(ECk_Icon::Log,
                 TEXT("Export JSON..."),
                 TEXT("Write the whole inspection as a deterministic JSON document (hashes always present, no raw blob bytes)"),
                 FOnClicked::CreateSP(this, &SCkSaveDebuggerWindow::DoOnExportJsonClicked),
@@ -522,7 +523,7 @@ auto
         .AutoWidth()
         .VAlign(VAlign_Center)
         [
-            Build_CommandButton(FName{TEXT("Clipboard")},
+            Build_CommandButton(ECk_Icon::Report,
                 TEXT("Copy Report"),
                 TEXT("Copy the census and diagnostics to the clipboard"),
                 FOnClicked::CreateSP(this, &SCkSaveDebuggerWindow::DoOnCopyReportClicked),
@@ -544,7 +545,7 @@ auto
         .Padding(0.0f, 0.0f, CkStyle::SpaceS, 0.0f)
         [
             SNew(SCkDebug_Icon)
-            .Brush(Get_IconBrush(FName{TEXT("Cassette")}))
+            .Brush(Get_IconBrush(ECk_Icon::SaveSlot))
             .Meaning(FText::FromString(TEXT("The .sav file this window currently has open")))
             .ColorAndOpacity(FSlateColor{CkStyle::Accent()})
             .Size(FVector2D{k_PanelIconSize, k_PanelIconSize})
@@ -617,7 +618,7 @@ auto
     for (const auto Provenance : k_ProvenanceOrder)
     {
         const auto Label = FString{ck::snapshot::Get_ProvenanceText(Provenance)};
-        const auto IconBrush = Get_IconBrush(ck_save_debugger_model::Get_ProvenanceIconId(Provenance));
+        const auto IconBrush = Get_IconBrush(ck_save_debugger_model::Get_ProvenanceIcon(Provenance));
 
         // The chip's on/off state drives its own tint, so the glyph and the label read the mask rather than
         // repeating it in a second colour.
@@ -805,7 +806,7 @@ auto
                     .Padding(0.0f, 0.0f, CkStyle::SpaceS, 0.0f)
                     [
                         SNew(SCkDebug_Icon)
-                        .Brush(ck_save_debugger_window::Get_IconBrush(FName{TEXT("Package")}))
+                        .Brush(ck_save_debugger_window::Get_IconBrush(ECk_Icon::Payload))
                         .Meaning(FText::FromString(TEXT("Replicated-data blobs saved against the selected entity")))
                         .ColorAndOpacity(FSlateColor{CkStyle::Accent()})
                         .Size(FVector2D{ck_save_debugger_window::k_PanelIconSize, ck_save_debugger_window::k_PanelIconSize})
@@ -880,7 +881,7 @@ auto
             .Padding(0.0f, 0.0f, CkStyle::SpaceS, 0.0f)
             [
                 SNew(SCkDebug_Icon)
-                .Brush(ck_save_debugger_window::Get_IconBrush(FName{TEXT("Bug")}))
+                .Brush(ck_save_debugger_window::Get_IconBrush(ECk_Icon::Diagnostics))
                 .Meaning(FText::FromString(TEXT("Everything the inspection analyzer had to say about this file")))
                 .ColorAndOpacity(FSlateColor{CkStyle::Accent()})
                 .Size(FVector2D{ck_save_debugger_window::k_PanelIconSize, ck_save_debugger_window::k_PanelIconSize})
@@ -1077,7 +1078,7 @@ auto
     Actions->AddSlot()
     .Padding(FMargin{0.0f, 0.0f, CkStyle::SpaceS, CkStyle::SpaceXS})
     [
-        Build_CommandButton(FName{TEXT("Clipboard")},
+        Build_CommandButton(ECk_Icon::Report,
             TEXT("Copy Diff Report"),
             TEXT("Copy the whole comparison to the clipboard: census deltas, every group, every payload type"),
             FOnClicked::CreateSP(this, &SCkSaveDebuggerWindow::DoOnCopyDiffReportClicked),
@@ -1087,7 +1088,7 @@ auto
     Actions->AddSlot()
     .Padding(FMargin{0.0f, 0.0f, CkStyle::SpaceS, CkStyle::SpaceXS})
     [
-        Build_CommandButton(FName{TEXT("Door")},
+        Build_CommandButton(ECk_Icon::Door,
             TEXT("Close Diff"),
             TEXT("Drop the comparison and give the column back to blob inspection"),
             FOnClicked::CreateSP(this, &SCkSaveDebuggerWindow::DoOnCloseDiffClicked),
@@ -1108,7 +1109,7 @@ auto
             .Padding(0.0f, 0.0f, CkStyle::SpaceS, 0.0f)
             [
                 SNew(SCkDebug_Icon)
-                .Brush(Get_IconBrush(FName{TEXT("Scale")}))
+                .Brush(Get_IconBrush(ECk_Icon::Size))
                 .Meaning(FText::FromString(TEXT("The open save compared against a baseline file")))
                 .ColorAndOpacity(FSlateColor{CkStyle::Accent()})
                 .Size(FVector2D{k_PanelIconSize, k_PanelIconSize})
@@ -1125,7 +1126,7 @@ auto
                 .RightContent()
                 [
                     SNew(SCkDebug_IconToggle)
-                    .IconId(TEXT("Anchor"))
+                    .IconId(ECk_Icon::Anchored)
                     .Label(FText::FromString(TEXT("Show unchanged")))
                     .ToolTip(FText::FromString(TEXT("Also list the groups that did not move between the two saves")))
                     .IsOn_Lambda([this]() -> bool { return _Model.Get_DiffShowUnchanged(); })
@@ -2134,7 +2135,7 @@ auto
             .Padding(0.0f, 0.0f, CkStyle::SpaceL, 0.0f)
             [
                 SNew(SCkDebug_Icon)
-                .Brush(Get_IconBrush(FName{TEXT("Cassette")}))
+                .Brush(Get_IconBrush(ECk_Icon::SaveSlot))
                 .Meaning(FText::FromString(TEXT("Census of the save currently open")))
                 .ColorAndOpacity(FSlateColor{CkStyle::Accent()})
                 .Size(FVector2D{24.0f, 24.0f})
@@ -2187,7 +2188,7 @@ auto
         [
             SNew(SCkDebug_InspectorPanel)
             .Title(FText::FromString(TEXT("File & Header")))
-            .IconBrush(Get_IconBrush(FName{TEXT("Cassette")}))
+            .IconBrush(Get_IconBrush(ECk_Icon::SaveSlot))
             .IconColor(CkStyle::Accent())
             .CountText(FText::FromString(FPaths::GetCleanFilename(_CurrentPath)))
             .StatusPillText(FText::FromString(FString{ck::snapshot::Get_CompatibilityText(Document.Get_Compatibility())}))
@@ -2389,7 +2390,7 @@ auto
 
     return SNew(SCkDebug_InspectorPanel)
         .Title(FText::FromString(TEXT("Slot Metadata")))
-        .IconBrush(Get_IconBrush(FName{TEXT("Cassette")}))
+        .IconBrush(Get_IconBrush(ECk_Icon::SaveSlot))
         .IconColor(CkStyle::Accent())
         .CountText(FText::FromString(Found ? Meta.Get_Title().ToString() : FString{}))
         .StatusPillText(FText::FromString(Found ? TEXT("SIDECAR") : TEXT("NO SIDECAR")))
@@ -2505,7 +2506,7 @@ auto
         _EntityDetailBox->AddSlot()
         .AutoHeight()
         [
-            Build_EmptyState(FName{TEXT("TreasureMap")},
+            Build_EmptyState(ECk_Icon::Minimap,
                 TEXT("Select an entity to inspect its recipe, ownership and payloads."))
         ];
 
@@ -2641,7 +2642,7 @@ auto
         .AutoHeight()
         .Padding(0.0f, CkStyle::SpaceXS, 0.0f, 0.0f)
         [
-            Build_CommandButton(FName{TEXT("Gear")},
+            Build_CommandButton(ECk_Icon::Settings,
                 TEXT("Try Decode Spawn Params"),
                 TEXT("Project the spawn-params blob into a value tree using only types this editor already has loaded"),
                 FOnClicked::CreateLambda([this, EntityIndex]() -> FReply
@@ -2663,7 +2664,7 @@ auto
     }
 
     const auto AddPanel = [this](const FString& InTitle,
-                                 FName InIconId,
+                                 ECk_Icon InIconId,
                                  const FString& InCountText,
                                  const TSharedRef<SVerticalBox>& InBody) -> void
     {
@@ -2687,7 +2688,7 @@ auto
     [
         SNew(SCkDebug_InspectorPanel)
         .Title(FText::FromString(TEXT("Identity")))
-        .IconBrush(Get_IconBrush(FName{TEXT("Key")}))
+        .IconBrush(Get_IconBrush(ECk_Icon::SaveKey))
         .IconColor(CkStyle::Accent())
         .StatusPillText(FText::FromString(FString{ck::snapshot::Get_ProvenanceText(Entry.Get_Provenance())}))
         .StatusPillTone(ECk_Tone::Neutral)
@@ -2697,11 +2698,11 @@ auto
         ]
     ];
 
-    AddPanel(TEXT("Ownership"), FName{TEXT("Web")}, FString{}, OwnershipRows);
-    AddPanel(TEXT("Recipe"), FName{TEXT("Book")},
+    AddPanel(TEXT("Ownership"), ECk_Icon::Web, FString{}, OwnershipRows);
+    AddPanel(TEXT("Recipe"), ECk_Icon::Catalog,
         ck::Format_UE(TEXT("{} steps"), Summary->Get_BuildStepCount()), RecipeRows);
-    AddPanel(TEXT("Transforms"), FName{TEXT("Compass")}, FString{}, TransformRows);
-    AddPanel(TEXT("Blobs"), FName{TEXT("Package")},
+    AddPanel(TEXT("Transforms"), ECk_Icon::Compass, FString{}, TransformRows);
+    AddPanel(TEXT("Blobs"), ECk_Icon::Payload,
         ck::Format_UE(TEXT("{} B"), Summary->Get_SpawnParamsByteCount() + Summary->Get_ActorSaveFieldByteCount()),
         BlobRows);
 
@@ -2752,7 +2753,7 @@ auto
         _BlobDetailBox->AddSlot()
         .AutoHeight()
         [
-            Build_EmptyState(FName{TEXT("Package")}, TEXT("Select a payload to inspect its blob."))
+            Build_EmptyState(ECk_Icon::Payload, TEXT("Select a payload to inspect its blob."))
         ];
 
         if (_ValueTree.IsValid())
@@ -2850,7 +2851,7 @@ auto
     AddRow(BlobRows, TEXT("Byte count"), ck::Format_UE(TEXT("{}"), Bytes.Num()));
 
     const auto AddAction = [](const TSharedRef<SWrapBox>& InBox,
-                              FName InIconId,
+                              ECk_Icon InIconId,
                               const FString& InLabel,
                               const FString& InTooltip,
                               FOnClicked InOnClicked,
@@ -2865,17 +2866,17 @@ auto
 
     auto DecodeActions = SNew(SWrapBox).UseAllottedSize(true);
 
-    AddAction(DecodeActions, FName{TEXT("Gear")}, TEXT("Try Decode"),
+    AddAction(DecodeActions, ECk_Icon::Settings, TEXT("Try Decode"),
         TEXT("Project this payload into a value tree using only types this editor already has loaded"),
         FOnClicked::CreateSP(this, &SCkSaveDebuggerWindow::DoOnTryDecodeClicked),
         Payload != nullptr);
 
-    AddAction(DecodeActions, FName{TEXT("Bulb")}, TEXT("Try Load Type"),
+    AddAction(DecodeActions, ECk_Icon::Lighting, TEXT("Try Load Type"),
         TEXT("Same decode, but allow the type's package to be loaded first"),
         FOnClicked::CreateSP(this, &SCkSaveDebuggerWindow::DoOnTryLoadTypeClicked),
         Payload != nullptr);
 
-    AddAction(DecodeActions, FName{TEXT("Clipboard")}, TEXT("Copy Type Path"),
+    AddAction(DecodeActions, ECk_Icon::Report, TEXT("Copy Type Path"),
         TEXT("Copy the type path the save declares for this payload"),
         FOnClicked::CreateSP(this, &SCkSaveDebuggerWindow::DoOnCopyTypePathClicked),
         Payload != nullptr);
@@ -2889,12 +2890,12 @@ auto
 
     auto ByteActions = SNew(SWrapBox).UseAllottedSize(true);
 
-    AddAction(ByteActions, FName{TEXT("Clipboard")}, TEXT("Copy Metadata"),
+    AddAction(ByteActions, ECk_Icon::Report, TEXT("Copy Metadata"),
         TEXT("Copy every readable fact about this blob to the clipboard"),
         FOnClicked::CreateSP(this, &SCkSaveDebuggerWindow::DoOnCopyMetadataClicked),
         true);
 
-    AddAction(ByteActions, FName{TEXT("Scroll")}, TEXT("Export Raw Blob..."),
+    AddAction(ByteActions, ECk_Icon::Log, TEXT("Export Raw Blob..."),
         TEXT("Write the blob's bytes to disk exactly as the save holds them"),
         FOnClicked::CreateSP(this, &SCkSaveDebuggerWindow::DoOnExportBlobClicked),
         Bytes.Num() > 0);
@@ -2954,7 +2955,7 @@ auto
     [
         SNew(SCkDebug_InspectorPanel)
         .Title(FText::FromString(Payload != nullptr ? TEXT("Payload") : TEXT("Actor SaveGame Blob")))
-        .IconBrush(Get_IconBrush(Payload != nullptr ? FName{TEXT("Package")} : FName{TEXT("Lock")}))
+        .IconBrush(Get_IconBrush(Payload != nullptr ? ECk_Icon::Payload : ECk_Icon::Locked))
         .IconColor(CkStyle::Accent())
         .StatusPillText(FText::FromString(BlobPillText))
         .StatusPillTone(BlobPillTone)
@@ -2971,7 +2972,7 @@ auto
         [
             SNew(SCkDebug_InspectorPanel)
             .Title(FText::FromString(TEXT("Decode")))
-            .IconBrush(Get_IconBrush(FName{TEXT("Gear")}))
+            .IconBrush(Get_IconBrush(ECk_Icon::Settings))
             .IconColor(CkStyle::Accent())
             .StatusPillText(FText::FromString(DecodeStatusText))
             .StatusPillTone(DecodeStatusTone)
@@ -2987,7 +2988,7 @@ auto
     [
         SNew(SCkDebug_InspectorPanel)
         .Title(FText::FromString(TEXT("Raw Bytes")))
-        .IconBrush(Get_IconBrush(FName{TEXT("Lock")}))
+        .IconBrush(Get_IconBrush(ECk_Icon::Locked))
         .IconColor(CkStyle::Accent())
         .CountText(FText::FromString(ck::Format_UE(TEXT("{} B"), Bytes.Num())))
         .StartExpanded(false)
@@ -3115,7 +3116,7 @@ auto
         _DiffDetailBox->AddSlot()
         .AutoHeight()
         [
-            Build_EmptyState(FName{TEXT("Scale")},
+            Build_EmptyState(ECk_Icon::Size,
                 TEXT("Select a group to see which payload types moved inside it."))
         ];
 
@@ -3199,7 +3200,7 @@ auto
     [
         SNew(SCkDebug_InspectorPanel)
         .Title(FText::FromString(Row.DisplayName))
-        .IconBrush(Get_IconBrush(FName{TEXT("Scale")}))
+        .IconBrush(Get_IconBrush(ECk_Icon::Size))
         .IconColor(CkStyle::Accent())
         .StatusPillText(FText::FromString(Row.KindText))
         .StatusPillTone(Row.Tone)
@@ -3214,7 +3215,7 @@ auto
     [
         SNew(SCkDebug_InspectorPanel)
         .Title(FText::FromString(TEXT("Payload Types")))
-        .IconBrush(Get_IconBrush(FName{TEXT("Package")}))
+        .IconBrush(Get_IconBrush(ECk_Icon::Payload))
         .IconColor(CkStyle::Accent())
         .CountText(FText::FromString(ck::Format_UE(TEXT("{}"), Group.Get_PayloadTypes().Num())))
         .Body()
@@ -3321,7 +3322,7 @@ auto
 
     // The glyph is resolved once from the row's own model-assigned id; a row's kind and provenance never change
     // under a stable key, so only the tints need to be attribute-bound.
-    const auto IconBrush = InItem.IsValid() ? Get_IconBrush(InItem->IconId) : nullptr;
+    const auto IconBrush = InItem.IsValid() ? Get_IconBrush(InItem->Icon) : nullptr;
 
     const auto IconMeaning = NOT InItem.IsValid()
         ? FString{}
@@ -3538,7 +3539,7 @@ auto
             .Padding(0.0f, 0.0f, CkStyle::SpaceS, 0.0f)
             [
                 SNew(SCkDebug_Icon)
-                .Brush(Get_IconBrush(FName{TEXT("Package")}))
+                .Brush(Get_IconBrush(ECk_Icon::Payload))
                 .Meaning(FText::FromString(TEXT("A replicated-data blob the save holds for this entity")))
                 .ColorAndOpacity_Lambda([WeakRow]() -> FSlateColor
                 {

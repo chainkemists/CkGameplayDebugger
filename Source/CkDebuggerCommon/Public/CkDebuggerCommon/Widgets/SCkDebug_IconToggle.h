@@ -1,5 +1,7 @@
 #pragma once
 
+#include "CkEditorTools/Style/CkIcons_Generated.h"
+
 #include "CoreMinimal.h"
 #include "Widgets/SCompoundWidget.h"
 
@@ -15,7 +17,7 @@ struct CKDEBUGGERCOMMON_API FCkDebug_IconToggleAction
 
     FCkDebug_IconToggleAction(
         FName InId,
-        FName InIconId,
+        ECk_Icon InIconId,
         FText InLabel,
         TAttribute<FText> InToolTip,
         TAttribute<bool> InIsOn,
@@ -25,7 +27,7 @@ struct CKDEBUGGERCOMMON_API FCkDebug_IconToggleAction
     auto IsValid() const -> bool;
 
     FName Id;
-    FName IconId;
+    ECk_Icon IconId = ECk_Icon::None;
     FText Label;
 
     /** An ATTRIBUTE rather than a baked string, because a toolbar is built once per window and its tooltips would
@@ -59,12 +61,12 @@ class CKDEBUGGERCOMMON_API SCkDebug_IconToggle : public SCompoundWidget
 {
 public:
     SLATE_BEGIN_ARGS(SCkDebug_IconToggle)
-        : _IconId(NAME_None)
+        : _IconId(ECk_Icon::None)
         , _IsOn(false)
         , _IsEnabled(true)
         , _ShowLabel(false)
     {}
-        SLATE_ARGUMENT(FName, IconId)
+        SLATE_ARGUMENT(ECk_Icon, IconId)
         SLATE_ARGUMENT(FText, Label)
         SLATE_ATTRIBUTE(FText, ToolTip)
         SLATE_ATTRIBUTE(bool, IsOn)

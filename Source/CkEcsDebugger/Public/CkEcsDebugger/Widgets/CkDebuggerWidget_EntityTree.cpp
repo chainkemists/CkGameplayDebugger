@@ -1,4 +1,5 @@
 #include "CkDebuggerWidget_EntityTree.h"
+#include "CkEditorTools/Style/CkIconStyle.h"
 
 #include "Widgets/Text/STextBlock.h"
 #include "Widgets/Views/STableRow.h"
@@ -439,12 +440,12 @@ private:
         {
             if (const auto* Visual = ck_debugger_entity_tree::Get_FeatureVisuals().Find(Representative->InternalFeatureId))
             {
-                if (const auto* Brush = FCkDebuggerStyle::Get_IconBrush(Visual->IconName))
+                if (const auto* Brush = FCkIconStyle::Get_Brush(Visual->Icon, ECk_Icon_BrushSize::Size_16x16))
                 { return Brush; }
             }
         }
 
-        return FCkDebuggerStyle::Get_IconBrush(TEXT("Cube"));
+        return FCkIconStyle::Get_Brush(ECk_Icon::Entity, ECk_Icon_BrushSize::Size_16x16);
     }
 
     auto Get_IdentityColor() const -> FSlateColor
@@ -533,7 +534,7 @@ private:
             }
 
             const auto* Visual = ck_debugger_entity_tree::Get_FeatureVisuals().Find(InFeatureId);
-            const auto* Brush = Visual != nullptr ? FCkDebuggerStyle::Get_IconBrush(Visual->IconName) : nullptr;
+            const auto* Brush = Visual != nullptr ? FCkIconStyle::Get_Brush(Visual->Icon, ECk_Icon_BrushSize::Size_16x16) : nullptr;
             if (Brush == nullptr)
             { return; }
 

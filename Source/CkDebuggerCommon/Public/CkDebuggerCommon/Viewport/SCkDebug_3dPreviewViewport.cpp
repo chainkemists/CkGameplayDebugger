@@ -2,6 +2,7 @@
 
 #include "CkDebuggerCommon/Settings/CkDebuggerWindowSettings.h"
 #include "CkDebuggerCommon/Styles/CkDebuggerCommonStyle.h"
+#include "CkEditorTools/Style/CkIconStyle.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_IconToggle.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_NumericEditor.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_OrientationCube.h"
@@ -795,7 +796,7 @@ auto
     SetViewportInterface(_SceneViewport.ToSharedRef());
     const auto WeakAdapter = _Adapter;
     auto Actions = TArray<FCkDebug_IconToggleAction>{
-        {TEXT("Viewport3d.Grid"), TEXT("Net"), FText::FromString(TEXT("Grid")),
+        {TEXT("Viewport3d.Grid"), ECk_Icon::Capture, FText::FromString(TEXT("Grid")),
          FText::FromString(TEXT("Toggle preview grid.")),
          TAttribute<bool>::CreateLambda(
              [WeakAdapter]()
@@ -811,7 +812,7 @@ auto
                      Adapter->Set_ShowGrid(InIsOn);
                  }
              })},
-        {TEXT("Viewport3d.RenderMode"), TEXT("Grid"), FText::FromString(TEXT("Render mode")),
+        {TEXT("Viewport3d.RenderMode"), ECk_Icon::Grid, FText::FromString(TEXT("Render mode")),
          FText::FromString(TEXT("Cycle None, Transparent Only, All.")),
          TAttribute<bool>::CreateLambda(
              [WeakAdapter]()
@@ -833,7 +834,7 @@ auto
              })}};
     if (EnumHasAnyFlags(Get_Capabilities(), ECkDebug3dViewportCapability::Labels))
     {
-        Actions.Emplace(TEXT("Viewport3d.Labels"), TEXT("Label"), FText::FromString(TEXT("Labels")),
+        Actions.Emplace(TEXT("Viewport3d.Labels"), ECk_Icon::Label, FText::FromString(TEXT("Labels")),
                         FText::FromString(TEXT("Toggle content labels.")),
                         TAttribute<bool>::CreateLambda(
                             [WeakAdapter]()
@@ -850,25 +851,25 @@ auto
                                 }
                             }));
     }
-    Actions.Emplace(TEXT("Viewport3d.OrientationCube"), TEXT("Cube"), FText::FromString(TEXT("Orientation cube")),
+    Actions.Emplace(TEXT("Viewport3d.OrientationCube"), ECk_Icon::Entity, FText::FromString(TEXT("Orientation cube")),
                     FText::FromString(TEXT("Show or hide the orientation cube.")),
                     TAttribute<bool>::CreateLambda([this]() { return _ShowOrientationCube; }),
                     FOnCkDebug_IconToggleChanged::CreateLambda([this](bool InIsOn) { _ShowOrientationCube = InIsOn; }));
     if (EnumHasAnyFlags(Get_Capabilities(), ECkDebug3dViewportCapability::FollowSelection))
     {
-        Actions.Emplace(TEXT("Viewport3d.Follow"), TEXT("Target"), FText::FromString(TEXT("Follow selection")),
+        Actions.Emplace(TEXT("Viewport3d.Follow"), ECk_Icon::Target, FText::FromString(TEXT("Follow selection")),
                         FText::FromString(TEXT("Keep the camera offset while the selected item moves.")),
                         TAttribute<bool>::CreateLambda([this]() { return _FollowSelection; }),
                         FOnCkDebug_IconToggleChanged::CreateLambda([this](bool InIsOn) { Set_FollowSelection(InIsOn); }));
     }
     if (EnumHasAnyFlags(Get_Capabilities(), ECkDebug3dViewportCapability::IsolateSelection))
     {
-        Actions.Emplace(TEXT("Viewport3d.Isolate"), TEXT("SelectInViewport"), FText::FromString(TEXT("Isolate selection")),
+        Actions.Emplace(TEXT("Viewport3d.Isolate"), ECk_Icon::SelectInViewport, FText::FromString(TEXT("Isolate selection")),
                         FText::FromString(TEXT("Render only selected items.")),
                         TAttribute<bool>::CreateLambda([this]() { return _IsolateSelection; }),
                         FOnCkDebug_IconToggleChanged::CreateLambda([this](bool InIsOn) { Set_IsolateSelection(InIsOn); }));
     }
-    const auto MakeIconButton = [this](FName InIconId, FName InControlId, const TCHAR* InToolTip) -> TSharedRef<SWidget>
+    const auto MakeIconButton = [this](ECk_Icon InIcon, FName InControlId, const TCHAR* InToolTip) -> TSharedRef<SWidget>
     {
         return SNew(SButton)
             .ButtonStyle(FAppStyle::Get(), "SimpleButton")
@@ -879,7 +880,7 @@ auto
                 Invoke_CommonControl(InControlId);
                 return FReply::Handled();
             })
-            [SNew(SImage).Image(FCkDebuggerCommonStyle::Get_IconBrush(InIconId))];
+            [SNew(SImage).Image(FCkIconStyle::Get_Brush(InIcon, ECk_Icon_BrushSize::Size_16x16))];
     };
     const auto BookmarksMenu = SNew(SVerticalBox);
     for (auto Index = 0; Index < ck_debug_3d_preview_viewport::BookmarkCount; ++Index)
@@ -891,51 +892,51 @@ auto
             + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(6.0f, 0.0f)
             [SNew(STextBlock).Text(FText::AsNumber(Index))]
             + SHorizontalBox::Slot().AutoWidth()
-            [MakeIconButton(TEXT("Camera"), FName{*(FString{TEXT("Viewport3d.Bookmark.")} + Slot)},
+            [MakeIconButton(ECk_Icon::Camera, FName{*(FString{TEXT("Viewport3d.Bookmark.")} + Slot)},
                             *FString::Printf(TEXT("Recall bookmark %d"), Index))]
             + SHorizontalBox::Slot().AutoWidth()
-            [MakeIconButton(TEXT("Pin"), FName{*(FString{TEXT("Viewport3d.Bookmark.Store.")} + Slot)},
+            [MakeIconButton(ECk_Icon::Pin, FName{*(FString{TEXT("Viewport3d.Bookmark.Store.")} + Slot)},
                             *FString::Printf(TEXT("Store bookmark %d"), Index))]
         ];
     }
     struct FIconControl
     {
-        FName _IconId;
+        ECk_Icon _Icon = ECk_Icon::None;
         FName _ControlId;
         const TCHAR* _ToolTip;
     };
     const FIconControl CameraControls[] = {
-        {TEXT("ViewPerspective"), TEXT("Viewport3d.Camera.Perspective"), TEXT("Perspective camera")},
-        {TEXT("ViewTop"), TEXT("Viewport3d.Camera.Top"), TEXT("Top orthographic camera")},
-        {TEXT("ViewBottom"), TEXT("Viewport3d.Camera.Bottom"), TEXT("Bottom orthographic camera")},
-        {TEXT("ViewLeft"), TEXT("Viewport3d.Camera.Left"), TEXT("Left orthographic camera")},
-        {TEXT("ViewRight"), TEXT("Viewport3d.Camera.Right"), TEXT("Right orthographic camera")},
-        {TEXT("ViewFront"), TEXT("Viewport3d.Camera.Front"), TEXT("Front orthographic camera")},
-        {TEXT("ViewBack"), TEXT("Viewport3d.Camera.Back"), TEXT("Back orthographic camera")},
-        {TEXT("FrameActor"), TEXT("Viewport3d.FrameAll"), TEXT("Frame all content (Home)")}};
+        {ECk_Icon::ViewPerspective, TEXT("Viewport3d.Camera.Perspective"), TEXT("Perspective camera")},
+        {ECk_Icon::ViewTop, TEXT("Viewport3d.Camera.Top"), TEXT("Top orthographic camera")},
+        {ECk_Icon::ViewBottom, TEXT("Viewport3d.Camera.Bottom"), TEXT("Bottom orthographic camera")},
+        {ECk_Icon::ViewLeft, TEXT("Viewport3d.Camera.Left"), TEXT("Left orthographic camera")},
+        {ECk_Icon::ViewRight, TEXT("Viewport3d.Camera.Right"), TEXT("Right orthographic camera")},
+        {ECk_Icon::ViewFront, TEXT("Viewport3d.Camera.Front"), TEXT("Front orthographic camera")},
+        {ECk_Icon::ViewBack, TEXT("Viewport3d.Camera.Back"), TEXT("Back orthographic camera")},
+        {ECk_Icon::FrameActor, TEXT("Viewport3d.FrameAll"), TEXT("Frame all content (Home)")}};
     auto CompleteControls = SNew(SHorizontalBox);
     for (const auto& Control : CameraControls)
     {
         CompleteControls->AddSlot().AutoWidth()
-        [MakeIconButton(Control._IconId, Control._ControlId, Control._ToolTip)];
+        [MakeIconButton(Control._Icon, Control._ControlId, Control._ToolTip)];
     }
     if (EnumHasAnyFlags(Get_Capabilities(), ECkDebug3dViewportCapability::FrameSelection))
     {
         CompleteControls->AddSlot().AutoWidth()
-        [MakeIconButton(TEXT("SelectInViewport"), TEXT("Viewport3d.FrameSelection"),
+        [MakeIconButton(ECk_Icon::SelectInViewport, TEXT("Viewport3d.FrameSelection"),
                         TEXT("Frame selected content (F)"))];
     }
     CompleteControls->AddSlot().AutoWidth()
     [SNew(SComboButton)
          .ToolTipText(FText::FromString(TEXT("Camera bookmarks: recall or store slots 0 through 9.")))
-         .ButtonContent()[SNew(SImage).Image(FCkDebuggerCommonStyle::Get_IconBrush(TEXT("Camera")))]
+         .ButtonContent()[SNew(SImage).Image(FCkIconStyle::Get_Brush(ECk_Icon::Camera, ECk_Icon_BrushSize::Size_16x16))]
          .MenuContent()[BookmarksMenu]];
     if (EnumHasAnyFlags(Get_Capabilities(), ECkDebug3dViewportCapability::DirectionGlyphScale))
     {
         CompleteControls->AddSlot().AutoWidth()
         [SNew(SComboButton)
              .ToolTipText(FText::FromString(TEXT("Set direction-glyph scale.")))
-             .ButtonContent()[SNew(SImage).Image(FCkDebuggerCommonStyle::Get_IconBrush(TEXT("Scale")))]
+             .ButtonContent()[SNew(SImage).Image(FCkIconStyle::Get_Brush(ECk_Icon::Size, ECk_Icon_BrushSize::Size_16x16))]
              .MenuContent()
              [
                  SNew(SHorizontalBox)

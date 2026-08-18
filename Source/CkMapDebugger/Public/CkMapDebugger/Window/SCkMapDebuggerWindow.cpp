@@ -749,7 +749,7 @@ auto
                 TEXT("MapPoiVisibility"),
                 FText::FromString(TEXT("Map point visibility")),
                 SNew(SCkDebug_IconToggle)
-            .IconId(TEXT("Target"))
+            .IconId(ECk_Icon::Target)
             .Label(FText::FromString(TEXT("Enabled POIs only")))
             .ToolTip(FText::FromString(TEXT("Hide disabled POIs from the list; the map snapshot remains unchanged.")))
             .IsOn_Lambda([this]() { return _ShowEnabledPoisOnly; })

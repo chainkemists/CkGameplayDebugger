@@ -59,7 +59,7 @@ auto FCkUIDebuggerModule::StartupModule() -> void
         _DebuggerTabName,
         FText::FromString(TEXT("[CK] UI Layer Debugger")),
         FText::FromString(TEXT("Inspect UI layers, widgets, and viewport ownership")),
-        TEXT("Window"),
+        ECk_Icon::UIWindow,
         ECkDebuggerToolCategory::Interface,
         10}
         .Set_TabFactory(FCkDebuggerToolTabFactory::CreateLambda([this]

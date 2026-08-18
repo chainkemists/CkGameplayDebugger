@@ -336,7 +336,7 @@ auto
             SNew(SCkDebug_IconToolbar).Actions({
                 FCkDebug_IconToggleAction{
                     TEXT("PoolsInUseOnly"),
-                    TEXT("Hourglass"),
+                    ECk_Icon::Waiting,
                     FText::FromString(TEXT("In Use Only")),
                     FText::FromString(TEXT("Show only pools with one or more borrowed instances.")),
                     TAttribute<bool>::CreateLambda([this]() { return _ShowInUseOnly; }),

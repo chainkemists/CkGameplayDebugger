@@ -57,7 +57,7 @@ auto FCkStyleLabDebuggerModule::StartupModule() -> void
         _DebuggerTabName,
         FText::FromString(TEXT("[CK] Debugger Style Lab")),
         FText::FromString(TEXT("Preview and tune the debugger-wide style axes on one worst-case sample document")),
-        TEXT("Palette"),
+        ECk_Icon::TextureAsset,
         ECkDebuggerToolCategory::Tools,
         20}
         .Set_TabFactory(FCkDebuggerToolTabFactory::CreateLambda([this]

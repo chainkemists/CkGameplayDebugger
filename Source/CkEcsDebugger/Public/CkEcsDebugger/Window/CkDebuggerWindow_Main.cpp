@@ -335,7 +335,7 @@ auto SCkDebuggerWindow_Main::Build_MenuActions() -> TSharedRef<SWidget>
 {
     const auto Make_OverlayAction = [](
         FName InId,
-        FName InIconId,
+        ECk_Icon InIconId,
         const TCHAR* InLabel,
         const TCHAR* InCVarName,
         const TCHAR* InTooltip) -> FCkDebug_IconToggleAction
@@ -364,20 +364,20 @@ auto SCkDebuggerWindow_Main::Build_MenuActions() -> TSharedRef<SWidget>
 
     const auto IconActions = TArray<FCkDebug_IconToggleAction>{
         Make_OverlayAction(
-            TEXT("EcsOverlayEnabled"), TEXT("World"), TEXT("Overlay enabled"), TEXT("ck.DebugOverlay"),
+            TEXT("EcsOverlayEnabled"), ECk_Icon::World, TEXT("Overlay enabled"), TEXT("ck.DebugOverlay"),
             TEXT("Master toggle for the on-screen entity debug overlay (ck.DebugOverlay).\n"
                  "Available once a PIE session has started.")),
         Make_OverlayAction(
-            TEXT("EcsNearPlates"), TEXT("Grid"), TEXT("Near plates"), TEXT("ck.DebugOverlay.NearPlates"),
+            TEXT("EcsNearPlates"), ECk_Icon::Grid, TEXT("Near plates"), TEXT("ck.DebugOverlay.NearPlates"),
             TEXT("Ultra-condensed name and feature-badge plates for candidates close to the camera\n"
                  "(ck.DebugOverlay.NearPlates).")),
         Make_OverlayAction(
-            TEXT("EcsSyncHovered"), TEXT("Target"), TEXT("Sync hovered entity"),
+            TEXT("EcsSyncHovered"), ECk_Icon::Target, TEXT("Sync hovered entity"),
             ck::DebugSelectionSync::Get_OverlayFocusSyncCVarName(),
             TEXT("Continuously sync the on-screen overlay focus into every already-open compatible debugger.\n"
                  "This never opens or foregrounds a debugger tab.")),
         Make_OverlayAction(
-            TEXT("EcsFullDepth"), TEXT("Tree"), TEXT("Full depth for focus"),
+            TEXT("EcsFullDepth"), ECk_Icon::Foliage, TEXT("Full depth for focus"),
             ck::DebugMarkers::Get_FocusFullDepthCVarName(),
             TEXT("Show the complete lifetime subtree for the current hovered, locked, or pinned entity.\n"
                  "Unrelated entities still obey Max Depth."))};
@@ -561,7 +561,7 @@ auto SCkDebuggerWindow_Main::Build_PickerExtraSettings() -> TSharedRef<SWidget>
         .AutoHeight()
         [
             SNew(SCkDebug_IconToggle)
-            .IconId(TEXT("Attribute"))
+            .IconId(ECk_Icon::Attribute)
             .Label(FText::FromString(TEXT("Exclude listed")))
             .ToolTip(FText::FromString(TEXT(
                 "Unchecked: show ONLY attributes matching a pattern.\n"

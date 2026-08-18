@@ -1,5 +1,8 @@
 #pragma once
 
+#include "CkEditorTools/Style/CkIcons_Generated.h"
+
+struct FSlateBrush;
 #include "CkEcs/Handle/CkHandle.h"
 
 #include <CoreMinimal.h>
@@ -28,10 +31,14 @@ namespace ck::ecs_debugger_aggregation
         int32 Count = 0;
         uint64 SignatureBits = 0;
         bool IsRegistered = false;
-        FName IconName;
+        ECk_Icon Icon = ECk_Icon::None;
+        FName DynamicIcon;      // game-supplied (archetype descriptor IconSvgPath) — wins over Icon when set
         FLinearColor IconColor = FLinearColor::White;
         FName Family;
         FCk_Handle Representative;   // first live instance — singleton rows link through it
+
+        // The single resolve point for a bucket glyph: the dynamic (game) lane when set, else the typed icon.
+        CKECSDEBUGGER_API auto Get_IconBrush() const -> const FSlateBrush*;
     };
 
     // Aggregates and sorts (registered first, then population, then key — deterministic

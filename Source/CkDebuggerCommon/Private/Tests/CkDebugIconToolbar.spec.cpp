@@ -1,4 +1,5 @@
 #include "CkDebuggerCommon/Styles/CkDebuggerCommonStyle.h"
+#include "CkEditorTools/Style/CkIconStyle.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_IconToggle.h"
 
 #include "Misc/AutomationTest.h"
@@ -13,7 +14,7 @@ auto MakeAction(FName InId) -> FCkDebug_IconToggleAction
 {
     return FCkDebug_IconToggleAction{
         InId,
-        TEXT("Grid"),
+        ECk_Icon::Grid,
         FText::FromName(InId),
         FText::FromString(TEXT("Test toggle")),
         TAttribute<bool>{false},
@@ -102,7 +103,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 bool FCkDebugIconToggle_DoesNotFillSurplusWidth::RunTest(const FString& Parameters)
 {
     auto Toggle = SNew(SCkDebug_IconToggle)
-        .IconId(TEXT("Grid"))
+        .IconId(ECk_Icon::Grid)
         .Label(FText::FromString(TEXT("Test toggle")))
         .IsOn(false)
         .OnStateChanged(FOnCkDebug_IconToggleChanged::CreateLambda([](bool) {}));
@@ -143,16 +144,16 @@ bool FCkDebugIconToolbar_RejectsInvalidDescriptors::RunTest(const FString& Param
     TestEqual(TEXT("Invalid descriptor leaves no partial layout"), Layout.ActionCount, 0);
 
     auto MissingIconAction = MakeAction(TEXT("MissingIcon"));
-    MissingIconAction.IconId = TEXT("DefinitelyMissingCkDebuggerIcon");
+    MissingIconAction.IconId = ECk_Icon::None;
     Layout = {99};
-    TestFalse(TEXT("Missing icon rejects the whole toolbar"),
+    TestFalse(TEXT("Icon-less action rejects the whole toolbar"),
         FCkDebug_IconToolbarLayout::TryBuild({MissingIconAction}, Layout));
-    TestEqual(TEXT("Missing icon leaves no partial layout"), Layout.ActionCount, 0);
+    TestEqual(TEXT("Icon-less action leaves no partial layout"), Layout.ActionCount, 0);
 
-    TestNotNull(TEXT("Common icon registry resolves toolbar glyphs"),
-        FCkDebuggerCommonStyle::Get_IconBrush(TEXT("Grid")));
-    TestNull(TEXT("Common icon registry does not invent missing glyphs"),
-        FCkDebuggerCommonStyle::Get_IconBrush(TEXT("DefinitelyMissingCkDebuggerIcon")));
+    TestNotNull(TEXT("Typed icon registry resolves toolbar glyphs"),
+        FCkIconStyle::Get_Brush(ECk_Icon::Grid, ECk_Icon_BrushSize::Size_16x16));
+    TestNull(TEXT("The None sentinel draws nothing"),
+        FCkIconStyle::Get_Brush(ECk_Icon::None, ECk_Icon_BrushSize::Size_16x16));
 
     return true;
 }

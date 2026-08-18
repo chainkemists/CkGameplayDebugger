@@ -3,6 +3,7 @@
 #include "CkCore/Macros/CkMacros.h"
 #include "CkDebuggerCommon/Styles/CkDebuggerAxes.h"
 #include "CkDebuggerCommon/Styles/CkDebuggerCommonStyle.h"
+#include "CkEditorTools/Style/CkIconStyle.h"
 #include "CkEditorTools/Style/CkStyle.h"
 
 #include "Widgets/Images/SImage.h"
@@ -33,7 +34,7 @@ namespace ck_debug_icon_toggle
 
 FCkDebug_IconToggleAction::FCkDebug_IconToggleAction(
     FName InId,
-    FName InIconId,
+    ECk_Icon InIconId,
     FText InLabel,
     TAttribute<FText> InToolTip,
     TAttribute<bool> InIsOn,
@@ -55,8 +56,8 @@ auto
     -> bool
 {
     return NOT Id.IsNone()
-        && NOT IconId.IsNone()
-        && FCkDebuggerCommonStyle::Get_IconBrush(IconId) != nullptr
+        && IconId != ECk_Icon::None
+        && FCkIconStyle::Get_Brush(IconId, ECk_Icon_BrushSize::Size_16x16) != nullptr
         && NOT Label.IsEmpty()
         && IsOn.IsSet()
         && OnStateChanged.IsBound()
@@ -98,7 +99,7 @@ auto
     _ToolTip = InArgs._ToolTip;
     _IsOn = InArgs._IsOn;
 
-    const auto* IconBrush = FCkDebuggerCommonStyle::Get_IconBrush(InArgs._IconId);
+    const auto* IconBrush = FCkIconStyle::Get_Brush(InArgs._IconId, ECk_Icon_BrushSize::Size_16x16);
     const auto IconIsValid = IconBrush != nullptr;
     CK_ENSURE_IF_NOT(
         IconIsValid,

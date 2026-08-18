@@ -1,4 +1,5 @@
 #include "CkJoltDebugger/Window/SCkJoltDebuggerWindow.h"
+#include "CkEditorTools/Style/CkIconStyle.h"
 
 #include "CkJoltDebugger/Settings/CkJoltDebuggerSettings.h"
 #include "CkJoltDebugger/Viewport/SCkJoltDebugger_3dViewport.h"
@@ -191,7 +192,7 @@ namespace ck_jolt_debugger
     // read this, so a toggle and its saved value can never describe different classes.
     struct FPopulationGroup
     {
-        FName _IconId;
+        ECk_Icon _IconId = ECk_Icon::None;
         FString _Label;
         FString _ToolTip;
         TArray<ECk_Jolt_DebugDraw_ColorClass> _ColorClasses;
@@ -203,7 +204,7 @@ namespace ck_jolt_debugger
         return
         {
             FPopulationGroup{
-                TEXT("Jolt"),
+                ECk_Icon::Jolt,
                 TEXT("Jolt Bodies"),
                 TEXT("Show rigid bodies composed through CkJoltBody — static, kinematic, and dynamic (awake or asleep)."),
                 {
@@ -214,19 +215,19 @@ namespace ck_jolt_debugger
                 },
                 &UCkJoltDebuggerSettings::ShowJoltBodies},
             FPopulationGroup{
-                TEXT("World"),
+                ECk_Icon::World,
                 TEXT("Baked Static World"),
                 TEXT("Show the baked level geometry extracted into the Jolt static world."),
                 {ECk_Jolt_DebugDraw_ColorClass::BakedStatic},
                 &UCkJoltDebuggerSettings::ShowBakedStaticWorld},
             FPopulationGroup{
-                TEXT("Probe"),
+                ECk_Icon::Probe,
                 TEXT("Sensors"),
                 TEXT("Show sensor bodies — the trigger volumes behind CkSpatialQuery probes."),
                 {ECk_Jolt_DebugDraw_ColorClass::Sensor},
                 &UCkJoltDebuggerSettings::ShowSensors},
             FPopulationGroup{
-                TEXT("Person"),
+                ECk_Icon::Actor,
                 TEXT("Characters"),
                 TEXT("Show CkJoltCharacter capsules. Characters have no broadphase body — they are drawn from their own shape."),
                 {ECk_Jolt_DebugDraw_ColorClass::Character},
@@ -238,7 +239,7 @@ namespace ck_jolt_debugger
     // builder and the restore pass read this table, so a toggle and the bit it persists cannot drift apart.
     struct FDrawFlagToggle
     {
-        FName _IconId;
+        ECk_Icon _IconId = ECk_Icon::None;
         FString _Label;
         FString _ToolTip;
         ECk_Jolt_DebugDrawFlags _Flag = ECk_Jolt_DebugDrawFlags::None;
@@ -257,58 +258,58 @@ namespace ck_jolt_debugger
             FDrawFlagGroup{
                 TEXT("Bodies"),
                 {
-                    {TEXT("Cube"), TEXT("Shapes"),
+                    {ECk_Icon::Entity, TEXT("Shapes"),
                         TEXT("Draw each body's collision shape as instanced geometry. Turning it off leaves only the line extras."),
                         ECk_Jolt_DebugDrawFlags::Shape},
-                    {TEXT("ArrowProjectile"), TEXT("Velocity"),
+                    {ECk_Icon::Projectile, TEXT("Velocity"),
                         TEXT("Draw a linear-velocity arrow per active body."),
                         ECk_Jolt_DebugDrawFlags::Velocity},
-                    {TEXT("Wheel"), TEXT("Angular Velocity"),
+                    {ECk_Icon::Vehicle, TEXT("Angular Velocity"),
                         TEXT("Draw an angular-velocity arrow per active body."),
                         ECk_Jolt_DebugDrawFlags::AngularVelocity},
-                    {TEXT("Transform"), TEXT("World Transform"),
+                    {ECk_Icon::Transform, TEXT("World Transform"),
                         TEXT("Draw each body's world-transform axes."),
                         ECk_Jolt_DebugDrawFlags::WorldTransform},
-                    {TEXT("Target"), TEXT("Centre of Mass"),
+                    {ECk_Icon::Target, TEXT("Centre of Mass"),
                         TEXT("Draw each body's centre-of-mass transform axes."),
                         ECk_Jolt_DebugDrawFlags::CenterOfMassTransform},
-                    {TEXT("Crate"), TEXT("Bounding Box"),
+                    {ECk_Icon::Duplicates, TEXT("Bounding Box"),
                         TEXT("Draw each body's world-space AABB."),
                         ECk_Jolt_DebugDrawFlags::BoundingBox},
-                    {TEXT("Scale"), TEXT("Mass + Inertia"),
+                    {ECk_Icon::Size, TEXT("Mass + Inertia"),
                         TEXT("Draw the inertia wire box. Its numeric mass needs the Labels toggle as well."),
                         ECk_Jolt_DebugDrawFlags::MassAndInertia}
                 }},
             FDrawFlagGroup{
                 TEXT("Constraints"),
                 {
-                    {TEXT("Anchor"), TEXT("Constraints"),
+                    {ECk_Icon::Anchored, TEXT("Constraints"),
                         TEXT("Draw every constraint's anchors and axes."),
                         ECk_Jolt_DebugDrawFlags::Constraints},
-                    {TEXT("Gate"), TEXT("Limits"),
+                    {ECk_Icon::Gate, TEXT("Limits"),
                         TEXT("Draw each constraint's configured limits."),
                         ECk_Jolt_DebugDrawFlags::ConstraintLimits},
-                    {TEXT("Compass"), TEXT("Reference Frames"),
+                    {ECk_Icon::Compass, TEXT("Reference Frames"),
                         TEXT("Draw each constraint's per-body reference frames."),
                         ECk_Jolt_DebugDrawFlags::ConstraintReferenceFrames}
                 }},
             FDrawFlagGroup{
                 TEXT("Contacts"),
                 {
-                    {TEXT("Crosshair"), TEXT("Contact Points"),
+                    {ECk_Icon::Aim, TEXT("Contact Points"),
                         TEXT("Draw the solve's contact points. CONTACT FLAGS ARE PROCESS-WIDE: Jolt's contact draw switches are statics, so this arms contact emission for every world and every debugger at once."),
                         ECk_Jolt_DebugDrawFlags::ContactPoints},
-                    {TEXT("Needle"), TEXT("Contact Normals"),
+                    {ECk_Icon::Precision, TEXT("Contact Normals"),
                         TEXT("Draw the solve's manifold normals. Process-wide, like every contact flag."),
                         ECk_Jolt_DebugDrawFlags::ContactNormals},
-                    {TEXT("Shield"), TEXT("Supporting Faces"),
+                    {ECk_Icon::Protection, TEXT("Supporting Faces"),
                         TEXT("Draw the supporting faces the solver resolved each contact against. Process-wide, like every contact flag."),
                         ECk_Jolt_DebugDrawFlags::SupportingFaces}
                 }},
             FDrawFlagGroup{
                 TEXT("Labels"),
                 {
-                    {TEXT("Note"), TEXT("Labels"),
+                    {ECk_Icon::Note, TEXT("Labels"),
                         TEXT("Collect the capture's text labels. Today the only label is the numeric mass beside the Mass + Inertia box, so both toggles are needed to see it."),
                         ECk_Jolt_DebugDrawFlags::Labels}
                 }}
@@ -1419,7 +1420,7 @@ auto
     // flags when the in-world draw is switched off, so a toggle that looked live there would be a lie.
     const auto MakeGatedCVarToggle = [](
         FName InId,
-        FName InIconId,
+        ECk_Icon InIconId,
         const TCHAR* InLabel,
         const TCHAR* InToolTip,
         const TCHAR* InCVarName) -> FCkDebug_IconToggleAction
@@ -1449,7 +1450,7 @@ auto
         .Actions({
             FCkDebug_IconToggleAction{
                 TEXT("JoltDebugDraw"),
-                TEXT("Cube"),
+                ECk_Icon::Entity,
                 FText::FromString(TEXT("In-world Debug Draw")),
                 FText::FromString(TEXT("Draw Jolt physics bodies in the GAME viewport, not this one. Affects the selected world's own debug draw (ck.Jolt.DebugDraw.Enabled).")),
                 TAttribute<bool>::CreateLambda([]()
@@ -1461,32 +1462,29 @@ auto
                     ck_jolt_debugger::SetDebugCVarBool(TEXT("ck.Jolt.DebugDraw.Enabled"), InIsEnabled);
                 })},
             MakeGatedCVarToggle(
-                TEXT("JoltInWorldSleepColoring"),
-                TEXT("Moon"),
+                TEXT("JoltInWorldSleepColoring"), ECk_Icon::Dormant,
                 TEXT("In-world Sleep Colouring"),
                 TEXT("Colour the GAME viewport's bodies by sleep state instead of by body class (ck.Jolt.DebugDraw.SleepColoring). This is the in-world draw's colour MODE, not this viewport's."),
                 TEXT("ck.Jolt.DebugDraw.SleepColoring")),
             MakeGatedCVarToggle(
                 TEXT("JoltInWorldVelocity"),
-                TEXT("ArrowProjectile"),
+                ECk_Icon::Projectile,
                 TEXT("In-world Velocity Vectors"),
                 TEXT("Draw linear AND angular velocity arrows for active Jolt bodies in the GAME viewport, not this one (ck.Jolt.DebugDraw.Velocity)."),
                 TEXT("ck.Jolt.DebugDraw.Velocity")),
             MakeGatedCVarToggle(
-                TEXT("JoltInWorldWorldTransform"),
-                TEXT("Transform"),
+                TEXT("JoltInWorldWorldTransform"), ECk_Icon::Transform,
                 TEXT("In-world World Transforms"),
                 TEXT("Draw each body's world-transform axes in the GAME viewport, not this one (ck.Jolt.DebugDraw.WorldTransform)."),
                 TEXT("ck.Jolt.DebugDraw.WorldTransform")),
             MakeGatedCVarToggle(
                 TEXT("JoltInWorldConstraints"),
-                TEXT("Anchor"),
+                ECk_Icon::Anchored,
                 TEXT("In-world Constraints"),
                 TEXT("Draw constraint anchors, axes and limits in the GAME viewport, not this one (ck.Jolt.DebugDraw.Constraints)."),
                 TEXT("ck.Jolt.DebugDraw.Constraints")),
             MakeGatedCVarToggle(
-                TEXT("JoltInWorldContacts"),
-                TEXT("Crosshair"),
+                TEXT("JoltInWorldContacts"), ECk_Icon::Aim,
                 TEXT("In-world Contacts"),
                 TEXT("Draw contact points and manifold normals in the GAME viewport, not this one (ck.Jolt.DebugDraw.Contacts). PROCESS-WIDE: Jolt's contact draw switches are statics, so this arms contact emission for every world at once."),
                 TEXT("ck.Jolt.DebugDraw.Contacts"))
@@ -1569,7 +1567,7 @@ auto
         + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
         [
             SNew(SCkDebug_IconToggle)
-            .IconId(TEXT("Hourglass"))
+            .IconId(ECk_Icon::Waiting)
             .Label(FText::FromString(TEXT("Pause")))
             .ToolTip(FText::FromString(TEXT("Freeze the JOLT world of the selected game world — the engine keeps running, physics does not (Space). Needs a world that has begun play.")))
             .IsEnabled(HasWorld)
@@ -1598,7 +1596,7 @@ auto
                 return FReply::Handled();
             })
             [
-                SNew(SImage).Image(FCkDebuggerCommonStyle::Get_IconBrush(TEXT("Footprint")))
+                SNew(SImage).Image(FCkIconStyle::Get_Brush(ECk_Icon::BodyActivity, ECk_Icon_BrushSize::Size_16x16))
             ]
         ];
 }
@@ -2281,7 +2279,7 @@ auto
              * as a broken debugger rather than as a refused sim mutation, so the reason has to be reachable.
              */
             SNew(SCkDebug_IconToggle)
-            .IconId(TEXT("Hand"))
+            .IconId(ECk_Icon::Grab)
             .Label(FText::FromString(TEXT("Drag")))
             .IsEnabled(false)
             .IsOn_Lambda([this]() { return Get_IsAuthorityWorld(); })
@@ -2448,7 +2446,7 @@ auto
     Lane->AddSlot().AutoWidth().VAlign(VAlign_Center).Padding(0.0f, 0.0f, CkStyle::SpaceM, 0.0f)
     [
         SNew(SCkDebug_IconToggle)
-        .IconId(TEXT("Probe"))
+        .IconId(ECk_Icon::Probe)
         .Label(FText::FromString(TEXT("Probe results")))
         .ToolTip(FText::FromString(TEXT(
             "Draw what the SELECTED probe is currently overlapping: a line to each overlapping entity, its "

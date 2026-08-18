@@ -1,5 +1,7 @@
 #pragma once
 
+#include "CkEditorTools/Style/CkIcons_Generated.h"
+
 #include "CoreMinimal.h"
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -35,7 +37,7 @@ public:
         FName InTabId,
         FText InDisplayName,
         FText InTooltip,
-        FName InIconId,
+        ECk_Icon InIconId,
         ECkDebuggerToolCategory InCategory,
         int32 InSortOrder)
         : _OwnerModule(InOwnerModule)
@@ -52,7 +54,7 @@ public:
     auto Get_TabId() const -> FName { return _TabId; }
     auto Get_DisplayName() const -> const FText& { return _DisplayName; }
     auto Get_Tooltip() const -> const FText& { return _Tooltip; }
-    auto Get_IconId() const -> FName { return _IconId; }
+    auto Get_IconId() const -> ECk_Icon { return _IconId; }
     auto Get_Category() const -> ECkDebuggerToolCategory { return _Category; }
     auto Get_SortOrder() const -> int32 { return _SortOrder; }
     auto Get_TabFactory() const -> const FCkDebuggerToolTabFactory& { return _TabFactory; }
@@ -68,7 +70,7 @@ private:
     FName _TabId;
     FText _DisplayName;
     FText _Tooltip;
-    FName _IconId;
+    ECk_Icon _IconId = ECk_Icon::None;
     ECkDebuggerToolCategory _Category = ECkDebuggerToolCategory::Invalid;
     int32 _SortOrder = 0;
     FCkDebuggerToolTabFactory _TabFactory;

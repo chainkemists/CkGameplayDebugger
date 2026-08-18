@@ -60,9 +60,7 @@ auto FCkOptimizationDebuggerModule::StartupModule() -> void
         _DebuggerTabName,
         FText::FromString(TEXT("[CK] Optimization Debugger")),
         FText::FromString(TEXT("Analyze levels and assets offline — findings, memory, profiling, cleanup")),
-        // Must be the basename of an SVG that ships under CkDebugger/Resources/Icons (or Icons/General) — an unknown
-        // id resolves to nullptr and the launcher silently falls back to the generic warning brush. Stopwatch.svg exists.
-        TEXT("Stopwatch"),
+        ECk_Icon::ProfileTiming,
         // Tools/40 — the Tools category already uses 10 (Insights Analyzer), 20 (Style Lab) and 30 (Save). The launcher
         // census spec asserts every category/order slot is unique, so this must stay distinct.
         ECkDebuggerToolCategory::Tools,

@@ -59,7 +59,7 @@ auto FCkInsightsDebuggerModule::StartupModule() -> void
         _DebuggerTabName,
         LOCTEXT("InsightsAnalyzerLauncherName", "[CK] Insights Analyzer"),
         LOCTEXT("InsightsAnalyzerLauncherTooltip", "Open .utrace files and analyze frame performance"),
-        TEXT("Hourglass"),
+        ECk_Icon::Waiting,
         ECkDebuggerToolCategory::Tools,
         10}
         .Set_TabFactory(FCkDebuggerToolTabFactory::CreateLambda([this]

@@ -6,7 +6,7 @@ class FCkInspector_OverlapBody : public ICkDebuggerComponentInspector_Base
 {
 public:
     auto Get_ComponentName() const -> FText override;
-    auto Get_IconName() const -> FName override { return TEXT("OverlapBody"); }
+    auto Get_Icon() const -> ECk_Icon override { return ECk_Icon::OverlapBody; }
     auto CanInspect(const FCk_Handle& Entity) const -> bool override;
     auto Build_Inspector(const FCk_Handle& Entity) -> TSharedRef<SWidget> override;
     auto Get_SortPriority() const -> int32 override { return 125; }

@@ -1175,7 +1175,7 @@ auto
         .Actions(TArray<FCkDebug_IconToggleAction>{
             FCkDebug_IconToggleAction{
                 TEXT("PauseOnReplan"),
-                TEXT("Stopwatch"),
+                ECk_Icon::ProfileTiming,
                 FText::FromString(TEXT("Pause on replan")),
                 FText::FromString(TEXT("Pause PIE when a GOAP replan occurs.")),
                 TAttribute<bool>::CreateLambda([this]() -> bool { return _PauseOnReplan; }),
@@ -1185,7 +1185,7 @@ auto
                 })},
             FCkDebug_IconToggleAction{
                 TEXT("PauseOnPlanFailed"),
-                TEXT("Severity_Error"),
+                ECk_Icon::Error,
                 FText::FromString(TEXT("Pause on plan failed")),
                 FText::FromString(TEXT("Pause PIE when GOAP plan construction fails.")),
                 TAttribute<bool>::CreateLambda([this]() -> bool { return _PauseOnPlanFailed; }),

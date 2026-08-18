@@ -1,4 +1,5 @@
 #include "CkDebuggerPage_Dashboard.h"
+#include "CkEditorTools/Style/CkIconStyle.h"
 
 #include "CkCore/Format/CkFormat.h"
 #include "CkCore/Validation/CkIsValid.h"
@@ -445,9 +446,9 @@ auto FCkDebuggerPage_Dashboard::DoRefresh() -> void
 
         for (const auto* Bucket : Singletons)
         {
-            const auto* IconBrush = FCkDebuggerStyle::Get_IconBrush(Bucket->IconName);
+            const auto* IconBrush = Bucket->Get_IconBrush();
             if (IconBrush == nullptr)
-            { IconBrush = FCkDebuggerStyle::Get_IconBrush(TEXT("Cube")); }
+            { IconBrush = FCkIconStyle::Get_Brush(ECk_Icon::Entity, ECk_Icon_BrushSize::Size_16x16); }
 
             const auto Representative = Bucket->Representative;
 
@@ -567,9 +568,9 @@ auto FCkDebuggerPage_Dashboard::DoCreateCard(
     const ck::ecs_debugger_aggregation::FArchetypeBucket& InBucket,
     FCardEntry& OutEntry) -> void
 {
-    const auto* IconBrush = FCkDebuggerStyle::Get_IconBrush(InBucket.IconName);
+    const auto* IconBrush = InBucket.Get_IconBrush();
     if (IconBrush == nullptr)
-    { IconBrush = FCkDebuggerStyle::Get_IconBrush(TEXT("Cube")); }
+    { IconBrush = FCkIconStyle::Get_Brush(ECk_Icon::Entity, ECk_Icon_BrushSize::Size_16x16); }
 
     const auto AccentColor = InBucket.IconColor;
 
@@ -584,7 +585,7 @@ auto FCkDebuggerPage_Dashboard::DoCreateCard(
         { break; }
 
         const auto* Visual = ck::ecs_debugger_feature_visuals::Get_FeatureVisuals().Find(FeatureId);
-        const auto* Brush = Visual != nullptr ? FCkDebuggerStyle::Get_IconBrush(Visual->IconName) : nullptr;
+        const auto* Brush = Visual != nullptr ? FCkIconStyle::Get_Brush(Visual->Icon, ECk_Icon_BrushSize::Size_16x16) : nullptr;
         if (Brush == nullptr)
         { continue; }
 

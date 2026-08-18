@@ -10,7 +10,7 @@ class FCkInspector_SceneNode : public ICkDebuggerComponentInspector_Base
 {
 public:
     auto Get_ComponentName() const -> FText override;
-    auto Get_IconName() const -> FName override { return TEXT("SceneNode"); }
+    auto Get_Icon() const -> ECk_Icon override { return ECk_Icon::SceneNode; }
     auto Get_FeatureFlagId() const -> FName override { return TEXT("SceneNode"); }
     auto Get_FeatureColor() const -> TOptional<FLinearColor> override { return FLinearColor::FromSRGBColor(FColor::FromHex(TEXT("199E70"))); }
     auto CanInspect(const FCk_Handle& Entity) const -> bool override;

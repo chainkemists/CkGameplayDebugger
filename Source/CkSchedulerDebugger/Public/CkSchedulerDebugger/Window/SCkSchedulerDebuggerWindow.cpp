@@ -288,7 +288,7 @@ auto
 auto SCkSchedulerDebuggerWindow::DoBuildCommandGroups() -> TArray<FCkDebug_CommandGroup>
 {
     const auto Freeze = SNew(SCkDebug_IconToggle)
-        .IconId(TEXT("Snowflake")).Label(FText::FromString(TEXT("Freeze capture")))
+        .IconId(ECk_Icon::Freeze).Label(FText::FromString(TEXT("Freeze capture")))
         .ToolTip(FText::FromString(TEXT("Freeze scheduler capture. Turning this off while inspecting history returns to live capture.")))
         .IsOn_Lambda([this]() { return _ViewModel.IsValid() && (_ViewModel->Get_IsFrozen() || _ViewModel->Get_SelectedFrameOffset() > 0); })
         .OnStateChanged_Lambda([this](bool InIsOn) { if (NOT _ViewModel.IsValid()) { return; } if (InIsOn) { _ViewModel->Set_IsFrozen(true); } else { if (_ViewModel->Get_SelectedFrameOffset() > 0) { _ViewModel->Set_SelectedFrameOffset(0); } _ViewModel->Set_IsFrozen(false); } });

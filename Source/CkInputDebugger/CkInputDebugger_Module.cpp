@@ -59,7 +59,7 @@ auto FCkInputDebuggerModule::StartupModule() -> void
         _DebuggerTabName,
         FText::FromString(TEXT("[CK] Enhanced Input Debugger")),
         FText::FromString(TEXT("Inspect input contexts, actions, bindings, and live values")),
-        TEXT("Input"),
+        ECk_Icon::Input,
         ECkDebuggerToolCategory::Interface,
         20}
         .Set_TabFactory(FCkDebuggerToolTabFactory::CreateLambda([this]

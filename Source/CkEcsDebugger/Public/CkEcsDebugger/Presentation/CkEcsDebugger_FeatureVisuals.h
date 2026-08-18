@@ -1,5 +1,7 @@
 #pragma once
 
+#include "CkEditorTools/Style/CkIcons_Generated.h"
+
 #include <CoreMinimal.h>
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -12,7 +14,7 @@ namespace ck::ecs_debugger_feature_visuals
 {
     struct FFeatureVisual
     {
-        FName IconName;
+        ECk_Icon Icon = ECk_Icon::None;
         FLinearColor Color = FLinearColor::White;
     };
 

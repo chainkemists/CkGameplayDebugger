@@ -1,5 +1,6 @@
 #pragma once
 
+#include "CkEditorTools/Style/CkIcons_Generated.h"
 #include "CkEcs/Handle/CkHandle.h"
 #include "Widgets/SCompoundWidget.h"
 
@@ -29,11 +30,11 @@ public:
      * entity-tree badge strips, the feature rail, and inspector section headers all
      * render the same glyph/color (one icon language; redesign spec §2.4).
      *
-     * IconName resolves via FCkDebuggerStyle::Get_IconBrush ("CkDebugger.Icon.<Name>").
+     * The icon resolves via FCkIconStyle::Get_Brush — a typed, compile-checked identifier.
      * NAME_None = no dedicated glyph; surfaces fall back to a generic dot. An unset
      * color keeps the InspectorFilter model's existing curated/hash badge color.
      */
-    virtual auto Get_IconName() const -> FName { return NAME_None; }
+    virtual auto Get_Icon() const -> ECk_Icon { return ECk_Icon::None; }
     virtual auto Get_FeatureColor() const -> TOptional<FLinearColor> { return {}; }
 
     /**

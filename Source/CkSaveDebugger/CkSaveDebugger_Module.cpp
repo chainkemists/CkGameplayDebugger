@@ -61,9 +61,7 @@ auto FCkSaveDebuggerModule::StartupModule() -> void
         _DebuggerTabName,
         FText::FromString(TEXT("[CK] Save Debugger")),
         FText::FromString(TEXT("Inspect CK .sav snapshot files offline — census, diagnostics, payloads")),
-        // Must be the basename of an SVG that ships under CkDebugger/Resources/Icons (or Icons/General) — an unknown
-        // id resolves to nullptr and the launcher silently falls back to the generic warning brush. Cassette.svg exists.
-        TEXT("Cassette"),
+        ECk_Icon::SaveSlot,
         // Tools/30 — the Tools category already uses 10 (Insights Analyzer) and 20 (Style Lab). The launcher census
         // spec asserts every category/order slot is unique, so this must stay distinct.
         ECkDebuggerToolCategory::Tools,

@@ -648,7 +648,7 @@ auto
 												.Padding(0.0f, 0.0f, FCkSchedulerDebuggerStyle::Padding_Small, 0.0f)
 												[
 													SNew(SCkDebug_IconToggle)
-														.IconId(TEXT("Moon"))
+														.IconId(ECk_Icon::Dormant)
 														.Label(FText::FromString(TEXT("Hide idle processors")))
 														.ToolTip(FText::FromString(TEXT("Hide idle processors (zero entity count).")))
 														.IsOn_Lambda([this]()

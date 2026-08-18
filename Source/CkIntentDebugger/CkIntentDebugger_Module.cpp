@@ -85,7 +85,7 @@ auto
         _DebuggerTabName,
         FText::FromString(TEXT("[CK] Intent Debugger")),
         FText::FromString(TEXT("Inspect the frame record, layer stack, resolution tables, and near-missed intents")),
-        TEXT("Crosshair"),
+        ECk_Icon::Aim,
         ECkDebuggerToolCategory::Interface,
         30}
         .Set_TabFactory(FCkDebuggerToolTabFactory::CreateLambda([this]

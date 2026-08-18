@@ -4,6 +4,7 @@
 #include "CkCore/Macros/CkMacros.h"
 #include "CkCore/Validation/CkIsValid.h"
 
+#include "CkEditorTools/Style/CkIconStyle.h"
 #include "CkDebuggerCommon/Lifecycle/CkDebug_SessionLifecycle.h"
 #include "CkDebuggerCommon/Styles/CkDebuggerAxes.h"
 #include "CkDebuggerCommon/Styles/CkDebuggerStyle.h"
@@ -109,10 +110,10 @@ namespace ck_optimization_debugger_window
 
     auto
         Get_IconBrush(
-            FName InIconId)
+            ECk_Icon InIcon)
         -> const FSlateBrush*
     {
-        return FCkDebuggerStyle::Get_IconBrush(InIconId);
+        return FCkIconStyle::Get_Brush(InIcon, ECk_Icon_BrushSize::Size_16x16);
     }
 
     // ----------------------------------------------------------------------------------------------------------------
@@ -130,20 +131,20 @@ namespace ck_optimization_debugger_window
      *  One mapping so a category cannot mean two different pictures in two places. Every id resolves against
      *  `Resources/Icons/**`; `Ck.OptimizationDebugger.Window.CategoryIcons` pins the set as distinct. */
     auto
-        Get_CategoryIconId(
+        Get_CategoryIcon(
             ECkOptimizationDebugger_Category InCategory)
-        -> FName
+        -> ECk_Icon
     {
         switch (InCategory)
         {
-            case ECkOptimizationDebugger_Category::Mesh:            return FName{TEXT("Cube")};
-            case ECkOptimizationDebugger_Category::Texture:         return FName{TEXT("Palette")};
-            case ECkOptimizationDebugger_Category::Material:        return FName{TEXT("Brush")};
-            case ECkOptimizationDebugger_Category::Lighting:        return FName{TEXT("Bulb")};
-            case ECkOptimizationDebugger_Category::Actor:           return FName{TEXT("Person")};
-            case ECkOptimizationDebugger_Category::Blueprint:       return FName{TEXT("Puzzle")};
-            case ECkOptimizationDebugger_Category::ProjectSettings: return FName{TEXT("Gear")};
-            default:                                                return FName{TEXT("Cube")};
+            case ECkOptimizationDebugger_Category::Mesh:            return ECk_Icon::Entity;
+            case ECkOptimizationDebugger_Category::Texture:         return ECk_Icon::TextureAsset;
+            case ECkOptimizationDebugger_Category::Material:        return ECk_Icon::MaterialAsset;
+            case ECkOptimizationDebugger_Category::Lighting:        return ECk_Icon::Lighting;
+            case ECkOptimizationDebugger_Category::Actor:           return ECk_Icon::Actor;
+            case ECkOptimizationDebugger_Category::Blueprint:       return ECk_Icon::Fragment;
+            case ECkOptimizationDebugger_Category::ProjectSettings: return ECk_Icon::Settings;
+            default:                                                return ECk_Icon::Entity;
         }
     }
 
@@ -159,11 +160,11 @@ namespace ck_optimization_debugger_window
      *  `Get_SeverityTone` is already the model's rule, so routing the glyph through it means colour and picture
      *  cannot drift: one severity, one tone, one pair. */
     auto
-        Get_SeverityIconId(
+        Get_SeverityIcon(
             ECkOptimizationDebugger_Severity InSeverity)
-        -> FName
+        -> ECk_Icon
     {
-        return ck::debug_axes::Get_ToneIconId(
+        return ck::debug_axes::Get_ToneIcon(
             ck_optimization_debugger_model::Get_SeverityTone(InSeverity));
     }
 
@@ -173,21 +174,21 @@ namespace ck_optimization_debugger_window
      *  be five pictures that mean nothing; the LABEL is what tells them apart, and the glyph says which shelf the
      *  reader's eye is on. Every id below exists under `Resources/Icons/**`. */
     auto
-        Get_ProfileGroupIconId(
+        Get_ProfileGroupIcon(
             ECkOptimizationDebugger_ProfileGroup InGroup)
-        -> FName
+        -> ECk_Icon
     {
         switch (InGroup)
         {
-            case ECkOptimizationDebugger_ProfileGroup::Timing:            return FName{TEXT("Stopwatch")};
-            case ECkOptimizationDebugger_ProfileGroup::Gpu:               return FName{TEXT("Chip")};
-            case ECkOptimizationDebugger_ProfileGroup::ViewModes:         return FName{TEXT("Monitor")};
-            case ECkOptimizationDebugger_ProfileGroup::Nanite:            return FName{TEXT("Gem")};
+            case ECkOptimizationDebugger_ProfileGroup::Timing:            return ECk_Icon::ProfileTiming;
+            case ECkOptimizationDebugger_ProfileGroup::Gpu:               return ECk_Icon::Hardware;
+            case ECkOptimizationDebugger_ProfileGroup::ViewModes:         return ECk_Icon::Display;
+            case ECkOptimizationDebugger_ProfileGroup::Nanite:            return ECk_Icon::Rarity;
             // Lumen IS lighting, and the findings page already spends this glyph on the lighting category — one
             // picture, one meaning, across both pages.
-            case ECkOptimizationDebugger_ProfileGroup::Lumen:             return FName{TEXT("Bulb")};
-            case ECkOptimizationDebugger_ProfileGroup::VirtualShadowMaps: return FName{TEXT("Moon")};
-            default:                                                     return FName{TEXT("Stopwatch")};
+            case ECkOptimizationDebugger_ProfileGroup::Lumen:             return ECk_Icon::Lighting;
+            case ECkOptimizationDebugger_ProfileGroup::VirtualShadowMaps: return ECk_Icon::Dormant;
+            default:                                                     return ECk_Icon::ProfileTiming;
         }
     }
 
@@ -250,7 +251,7 @@ namespace ck_optimization_debugger_window
      *  deliberately goes without a Meaning of its own — one surface, one tooltip. */
     auto
         Build_ActionButton(
-            FName InIconId,
+            ECk_Icon InIconId,
             TAttribute<FText> InLabel,
             TAttribute<FText> InTooltip,
             FOnClicked InOnClicked,
@@ -291,7 +292,7 @@ namespace ck_optimization_debugger_window
     /** The fixed-label form. Every toolbar command whose wording never changes goes through this. */
     auto
         Build_CommandButton(
-            FName InIconId,
+            ECk_Icon InIconId,
             const FString& InLabel,
             const FString& InTooltip,
             FOnClicked InOnClicked,
@@ -439,22 +440,22 @@ namespace ck_optimization_debugger_window
     /** The glyph a cleanup category is named by, on its sub-tab and on its rows. One mapping, so a category cannot
      *  mean two pictures. Every id exists under `Resources/Icons/**`. */
     auto
-        Get_CleanupCategoryIconId(
+        Get_CleanupCategoryIcon(
             ECkOptimizationDebugger_CleanupCategory InCategory)
-        -> FName
+        -> ECk_Icon
     {
         switch (InCategory)
         {
             // A package nothing opens.
-            case ECkOptimizationDebugger_CleanupCategory::Unreferenced:  return FName{TEXT("Package")};
+            case ECkOptimizationDebugger_CleanupCategory::Unreferenced:  return ECk_Icon::Payload;
             // Identical crates in two folders.
-            case ECkOptimizationDebugger_CleanupCategory::Duplicates:    return FName{TEXT("Crate")};
+            case ECkOptimizationDebugger_CleanupCategory::Duplicates:    return ECk_Icon::Duplicates;
             // A name is the key a short-name lookup turns; two assets holding one key is the whole finding.
-            case ECkOptimizationDebugger_CleanupCategory::NameCollisions: return FName{TEXT("Key")};
+            case ECkOptimizationDebugger_CleanupCategory::NameCollisions: return ECk_Icon::SaveKey;
             // Fixing one up cuts the hop out of every referencing package.
-            case ECkOptimizationDebugger_CleanupCategory::Redirectors:   return FName{TEXT("Scissors")};
-            case ECkOptimizationDebugger_CleanupCategory::DirtyPackages: return FName{TEXT("Bucket")};
-            default:                                                     return FName{TEXT("Broom")};
+            case ECkOptimizationDebugger_CleanupCategory::Redirectors:   return ECk_Icon::Redirectors;
+            case ECkOptimizationDebugger_CleanupCategory::DirtyPackages: return ECk_Icon::DirtyPackages;
+            default:                                                     return ECk_Icon::Cleanup;
         }
     }
 
@@ -855,7 +856,7 @@ auto
 
         Actions.Add(FCkDebug_IconToggleAction{
             FName{*ck::Format_UE(TEXT("Severity.{}"), Label)},
-            ck_optimization_debugger_window::Get_SeverityIconId(Severity),
+            ck_optimization_debugger_window::Get_SeverityIcon(Severity),
             FText::FromString(Label),
             // Reads the toggle-scoped count, never `_VisibleSeverityCounts` — the severity this button controls is
             // exactly the axis that must be lifted, or a severity switched off would advertise zero.
@@ -902,7 +903,7 @@ auto
         .VAlign(VAlign_Center)
         .Padding(0.0f, 0.0f, CkStyle::SpaceS, 0.0f)
         [
-            Build_CommandButton(FName{TEXT("Target")},
+            Build_CommandButton(ECk_Icon::Target,
                 TEXT("Scan"),
                 TEXT("Analyze the persistent level and every loaded sub-level"),
                 FOnClicked::CreateSP(this, &SCkOptimizationDebuggerWindow::DoOnScanClicked),
@@ -1143,7 +1144,7 @@ auto
 
         Actions.Add(FCkDebug_IconToggleAction{
             FName{*ck::Format_UE(TEXT("Category.{}"), Label)},
-            ck_optimization_debugger_window::Get_CategoryIconId(Category),
+            ck_optimization_debugger_window::Get_CategoryIcon(Category),
             FText::FromString(Label),
             // The count IGNORES the category mask while honouring every other axis, which is what makes it the
             // count this button would GIVE you rather than the one it is currently showing. A category toggled off
@@ -1205,7 +1206,7 @@ auto
         .Padding(CkStyle::SpaceS, 0.0f, 0.0f, 0.0f)
         [
             SNew(SCkDebug_IconToggle)
-            .IconId(FName{TEXT("Wrench")})
+            .IconId(ECk_Icon::Fix)
             .Label(FText::FromString(TEXT("Has a suggested fix")))
             .ToolTip(FText::FromString(
                 TEXT("Show only findings whose check offered a fix. Whether the button can RUN one also needs an ")
@@ -1229,7 +1230,7 @@ auto
             SNew(SCkDebug_IconToggle)
             // `Ghost` for things that are present but not shown. There is no eye glyph in the set, and inventing one
             // for a single toggle is not worth a new icon.
-            .IconId(FName{TEXT("Ghost")})
+            .IconId(ECk_Icon::Orphaned)
             .Label(FText::FromString(TEXT("Show muted")))
             .ToolTip(FText::FromString(
                 TEXT("Show findings you muted, marked as muted. Muting hides a finding from the list until you ")
@@ -1257,7 +1258,7 @@ auto
         .Padding(CkStyle::SpaceS, 0.0f, 0.0f, 0.0f)
         [
             SNew(SCkDebug_IconToggle)
-            .IconId(FName{TEXT("Flame")})
+            .IconId(ECk_Icon::HotPath)
             .Label(FText::FromString(TEXT("≥2× budget")))
             .ToolTip(FText::FromString(
                 TEXT("Show only findings at least twice past their own budget — the ratio the severity grading ")
@@ -1730,7 +1731,7 @@ auto
                 .Padding(0.0f, 0.0f, CkStyle::SpaceM, 0.0f)
                 [
                     SNew(SCkDebug_Icon)
-                    .Brush(Get_IconBrush(FName{TEXT("Chip")}))
+                    .Brush(Get_IconBrush(ECk_Icon::Hardware))
                     .Meaning(FText::FromString(TEXT("Nothing has been measured yet")))
                     .ColorAndOpacity(FSlateColor{CkStyle::TextMute()})
                     .Size(FVector2D{k_EmptyStateIconSize, k_EmptyStateIconSize})
@@ -1805,7 +1806,7 @@ auto
             .Underline(true)
             .RightContent()
             [
-                Build_CommandButton(FName{TEXT("Probe")},
+                Build_CommandButton(ECk_Icon::Probe,
                     TEXT("Refresh"),
                     TEXT("Measure every resident texture, render target and static mesh. Loads nothing and builds ")
                     TEXT("nothing — it reads what is already in memory"),
@@ -2082,7 +2083,7 @@ auto
     using namespace ck_optimization_debugger_profile_commands;
 
     const auto Commands = Get_CommandsInGroup(InGroup);
-    const auto IconId = Get_ProfileGroupIconId(InGroup);
+    const auto IconId = Get_ProfileGroupIcon(InGroup);
 
     // Wraps rather than clips: the page lives in a dockable tab a reader will narrow, and a shelf that hid its last
     // two entries at 400px would be a shelf whose contents depend on the window size.
@@ -2152,7 +2153,7 @@ auto
     // visualizer shelf reuses that ONE entry from its own header. Non-visualizer shelves get the null widget, which
     // is what the named slot defaults to anyway.
     auto ResetContent = IsVisualizerGroup
-        ? Build_CommandButton(FName{TEXT("Sun")},
+        ? Build_CommandButton(ECk_Icon::DayTime,
             TEXT("Lit"),
             TEXT("Put the viewport back to the normal Lit view"),
             FOnClicked::CreateSP(this, &SCkOptimizationDebuggerWindow::DoOnProfileCommandClicked,
@@ -2228,7 +2229,7 @@ auto
             .AutoWidth()
             .VAlign(VAlign_Center)
             [
-                Build_CommandButton(FName{TEXT("Bolt")},
+                Build_CommandButton(ECk_Icon::Power,
                     TEXT("Run"),
                     TEXT("Exec this command against the editor world. Whatever the console accepts, this accepts — ")
                     TEXT("including the ones that cost a frame"),
@@ -2320,7 +2321,7 @@ auto
             [
                 // ONE action button, whose verb, count and enabled state all follow the active category. Three
                 // buttons of which two are always disabled would teach the reader to stop reading them.
-                Build_ActionButton(FName{TEXT("Broom")},
+                Build_ActionButton(ECk_Icon::Cleanup,
                     TAttribute<FText>::CreateLambda([this]() -> FText
                     {
                         return FText::FromString(_CleanupActionLabel);
@@ -2360,7 +2361,7 @@ auto
                     .Padding(0.0f, 0.0f, CkStyle::SpaceM, 0.0f)
                     [
                         SNew(SCkDebug_Icon)
-                        .Brush(Get_IconBrush(FName{TEXT("Broom")}))
+                        .Brush(Get_IconBrush(ECk_Icon::Cleanup))
                         .Meaning(FText::FromString(TEXT("Nothing has been reviewed yet")))
                         .ColorAndOpacity(FSlateColor{CkStyle::TextMute()})
                         .Size(FVector2D{k_EmptyStateIconSize, k_EmptyStateIconSize})
@@ -2386,7 +2387,7 @@ auto
                 .Padding(0.0f, CkStyle::SpaceM, 0.0f, 0.0f)
                 [
                     // The SAME command the header's button runs — one cleanup scan path, two places to reach it.
-                    Build_CommandButton(FName{TEXT("Broom")},
+                    Build_CommandButton(ECk_Icon::Cleanup,
                         TEXT("Scan Project"),
                         TEXT("Review /Game for unreferenced assets, possible duplicates, redirectors and dirty ")
                         TEXT("packages"),
@@ -2483,7 +2484,7 @@ auto
             .Underline(true)
             .RightContent()
             [
-                Build_CommandButton(FName{TEXT("Broom")},
+                Build_CommandButton(ECk_Icon::Cleanup,
                     TEXT("Scan Project"),
                     TEXT("Review /Game for unreferenced assets, possible duplicates, redirectors and dirty ")
                     TEXT("packages. Loads nothing except what an action you press asks for"),
@@ -2988,7 +2989,7 @@ auto
             .Padding(0.0f, 0.0f, CkStyle::SpaceM, 0.0f)
             [
                 SNew(SCkDebug_Icon)
-                .Brush(Get_IconBrush(FName{TEXT("Stopwatch")}))
+                .Brush(Get_IconBrush(ECk_Icon::ProfileTiming))
                 .Meaning(FText::FromString(TEXT("Nothing has been analyzed yet")))
                 .ColorAndOpacity(FSlateColor{CkStyle::TextMute()})
                 .Size(FVector2D{k_EmptyStateIconSize, k_EmptyStateIconSize})
@@ -3013,7 +3014,7 @@ auto
         .Padding(0.0f, CkStyle::SpaceM, 0.0f, 0.0f)
         [
             // The SAME command the toolbar's Scan button runs — one scan path, two places to reach it.
-            Build_CommandButton(FName{TEXT("Target")},
+            Build_CommandButton(ECk_Icon::Target,
                 TEXT("Scan the open levels"),
                 TEXT("Analyze the persistent level and every loaded sub-level"),
                 FOnClicked::CreateSP(this, &SCkOptimizationDebuggerWindow::DoOnScanClicked),
@@ -3199,7 +3200,7 @@ auto
                 .Padding(0.0f, 0.0f, CkStyle::SpaceS, 0.0f)
                 [
                     SNew(SCkDebug_Icon)
-                    .Brush(Get_IconBrush(Get_SeverityIconId(Severity)))
+                    .Brush(Get_IconBrush(Get_SeverityIcon(Severity)))
                     .Meaning(FText::FromString(Label))
                     .ColorAndOpacity(FSlateColor{CkStyle::GetToneColor(Tone)})
                     .Size(FVector2D{k_PanelIconSize, k_PanelIconSize})
@@ -3427,7 +3428,7 @@ auto
             .Padding(0.0f, 0.0f, CkStyle::SpaceM, 0.0f)
             [
                 SNew(SCkDebug_Icon)
-                .Brush(Get_IconBrush(FName{TEXT("World")}))
+                .Brush(Get_IconBrush(ECk_Icon::World))
                 .Meaning(Hint)
                 .ColorAndOpacity_Lambda([this, LevelName]() -> FSlateColor
                 {
@@ -3634,7 +3635,7 @@ auto
         // Collapsed by default: twelve editable numbers above the level list would bury the answer the reader came
         // for behind the settings they only tune once.
         .StartExpanded(false)
-        .IconBrush(Get_IconBrush(FName{TEXT("Scale")}))
+        .IconBrush(Get_IconBrush(ECk_Icon::Size))
         .IconColor(CkStyle::TextDim())
         .Body()
         [
@@ -4119,7 +4120,7 @@ auto
         .VAlign(VAlign_Center)
         .Padding(0.0f, 0.0f, CkStyle::SpaceS, 0.0f)
         [
-            Build_ActionButton(FName{TEXT("Crosshair")},
+            Build_ActionButton(ECk_Icon::Aim,
                 FText::FromString(TEXT("Go To")),
                 FText::FromString(GoToTooltip),
                 FOnClicked::CreateSP(this, &SCkOptimizationDebuggerWindow::DoOnGoToClicked),
@@ -4135,7 +4136,7 @@ auto
             // is an attribute rather than a construction-time string because it now carries the session gate ("not
             // while a play session is running") and the confirmation warning, neither of which is a property of the
             // finding this panel was built for.
-            Build_ActionButton(FName{TEXT("Wrench")},
+            Build_ActionButton(ECk_Icon::Fix,
                 TAttribute<FText>::CreateLambda([this]() -> FText
                 {
                     return FText::FromString(_FixButtonLabel);
@@ -4337,7 +4338,7 @@ auto
                 .Padding(0.0f, 0.0f, CkStyle::SpaceS, 0.0f)
                 [
                     SNew(SCkDebug_Icon)
-                    .Brush(Get_IconBrush(Get_CategoryIconId(InItem->Category)))
+                    .Brush(Get_IconBrush(Get_CategoryIcon(InItem->Category)))
                     .Meaning(FText::FromString(
                         ck_optimization_debugger_model::Get_CategoryLabel(InItem->Category)))
                     .ColorAndOpacity(FSlateColor{Get_CategoryColor(InItem->Category)})
@@ -4377,7 +4378,7 @@ auto
                     // The group's worst severity, drawn on the header for the same reason: a folded group must
                     // still say how bad what it hides is, or folding would be a way to make a Critical disappear.
                     SNew(SCkDebug_Icon)
-                    .Brush(Get_IconBrush(Get_SeverityIconId(InItem->Severity)))
+                    .Brush(Get_IconBrush(Get_SeverityIcon(InItem->Severity)))
                     .Meaning(FText::FromString(
                         ck_optimization_debugger_model::Get_SeverityLabel(InItem->Severity)))
                     .ColorAndOpacity(FSlateColor{CkStyle::GetToneColor(
@@ -5862,7 +5863,7 @@ auto
                 .Padding(CkStyle::SpaceS, 0.0f, CkStyle::SpaceS, 0.0f)
                 [
                     SNew(SCkDebug_Icon)
-                    .Brush(Get_IconBrush(Get_CleanupCategoryIconId(InItem->Row.Category)))
+                    .Brush(Get_IconBrush(Get_CleanupCategoryIcon(InItem->Row.Category)))
                     .Meaning(FText::FromString(
                         InItem->Row.Category == ECkOptimizationDebugger_CleanupCategory::NameCollisions
                             ? TEXT("A set of assets sharing one name")
@@ -5930,7 +5931,7 @@ auto
             .Padding(Indent, 0.0f, CkStyle::SpaceS, 0.0f)
             [
                 SNew(SCkDebug_Icon)
-                .Brush(Get_IconBrush(Get_CleanupCategoryIconId(InItem->Row.Category)))
+                .Brush(Get_IconBrush(Get_CleanupCategoryIcon(InItem->Row.Category)))
                 .Meaning(FText::FromString(Get_CleanupCategoryLabel(InItem->Row.Category)))
                 .ColorAndOpacity(FSlateColor{CkStyle::TextDim()})
                 .Size(FVector2D{k_RowIconSize, k_RowIconSize})

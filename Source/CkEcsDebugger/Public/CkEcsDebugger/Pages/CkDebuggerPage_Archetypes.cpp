@@ -1,4 +1,5 @@
 #include "CkDebuggerPage_Archetypes.h"
+#include "CkEditorTools/Style/CkIconStyle.h"
 
 #include "CkCore/Validation/CkIsValid.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_Icon.h"
@@ -305,9 +306,9 @@ auto FCkDebuggerPage_Archetypes::DoCreateCard(
     const ck::ecs_debugger_aggregation::FArchetypeBucket& InBucket,
     FCardCacheEntry& OutEntry) -> void
 {
-    const auto* IconBrush = FCkDebuggerStyle::Get_IconBrush(InBucket.IconName);
+    const auto* IconBrush = InBucket.Get_IconBrush();
     if (IconBrush == nullptr)
-    { IconBrush = FCkDebuggerStyle::Get_IconBrush(TEXT("Cube")); }
+    { IconBrush = FCkIconStyle::Get_Brush(ECk_Icon::Entity, ECk_Icon_BrushSize::Size_16x16); }
 
     const auto AccentColor = InBucket.IconColor;
 
@@ -380,7 +381,7 @@ auto FCkDebuggerPage_Archetypes::DoCreateCard(
         { break; }
 
         const auto* Visual = ck::ecs_debugger_feature_visuals::Get_FeatureVisuals().Find(FeatureId);
-        const auto* Brush = Visual != nullptr ? FCkDebuggerStyle::Get_IconBrush(Visual->IconName) : nullptr;
+        const auto* Brush = Visual != nullptr ? FCkIconStyle::Get_Brush(Visual->Icon, ECk_Icon_BrushSize::Size_16x16) : nullptr;
         if (Brush == nullptr)
         { continue; }
 

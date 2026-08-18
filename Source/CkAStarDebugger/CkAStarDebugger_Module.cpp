@@ -74,7 +74,7 @@ auto
         _DebuggerTabName,
         FText::FromString(TEXT("[CK] A* Debugger")),
         FText::FromString(TEXT("Inspect A* search graphs, candidates, and path costs")),
-        TEXT("Grid"),
+        ECk_Icon::Grid,
         ECkDebuggerToolCategory::Ai,
         10}
         .Set_TabFactory(FCkDebuggerToolTabFactory::CreateLambda([this]

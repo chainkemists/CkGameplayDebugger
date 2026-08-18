@@ -131,7 +131,7 @@ auto SCkCrowdDebugger_ViewportPanel::Construct(const FArguments& InArgs) -> void
 				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(CkStyle::SpaceM, 0.0f, 0.0f, 0.0f)
 				[
 					SNew(SCkDebug_IconToggle)
-					.IconId(TEXT("Target"))
+					.IconId(ECk_Icon::Target)
 					.Label(FText::FromString(TEXT("Selected Trouble")))
 					.ToolTip(FText::FromString(TEXT("Show the selected agent's retained path-trouble marker, attempted goal, dashed line, status, and Euclidean distance in this viewport.")))
 					.IsOn_Lambda([]()

@@ -1,4 +1,5 @@
 #include "SCkDebuggerLauncher.h"
+#include "CkEditorTools/Style/CkIconStyle.h"
 
 #include "Styles/CkDebuggerLauncherStyle.h"
 
@@ -201,7 +202,7 @@ auto SCkDebuggerLauncher::RebuildTools() -> void
 auto SCkDebuggerLauncher::Build_ToolButton(const FCkDebuggerToolDescriptor& InTool) -> TSharedRef<SWidget>
 {
     const auto TabId = InTool.Get_TabId();
-    auto IconBrush = FCkDebuggerLauncherStyle::Get_IconBrush(InTool.Get_IconId());
+    auto IconBrush = FCkIconStyle::Get_Brush(InTool.Get_IconId(), ECk_Icon_BrushSize::Size_24x24);
 
     CK_ENSURE_IF_NOT(IconBrush != nullptr,
         TEXT("Debugger launcher tool [{}] references missing icon [{}]"),

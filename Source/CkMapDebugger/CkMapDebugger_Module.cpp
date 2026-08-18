@@ -57,7 +57,7 @@ auto FCkMapDebuggerModule::StartupModule() -> void
         _DebuggerTabName,
         FText::FromString(TEXT("[CK] Map Debugger")),
         FText::FromString(TEXT("POIs, compasses, minimaps, and fog-of-war — the CkPoi map stack at a glance")),
-        TEXT("TreasureMap"),
+        ECk_Icon::Minimap,
         ECkDebuggerToolCategory::Core,
         30}
         .Set_TabFactory(FCkDebuggerToolTabFactory::CreateLambda([this]

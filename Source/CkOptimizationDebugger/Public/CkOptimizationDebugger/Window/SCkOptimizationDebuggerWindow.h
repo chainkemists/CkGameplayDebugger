@@ -187,6 +187,7 @@ private:
     auto DoSet_LevelExcluded(FName InLevelName, bool InExcluded) -> void;
 
     auto DoOnGoToClicked() -> FReply;
+    auto DoOnOpenAssetClicked() -> FReply;
     auto DoOnApplyFixClicked() -> FReply;
 
     /** The one scan path. `DoOnScanClicked` and the post-fix refresh both go through it, so a fix cannot end up
@@ -200,6 +201,13 @@ private:
 
     auto DoNavigate_ToSelected() -> void;
     auto DoNavigate_To(const FCkOptimizationDebugger_FindingRow& InFinding) -> void;
+
+    /** Opens the selected finding's asset in its own editor. One target even from a multi-selection, for the same
+     *  reason navigation takes one: opening N asset editors from one click is not what the reader asked for. */
+    auto DoOpenAsset_Selected() -> void;
+    /** By value, not by reference: it is bound as a context-menu delegate PAYLOAD, and the payload binding
+     *  requires the decayed type (same reason `DoOnMemoryDoubleClicked` takes its item by value). */
+    auto DoOpenAsset_ForTarget(FCkOptimizationDebugger_Target InTarget) -> void;
     auto DoApply_FixToSelected() -> void;
 
     /** Applies every automatic fix the CURRENT FILTER admits. Not the whole scan — see the implementation for why
@@ -426,6 +434,7 @@ private:
     // What the action buttons bind to. Derived state, refreshed by `DoRefresh_SelectionCommands` on selection and
     // rebuild — the buttons' attributes read these fields and never walk the selection themselves.
     bool _HasSelectedFinding = false;
+    bool _OpenAssetButtonEnabled = false;
     int32 _SelectedFixableCount = 0;
     int32 _VisibleFixableCount = 0;
     bool _FixButtonEnabled = false;

@@ -459,4 +459,57 @@ bool FCkOptimizationDebugger_Navigation_TargetRouting::RunTest(const FString& Pa
 
 // --------------------------------------------------------------------------------------------------------------------
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FCkOptimizationDebugger_Fixes_OpenAssetRouting,
+    "Ck.OptimizationDebugger.Fixes.OpenAssetRouting",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCkOptimizationDebugger_Fixes_OpenAssetRouting::RunTest(const FString& Parameters)
+{
+    using namespace ck_optimization_debugger_navigation;
+    using namespace ck_optimization_debugger_scan;
+
+    const auto AssetTarget = Build_AssetTarget(
+        FSoftObjectPath{TEXT("/Game/Spec/T_Bark.T_Bark")}, TEXT("T_Bark"));
+
+    const auto ActorTarget = Build_ActorTarget(
+        FSoftObjectPath{TEXT("/Game/Maps/L_Main.L_Main:PersistentLevel.SM_Rock_12")},
+        TEXT("SM_Rock_12"), TEXT("L_Main"));
+
+    const auto SettingsTarget = Build_ProjectSettingsTarget(TEXT("Rendering"), TEXT("Texture Streaming"));
+
+    TestTrue(TEXT("An asset target can be opened"), Can_OpenAsset(AssetTarget));
+
+    // Opening is NARROWER than navigating, and this is the whole difference: all three kinds are navigable, only one
+    // of them names something with an asset editor behind it. An actor is placed BY an asset rather than being one.
+    TestFalse(TEXT("An actor target cannot be opened"), Can_OpenAsset(ActorTarget));
+    TestFalse(TEXT("A settings target cannot be opened"), Can_OpenAsset(SettingsTarget));
+
+    auto PathlessAsset = AssetTarget;
+    PathlessAsset.Path = FSoftObjectPath{};
+    TestFalse(TEXT("An asset target with no path cannot be opened"), Can_OpenAsset(PathlessAsset));
+
+    // The description is what the tooltip promises, so it is what must not drift from what the action does.
+    const auto AssetDescription = Get_OpenAssetDescription(AssetTarget);
+    TestTrue(TEXT("The asset description promises the asset editor"), AssetDescription.Contains(TEXT("asset editor")));
+    TestTrue(TEXT("...naming the asset"), AssetDescription.Contains(TEXT("T_Bark")));
+
+    // A disabled button still has to say WHY, so the non-asset wording is a real answer rather than a blank.
+    const auto ActorDescription = Get_OpenAssetDescription(ActorTarget);
+    TestTrue(TEXT("A non-asset target says only assets can be opened"),
+        ActorDescription.Contains(TEXT("Only asset findings")));
+    TestEqual(TEXT("...and every non-asset kind gets the same answer"),
+        Get_OpenAssetDescription(SettingsTarget), ActorDescription);
+
+    // Rejection is reported, never silent: the refusal message a caller shows on the status strip is the same
+    // sentence the tooltip already promised, so the two cannot say different things.
+    const auto ActorResult = Open_TargetAsset(ActorTarget);
+    TestFalse(TEXT("Opening a non-asset target fails"), ActorResult.Succeeded);
+    TestEqual(TEXT("...with the description as its reason"), ActorResult.Message, ActorDescription);
+
+    return true;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
 #endif

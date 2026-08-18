@@ -11,6 +11,7 @@
 #include "GameFramework/Actor.h"
 #include "ISettingsModule.h"
 #include "Modules/ModuleManager.h"
+#include "Subsystems/AssetEditorSubsystem.h"
 #endif
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -70,6 +71,37 @@ namespace ck_optimization_debugger_navigation_impl
         GEditor->SyncBrowserToObjects(TArray<UObject*>{Asset});
 
         return Make_Success(ck::Format_UE(TEXT("Content Browser synced to {}."), InTarget.DisplayName));
+    }
+
+    // ----------------------------------------------------------------------------------------------------------------
+
+    auto
+        Open_Asset(
+            const FCkOptimizationDebugger_Target& InTarget)
+        -> FCkOptimizationDebugger_NavigationResult
+    {
+        if (GEditor == nullptr)
+        { return Make_Failure(TEXT("No editor to open the asset in.")); }
+
+        auto* Asset = InTarget.Path.ResolveObject();
+
+        if (Asset == nullptr)
+        { Asset = InTarget.Path.TryLoad(); }
+
+        if (ck::Is_NOT_Valid(Asset))
+        {
+            return Make_Failure(ck::Format_UE(TEXT("{} could not be loaded — it may have been deleted since the scan."),
+                InTarget.Path.ToString()));
+        }
+
+        auto* AssetEditorSubsystem = GEditor->GetEditorSubsystem<UAssetEditorSubsystem>();
+
+        if (ck::Is_NOT_Valid(AssetEditorSubsystem))
+        { return Make_Failure(TEXT("The asset editor subsystem is not available in this session.")); }
+
+        AssetEditorSubsystem->OpenEditorForAsset(Asset);
+
+        return Make_Success(ck::Format_UE(TEXT("Opened {} in its asset editor."), InTarget.DisplayName));
     }
 
     // ----------------------------------------------------------------------------------------------------------------
@@ -252,6 +284,51 @@ namespace ck_optimization_debugger_navigation
         // The module ships in packaged Development/DebugGame targets, where there is no Content Browser, no level
         // viewport and no settings viewer to route to.
         return Make_Failure(TEXT("Navigating to a target needs an editor session."));
+#endif
+    }
+
+    // ----------------------------------------------------------------------------------------------------------------
+
+    auto
+        Get_OpenAssetDescription(
+            const FCkOptimizationDebugger_Target& InTarget)
+        -> FString
+    {
+        if (InTarget.Kind == ECkOptimizationDebugger_TargetKind::Asset)
+        {
+            return ck::Format_UE(TEXT("Open {} in its asset editor"), InTarget.DisplayName);
+        }
+
+        return FString{TEXT("Only asset findings can be opened in an editor")};
+    }
+
+    // ----------------------------------------------------------------------------------------------------------------
+
+    auto
+        Can_OpenAsset(
+            const FCkOptimizationDebugger_Target& InTarget)
+        -> bool
+    {
+        return InTarget.Kind == ECkOptimizationDebugger_TargetKind::Asset && NOT InTarget.Path.IsNull();
+    }
+
+    // ----------------------------------------------------------------------------------------------------------------
+
+    auto
+        Open_TargetAsset(
+            const FCkOptimizationDebugger_Target& InTarget)
+        -> FCkOptimizationDebugger_NavigationResult
+    {
+        using namespace ck_optimization_debugger_navigation_impl;
+
+        if (NOT Can_OpenAsset(InTarget))
+        { return Make_Failure(Get_OpenAssetDescription(InTarget)); }
+
+#if WITH_EDITOR
+        return Open_Asset(InTarget);
+#else
+        // Same envelope as navigation: packaged Development/DebugGame has no asset editors to open.
+        return Make_Failure(TEXT("Opening an asset needs an editor session."));
 #endif
     }
 }

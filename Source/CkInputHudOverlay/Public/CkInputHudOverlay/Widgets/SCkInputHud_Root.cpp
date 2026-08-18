@@ -1,12 +1,14 @@
 #include "CkInputHudOverlay/Widgets/SCkInputHud_Root.h"
 
-#include "CkInputHudOverlay/Model/CkInputHud_Model.h"
-#include "CkInputHudOverlay/Widgets/SCkInputHud_Ribbon.h"
+#include "CkCore/Format/CkFormat.h"
+#include "CkCore/Macros/CkMacros.h"
+#include "CkEditorTools/Style/CkStyle.h"
 
 #include "CkDebuggerCommon/Styles/CkDebuggerStyle.h"
 
-#include "CkCore/Macros/CkMacros.h"
-#include "CkEditorTools/Style/CkStyle.h"
+#include "CkInputHudOverlay/Model/CkInputHud_Model.h"
+#include "CkInputHudOverlay/Style/CkInputHud_RenderStyle.h"
+#include "CkInputHudOverlay/Widgets/SCkInputHud_Ribbon.h"
 
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SBox.h"
@@ -17,8 +19,6 @@
 
 namespace ck_input_hud_root
 {
-    constexpr auto PanelPadding = 8.0f;
-
     // How long the panel takes to fade out once the model runs dry. Long enough that a pause between two inputs
     // does not read as the HUD flickering, short enough that an idle screen clears.
     constexpr auto FadeOutSeconds = 1.6f;
@@ -58,12 +58,14 @@ auto
     _Mode   = InArgs._Mode;
     _Opacity = InArgs._Opacity;
 
+    const auto RenderStyle = ck::input_hud::Get_ActiveRenderStyle();
+
     const auto WeakModel = _Model;
 
-    auto Panel = SNew(SBorder)
-        .BorderImage(FCkDebuggerStyle::Get_SquareBrush())
-        .BorderBackgroundColor(CkStyle::OverlayOf(CkStyle::BgRoot(), 0.75f))
-        .Padding(FMargin{PanelPadding})
+    auto PanelFill = SNew(SBorder)
+        .BorderImage(ck::input_hud::Resolve_Brush(RenderStyle.PanelBrushShape))
+        .BorderBackgroundColor(RenderStyle.Palette.Panel.CopyWithNewOpacity(RenderStyle.PanelOpacity))
+        .Padding(FMargin{RenderStyle.PanelPaddingX, RenderStyle.PanelPaddingY})
         [
             SNew(SVerticalBox)
 
@@ -71,8 +73,8 @@ auto
             + SVerticalBox::Slot()
             .AutoHeight()
             [
-                SNew(SCkInputHud_Ribbon)
-                .Model(_Model)
+                SAssignNew(_Ribbon, SCkInputHud_Ribbon)
+                    .Model(_Model)
             ]
 
             // ---- Stick numeric readout ----
@@ -96,8 +98,8 @@ auto
                     const auto& Left  = Model->Get_LeftStick();
                     const auto& Right = Model->Get_RightStick();
 
-                    return FText::FromString(FString::Printf(
-                        TEXT("L %.2f,%.2f   R %.2f,%.2f"), Left.X, Left.Y, Right.X, Right.Y));
+                    return FText::FromString(ck::Format_UE(
+                        TEXT("L {:.2f},{:.2f}   R {:.2f},{:.2f}"), Left.X, Left.Y, Right.X, Right.Y));
                 })
             ]
 
@@ -106,21 +108,60 @@ auto
             .AutoHeight()
             .Padding(FMargin{0.0f, FCkDebuggerStyle::Padding_Small, 0.0f, 0.0f})
             [
-                SNew(STextBlock)
-                .Font(CkStyle::RegularFont(CkStyle::FontSizeMicro()))
-                .ColorAndOpacity(FSlateColor{CkStyle::Info()})
-                .Text_Lambda([WeakModel]() -> FText
+                SNew(SHorizontalBox)
+                .Visibility_Lambda([WeakModel]() -> EVisibility
                 {
                     const auto Model = WeakModel.Pin();
-                    if (NOT Model.IsValid())
-                    { return FText::GetEmpty(); }
-
-                    return FText::FromString(Model->Get_LayerLine());
+                    return Model.IsValid() && NOT Model->Get_LayerPrimary().IsEmpty()
+                        ? EVisibility::HitTestInvisible
+                        : EVisibility::Collapsed;
                 })
+
+                + SHorizontalBox::Slot().AutoWidth()
+                [
+                    SNew(STextBlock)
+                    .Font(CkStyle::MonoFont(CkStyle::FontSizeMicro()))
+                    .ColorAndOpacity(FSlateColor{CkStyle::Info()})
+                    .Text_Lambda([WeakModel]() -> FText
+                    {
+                        const auto Model = WeakModel.Pin();
+                        return Model.IsValid()
+                            ? FText::FromString(Model->Get_LayerPrimary())
+                            : FText::GetEmpty();
+                    })
+                ]
+
+                + SHorizontalBox::Slot().AutoWidth()
+                [
+                    SNew(STextBlock)
+                    .Font(CkStyle::MonoFont(CkStyle::FontSizeMicro()))
+                    .ColorAndOpacity(FSlateColor{CkStyle::TextMute()})
+                    .Text_Lambda([WeakModel]() -> FText
+                    {
+                        const auto Model = WeakModel.Pin();
+                        if (NOT Model.IsValid() || Model->Get_LayerRemainder().IsEmpty())
+                        { return FText::GetEmpty(); }
+
+                        return FText::FromString(ck::Format_UE(
+                            TEXT(" · {}"), Model->Get_LayerRemainder()));
+                    })
+                ]
             ]
         ];
 
+    auto Panel = SNew(SBorder)
+        // Outline brushes carry their own authored white ring. A filled outer shell lets the user tint the ring;
+        // the nested panel fill below covers its center and leaves exactly PanelOutlineWidth visible.
+        .BorderImage(ck::input_hud::Resolve_Brush(RenderStyle.PanelBrushShape))
+        .BorderBackgroundColor(RenderStyle.Palette.ContainerOutline.CopyWithNewOpacity(
+            RenderStyle.KeyBorderOpacity))
+        .Padding(FMargin{RenderStyle.PanelOutlineWidth})
+        [
+            PanelFill
+        ];
+
     _Panel = Panel;
+    _PanelFill = PanelFill;
     _Panel->SetRenderOpacity(_PanelOpacity);
 
     ChildSlot
@@ -130,7 +171,7 @@ auto
         SAssignNew(_AnchorBox, SBox)
         .HAlign(HAlign_Right)
         .VAlign(VAlign_Top)
-        .Padding(FMargin{PanelPadding})
+        .Padding(FMargin{RenderStyle.PanelPaddingX, RenderStyle.PanelPaddingY})
         [
             Panel
         ]
@@ -154,7 +195,8 @@ auto
     SCompoundWidget::Tick(InAllottedGeometry, InCurrentTime, InDeltaTime);
 
     const auto Corner = _Corner.Get();
-    const auto Scale  = FMath::Clamp(_Scale.Get(), 0.25f, 4.0f);
+    const auto Scale  = ck::input_hud::Get_ValidOverlayScale(_Scale.Get());
+    const auto RenderStyle = ck::input_hud::Get_ActiveRenderStyle();
 
     auto Horizontal = HAlign_Right;
     auto Vertical   = VAlign_Top;
@@ -175,8 +217,51 @@ auto
         _AppliedScale = Scale;
     }
 
+    const auto PanelFillTint = RenderStyle.Palette.Panel.CopyWithNewOpacity(RenderStyle.PanelOpacity);
+    const auto PanelOutlineTint = RenderStyle.Palette.ContainerOutline.CopyWithNewOpacity(
+        RenderStyle.KeyBorderOpacity);
+    const auto PanelPadding = FVector2f{RenderStyle.PanelPaddingX, RenderStyle.PanelPaddingY};
+    const auto SettingsRevision = UCk_InputHud_UserSettings::Get_Revision();
+    if (_Panel.IsValid() && _PanelFill.IsValid() && (RenderStyle.PanelBrushShape != _AppliedPanelBrushShape ||
+        NOT PanelFillTint.Equals(_AppliedPanelFillTint) ||
+        NOT PanelOutlineTint.Equals(_AppliedPanelOutlineTint) ||
+        NOT PanelPadding.Equals(_AppliedPanelPadding)))
+    {
+        _Panel->SetBorderImage(ck::input_hud::Resolve_Brush(RenderStyle.PanelBrushShape));
+        _Panel->SetBorderBackgroundColor(PanelOutlineTint);
+        _Panel->SetPadding(FMargin{RenderStyle.PanelOutlineWidth});
+        _PanelFill->SetBorderImage(ck::input_hud::Resolve_Brush(RenderStyle.PanelBrushShape));
+        _PanelFill->SetBorderBackgroundColor(PanelFillTint);
+        _PanelFill->SetPadding(FMargin{RenderStyle.PanelPaddingX, RenderStyle.PanelPaddingY});
+        if (_AnchorBox.IsValid())
+        { _AnchorBox->SetPadding(FMargin{RenderStyle.PanelPaddingX, RenderStyle.PanelPaddingY}); }
+        _AppliedPanelBrushShape = RenderStyle.PanelBrushShape;
+        _AppliedPanelFillTint   = PanelFillTint;
+        _AppliedPanelOutlineTint = PanelOutlineTint;
+        _AppliedPanelPadding    = PanelPadding;
+    }
+
+    if (SettingsRevision != _AppliedSettingsRevision)
+    {
+        _AppliedSettingsRevision = SettingsRevision;
+        if (_Ribbon.IsValid())
+        { _Ribbon->Invalidate(EInvalidateWidgetReason::Layout); }
+        Invalidate(EInvalidateWidgetReason::Layout);
+    }
+
     const auto Model = _Model.Pin();
     const auto HasContent = Model.IsValid() && NOT Model->Get_Events().IsEmpty();
+
+    if (HasContent && _Ribbon.IsValid())
+    {
+        // Event colors, history fade, release easing, and the press pop are all time-derived. Explicit paint
+        // invalidation keeps PIE and the retained Style Lab sample on the same animation clock.
+        _Ribbon->Invalidate(EInvalidateWidgetReason::Paint);
+
+        // A live hold changes the bar width and duration text, which can change the desired width as it grows.
+        if (Model->Get_HeldNum() > 0)
+        { _Ribbon->Invalidate(EInvalidateWidgetReason::Layout); }
+    }
 
     // Snapping back rather than easing in: the frame an event lands is the frame it must be readable on.
     const auto Target = HasContent
@@ -201,7 +286,7 @@ auto
     -> bool
 {
     // Mode 1 is keyboard-only by contract; only mode 2 follows the device.
-    if (_Mode.Get() != 2)
+    if (_Mode.Get() != 2 || UCk_InputHud_UserSettings::Get_MetadataMode() != ECk_InputHud_MetadataMode::Full)
     { return false; }
 
     const auto Model = _Model.Pin();

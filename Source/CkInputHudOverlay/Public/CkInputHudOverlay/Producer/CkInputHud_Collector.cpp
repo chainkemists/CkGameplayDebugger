@@ -187,7 +187,7 @@ namespace ck_input_hud_collector
             // HUD, so it is named rather than ranked.
             auto Display = Layer.IsGlobalActionLayer
                 ? FString{TEXT("GLOBAL")}
-                : ck::Format_UE(TEXT("{}({})"), Layer.DebugName, Layer.Priority);
+                : ck::Format_UE(TEXT("{} {}"), Layer.DebugName, Layer.Priority);
 
             Entries.Emplace(Layer.Priority, MoveTemp(Display));
         }

@@ -1,4 +1,5 @@
 #include "CkInputHudOverlay/Settings/CkInputHud_Settings.h"
+#include "CkInputHudOverlay/Settings/CkInputHud_UserSettings.h"
 
 // --------------------------------------------------------------------------------------------------------------------
 
@@ -54,5 +55,17 @@ auto
 {
     return FMath::Clamp(ck_input_hud_settings::Get_Defaults().HoldBarMaxPx, 8.0f, 64.0f);
 }
+
+#if WITH_EDITOR
+auto
+    UCk_InputHud_Settings::
+    PostEditChangeProperty(
+        FPropertyChangedEvent& InPropertyChangedEvent)
+    -> void
+{
+    Super::PostEditChangeProperty(InPropertyChangedEvent);
+    UCk_InputHud_UserSettings::Get_Mutable()->NotifyChanged();
+}
+#endif
 
 // --------------------------------------------------------------------------------------------------------------------

@@ -21,6 +21,8 @@ public class CkIntentDebugger : CkModuleRules
             "CkInput",   // input sources, the layer stack, the button map
             "CkIntent",  // the frame record, the compiled set, the matcher
 
+            "CkInputHudOverlay", // one-way DeveloperTool UI -> Runtime settings owner
+
             "CkDebuggerCommon",
             "CkEditorTools",  // shared CkStyle:: tokens used directly by the window
         });

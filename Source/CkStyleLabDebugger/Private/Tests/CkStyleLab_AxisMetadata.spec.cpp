@@ -4,6 +4,8 @@
 
 #include "CkDebuggerCommon/Styles/CkDebuggerStyleSelection.h"
 #include "CkStyleLabDebugger/Styles/CkStyleLab_AxisMetadata.h"
+#include "CkStyleLabDebugger/Widgets/SCkStyleLab_InputHudControls.h"
+#include "CkStyleLabDebugger/Widgets/SCkStyleLab_SamplePane.h"
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
     FCkStyleLab_GraphEventEmphasisMetadata,
@@ -34,6 +36,35 @@ auto FCkStyleLab_GraphEventEmphasisMetadata::RunTest(const FString&) -> bool
     TestEqual(TEXT("Style Lab labels Subtle"), Subtle ? Subtle->ToString() : FString{}, FString{TEXT("Subtle")});
     TestEqual(TEXT("Style Lab labels Clear"), Clear ? Clear->ToString() : FString{}, FString{TEXT("Clear")});
     TestEqual(TEXT("Style Lab labels Bold"), Bold ? Bold->ToString() : FString{}, FString{TEXT("Bold")});
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FCkStyleLab_InputHudPreviewConstruction,
+    "Ck.StyleLab.InputHudPreviewConstruction",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+auto FCkStyleLab_InputHudPreviewConstruction::RunTest(const FString&) -> bool
+{
+    const auto Pane = SNew(SCkStyleLab_SamplePane);
+    Pane->SlatePrepass();
+
+    TestTrue(TEXT("Style Lab sample composes the real Input HUD preview"), Pane->GetDesiredSize().Y > 0.0f);
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FCkStyleLab_InputHudControlsConstruction,
+    "Ck.StyleLab.InputHudControlsConstruction",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+auto FCkStyleLab_InputHudControlsConstruction::RunTest(const FString&) -> bool
+{
+    const auto Controls = SNew(SCkStyleLab_InputHudControls);
+    Controls->SlatePrepass();
+
+    TestTrue(TEXT("Style Lab composes the feature-local Input HUD tuner panel"),
+        Controls->GetDesiredSize().Y > 0.0f);
     return true;
 }
 

@@ -20,8 +20,7 @@
 //      same way — PathNetwork and PathNetworkFollower lived in that state undetected.
 //
 // The registry is global and populated by the static auto-registrars at module load, so no world,
-// PIE, or entity is needed. Icon ids resolve against Resources/Icons/*.svg AND Icons/General/*.svg;
-// both are registered as "CkDebugger.Icon.<BaseName>".
+// PIE, or entity is needed. Icons resolve through the typed FCkIconStyle registry.
 // --------------------------------------------------------------------------------------------------------------------
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(

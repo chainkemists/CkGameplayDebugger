@@ -46,6 +46,24 @@ namespace ck_optimization_debugger_navigation
     CKOPTIMIZATIONDEBUGGER_API auto
     Navigate_ToTarget(
         const FCkOptimizationDebugger_Target& InTarget) -> FCkOptimizationDebugger_NavigationResult;
+
+    /** What "Open Asset" WILL do, in the words the button's tooltip uses. Pure — the spec-pinnable half, and it
+     *  must never disagree with what the action does. */
+    CKOPTIMIZATIONDEBUGGER_API auto
+    Get_OpenAssetDescription(
+        const FCkOptimizationDebugger_Target& InTarget) -> FString;
+
+    /** Only an Asset-kind target with a path can be opened. An actor is placed BY an asset rather than being one,
+     *  and a settings section is a page, so neither has an asset editor to open. */
+    CKOPTIMIZATIONDEBUGGER_API auto
+    Can_OpenAsset(
+        const FCkOptimizationDebugger_Target& InTarget) -> bool;
+
+    /** Opens the asset's own editor. This one LOADS the asset — that is what opening an editor means, and unlike a
+     *  scan it is a thing the reader pressed a button to ask for. Outside the editor it fails saying so. */
+    CKOPTIMIZATIONDEBUGGER_API auto
+    Open_TargetAsset(
+        const FCkOptimizationDebugger_Target& InTarget) -> FCkOptimizationDebugger_NavigationResult;
 }
 
 // --------------------------------------------------------------------------------------------------------------------

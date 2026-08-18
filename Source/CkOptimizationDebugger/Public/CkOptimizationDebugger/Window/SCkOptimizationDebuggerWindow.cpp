@@ -2695,6 +2695,18 @@ auto
 
 auto
     SCkOptimizationDebuggerWindow::
+    DoOnOpenAssetClicked()
+    -> FReply
+{
+    DoOpenAsset_Selected();
+
+    return FReply::Handled();
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkOptimizationDebuggerWindow::
     DoOnApplyFixClicked()
     -> FReply
 {
@@ -2768,6 +2780,39 @@ auto
 
     // A failed navigation is Warn, never Err: an actor whose sub-level has been unloaded since the scan is the
     // ordinary case, and the message already says which one it was.
+    DoSet_Status(Result.Message, Result.Succeeded ? ECk_Tone::Ok : ECk_Tone::Warn);
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkOptimizationDebuggerWindow::
+    DoOpenAsset_Selected()
+    -> void
+{
+    const auto Selected = Get_SelectedFindings();
+
+    if (Selected.IsEmpty())
+    {
+        DoSet_Status(TEXT("Select a finding first."), ECk_Tone::Neutral);
+        return;
+    }
+
+    const auto* Detailed = TryGet_SelectedFinding();
+
+    DoOpenAsset_ForTarget(Detailed != nullptr ? Detailed->Target : Selected[0].Target);
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkOptimizationDebuggerWindow::
+    DoOpenAsset_ForTarget(
+        FCkOptimizationDebugger_Target InTarget)
+    -> void
+{
+    const auto Result = ck_optimization_debugger_navigation::Open_TargetAsset(InTarget);
+
     DoSet_Status(Result.Message, Result.Succeeded ? ECk_Tone::Ok : ECk_Tone::Warn);
 }
 
@@ -3837,6 +3882,18 @@ auto
     _HasSelectedFinding = NOT Selected.IsEmpty();
     _SelectedFixableCount = Fixable.Num();
 
+    // Cached here rather than derived in the button's attribute, for the reason every flag in this function is:
+    // an attribute runs on the paint path, and this one would re-walk the selection to find the detailed finding.
+    _OpenAssetButtonEnabled = false;
+
+    if (_HasSelectedFinding)
+    {
+        const auto* DetailedForOpen = TryGet_SelectedFinding();
+
+        _OpenAssetButtonEnabled = ck_optimization_debugger_navigation::Can_OpenAsset(
+            DetailedForOpen != nullptr ? DetailedForOpen->Target : Selected[0].Target);
+    }
+
     // Cached for the same reason every tab count on this window is: the Fix All button's label, tooltip and enabled
     // state all read it, and it paints every frame. Re-deriving it there would walk the whole findings list from a
     // paint-path attribute three times over.
@@ -4103,10 +4160,11 @@ auto
         ]
     ];
 
-    // The action row. Both buttons stay VISIBLE on every finding and merely disable when they do not apply — a
+    // The action row. Every button stays VISIBLE on every finding and merely disables when it does not apply — a
     // button that vanishes teaches nobody that the feature exists, and "why is this one not fixable" is a question
     // the disabled tooltip answers in place.
     const auto GoToTooltip = ck_optimization_debugger_navigation::Get_NavigationDescription(Finding->Target);
+    const auto OpenAssetTooltip = ck_optimization_debugger_navigation::Get_OpenAssetDescription(Finding->Target);
 
     _FindingDetailBox->AddSlot()
     .AutoHeight()
@@ -4125,6 +4183,21 @@ auto
                 FText::FromString(GoToTooltip),
                 FOnClicked::CreateSP(this, &SCkOptimizationDebuggerWindow::DoOnGoToClicked),
                 TAttribute<bool>::CreateLambda([this]() -> bool { return _HasSelectedFinding; }))
+        ]
+
+        + SHorizontalBox::Slot()
+        .AutoWidth()
+        .HAlign(HAlign_Left)
+        .VAlign(VAlign_Center)
+        .Padding(0.0f, 0.0f, CkStyle::SpaceS, 0.0f)
+        [
+            // A construction-time tooltip, unlike the fix button's: this one says what opening THIS finding's target
+            // would do, and the panel is rebuilt whenever that target changes.
+            Build_ActionButton(ECk_Icon::Edit,
+                FText::FromString(TEXT("Open Asset")),
+                FText::FromString(OpenAssetTooltip),
+                FOnClicked::CreateSP(this, &SCkOptimizationDebuggerWindow::DoOnOpenAssetClicked),
+                TAttribute<bool>::CreateLambda([this]() -> bool { return _OpenAssetButtonEnabled; }))
         ]
 
         + SHorizontalBox::Slot()
@@ -4827,6 +4900,17 @@ auto
         FSlateIcon{},
         FUIAction{FExecuteAction::CreateSP(this, &SCkOptimizationDebuggerWindow::DoNavigate_ToSelected)});
 
+    // Single selection only, and present only when the target has an editor to open — the menu's own rule. One click
+    // opening N asset editors is not what the reader asked for, and it is not undoable by closing one window.
+    if (Findings.Num() == 1 && ck_optimization_debugger_navigation::Can_OpenAsset(Findings[0].Target))
+    {
+        MenuBuilder.AddMenuEntry(
+            FText::FromString(TEXT("Open Asset")),
+            FText::FromString(ck_optimization_debugger_navigation::Get_OpenAssetDescription(Findings[0].Target)),
+            FSlateIcon{},
+            FUIAction{FExecuteAction::CreateSP(this, &SCkOptimizationDebuggerWindow::DoOpenAsset_Selected)});
+    }
+
     const auto Fixable = ck_optimization_debugger_fixes::Get_FixableFindings(Findings);
 
     // Present only when it would actually do something — including the session gate, the same way the cleanup
@@ -5345,6 +5429,22 @@ auto
         FSlateIcon{},
         FUIAction{FExecuteAction::CreateSP(this,
             &SCkOptimizationDebuggerWindow::DoOnMemoryDoubleClicked, Selected[0])});
+
+    // Same target the row already navigates by, same single-selection rule as the findings menu.
+    if (Selected.Num() == 1 && Selected[0].IsValid())
+    {
+        const auto MemoryTarget = Build_MemoryTarget(*Selected[0]);
+
+        if (ck_optimization_debugger_navigation::Can_OpenAsset(MemoryTarget))
+        {
+            MenuBuilder.AddMenuEntry(
+                FText::FromString(TEXT("Open Asset")),
+                FText::FromString(ck_optimization_debugger_navigation::Get_OpenAssetDescription(MemoryTarget)),
+                FSlateIcon{},
+                FUIAction{FExecuteAction::CreateSP(this,
+                    &SCkOptimizationDebuggerWindow::DoOpenAsset_ForTarget, MemoryTarget)});
+        }
+    }
 
     MenuBuilder.AddMenuSeparator();
 

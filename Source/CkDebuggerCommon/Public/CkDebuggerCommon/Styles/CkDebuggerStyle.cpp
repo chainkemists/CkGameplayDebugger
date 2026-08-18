@@ -19,7 +19,6 @@
 // ====================================================================================================================
 
 TSharedPtr<FSlateStyleSet> FCkDebuggerStyle::StyleInstance = nullptr;
-TArray<FName> FCkDebuggerStyle::GeneralIconPool = {};
 
 // ====================================================================================================================
 
@@ -81,7 +80,6 @@ auto
     Style->SetContentRoot(UCk_Utils_IO_UE::Get_PluginsDir(TEXT("CkGameplayDebugger")) / TEXT("Resources"));
 
     CreateBrushes(Style);
-    CreateIconBrushes(Style);
     CreateTextStyles(Style);
 
     return Style;
@@ -126,9 +124,6 @@ auto
     InStyle->Set("CkDebugger.Graph.TransitionNode.ColorSpill", new FSlateBoxBrush(
         InStyle->RootToContentDir(TEXT("GraphEditor/Persona/StateMachineEditor/Trans_Node_ColorSpill"), TEXT(".png")),
         FMargin{16.0f / 64.0f, 16.0f / 28.0f, 16.0f / 64.0f, 4.0f / 28.0f}));
-    InStyle->Set("CkDebugger.Graph.TransitionNode.Icon", new FSlateImageBrush(
-        InStyle->RootToContentDir(TEXT("GraphEditor/Persona/StateMachineEditor/Trans_Node_Icon"), TEXT(".png")),
-        FVector2D{25.0f, 25.0f}));
 
     InStyle->Set("CkDebugger.Badge.Rounded", new FSlateRoundedBoxBrush(
         FLinearColor::White, CkStyle::RadiusS()));
@@ -166,62 +161,6 @@ auto
         RowStyle.SetInactiveHoveredBrush(FSlateRoundedBoxBrush{CkStyle::Selection().CopyWithNewOpacity(0.20f), 3.0f});
         InStyle->Set("CkDebugger.TableView.Row", RowStyle);
     }
-}
-
-auto
-    FCkDebuggerStyle::
-    CreateIconBrushes(
-        TSharedRef<FSlateStyleSet> InStyle)
-    -> void
-{
-    // Everything under Resources/Icons registers as "CkDebugger.Icon.<BaseName>" —
-    // monochrome white SVGs, tinted at draw time via SImage.ColorAndOpacity. Resolve
-    // through Get_IconBrush. Icons/General/* additionally forms the deterministic
-    // assignment pool for archetypes without a bespoke or feature glyph; names are
-    // sorted so the hash-pick is stable regardless of filesystem enumeration order.
-    const auto RegisterDir = [&InStyle](const FString& InDirectory, TArray<FName>* OutPool) -> void
-    {
-        auto Files = TArray<FString>{};
-        IFileManager::Get().FindFiles(Files, *(InDirectory / TEXT("*.svg")), true, false);
-        Files.Sort();
-
-        for (const auto& File : Files)
-        {
-            const auto IconId = FPaths::GetBaseFilename(File);
-            InStyle->Set(
-                FName{FString{TEXT("CkDebugger.Icon.")} + IconId},
-                new FSlateVectorImageBrush{InDirectory / File, FVector2D{16.0f, 16.0f}});
-
-            if (OutPool != nullptr)
-            { OutPool->Add(FName{IconId}); }
-        }
-    };
-
-    const auto IconsDir = InStyle->GetContentRootDir() / TEXT("Icons");
-    GeneralIconPool.Reset();
-    RegisterDir(IconsDir, nullptr);
-    RegisterDir(IconsDir / TEXT("General"), &GeneralIconPool);
-}
-
-auto
-    FCkDebuggerStyle::
-    Get_GeneralIconPool()
-    -> const TArray<FName>&
-{
-    return GeneralIconPool;
-}
-
-auto
-    FCkDebuggerStyle::
-    Get_IconBrush(
-        FName InIconId)
-    -> const FSlateBrush*
-{
-    if (InIconId.IsNone() || NOT StyleInstance.IsValid())
-    { return nullptr; }
-
-    return StyleInstance->GetOptionalBrush(
-        FName{FString{TEXT("CkDebugger.Icon.")} + InIconId.ToString()});
 }
 
 auto

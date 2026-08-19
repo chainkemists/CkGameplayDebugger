@@ -364,6 +364,202 @@ namespace ck_optimization_debugger_snapshot_lens
     // ----------------------------------------------------------------------------------------------------------------
 
     auto
+        Get_AllMeshColumns()
+        -> TArray<ECkOptimizationDebugger_SnapshotMeshColumn>
+    {
+        return TArray<ECkOptimizationDebugger_SnapshotMeshColumn>{
+            ECkOptimizationDebugger_SnapshotMeshColumn::Mesh,
+            ECkOptimizationDebugger_SnapshotMeshColumn::Kind,
+            ECkOptimizationDebugger_SnapshotMeshColumn::Triangles,
+            ECkOptimizationDebugger_SnapshotMeshColumn::Coverage,
+            ECkOptimizationDebugger_SnapshotMeshColumn::Density,
+            ECkOptimizationDebugger_SnapshotMeshColumn::MeshMemory,
+            ECkOptimizationDebugger_SnapshotMeshColumn::Instances,
+            ECkOptimizationDebugger_SnapshotMeshColumn::Slots};
+    }
+
+    // ----------------------------------------------------------------------------------------------------------------
+
+    auto
+        Get_MeshColumnId(
+            ECkOptimizationDebugger_SnapshotMeshColumn InColumn)
+        -> FName
+    {
+        switch (InColumn)
+        {
+            case ECkOptimizationDebugger_SnapshotMeshColumn::Kind:       return FName{TEXT("SnapshotMesh_Kind")};
+            case ECkOptimizationDebugger_SnapshotMeshColumn::Triangles:  return FName{TEXT("SnapshotMesh_Triangles")};
+            case ECkOptimizationDebugger_SnapshotMeshColumn::Coverage:   return FName{TEXT("SnapshotMesh_Coverage")};
+            case ECkOptimizationDebugger_SnapshotMeshColumn::Density:    return FName{TEXT("SnapshotMesh_Density")};
+            case ECkOptimizationDebugger_SnapshotMeshColumn::MeshMemory: return FName{TEXT("SnapshotMesh_MeshMemory")};
+            case ECkOptimizationDebugger_SnapshotMeshColumn::Instances:  return FName{TEXT("SnapshotMesh_Instances")};
+            case ECkOptimizationDebugger_SnapshotMeshColumn::Slots:      return FName{TEXT("SnapshotMesh_Slots")};
+            default:                                                     return FName{TEXT("SnapshotMesh_Mesh")};
+        }
+    }
+
+    // ----------------------------------------------------------------------------------------------------------------
+
+    auto
+        Get_MeshColumnLabel(
+            ECkOptimizationDebugger_SnapshotMeshColumn InColumn)
+        -> FString
+    {
+        switch (InColumn)
+        {
+            case ECkOptimizationDebugger_SnapshotMeshColumn::Kind:       return FString{TEXT("Kind")};
+            case ECkOptimizationDebugger_SnapshotMeshColumn::Triangles:  return FString{TEXT("LOD0 tris")};
+            case ECkOptimizationDebugger_SnapshotMeshColumn::Coverage:   return FString{TEXT("Coverage")};
+            case ECkOptimizationDebugger_SnapshotMeshColumn::Density:    return FString{TEXT("Tris/px")};
+            case ECkOptimizationDebugger_SnapshotMeshColumn::MeshMemory: return FString{TEXT("Mesh mem")};
+            case ECkOptimizationDebugger_SnapshotMeshColumn::Instances:  return FString{TEXT("Instances")};
+            case ECkOptimizationDebugger_SnapshotMeshColumn::Slots:      return FString{TEXT("Slots")};
+            default:                                                     return FString{TEXT("Mesh")};
+        }
+    }
+
+    // ----------------------------------------------------------------------------------------------------------------
+
+    auto
+        TryGet_MeshColumnFromId(
+            FName InColumnId)
+        -> TOptional<ECkOptimizationDebugger_SnapshotMeshColumn>
+    {
+        for (const auto& Column : Get_AllMeshColumns())
+        {
+            if (Get_MeshColumnId(Column) == InColumnId)
+            { return Column; }
+        }
+
+        return {};
+    }
+
+    // ----------------------------------------------------------------------------------------------------------------
+
+    auto
+        Build_SnapshotMeshRows(
+            const FCkOptimizationDebugger_Snapshot& InSnapshot,
+            const TArray<int32>& InCoverage,
+            const FCkOptimizationDebugger_Thresholds& InThresholds)
+        -> TArray<FCkOptimizationDebugger_SnapshotMeshRow>
+    {
+        auto Rows = TArray<FCkOptimizationDebugger_SnapshotMeshRow>{};
+        Rows.Reserve(InSnapshot.Prims.Num());
+
+        for (auto PrimIndex = 0; PrimIndex < InSnapshot.Prims.Num(); ++PrimIndex)
+        {
+            const auto& Prim = InSnapshot.Prims[PrimIndex];
+
+            auto Row = FCkOptimizationDebugger_SnapshotMeshRow{};
+            Row.PrimIndex = PrimIndex;
+            Row.DisplayName = Prim.DisplayName;
+            Row.Kind = Prim.Kind;
+            Row.IsNanite = Prim.IsNanite;
+            Row.Lod0Triangles = Prim.Lods.IsEmpty() ? 0 : Prim.Lods[0].Triangles;
+            Row.MeshResourceSizeBytes = Prim.MeshResourceSizeBytes;
+            Row.TextureResidentBytes = Prim.TextureResidentBytes;
+            Row.InstanceCount = Prim.InstanceCount;
+            Row.SlotCount = Prim.MaterialSlots.Num();
+            Row.BudgetSeverity = TryGet_BudgetSeverity(Prim, InThresholds);
+
+            if (InCoverage.IsValidIndex(PrimIndex))
+            {
+                Row.CoveredPixels = InCoverage[PrimIndex];
+                Row.TrianglesPerPixel = Get_TrianglesPerCoveredPixel(Prim, Row.CoveredPixels);
+            }
+
+            Rows.Add(MoveTemp(Row));
+        }
+
+        return Rows;
+    }
+
+    // ----------------------------------------------------------------------------------------------------------------
+
+    auto
+        Compare_SnapshotMeshRows(
+            const FCkOptimizationDebugger_SnapshotMeshRow& InLhs,
+            const FCkOptimizationDebugger_SnapshotMeshRow& InRhs,
+            ECkOptimizationDebugger_SnapshotMeshColumn InColumn)
+        -> int32
+    {
+        const auto CompareNumbers = [](double InLhsValue, double InRhsValue) -> int32
+        {
+            if (InLhsValue < InRhsValue)
+            { return -1; }
+
+            return InLhsValue > InRhsValue ? 1 : 0;
+        };
+
+        switch (InColumn)
+        {
+            case ECkOptimizationDebugger_SnapshotMeshColumn::Kind:
+            {
+                return CompareNumbers(static_cast<double>(InLhs.Kind), static_cast<double>(InRhs.Kind));
+            }
+            case ECkOptimizationDebugger_SnapshotMeshColumn::Triangles:
+            {
+                return CompareNumbers(InLhs.Lod0Triangles, InRhs.Lod0Triangles);
+            }
+            case ECkOptimizationDebugger_SnapshotMeshColumn::Coverage:
+            {
+                return CompareNumbers(InLhs.CoveredPixels, InRhs.CoveredPixels);
+            }
+            case ECkOptimizationDebugger_SnapshotMeshColumn::Density:
+            {
+                return CompareNumbers(InLhs.TrianglesPerPixel, InRhs.TrianglesPerPixel);
+            }
+            case ECkOptimizationDebugger_SnapshotMeshColumn::MeshMemory:
+            {
+                return CompareNumbers(static_cast<double>(InLhs.MeshResourceSizeBytes),
+                    static_cast<double>(InRhs.MeshResourceSizeBytes));
+            }
+            case ECkOptimizationDebugger_SnapshotMeshColumn::Instances:
+            {
+                return CompareNumbers(InLhs.InstanceCount, InRhs.InstanceCount);
+            }
+            case ECkOptimizationDebugger_SnapshotMeshColumn::Slots:
+            {
+                return CompareNumbers(InLhs.SlotCount, InRhs.SlotCount);
+            }
+            default:
+            {
+                return InLhs.DisplayName.Compare(InRhs.DisplayName, ESearchCase::IgnoreCase);
+            }
+        }
+    }
+
+    // ----------------------------------------------------------------------------------------------------------------
+
+    auto
+        Get_SortedSnapshotMeshRows(
+            const TArray<FCkOptimizationDebugger_SnapshotMeshRow>& InRows,
+            ECkOptimizationDebugger_SnapshotMeshColumn InColumn,
+            bool InAscending)
+        -> TArray<FCkOptimizationDebugger_SnapshotMeshRow>
+    {
+        auto Sorted = InRows;
+
+        Sorted.Sort([InColumn, InAscending](
+            const FCkOptimizationDebugger_SnapshotMeshRow& InLhs,
+            const FCkOptimizationDebugger_SnapshotMeshRow& InRhs) -> bool
+        {
+            const auto Order = Compare_SnapshotMeshRows(InLhs, InRhs, InColumn);
+
+            if (Order != 0)
+            { return InAscending ? Order < 0 : Order > 0; }
+
+            // The tie-break never reverses: TArray::Sort is unstable, and rows equal on the sorted column jumping
+            // around when the reader flips the arrow is how a table stops being trusted.
+            return InLhs.PrimIndex < InRhs.PrimIndex;
+        });
+
+        return Sorted;
+    }
+
+    // ----------------------------------------------------------------------------------------------------------------
+
+    auto
         TryGet_BudgetSeverity(
             const FCkOptimizationDebugger_SnapshotPrim& InPrim,
             const FCkOptimizationDebugger_Thresholds& InThresholds)

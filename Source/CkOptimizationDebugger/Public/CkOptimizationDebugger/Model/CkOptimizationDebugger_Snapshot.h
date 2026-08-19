@@ -36,6 +36,9 @@ struct CKOPTIMIZATIONDEBUGGER_API FCkOptimizationDebugger_SnapshotMaterialSlot
 
     bool IsTwoSided = false;
     int32 UsedTextureCount = 0;
+
+    // Names, not paths: the row and the report print them, and nothing navigates to a texture from here.
+    TArray<FString> UsedTextureNames;
 };
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -44,6 +47,11 @@ struct CKOPTIMIZATIONDEBUGGER_API FCkOptimizationDebugger_SnapshotLod
 {
     int32 Triangles = 0;
     int32 Sections = 0;
+    int32 Vertices = 0;
+
+    // The screen-size threshold this LOD activates at, as authored — what tech art tunes when a mesh
+    // holds its detail too long. Zero when the mesh does not carry one.
+    float ScreenSize = 0.0f;
 };
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -62,6 +70,10 @@ struct CKOPTIMIZATIONDEBUGGER_API FCkOptimizationDebugger_SnapshotPrim
     bool IsNanite = false;
     int32 InstanceCount = 1;
     float DistanceFromCamera = 0.0f;
+
+    // The mesh ASSET's exclusive resource size — the same API and mode the memory analyzer reports, so the two
+    // numbers cannot disagree about one mesh.
+    int64 MeshResourceSizeBytes = 0;
 
     TArray<FCkOptimizationDebugger_SnapshotLod> Lods;
     TArray<FCkOptimizationDebugger_SnapshotMaterialSlot> MaterialSlots;
@@ -91,6 +103,12 @@ struct CKOPTIMIZATIONDEBUGGER_API FCkOptimizationDebugger_Snapshot
     int32 UnidentifiedPixelCount = 0;
 
     FString CaptureNotes;
+
+    // Deduplicated across every visible material at capture time. Stored rather than recomputed because the prim
+    // table keeps texture NAMES only — the dedup needed the paths, which existed only during the capture.
+    int32 UniqueMaterialCount = 0;
+    int32 UniqueTextureCount = 0;
+    int64 TextureResidentBytes = 0;
 
     TArray<FCkOptimizationDebugger_SnapshotPrim> Prims;
 
@@ -202,6 +220,32 @@ namespace ck_optimization_debugger_snapshot
         FCkOptimizationDebugger_Snapshot& InSnapshot,
         TOptional<int32> InPrimIndex,
         ECkOptimizationDebugger_SnapshotClickModifier InModifier) -> void;
+
+    /** The ONE false-colour rule for painting an ID map — the debug dump and the report both use it, so the two
+     *  images a reader compares cannot colour one mesh differently. Seeded per index rather than a gradient on
+     *  purpose: adjacent indices getting unrelated colours is what lets two meshes sharing an edge be told apart,
+     *  which is exactly where identification failures show. Sentinel is black. */
+    CKOPTIMIZATIONDEBUGGER_API auto
+    Get_PrimIndexColor(
+        uint32 InId) -> FColor;
+
+    /** Whole-view totals over the prim table. The detail panel's nothing-selected view and the report BOTH read
+     *  this — one implementation, so the two can never show a reader different totals for one snapshot. */
+    struct CKOPTIMIZATIONDEBUGGER_API FCkOptimizationDebugger_SnapshotAggregates
+    {
+        int64 TotalLod0Triangles = 0;
+        int32 TotalLod0Sections = 0;
+        int32 TotalInstances = 0;
+
+        int32 StaticCount = 0;
+        int32 InstancedCount = 0;
+        int32 SkeletalCount = 0;
+        int32 NaniteCount = 0;
+    };
+
+    CKOPTIMIZATIONDEBUGGER_API auto
+    Get_SnapshotAggregates(
+        const TArray<FCkOptimizationDebugger_SnapshotPrim>& InPrims) -> FCkOptimizationDebugger_SnapshotAggregates;
 
     /** Deliberately approximate, and it says so where the reader can see it. A true per-pass draw count depends on
      *  what the renderer batched this frame, which is not attributable to one primitive offline — LOD0 sections is

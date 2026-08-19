@@ -23,6 +23,7 @@
 #include "HAL/IConsoleManager.h"
 #include "ImageUtils.h"
 #include "Misc/FileHelper.h"
+#include "ProfilingDebugging/ResourceSize.h"
 #include "Misc/Paths.h"
 #include "Materials/MaterialInterface.h"
 #include "Rendering/SkeletalMeshRenderData.h"
@@ -233,10 +234,23 @@ namespace ck_optimization_debugger_snapshot_capture_impl
 
     // ----------------------------------------------------------------------------------------------------------------
 
+    /** The capture-wide dedup the snapshot's unique-material / unique-texture / resident-bytes facts come from.
+     *  Filled as a side effect of building slots, because the paths that make dedup possible exist only here — the
+     *  slot itself keeps names, which is all a row or a report prints. */
+    struct FMaterialCensus
+    {
+        TSet<FSoftObjectPath> Materials;
+        TSet<FSoftObjectPath> Textures;
+        int64 TextureResidentBytes = 0;
+    };
+
+    // ----------------------------------------------------------------------------------------------------------------
+
     auto
         Build_MaterialSlot(
             const FName& InSlotName,
-            UMaterialInterface* InMaterial)
+            UMaterialInterface* InMaterial,
+            FMaterialCensus& InOutCensus)
         -> FCkOptimizationDebugger_SnapshotMaterialSlot
     {
         auto Slot = FCkOptimizationDebugger_SnapshotMaterialSlot{};
@@ -254,6 +268,8 @@ namespace ck_optimization_debugger_snapshot_capture_impl
         Slot.ShadingModel = Get_ShadingModelLabel(InMaterial);
         Slot.IsTwoSided = InMaterial->IsTwoSided();
 
+        InOutCensus.Materials.Add(Slot.MaterialPath);
+
         // The same sampler proxy `Material.SamplerBudget` uses, and the same call shape, so the two numbers cannot
         // disagree about one material.
         auto UsedTextures = TArray<UTexture*>{};
@@ -261,12 +277,29 @@ namespace ck_optimization_debugger_snapshot_capture_impl
 
         auto UniqueTextures = TSet<FSoftObjectPath>{};
 
-        for (const auto* Texture : UsedTextures)
+        for (auto* Texture : UsedTextures)
         {
             if (Texture == nullptr)
             { continue; }
 
-            UniqueTextures.Add(FSoftObjectPath{Texture});
+            const auto TexturePath = FSoftObjectPath{Texture};
+
+            if (NOT UniqueTextures.Contains(TexturePath))
+            {
+                UniqueTextures.Add(TexturePath);
+                Slot.UsedTextureNames.Add(Texture->GetName());
+            }
+
+            if (InOutCensus.Textures.Contains(TexturePath))
+            { continue; }
+
+            InOutCensus.Textures.Add(TexturePath);
+
+            // Resident size, exclusive — the memory analyzer's own API and mode, so this total and its table agree.
+            auto Size = FResourceSizeEx{EResourceSizeMode::Exclusive};
+            Texture->GetResourceSizeEx(Size);
+
+            InOutCensus.TextureResidentBytes += static_cast<int64>(Size.GetTotalMemoryBytes());
         }
 
         Slot.UsedTextureCount = UniqueTextures.Num();
@@ -279,7 +312,8 @@ namespace ck_optimization_debugger_snapshot_capture_impl
     auto
         Fill_StaticMeshPrim(
             UStaticMeshComponent* InComponent,
-            FCkOptimizationDebugger_SnapshotPrim& OutPrim)
+            FCkOptimizationDebugger_SnapshotPrim& OutPrim,
+            FMaterialCensus& InOutCensus)
         -> bool
     {
         // `.Get()` because the accessor hands back a TObjectPtr; validity is asked of the raw pointer.
@@ -304,9 +338,15 @@ namespace ck_optimization_debugger_snapshot_capture_impl
             auto Lod = FCkOptimizationDebugger_SnapshotLod{};
             Lod.Triangles = Resource.GetNumTriangles();
             Lod.Sections = Resource.Sections.Num();
+            Lod.Vertices = Resource.GetNumVertices();
+            Lod.ScreenSize = RenderData->ScreenSize[LodIndex].GetValue();
 
             OutPrim.Lods.Add(Lod);
         }
+
+        auto ResourceSize = FResourceSizeEx{EResourceSizeMode::Exclusive};
+        Mesh->GetResourceSizeEx(ResourceSize);
+        OutPrim.MeshResourceSizeBytes = static_cast<int64>(ResourceSize.GetTotalMemoryBytes());
 
         const auto& StaticMaterials = Mesh->GetStaticMaterials();
 
@@ -314,8 +354,8 @@ namespace ck_optimization_debugger_snapshot_capture_impl
         {
             // The COMPONENT's material, not the mesh's: an override is what actually renders, and a row printing the
             // asset default would describe a material this placement does not use.
-            OutPrim.MaterialSlots.Add(
-                Build_MaterialSlot(StaticMaterials[SlotIndex].MaterialSlotName, InComponent->GetMaterial(SlotIndex)));
+            OutPrim.MaterialSlots.Add(Build_MaterialSlot(
+                StaticMaterials[SlotIndex].MaterialSlotName, InComponent->GetMaterial(SlotIndex), InOutCensus));
         }
 
         if (const auto* Instanced = Cast<UInstancedStaticMeshComponent>(InComponent))
@@ -332,7 +372,8 @@ namespace ck_optimization_debugger_snapshot_capture_impl
     auto
         Fill_SkeletalMeshPrim(
             USkeletalMeshComponent* InComponent,
-            FCkOptimizationDebugger_SnapshotPrim& OutPrim)
+            FCkOptimizationDebugger_SnapshotPrim& OutPrim,
+            FMaterialCensus& InOutCensus)
         -> bool
     {
         auto* Mesh = InComponent->GetSkeletalMeshAsset();
@@ -355,6 +396,10 @@ namespace ck_optimization_debugger_snapshot_capture_impl
 
             auto Lod = FCkOptimizationDebugger_SnapshotLod{};
             Lod.Sections = LodData.RenderSections.Num();
+            Lod.Vertices = static_cast<int32>(LodData.GetNumVertices());
+
+            if (const auto* LodInfo = Mesh->GetLODInfo(LodIndex))
+            { Lod.ScreenSize = LodInfo->ScreenSize.GetValue(); }
 
             for (const auto& Section : LodData.RenderSections)
             { Lod.Triangles += static_cast<int32>(Section.NumTriangles); }
@@ -362,12 +407,16 @@ namespace ck_optimization_debugger_snapshot_capture_impl
             OutPrim.Lods.Add(Lod);
         }
 
+        auto ResourceSize = FResourceSizeEx{EResourceSizeMode::Exclusive};
+        Mesh->GetResourceSizeEx(ResourceSize);
+        OutPrim.MeshResourceSizeBytes = static_cast<int64>(ResourceSize.GetTotalMemoryBytes());
+
         const auto& Materials = Mesh->GetMaterials();
 
         for (auto SlotIndex = 0; SlotIndex < Materials.Num(); ++SlotIndex)
         {
-            OutPrim.MaterialSlots.Add(
-                Build_MaterialSlot(Materials[SlotIndex].MaterialSlotName, InComponent->GetMaterial(SlotIndex)));
+            OutPrim.MaterialSlots.Add(Build_MaterialSlot(
+                Materials[SlotIndex].MaterialSlotName, InComponent->GetMaterial(SlotIndex), InOutCensus));
         }
 
         return true;
@@ -555,6 +604,8 @@ namespace ck_optimization_debugger_snapshot_capture
         Snapshot.Width = Width;
         Snapshot.Height = Height;
 
+        auto MaterialCensus = FMaterialCensus{};
+
         for (const auto& Candidate : Candidates)
         {
             auto Prim = FCkOptimizationDebugger_SnapshotPrim{};
@@ -563,10 +614,10 @@ namespace ck_optimization_debugger_snapshot_capture
             const auto Filled = [&]() -> bool
             {
                 if (auto* Skeletal = Cast<USkeletalMeshComponent>(Candidate.Component))
-                { return Fill_SkeletalMeshPrim(Skeletal, Prim); }
+                { return Fill_SkeletalMeshPrim(Skeletal, Prim, MaterialCensus); }
 
                 if (auto* Static = Cast<UStaticMeshComponent>(Candidate.Component))
-                { return Fill_StaticMeshPrim(Static, Prim); }
+                { return Fill_StaticMeshPrim(Static, Prim, MaterialCensus); }
 
                 return false;
             }();
@@ -583,6 +634,10 @@ namespace ck_optimization_debugger_snapshot_capture
 
             Snapshot.Prims.Add(MoveTemp(Prim));
         }
+
+        Snapshot.UniqueMaterialCount = MaterialCensus.Materials.Num();
+        Snapshot.UniqueTextureCount = MaterialCensus.Textures.Num();
+        Snapshot.TextureResidentBytes = MaterialCensus.TextureResidentBytes;
 
         // ---- Colour ----
         auto CaptureScope = FCaptureComponentScope{};
@@ -917,14 +972,7 @@ namespace ck_optimization_debugger_snapshot_capture
         IdPixels.Reserve(ExpectedPixels);
 
         for (const auto& Id : Ids)
-        {
-            // Sentinel black, everything else a seeded colour per prim index. Adjacent indices getting unrelated
-            // colours is the POINT: two meshes that share an edge have to be told apart by eye, which a gradient
-            // over the index would make impossible exactly where it matters.
-            IdPixels.Add(Id == k_NoPrim
-                ? FColor::Black
-                : FColor::MakeRandomSeededColor(static_cast<int32>(Id)));
-        }
+        { IdPixels.Add(Get_PrimIndexColor(Id)); }
 
         auto IdPng = TArray64<uint8>{};
         const auto IdImageView = FImageView{IdPixels.GetData(), InSnapshot.Width, InSnapshot.Height, ERawImageFormat::BGRA8};

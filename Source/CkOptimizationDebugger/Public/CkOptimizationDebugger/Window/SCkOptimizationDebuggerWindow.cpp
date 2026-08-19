@@ -97,6 +97,19 @@ namespace ck_optimization_debugger_window
 
     // The snapshot facts column. Fixed so the picture beside it does not resize as the facts change length.
     constexpr auto k_SnapshotFactsWidth = 260.0f;
+
+    auto
+        Get_SnapshotPrimKindLabel(
+            ECkOptimizationDebugger_SnapshotPrimKind InKind)
+        -> FString
+    {
+        switch (InKind)
+        {
+            case ECkOptimizationDebugger_SnapshotPrimKind::InstancedStaticMesh: return TEXT("Instanced Static Mesh");
+            case ECkOptimizationDebugger_SnapshotPrimKind::SkeletalMesh:        return TEXT("Skeletal Mesh");
+            default:                                                           return TEXT("Static Mesh");
+        }
+    }
     constexpr auto k_MemoryStreamingColumnWidth = 120.0f;
     constexpr auto k_MemoryRowMeterWidth        = 110.0f;
     constexpr auto k_MemoryRowMeterHeight       = 3.0f;
@@ -2521,6 +2534,33 @@ auto
                     FOnClicked::CreateSP(this, &SCkOptimizationDebuggerWindow::DoOnDeleteSnapshotClicked),
                     TAttribute<bool>::CreateLambda(HasSnapshots))
             ]
+
+            + SHorizontalBox::Slot()
+            .AutoWidth()
+            .HAlign(HAlign_Left)
+            .VAlign(VAlign_Center)
+            .Padding(CkStyle::SpaceM, 0.0f, 0.0f, 0.0f)
+            [
+                SNew(SCkDebug_IconToggle)
+                .IconId(ECk_Icon::SelectInViewport)
+                .Label(FText::FromString(TEXT("Selection Mode")))
+                .ToolTip(FText::FromString(
+                    TEXT("Hover to identify meshes in the snapshot; click to select — Shift adds, Ctrl removes. ")
+                    TEXT("Only available on a snapshot that carries mesh identification.")))
+                .IsEnabled(TAttribute<bool>::CreateLambda([this]() -> bool
+                {
+                    const auto* Active = _Model.TryGet_ActiveSnapshot();
+                    return Active != nullptr && Active->HasIdMap;
+                }))
+                .IsOn_Lambda([this]() -> bool
+                {
+                    return _SnapshotSelectionMode;
+                })
+                .OnStateChanged_Lambda([this](bool)
+                {
+                    DoOnToggle_SnapshotSelectionMode();
+                })
+            ]
         ]
 
         + SVerticalBox::Slot()
@@ -2582,7 +2622,36 @@ auto
             + SHorizontalBox::Slot()
             .FillWidth(1.0f)
             [
-                SAssignNew(_SnapshotViewer, SCkOptimizationSnapshotViewer)
+                SNew(SVerticalBox)
+
+                + SVerticalBox::Slot()
+                .FillHeight(1.0f)
+                [
+                    SAssignNew(_SnapshotViewer, SCkOptimizationSnapshotViewer)
+                    .OnHoveredPrimChanged(SCkOptimizationSnapshotViewer::FOnHoveredPrimChanged::CreateSP(
+                        this, &SCkOptimizationDebuggerWindow::DoOnSnapshotHoveredPrimChanged))
+                    .OnPrimClicked(SCkOptimizationSnapshotViewer::FOnPrimClicked::CreateSP(
+                        this, &SCkOptimizationDebuggerWindow::DoOnSnapshotPrimClicked))
+                ]
+
+                + SVerticalBox::Slot()
+                .AutoHeight()
+                .Padding(0.0f, CkStyle::SpaceXS, 0.0f, 0.0f)
+                [
+                    // One line, read from a cached field: it changes on every mesh boundary the cursor crosses, so
+                    // it must not cost a rebuild of anything.
+                    SNew(STextBlock)
+                    .Text_Lambda([this]() -> FText
+                    {
+                        if (NOT _SnapshotSelectionMode)
+                        { return FText::FromString(TEXT("Selection mode off")); }
+
+                        return FText::FromString(_SnapshotHoverText.IsEmpty()
+                            ? FString{TEXT("—")}
+                            : _SnapshotHoverText);
+                    })
+                    .ColorAndOpacity(FSlateColor{CkStyle::TextMute()})
+                ]
             ]
 
             + SHorizontalBox::Slot()
@@ -2648,41 +2717,18 @@ auto
     const auto* Active = _Model.TryGet_ActiveSnapshot();
 
     if (ck::IsValid(_SnapshotViewer))
-    { _SnapshotViewer->Set_Snapshot(Active); }
-
-    if (NOT ck::IsValid(_SnapshotFactsBox))
-    { return; }
-
-    _SnapshotFactsBox->ClearChildren();
-
-    if (Active == nullptr)
-    { return; }
-
-    const auto AddFact = [this](const FString& InLabel, const FString& InValue) -> void
     {
-        _SnapshotFactsBox->AddSlot()
-        .AutoHeight()
-        .Padding(0.0f, 0.0f, 0.0f, CkStyle::SpaceXS)
-        [
-            SNew(STextBlock)
-            .Text(FText::FromString(ck::Format_UE(TEXT("{}: {}"), InLabel, InValue)))
-            .AutoWrapText(true)
-            .ColorAndOpacity(FSlateColor{CkStyle::TextDim()})
-        ];
-    };
+        _SnapshotViewer->Set_Snapshot(Active);
 
-    AddFact(TEXT("World"), Active->WorldName);
-    AddFact(TEXT("Size"), ck::Format_UE(TEXT("{}x{}"), Active->Width, Active->Height));
-    AddFact(TEXT("Meshes"), FString::FromInt(Active->Prims.Num()));
-
-    if (NOT Active->CaptureNotes.IsEmpty())
-    { AddFact(TEXT("Notes"), Active->CaptureNotes); }
-
-    if (NOT Active->HasIdMap)
-    {
-        // Said plainly rather than left to be discovered by clicking and having nothing happen.
-        AddFact(TEXT("Selection"), TEXT("this snapshot carries no mesh identification, so it cannot be clicked into"));
+        // Selection mode is meaningless on a snapshot that carries no identification, and leaving it armed would
+        // mean hovering does nothing with nothing on screen explaining why.
+        const auto CanSelect = _SnapshotSelectionMode && Active != nullptr && Active->HasIdMap;
+        _SnapshotViewer->Set_InteractionEnabled(CanSelect);
     }
+
+    _SnapshotHoverText = FString{};
+
+    DoRebuild_SnapshotDetail();
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -2788,6 +2834,252 @@ auto
 
     _Model.Remove_ActiveSnapshot();
     DoRebuild_Snapshots();
+
+    return FReply::Handled();
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkOptimizationDebuggerWindow::
+    DoOnToggle_SnapshotSelectionMode()
+    -> void
+{
+    _SnapshotSelectionMode = NOT _SnapshotSelectionMode;
+
+    if (ck::IsValid(_SnapshotViewer))
+    { _SnapshotViewer->Set_InteractionEnabled(_SnapshotSelectionMode); }
+
+    _SnapshotHoverText = FString{};
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkOptimizationDebuggerWindow::
+    DoOnSnapshotHoveredPrimChanged(
+        TOptional<int32> InPrimIndex)
+    -> void
+{
+    using namespace ck_optimization_debugger_snapshot;
+
+    const auto* Active = _Model.TryGet_ActiveSnapshot();
+
+    if (Active == nullptr || NOT InPrimIndex.IsSet() || NOT Active->Prims.IsValidIndex(InPrimIndex.GetValue()))
+    {
+        _SnapshotHoverText = FString{};
+        return;
+    }
+
+    const auto& Prim = Active->Prims[InPrimIndex.GetValue()];
+    const auto Lod0Triangles = Prim.Lods.IsEmpty() ? 0 : Prim.Lods[0].Triangles;
+
+    // Deliberately NOT a detail-panel rebuild: this is one string, and it changes every time the cursor crosses a
+    // mesh boundary.
+    _SnapshotHoverText = ck::Format_UE(TEXT("{} — {} tris · {} slot(s) · {}"),
+        Prim.DisplayName, Lod0Triangles, Prim.MaterialSlots.Num(), Get_EstimatedDrawCallText(Prim));
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkOptimizationDebuggerWindow::
+    DoOnSnapshotPrimClicked(
+        TOptional<int32> InPrimIndex,
+        ECkOptimizationDebugger_SnapshotClickModifier InModifier)
+    -> void
+{
+    auto* Active = _Model.TryGet_MutableActiveSnapshot();
+
+    if (Active == nullptr)
+    { return; }
+
+    // The one place a click mutates anything, and it goes through the rule the specs pin rather than through a
+    // second copy of it living in the widget.
+    ck_optimization_debugger_snapshot::Apply_SnapshotClick(*Active, InPrimIndex, InModifier);
+
+    if (ck::IsValid(_SnapshotViewer))
+    { _SnapshotViewer->Invalidate_Overlay(); }
+
+    DoRebuild_SnapshotDetail();
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkOptimizationDebuggerWindow::
+    DoRebuild_SnapshotDetail()
+    -> void
+{
+    using namespace ck_optimization_debugger_scan;
+    using namespace ck_optimization_debugger_snapshot;
+    using namespace ck_optimization_debugger_window;
+
+    if (NOT ck::IsValid(_SnapshotFactsBox))
+    { return; }
+
+    _SnapshotFactsBox->ClearChildren();
+
+    const auto* Active = _Model.TryGet_ActiveSnapshot();
+
+    if (Active == nullptr)
+    { return; }
+
+    const auto AddLine = [this](const FString& InText) -> void
+    {
+        _SnapshotFactsBox->AddSlot()
+        .AutoHeight()
+        .Padding(0.0f, 0.0f, 0.0f, CkStyle::SpaceXS)
+        [
+            SNew(STextBlock)
+            .Text(FText::FromString(InText))
+            .AutoWrapText(true)
+            .ColorAndOpacity(FSlateColor{CkStyle::TextDim()})
+        ];
+    };
+
+    // ---- Nothing selected: the capture's own facts ----
+    if (Active->SelectedPrims.IsEmpty())
+    {
+        AddLine(ck::Format_UE(TEXT("World: {}"), Active->WorldName));
+        AddLine(ck::Format_UE(TEXT("Size: {}x{}"), Active->Width, Active->Height));
+        AddLine(ck::Format_UE(TEXT("Meshes: {}"), Active->Prims.Num()));
+
+        if (NOT Active->CaptureNotes.IsEmpty())
+        { AddLine(ck::Format_UE(TEXT("Notes: {}"), Active->CaptureNotes)); }
+
+        AddLine(Active->HasIdMap
+            ? FString{TEXT("Turn on Selection Mode, then click a mesh in the picture.")}
+            : FString{TEXT("This snapshot carries no mesh identification, so it cannot be clicked into.")});
+
+        return;
+    }
+
+    // ---- Several selected: the aggregate, then one line each ----
+    if (Active->SelectedPrims.Num() > 1)
+    {
+        const auto Totals = Get_SelectionTotals(*Active);
+
+        _SnapshotFactsBox->AddSlot()
+        .AutoHeight()
+        .Padding(0.0f, 0.0f, 0.0f, CkStyle::SpaceS)
+        [
+            SNew(SCkDebug_SectionHeader)
+            .Label(FText::FromString(ck::Format_UE(TEXT("{} meshes selected"), Totals.PrimCount)))
+            .SubText(FText::FromString(ck::Format_UE(TEXT("{} tris · {} sections LOD0 · {} instances"),
+                Totals.Lod0Triangles, Totals.Lod0Sections, Totals.InstanceCount)))
+        ];
+
+        auto SortedSelection = Active->SelectedPrims.Array();
+        SortedSelection.Sort();
+
+        for (const auto& PrimIndex : SortedSelection)
+        {
+            if (NOT Active->Prims.IsValidIndex(PrimIndex))
+            { continue; }
+
+            const auto& Prim = Active->Prims[PrimIndex];
+            const auto Lod0Triangles = Prim.Lods.IsEmpty() ? 0 : Prim.Lods[0].Triangles;
+
+            AddLine(ck::Format_UE(TEXT("{} — {} tris"), Prim.DisplayName, Lod0Triangles));
+        }
+
+        return;
+    }
+
+    // ---- Exactly one: everything the capture recorded about it ----
+    const auto PrimIndex = *Active->SelectedPrims.CreateConstIterator();
+
+    if (NOT Active->Prims.IsValidIndex(PrimIndex))
+    { return; }
+
+    const auto& Prim = Active->Prims[PrimIndex];
+
+    _SnapshotFactsBox->AddSlot()
+    .AutoHeight()
+    .Padding(0.0f, 0.0f, 0.0f, CkStyle::SpaceS)
+    [
+        SNew(SCkDebug_SectionHeader)
+        .Label(FText::FromString(Prim.DisplayName))
+        .SubText(FText::FromString(ck::Format_UE(TEXT("{}{}"),
+            Get_SnapshotPrimKindLabel(Prim.Kind), Prim.IsNanite ? TEXT(" · NANITE") : TEXT(""))))
+    ];
+
+    // Go To and Open Asset reuse the SAME navigation trio every finding uses, against a target built from the
+    // mesh the capture recorded — so a snapshot row and a finding row cannot navigate differently.
+    const auto MeshTarget = Build_AssetTarget(Prim.MeshAssetPath, Prim.MeshDisplayName);
+
+    _SnapshotFactsBox->AddSlot()
+    .AutoHeight()
+    .Padding(0.0f, 0.0f, 0.0f, CkStyle::SpaceS)
+    [
+        SNew(SHorizontalBox)
+
+        + SHorizontalBox::Slot()
+        .AutoWidth()
+        .Padding(0.0f, 0.0f, CkStyle::SpaceS, 0.0f)
+        [
+            Build_ActionButton(ECk_Icon::Aim,
+                FText::FromString(TEXT("Go To")),
+                FText::FromString(ck_optimization_debugger_navigation::Get_NavigationDescription(MeshTarget)),
+                FOnClicked::CreateSP(this, &SCkOptimizationDebuggerWindow::DoOnSnapshotGoToClicked, MeshTarget),
+                TAttribute<bool>{ck_optimization_debugger_navigation::Can_Navigate(MeshTarget)})
+        ]
+
+        + SHorizontalBox::Slot()
+        .AutoWidth()
+        [
+            Build_ActionButton(ECk_Icon::Edit,
+                FText::FromString(TEXT("Open Asset")),
+                FText::FromString(ck_optimization_debugger_navigation::Get_OpenAssetDescription(MeshTarget)),
+                FOnClicked::CreateSP(this, &SCkOptimizationDebuggerWindow::DoOnSnapshotOpenAssetClicked, MeshTarget),
+                TAttribute<bool>{ck_optimization_debugger_navigation::Can_OpenAsset(MeshTarget)})
+        ]
+    ];
+
+    AddLine(ck::Format_UE(TEXT("Mesh: {}"), Prim.MeshAssetPath.ToString()));
+    AddLine(ck::Format_UE(TEXT("Instances: {}"), Prim.InstanceCount));
+    AddLine(ck::Format_UE(TEXT("Distance: {} cm"), FMath::RoundToInt(Prim.DistanceFromCamera)));
+    AddLine(Get_EstimatedDrawCallText(Prim));
+
+    for (auto LodIndex = 0; LodIndex < Prim.Lods.Num(); ++LodIndex)
+    {
+        const auto& Lod = Prim.Lods[LodIndex];
+        AddLine(ck::Format_UE(TEXT("LOD {} — {} tris · {} sections"), LodIndex, Lod.Triangles, Lod.Sections));
+    }
+
+    for (const auto& Slot : Prim.MaterialSlots)
+    {
+        AddLine(ck::Format_UE(TEXT("{}: {} — {} · {}{} · {} sampler(s)"),
+            Slot.SlotName, Slot.MaterialName, Slot.BlendMode, Slot.ShadingModel,
+            Slot.IsTwoSided ? TEXT(" · two-sided") : TEXT(""), Slot.UsedTextureCount));
+    }
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkOptimizationDebuggerWindow::
+    DoOnSnapshotGoToClicked(
+        FCkOptimizationDebugger_Target InTarget)
+    -> FReply
+{
+    const auto Result = ck_optimization_debugger_navigation::Navigate_ToTarget(InTarget);
+
+    DoSet_Status(Result.Message, Result.Succeeded ? ECk_Tone::Ok : ECk_Tone::Warn);
+
+    return FReply::Handled();
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkOptimizationDebuggerWindow::
+    DoOnSnapshotOpenAssetClicked(
+        FCkOptimizationDebugger_Target InTarget)
+    -> FReply
+{
+    DoOpenAsset_ForTarget(InTarget);
 
     return FReply::Handled();
 }

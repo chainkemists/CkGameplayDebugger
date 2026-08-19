@@ -290,6 +290,21 @@ private:
     /** One synchronous capture, from the button. Everything it can fail at is reported on the status strip. */
     auto DoRun_SnapshotCapture() -> void;
 
+    /** The right-hand panel: capture facts when nothing is selected, one mesh's LODs and material slots when one
+     *  is, an aggregate when several are. Rebuilt on SELECTION change and snapshot switch — never on hover, which
+     *  would rebuild a panel of rows on every mouse move across a mesh boundary. */
+    auto DoRebuild_SnapshotDetail() -> void;
+
+    auto DoOnToggle_SnapshotSelectionMode() -> void;
+    auto DoOnSnapshotHoveredPrimChanged(TOptional<int32> InPrimIndex) -> void;
+    auto DoOnSnapshotPrimClicked(TOptional<int32> InPrimIndex,
+        ECkOptimizationDebugger_SnapshotClickModifier InModifier) -> void;
+
+    // By value, like every other payload-bound handler on this window — the delegate binding requires the decayed
+    // type (see `DoOpenAsset_ForTarget`).
+    auto DoOnSnapshotGoToClicked(FCkOptimizationDebugger_Target InTarget) -> FReply;
+    auto DoOnSnapshotOpenAssetClicked(FCkOptimizationDebugger_Target InTarget) -> FReply;
+
     auto DoSelect_Page(ECkOptimizationDebugger_Page InPage) -> void;
 
     /** Bounds-checked reads of the cached per-table / per-category counts. A tab whose enum value has outrun the
@@ -451,6 +466,13 @@ private:
     // The Snapshots tab's badge. Cached for the same reason every other tab count is: the tab bar sits outside the
     // page switcher, so its attributes run on every page on every frame.
     int32 _SnapshotCount = 0;
+
+    // Input-routing state, so it lives on the WINDOW rather than in the model — it is not something a snapshot has,
+    // it is something the reader is currently doing.
+    bool _SnapshotSelectionMode = false;
+
+    // What the readout under the image says. Cached like every other attribute-read string on this window.
+    FString _SnapshotHoverText;
     int32 _SelectedFixableCount = 0;
     int32 _VisibleFixableCount = 0;
     bool _FixButtonEnabled = false;

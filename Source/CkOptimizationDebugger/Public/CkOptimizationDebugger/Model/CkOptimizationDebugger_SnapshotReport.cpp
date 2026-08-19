@@ -106,6 +106,25 @@ namespace ck_optimization_debugger_snapshot_report
         if (NOT InSnapshot.CaptureNotes.IsEmpty())
         { Html += ck::Format_UE(TEXT("<p class=\"dim\">{}</p>\n"), Escape_Html(InSnapshot.CaptureNotes)); }
 
+        // Where it was taken from, and what it was rendered at. Both are what turn a picture into evidence: without
+        // the POV nobody can retake this framing, and without the quality preset two captures from two machines are
+        // not comparable at all.
+        if (Get_HasPov(InSnapshot))
+        {
+            Html += ck::Format_UE(TEXT("<p class=\"dim\">Camera: {} &middot; {} &middot; FOV {:.1f}&deg;</p>\n"),
+                Escape_Html(InSnapshot.CameraLocation.ToCompactString()),
+                Escape_Html(InSnapshot.CameraRotation.ToCompactString()),
+                InSnapshot.CameraFov);
+        }
+
+        if (NOT InSnapshot.ScalabilityPreset.IsEmpty() || NOT InSnapshot.BuildVersion.IsEmpty())
+        {
+            Html += ck::Format_UE(TEXT("<p class=\"dim\">Quality: {} &middot; screen {:.0f}% &middot; build {}</p>\n"),
+                Escape_Html(InSnapshot.ScalabilityPreset),
+                InSnapshot.ScreenPercentage,
+                Escape_Html(InSnapshot.BuildVersion));
+        }
+
         // ---- Images ----
         Html += TEXT("<h2>Capture</h2>\n");
         Html += ck::Format_UE(TEXT("<img src=\"data:image/png;base64,{}\" alt=\"capture\">\n"),

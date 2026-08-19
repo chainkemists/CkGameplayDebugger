@@ -81,6 +81,20 @@ struct CKOPTIMIZATIONDEBUGGER_API FCkOptimizationDebugger_SnapshotPrim
 
 // --------------------------------------------------------------------------------------------------------------------
 
+/** One auxiliary view captured beside the picture — depth, world normals, base colour, shader complexity.
+ *
+ *  Captured rather than computed, and STORED rather than recaptured on demand: producing one needs the live world
+ *  (and, for the debug viewmodes, an editor), while LOOKING at one has to work from a shared file on a machine that
+ *  never saw that world. The name is what the view selector prints, so it is the identity — a snapshot carrying two
+ *  images called the same thing is a capture bug, not a display one. */
+struct CKOPTIMIZATIONDEBUGGER_API FCkOptimizationDebugger_SnapshotAuxImage
+{
+    FString Name;
+    TArray64<uint8> Png;
+};
+
+// --------------------------------------------------------------------------------------------------------------------
+
 /** One capture: the picture, the per-pixel identity of what is in it, and the table those identities index. */
 struct CKOPTIMIZATIONDEBUGGER_API FCkOptimizationDebugger_Snapshot
 {
@@ -94,6 +108,22 @@ struct CKOPTIMIZATIONDEBUGGER_API FCkOptimizationDebugger_Snapshot
 
     int32 Width = 0;
     int32 Height = 0;
+
+    // Where the picture was taken from. It travels with the snapshot so the same framing can be captured again after
+    // the world changed — which is the only way two captures of "the same view" are comparable pixel for pixel — and
+    // so a report says where it was standing rather than leaving the reader to recognise the geometry.
+    FVector CameraLocation = FVector::ZeroVector;
+    FRotator CameraRotation = FRotator::ZeroRotator;
+
+    // Doubles as the "does this snapshot know its own POV" flag: a capture always writes a positive FOV, and a
+    // snapshot loaded from a bare image file has none to write.
+    float CameraFov = 0.0f;
+
+    // What the picture was rendered AT. QA compares captures from different machines, and a scalability preset or a
+    // screen percentage changes what the same scene costs — a report without them is evidence nobody can weigh.
+    FString ScalabilityPreset;
+    float ScreenPercentage = 0.0f;
+    FString BuildVersion;
 
     TArray64<uint8> ColorPng;
 
@@ -111,6 +141,10 @@ struct CKOPTIMIZATIONDEBUGGER_API FCkOptimizationDebugger_Snapshot
     int64 TextureResidentBytes = 0;
 
     TArray<FCkOptimizationDebugger_SnapshotPrim> Prims;
+
+    // Empty on every snapshot whose capture could not produce them, which is not a failure — the picture and the
+    // identification are the feature, and an auxiliary view is an extra the view selector simply does not offer.
+    TArray<FCkOptimizationDebugger_SnapshotAuxImage> AuxImages;
 
     // Per snapshot, so cycling away and back keeps what the reader marked on each one.
     TSet<int32> SelectedPrims;
@@ -228,6 +262,15 @@ namespace ck_optimization_debugger_snapshot
     CKOPTIMIZATIONDEBUGGER_API auto
     Get_PrimIndexColor(
         uint32 InId) -> FColor;
+
+    /** Whether this snapshot knows where it was taken from, and can therefore be captured again from the same
+     *  place. A capture always writes a positive FOV; a snapshot loaded from a bare image file has no POV to write,
+     *  and a zero-FOV camera is not a view anything could be reproduced through. */
+    CKOPTIMIZATIONDEBUGGER_API auto
+    Get_HasPov(
+        const FCkOptimizationDebugger_Snapshot& InSnapshot) -> bool;
+
+    // ----------------------------------------------------------------------------------------------------------------
 
     /** Whole-view totals over the prim table. The detail panel's nothing-selected view and the report BOTH read
      *  this — one implementation, so the two can never show a reader different totals for one snapshot. */

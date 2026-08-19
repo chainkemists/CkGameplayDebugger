@@ -2506,6 +2506,25 @@ auto
             .AutoWidth()
             .HAlign(HAlign_Left)
             .VAlign(VAlign_Center)
+            .Padding(0.0f, 0.0f, CkStyle::SpaceS, 0.0f)
+            [
+                Build_ActionButton(ECk_Icon::Refresh,
+                    FText::FromString(TEXT("Recapture From Here")),
+                    FText::FromString(TEXT("Capture again from the point of view this snapshot was taken from — ")
+                        TEXT("the same framing after the world changed, which is what makes two captures comparable")),
+                    FOnClicked::CreateSP(this, &SCkOptimizationDebuggerWindow::DoOnRecaptureSnapshotClicked),
+                    TAttribute<bool>::CreateLambda([this]() -> bool
+                    {
+                        const auto* Active = _Model.TryGet_ActiveSnapshot();
+
+                        return Active != nullptr && ck_optimization_debugger_snapshot::Get_HasPov(*Active);
+                    }))
+            ]
+
+            + SHorizontalBox::Slot()
+            .AutoWidth()
+            .HAlign(HAlign_Left)
+            .VAlign(VAlign_Center)
             .Padding(0.0f, 0.0f, CkStyle::SpaceXS, 0.0f)
             [
                 Build_ActionButton(ECk_Icon::SkipBackward,
@@ -2789,7 +2808,8 @@ auto
 
 auto
     SCkOptimizationDebuggerWindow::
-    DoRun_SnapshotCapture()
+    DoRun_SnapshotCapture(
+        TOptional<FMinimalViewInfo> InViewOverride)
     -> void
 {
     using namespace ck_optimization_debugger_snapshot_capture;
@@ -2808,8 +2828,13 @@ auto
     auto Params = FCkOptimizationDebugger_SnapshotCaptureParams{};
     Params.CaptureWidth = Settings != nullptr ? Settings->SnapshotCaptureWidth : 1280;
     Params.CapturedAt = CapturedAt;
-    Params.Label = ck::Format_UE(TEXT("Snapshot {} — {}"),
-        _Model.Get_Snapshots().Num() + 1, CapturedAt.ToString(TEXT("%H:%M:%S")));
+    Params.ViewOverride = InViewOverride;
+
+    // The label says which kind it is, because a recapture and its original are only worth storing side by side if
+    // the strip can tell the reader which is which.
+    Params.Label = ck::Format_UE(TEXT("Snapshot {} — {}{}"),
+        _Model.Get_Snapshots().Num() + 1, CapturedAt.ToString(TEXT("%H:%M:%S")),
+        InViewOverride.IsSet() ? TEXT(" (recapture)") : TEXT(""));
 
     auto FailureReason = FString{};
     auto Captured = Run_Capture(World, Params, FailureReason);
@@ -2856,7 +2881,31 @@ auto
     DoOnCaptureSnapshotClicked()
     -> FReply
 {
-    DoRun_SnapshotCapture();
+    DoRun_SnapshotCapture({});
+
+    return FReply::Handled();
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkOptimizationDebuggerWindow::
+    DoOnRecaptureSnapshotClicked()
+    -> FReply
+{
+    const auto* Active = _Model.TryGet_ActiveSnapshot();
+
+    if (Active == nullptr || NOT ck_optimization_debugger_snapshot::Get_HasPov(*Active))
+    { return FReply::Handled(); }
+
+    // Rebuilt from the three stored numbers rather than kept as a view: a snapshot holds plain data, and this is the
+    // one place that data becomes a camera again.
+    auto View = FMinimalViewInfo{};
+    View.Location = Active->CameraLocation;
+    View.Rotation = Active->CameraRotation;
+    View.FOV = Active->CameraFov;
+
+    DoRun_SnapshotCapture(View);
 
     return FReply::Handled();
 }
@@ -3198,6 +3247,25 @@ auto
         AddKeyValue(TEXT("World"), Active->WorldName);
         AddKeyValue(TEXT("Size"), ck::Format_UE(TEXT("{}x{}"), Active->Width, Active->Height));
         AddKeyValue(TEXT("Meshes"), FString::FromInt(Active->Prims.Num()));
+
+        // The point of view and the quality it was rendered at. Printed rather than kept for the recapture button
+        // alone, because a picture whose framing and preset are unstated is a picture nobody can reproduce.
+        if (Get_HasPov(*Active))
+        {
+            AddKeyValue(TEXT("Camera"), Active->CameraLocation.ToCompactString());
+            AddKeyValue(TEXT("Facing"), ck::Format_UE(TEXT("{} · FOV {:.1f}°"),
+                Active->CameraRotation.ToCompactString(), Active->CameraFov));
+        }
+
+        if (Active->ScreenPercentage > 0.0f)
+        { AddKeyValue(TEXT("Screen"), ck::Format_UE(TEXT("{:.0f}%"), Active->ScreenPercentage)); }
+
+        if (NOT Active->BuildVersion.IsEmpty())
+        { AddKeyValue(TEXT("Build"), Active->BuildVersion); }
+
+        // Wrapped rather than a key-value row: ten quality groups on one line overflow the panel at any sane width.
+        if (NOT Active->ScalabilityPreset.IsEmpty())
+        { AddLine(Active->ScalabilityPreset); }
 
         if (NOT Active->CaptureNotes.IsEmpty())
         { AddLine(Active->CaptureNotes); }

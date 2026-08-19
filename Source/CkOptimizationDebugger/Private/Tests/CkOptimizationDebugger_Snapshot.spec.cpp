@@ -670,6 +670,18 @@ namespace ck_optimization_debugger_snapshot_spec
         Snapshot.UniqueTextureCount = 5;
         Snapshot.TextureResidentBytes = 123456789;
 
+        Snapshot.CameraLocation = FVector{100.0, -250.5, 90.25};
+        Snapshot.CameraRotation = FRotator{-12.5, 47.0, 0.0};
+        Snapshot.CameraFov = 78.5f;
+        Snapshot.ScalabilityPreset = FString{TEXT("View 3 · AA 2 · Shadow 3")};
+        Snapshot.ScreenPercentage = 66.0f;
+        Snapshot.BuildVersion = FString{TEXT("++Spec+Branch-CL-12345")};
+
+        auto Aux = FCkOptimizationDebugger_SnapshotAuxImage{};
+        Aux.Name = FString{TEXT("Depth")};
+        Aux.Png = TArray64<uint8>{{0x89, 0x50, 0x4E, 0x47, 0x11, 0x22}};
+        Snapshot.AuxImages.Add(Aux);
+
         auto PrimA = Make_Prim(TEXT("Shelf_12 / SM_ShelfBody"), 4210, 3, 1);
         PrimA.MeshDisplayName = FString{TEXT("SM_ShelfBody")};
         PrimA.MeshAssetPath = FSoftObjectPath{TEXT("/Game/Spec/SM_ShelfBody.SM_ShelfBody")};
@@ -712,6 +724,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FCkOptimizationDebugger_Snapshot_FileCodecRoundTrip::RunTest(const FString& Parameters)
 {
+    using namespace ck_optimization_debugger_snapshot;
     using namespace ck_optimization_debugger_snapshot_codec;
     using namespace ck_optimization_debugger_snapshot_spec;
 
@@ -771,6 +784,26 @@ bool FCkOptimizationDebugger_Snapshot_FileCodecRoundTrip::RunTest(const FString&
     TestTrue(TEXT("...with its members"),
         Decoded->SelectedPrims.Contains(0) && Decoded->SelectedPrims.Contains(1));
 
+    // ---- v2: the point of view, the capture context and the auxiliary images ----
+    TestEqual(TEXT("The camera location survives"), Decoded->CameraLocation, Original.CameraLocation);
+    TestEqual(TEXT("...its rotation"), Decoded->CameraRotation, Original.CameraRotation);
+    TestEqual(TEXT("...its FOV"), Decoded->CameraFov, Original.CameraFov);
+    TestTrue(TEXT("...so the decoded snapshot can be recaptured from"), Get_HasPov(Decoded.GetValue()));
+
+    TestEqual(TEXT("The scalability preset survives"), Decoded->ScalabilityPreset, Original.ScalabilityPreset);
+    TestEqual(TEXT("...the screen percentage"), Decoded->ScreenPercentage, Original.ScreenPercentage);
+    TestEqual(TEXT("...the build version"), Decoded->BuildVersion, Original.BuildVersion);
+
+    if (TestEqual(TEXT("The auxiliary images survive"), Decoded->AuxImages.Num(), Original.AuxImages.Num()))
+    {
+        TestEqual(TEXT("...by name"), Decoded->AuxImages[0].Name, Original.AuxImages[0].Name);
+        TestTrue(TEXT("...and byte for byte"), Decoded->AuxImages[0].Png == Original.AuxImages[0].Png);
+    }
+
+    // A snapshot that never knew its POV must not claim one, or the recapture button would offer to replay a view
+    // that is a zero-FOV camera at the origin.
+    TestFalse(TEXT("A POV-less snapshot reports no POV"), Get_HasPov(FCkOptimizationDebugger_Snapshot{}));
+
     // ---- The refusals ----
     auto Truncated = Bytes;
     Truncated.SetNum(Bytes.Num() - 7);
@@ -818,6 +851,11 @@ bool FCkOptimizationDebugger_Snapshot_ReportDeterminism::RunTest(const FString& 
     TestTrue(TEXT("...the texture memory figure"), First.Contains(TEXT("117.7 MB")));
     TestTrue(TEXT("...the embedded capture image"), First.Contains(TEXT("data:image/png;base64,")));
     TestTrue(TEXT("...the mesh identification image"), First.Contains(TEXT("Mesh identification")));
+
+    // A shared report has to say where the picture was taken and what it was rendered at, or the reader cannot tell
+    // whether two reports from two machines are describing the same thing.
+    TestTrue(TEXT("...the point of view"), First.Contains(TEXT("FOV 78.5")));
+    TestTrue(TEXT("...the capture context"), First.Contains(TEXT("++Spec+Branch-CL-12345")));
 
     // Names come from artist assets and can carry markup; unescaped, one asset name breaks the whole file.
     TestTrue(TEXT("Names are HTML-escaped"), First.Contains(TEXT("L_Spec &amp; &lt;World&gt;")));

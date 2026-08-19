@@ -53,6 +53,17 @@ namespace ck_optimization_debugger_snapshot_capture
         UWorld* InWorld,
         const FCkOptimizationDebugger_SnapshotCaptureParams& InParams,
         FString& OutFailureReason) -> TOptional<FCkOptimizationDebugger_Snapshot>;
+
+    /** Writes the snapshot to `<Project>/Saved/CkOptimizationDebugger/` as two PNGs: the colour image and a
+     *  false-coloured ID map. This pair IS how identification is proven — the ID map has to be a silhouette-exact
+     *  copy of the colour image, and the ways it can be wrong are all things a human sees instantly and no
+     *  automated check can: soft edges mean the two passes disagree about the point of view, a far mesh's colour
+     *  bleeding through a near one means the render-every-pass rule was broken, speckle means the identity target
+     *  was not linear. */
+    CKOPTIMIZATIONDEBUGGER_API auto
+    Dump_DebugImages(
+        const FCkOptimizationDebugger_Snapshot& InSnapshot,
+        FString& OutFailureReason) -> bool;
 }
 
 // --------------------------------------------------------------------------------------------------------------------

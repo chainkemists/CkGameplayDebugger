@@ -2723,6 +2723,14 @@ auto
     const auto PrimCount = Captured->Prims.Num();
     const auto Notes = Captured->CaptureNotes;
 
+    // Opt-in. The outcome is folded into the FINAL status line rather than written here, because the success line
+    // below would otherwise overwrite it and the dump would fail silently — which is the one thing a debugging aid
+    // must never do.
+    auto DumpFailure = FString{};
+
+    if (Settings != nullptr && Settings->DumpSnapshotDebugImages)
+    { ck_optimization_debugger_snapshot_capture::Dump_DebugImages(Captured.GetValue(), DumpFailure); }
+
     // The viewer holds a pointer INTO the array this is about to grow, and growing it can reallocate.
     if (ck::IsValid(_SnapshotViewer))
     { _SnapshotViewer->Set_Snapshot(nullptr); }
@@ -2731,9 +2739,14 @@ auto
 
     DoRebuild_Snapshots();
 
-    DoSet_Status(Notes.IsEmpty()
+    const auto CaptureLine = Notes.IsEmpty()
         ? ck::Format_UE(TEXT("Captured {} mesh(es)."), PrimCount)
-        : ck::Format_UE(TEXT("Captured {} mesh(es). {}."), PrimCount, Notes), ECk_Tone::Ok);
+        : ck::Format_UE(TEXT("Captured {} mesh(es). {}."), PrimCount, Notes);
+
+    DoSet_Status(DumpFailure.IsEmpty()
+        ? CaptureLine
+        : ck::Format_UE(TEXT("{} Debug dump incomplete: {}."), CaptureLine, DumpFailure),
+        DumpFailure.IsEmpty() ? ECk_Tone::Ok : ECk_Tone::Warn);
 }
 
 // --------------------------------------------------------------------------------------------------------------------

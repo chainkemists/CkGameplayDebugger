@@ -789,8 +789,60 @@ namespace ck_optimization_debugger_snapshot_capture
             return {};
         }
 
+        // ---- Auxiliary views ----
+        // The SAME component, the same point of view and the same game-thread scope: only the capture SOURCE
+        // changes, so an auxiliary image is this frame described differently rather than a second capture of a world
+        // that moved in between. Both sources here are GBuffer reads that need no debug viewmode, which is what
+        // keeps them available in a packaged Development build.
+        const auto AuxSources = TArray<TPair<const TCHAR*, ESceneCaptureSource>>{
+            {TEXT("Base colour"), ESceneCaptureSource::SCS_BaseColor},
+            {TEXT("World normal"), ESceneCaptureSource::SCS_Normal}};
+
+        auto FailedAuxCount = 0;
+
+        for (const auto& AuxSource : AuxSources)
+        {
+            Component->CaptureSource = AuxSource.Value;
+            Component->CaptureScene();
+
+            auto AuxPixels = TArray<FColor>{};
+
+            if (NOT Resource->ReadPixels(AuxPixels) || AuxPixels.Num() != Width * Height)
+            {
+                // An auxiliary view that failed is simply not offered. It never costs the picture, which is the
+                // same degradation rule the identity map follows.
+                ++FailedAuxCount;
+                continue;
+            }
+
+            auto AuxPng = TArray64<uint8>{};
+            const auto AuxImageView = FImageView{AuxPixels.GetData(), Width, Height, ERawImageFormat::BGRA8};
+
+            if (NOT FImageUtils::CompressImage(AuxPng, TEXT("png"), AuxImageView))
+            {
+                ++FailedAuxCount;
+                continue;
+            }
+
+            auto Aux = FCkOptimizationDebugger_SnapshotAuxImage{};
+            Aux.Name = FString{AuxSource.Key};
+            Aux.Png = MoveTemp(AuxPng);
+
+            Snapshot.AuxImages.Add(MoveTemp(Aux));
+        }
+
+        // Back to the colour source before anything else uses the component: the identity passes below read this
+        // same component, and a leftover GBuffer source would make every stencil pass a picture of normals.
+        Component->CaptureSource = ESceneCaptureSource::SCS_FinalColorLDR;
+
         // ---- Notes ----
         auto Notes = TArray<FString>{};
+
+        if (FailedAuxCount > 0)
+        {
+            Notes.Add(ck::Format_UE(TEXT("{} auxiliary view(s) could not be captured and are not offered"),
+                FailedAuxCount));
+        }
 
         if (ExcludedCount > 0)
         {

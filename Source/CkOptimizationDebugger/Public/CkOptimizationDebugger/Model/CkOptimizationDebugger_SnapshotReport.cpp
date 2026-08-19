@@ -146,6 +146,17 @@ namespace ck_optimization_debugger_snapshot_report
             Html += ck::Format_UE(TEXT("<img src=\"data:image/png;base64,{}\" alt=\"id map\">\n"), IdMapBase64);
         }
 
+        // ---- Auxiliary views, in capture order ----
+        for (const auto& Aux : InSnapshot.AuxImages)
+        {
+            if (Aux.Png.IsEmpty())
+            { continue; }
+
+            Html += ck::Format_UE(TEXT("<h2>{}</h2>\n"), Escape_Html(Aux.Name));
+            Html += ck::Format_UE(TEXT("<img src=\"data:image/png;base64,{}\" alt=\"{}\">\n"),
+                FBase64::Encode(Aux.Png.GetData(), Aux.Png.Num()), Escape_Html(Aux.Name));
+        }
+
         // ---- Whole-view totals ----
         Html += TEXT("<h2>This view</h2>\n<table>\n");
 

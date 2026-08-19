@@ -137,6 +137,55 @@ namespace ck_optimization_debugger_snapshot
         int32 InHeight,
         FIntPoint InPixel) -> TOptional<int32>;
 
+    /** Stencil 0 is reserved for "not in this pass", so one pass distinguishes at most 255 primitives. */
+    inline constexpr int32 k_StencilBatchSize = 255;
+
+    struct CKOPTIMIZATIONDEBUGGER_API FCkOptimizationDebugger_StencilSlot
+    {
+        int32 PassIndex = 0;
+        uint8 StencilValue = 0;
+    };
+
+    /** Which pass a primitive is identified in, and the stencil value that identifies it there. */
+    CKOPTIMIZATIONDEBUGGER_API auto
+    Get_StencilSlot(
+        int32 InPrimIndex) -> FCkOptimizationDebugger_StencilSlot;
+
+    CKOPTIMIZATIONDEBUGGER_API auto
+    Get_StencilPassCount(
+        int32 InPrimCount) -> int32;
+
+    /** One pixel's per-pass stencil readings collapsed to the primitive visible there.
+     *
+     *  Exactly one pass should read non-zero — the one holding the primitive that won the depth test. All zero
+     *  means nothing identifiable is there (sky, an excluded type, a material that does not write custom depth).
+     *  Two non-zero readings mean the scene moved between passes, which cannot be true within one game-thread
+     *  scope: it resolves to the FIRST and counts the disagreement, because a capture that reported a picture it
+     *  could not explain would be worse than one that says how often it was confused. */
+    CKOPTIMIZATIONDEBUGGER_API auto
+    Resolve_PrimFromPassValues(
+        const TArray<uint8>& InPerPassStencil,
+        int32 InPrimCount,
+        int32& OutConflictCount) -> TOptional<int32>;
+
+    /** Where the image lands inside the widget under aspect-fit drawing. */
+    struct CKOPTIMIZATIONDEBUGGER_API FCkOptimizationDebugger_LetterboxGeometry
+    {
+        FVector2D Offset = FVector2D::ZeroVector;
+        FVector2D DrawnSize = FVector2D::ZeroVector;
+        double Scale = 0.0;
+    };
+
+    /** The one place the aspect-fit arithmetic lives. Both the viewer's DRAW rect and the click mapping below come
+     *  from it, because a click that resolved against different geometry than the picture was drawn with would
+     *  select a mesh next to the one under the cursor — worst at the edges, and never obviously wrong.
+     *
+     *  Unset when either size is degenerate: a widget that has not been laid out yet has none. */
+    CKOPTIMIZATIONDEBUGGER_API auto
+    Get_LetterboxGeometry(
+        FVector2D InLocalSize,
+        FIntPoint InImageSize) -> TOptional<FCkOptimizationDebugger_LetterboxGeometry>;
+
     /** Widget-local point to image pixel under aspect-fit drawing. Unset in the letterbox bands, which is what
      *  stops a click on the empty margin from selecting the mesh nearest the edge. */
     CKOPTIMIZATIONDEBUGGER_API auto

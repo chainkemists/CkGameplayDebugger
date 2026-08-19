@@ -26,7 +26,7 @@ namespace ck_inspector_ui
         { return false; }
 
         const auto* WrapperPtr = InEntity.Get<ck::FFragment_WorldSpaceWidget_Current>().Get_WrapperWidget().Get();
-        return ck::IsValid(WrapperPtr, ck::IsValid_Policy_NullptrOnly{});
+        return ck::IsValid(WrapperPtr);
     }
 
     static auto Get_IsOwningPlayerValid(
@@ -36,7 +36,8 @@ namespace ck_inspector_ui
         if (ck::Is_NOT_Valid(InEntity) || NOT InEntity.Has<ck::FFragment_WorldSpaceWidget_Current>())
         { return false; }
 
-        return InEntity.Get<ck::FFragment_WorldSpaceWidget_Current>().Get_WidgetOwningPlayer().IsValid();
+        const auto* ResolvedPlayer = InEntity.Get<ck::FFragment_WorldSpaceWidget_Current>().Get_ResolvedOwningPlayer();
+        return ck::IsValid(ResolvedPlayer);
     }
 
     static auto Get_IsEnabled(

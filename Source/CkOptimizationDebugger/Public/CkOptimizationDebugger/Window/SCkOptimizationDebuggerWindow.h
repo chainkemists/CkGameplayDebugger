@@ -9,6 +9,7 @@
 
 #include "CkEditorTools/Style/CkStyle.h"
 
+#include "Camera/CameraTypes.h"
 #include "CoreMinimal.h"
 #include "Types/SlateEnums.h"
 #include "Types/WidgetActiveTimerDelegate.h"
@@ -191,6 +192,7 @@ private:
     auto DoOnGoToClicked() -> FReply;
     auto DoOnOpenAssetClicked() -> FReply;
     auto DoOnCaptureSnapshotClicked() -> FReply;
+    auto DoOnRecaptureSnapshotClicked() -> FReply;
     auto DoOnSnapshotReportClicked() -> FReply;
     auto DoOnSnapshotSaveClicked() -> FReply;
     auto DoOnSnapshotLoadClicked() -> FReply;
@@ -290,8 +292,12 @@ private:
      *  capture, cycle, delete, strip click. The window overrides no `Tick`, and this is not a place to start. */
     auto DoRebuild_Snapshots() -> void;
 
-    /** One synchronous capture, from the button. Everything it can fail at is reported on the status strip. */
-    auto DoRun_SnapshotCapture() -> void;
+    /** One synchronous capture, from the button. Everything it can fail at is reported on the status strip.
+     *
+     *  The override is the stored point of view of the snapshot on screen, and only "Recapture from here" passes
+     *  one: replaying a POV is what makes two captures of one framing comparable pixel for pixel after the world
+     *  moved. Unset is the live camera, which is every other capture. */
+    auto DoRun_SnapshotCapture(TOptional<FMinimalViewInfo> InViewOverride) -> void;
 
     /** The right-hand panel: capture facts when nothing is selected, one mesh's LODs and material slots when one
      *  is, an aggregate when several are. Rebuilt on SELECTION change and snapshot switch — never on hover, which

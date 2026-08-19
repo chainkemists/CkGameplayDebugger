@@ -329,6 +329,16 @@ namespace ck_optimization_debugger_snapshot
     // ----------------------------------------------------------------------------------------------------------------
 
     auto
+        Get_HasPov(
+            const FCkOptimizationDebugger_Snapshot& InSnapshot)
+        -> bool
+    {
+        return InSnapshot.CameraFov > 0.0f;
+    }
+
+    // ----------------------------------------------------------------------------------------------------------------
+
+    auto
         Get_SnapshotAggregates(
             const TArray<FCkOptimizationDebugger_SnapshotPrim>& InPrims)
         -> FCkOptimizationDebugger_SnapshotAggregates

@@ -147,6 +147,11 @@ private:
     // group headers and no highlight bit, so there is nothing to wrap it in.
     using FMemoryItem = TSharedPtr<FCkOptimizationDebugger_MemoryRow>;
 
+    // One row of the snapshot mesh list. Shared pointers rather than values so the list keeps ITEM IDENTITY across a
+    // refresh — an SListView compares items by pointer, and rebuilt values would drop the reader's selection every
+    // time a sort or a recapture rebuilt the table.
+    using FSnapshotMeshItem = TSharedPtr<ck_optimization_debugger_snapshot_lens::FCkOptimizationDebugger_SnapshotMeshRow>;
+
     // The cleanup list DOES wrap, because the duplicates category carries group headers.
     using FCleanupItem = TSharedPtr<FCkOptimizationDebugger_CleanupListItem>;
 
@@ -317,6 +322,30 @@ private:
     /** What the selector button reads. Auxiliary views print their stored NAME, so a snapshot carrying views this
      *  build has never heard of still labels them honestly. */
     auto DoGet_SnapshotViewLabel(const FCkOptimizationDebugger_SnapshotView& InView) const -> FString;
+
+    /** Rebuilds the mesh-list rows from the ACTIVE snapshot, the coverage the viewer already counted and the current
+     *  budgets, then re-applies the sort and pushes the selection back down. Event-driven, like everything else on
+     *  this page: capture, cycle, delete, sort and selection — never a tick. */
+    auto DoRebuild_SnapshotMeshList() -> void;
+
+    /** Pushes the snapshot's selection INTO the list without letting the list report it back as a user action. The
+     *  guard is the whole point: image and list are one selection, and two widgets that echo each other turn one
+     *  click into an infinite refresh. */
+    auto DoSync_SnapshotMeshSelection() -> void;
+
+    auto DoCreate_SnapshotMeshHeaderRow() -> TSharedRef<SHeaderRow>;
+
+    auto DoGenerate_SnapshotMeshRow(FSnapshotMeshItem InItem, const TSharedRef<STableViewBase>& InOwnerTable)
+        -> TSharedRef<ITableRow>;
+
+    auto DoOnSnapshotMeshSelectionChanged(FSnapshotMeshItem InItem, ESelectInfo::Type InSelectInfo) -> void;
+
+    auto DoOnSnapshotMeshSortChanged(EColumnSortPriority::Type InPriority, const FName& InColumnId,
+        EColumnSortMode::Type InSortMode) -> void;
+
+    auto Get_SnapshotMeshSortMode(
+        ck_optimization_debugger_snapshot_lens::ECkOptimizationDebugger_SnapshotMeshColumn InColumn) const
+        -> EColumnSortMode::Type;
     auto DoOnSnapshotHoveredPrimChanged(TOptional<int32> InPrimIndex) -> void;
     auto DoOnSnapshotPrimClicked(TOptional<int32> InPrimIndex,
         ECkOptimizationDebugger_SnapshotClickModifier InModifier) -> void;
@@ -497,6 +526,19 @@ private:
     FCkOptimizationDebugger_SnapshotView _SnapshotView;
     FString _SnapshotLensLegend;
 
+    // The mesh list: the same selection the picture carries, in a form that can be sorted. Collapsed by default so
+    // the page opens as a picture, which is what a reader came to the Snapshots tab for.
+    bool _SnapshotMeshListVisible = false;
+
+    // Set while the window is writing the selection INTO the list, so the list's own change callback can tell a
+    // programmatic push from a click and refuse to echo it back.
+    bool _SnapshotSelectionSyncGuard = false;
+
+    ck_optimization_debugger_snapshot_lens::ECkOptimizationDebugger_SnapshotMeshColumn _SnapshotMeshSortColumn =
+        ck_optimization_debugger_snapshot_lens::ECkOptimizationDebugger_SnapshotMeshColumn::Triangles;
+
+    bool _SnapshotMeshSortAscending = false;
+
     // What the readout under the image says. Cached like every other attribute-read string on this window.
     FString _SnapshotHoverText;
     int32 _SelectedFixableCount = 0;
@@ -597,6 +639,8 @@ private:
     TSharedPtr<SHorizontalBox> _SnapshotStrip;
     TSharedPtr<SVerticalBox> _SnapshotFactsBox;
     TSharedPtr<SCkOptimizationSnapshotViewer> _SnapshotViewer;
+    TSharedPtr<SListView<FSnapshotMeshItem>> _SnapshotMeshList;
+    TArray<FSnapshotMeshItem> _SnapshotMeshItems;
     TArray<FCleanupItem> _CleanupItems;
 
     // Stable row identity across FILTER and CATEGORY passes, keyed by `<category id>|<asset path>`. Dropped by a

@@ -122,6 +122,12 @@ namespace ck_optimization_debugger_window
 
     // Cleanup list geometry. Hand-laid rather than an `SHeaderRow`, because this list carries group header LINES for
     // the duplicates category and a header row has nowhere to put one.
+    constexpr auto k_SnapshotMeshKindColumnWidth      = 130.0f;
+    constexpr auto k_SnapshotMeshNumberColumnWidth    = 90.0f;
+    constexpr auto k_SnapshotMeshDensityColumnWidth   = 80.0f;
+    constexpr auto k_SnapshotMeshSlotsColumnWidth     = 60.0f;
+    constexpr auto k_SnapshotMeshListHeightFraction   = 0.45f;
+
     constexpr auto k_CleanupClassColumnWidth = 140.0f;
     constexpr auto k_CleanupSizeColumnWidth  = 100.0f;
 
@@ -601,6 +607,177 @@ namespace ck_optimization_debugger_window
         return Target;
     }
 }
+
+// --------------------------------------------------------------------------------------------------------------------
+
+/** One line of the snapshot mesh list.
+ *
+ *  Row-safe by construction: `STextBlock`, `SBox` and `SCkDebug_StatusPill`, which is visual-only. A widget that
+ *  consumed the left click here would leave rows that render but cannot be selected — and selection is this list's
+ *  entire purpose, because it is the same selection the picture carries. */
+class SCkOptimizationDebugger_SnapshotMeshTableRow
+    : public SMultiColumnTableRow<TSharedPtr<ck_optimization_debugger_snapshot_lens::FCkOptimizationDebugger_SnapshotMeshRow>>
+{
+public:
+    using FRowType = ck_optimization_debugger_snapshot_lens::FCkOptimizationDebugger_SnapshotMeshRow;
+
+    SLATE_BEGIN_ARGS(SCkOptimizationDebugger_SnapshotMeshTableRow) {}
+        SLATE_ARGUMENT(TSharedPtr<FRowType>, Row)
+    SLATE_END_ARGS()
+
+    auto
+        Construct(
+            const FArguments& InArgs,
+            const TSharedRef<STableViewBase>& InOwnerTable)
+        -> void
+    {
+        _Row = InArgs._Row;
+
+        SMultiColumnTableRow<TSharedPtr<FRowType>>::Construct(
+            FSuperRowType::FArguments()
+                .Style(&ck_optimization_debugger_window::Get_RowStyle())
+                .Padding(FMargin{0.0f, 1.0f})
+                .ShowSelection(true),
+            InOwnerTable);
+    }
+
+    virtual auto
+        GenerateWidgetForColumn(
+            const FName& InColumnName)
+        -> TSharedRef<SWidget> override
+    {
+        using namespace ck_optimization_debugger_model;
+        using namespace ck_optimization_debugger_snapshot_lens;
+        using namespace ck_optimization_debugger_window;
+
+        if (NOT _Row.IsValid())
+        { return SNullWidget::NullWidget; }
+
+        const auto Column = TryGet_MeshColumnFromId(InColumnName);
+
+        if (NOT Column.IsSet())
+        { return SNullWidget::NullWidget; }
+
+        switch (Column.GetValue())
+        {
+            case ECkOptimizationDebugger_SnapshotMeshColumn::Mesh:
+            {
+                return Build_NameCell();
+            }
+            case ECkOptimizationDebugger_SnapshotMeshColumn::Kind:
+            {
+                return Build_Cell(Get_SnapshotPrimKindLabel(_Row->Kind), CkStyle::TextDim(), false);
+            }
+            case ECkOptimizationDebugger_SnapshotMeshColumn::Triangles:
+            {
+                return Build_Cell(FString::FromInt(_Row->Lod0Triangles), CkStyle::TextDim(), true);
+            }
+            case ECkOptimizationDebugger_SnapshotMeshColumn::Coverage:
+            {
+                // An em dash, never a zero: a snapshot with no identification cannot count pixels, and "0" there
+                // would claim the mesh is not visible.
+                return Build_Cell(_Row->CoveredPixels >= 0
+                        ? FString::FromInt(_Row->CoveredPixels)
+                        : FString{TEXT("—")},
+                    _Row->CoveredPixels >= 0 ? CkStyle::TextDim() : CkStyle::TextMute(), true);
+            }
+            case ECkOptimizationDebugger_SnapshotMeshColumn::Density:
+            {
+                return Build_Cell(_Row->CoveredPixels > 0
+                        ? ck::Format_UE(TEXT("{:.2f}"), _Row->TrianglesPerPixel)
+                        : FString{TEXT("—")},
+                    _Row->CoveredPixels > 0 ? CkStyle::TextDim() : CkStyle::TextMute(), true);
+            }
+            case ECkOptimizationDebugger_SnapshotMeshColumn::MeshMemory:
+            {
+                return Build_Cell(Format_ByteSize(_Row->MeshResourceSizeBytes), CkStyle::TextDim(), true);
+            }
+            case ECkOptimizationDebugger_SnapshotMeshColumn::Instances:
+            {
+                return Build_Cell(FString::FromInt(_Row->InstanceCount), CkStyle::TextDim(), true);
+            }
+            default:
+            {
+                return Build_Cell(FString::FromInt(_Row->SlotCount), CkStyle::TextDim(), true);
+            }
+        }
+    }
+
+private:
+    auto
+        Build_Cell(
+            const FString& InText,
+            const FLinearColor& InColor,
+            bool InNumeric) const
+        -> TSharedRef<SWidget>
+    {
+        return SNew(SBox)
+            .VAlign(VAlign_Center)
+            .HAlign(InNumeric ? HAlign_Right : HAlign_Left)
+            .Padding(FMargin{CkStyle::SpaceS, 0.0f})
+            [
+                SNew(STextBlock)
+                .Text(FText::FromString(InText))
+                .Font(InNumeric
+                    ? CkStyle::MonoFont(CkStyle::FontSizeSmall())
+                    : CkStyle::RegularFont(CkStyle::FontSizeBody()))
+                .ColorAndOpacity(FSlateColor{InColor})
+            ];
+    }
+
+    /** The name, plus the badge that says this mesh breaches a budget. The badge and the `Budget` lens read the SAME
+     *  grading, so a row that wears a red chip is the same mesh the lens paints red. */
+    auto
+        Build_NameCell() const
+        -> TSharedRef<SWidget>
+    {
+        using namespace ck_optimization_debugger_model;
+
+        auto Cell = SNew(SHorizontalBox);
+
+        Cell->AddSlot()
+        .FillWidth(1.0f)
+        .VAlign(VAlign_Center)
+        .Padding(FMargin{CkStyle::SpaceS, 0.0f, 0.0f, 0.0f})
+        [
+            SNew(STextBlock)
+            .Text(FText::FromString(_Row->DisplayName))
+            .Font(CkStyle::RegularFont(CkStyle::FontSizeBody()))
+            .ColorAndOpacity(FSlateColor{CkStyle::Text()})
+        ];
+
+        if (_Row->IsNanite)
+        {
+            Cell->AddSlot()
+            .AutoWidth()
+            .VAlign(VAlign_Center)
+            .Padding(FMargin{CkStyle::SpaceXS, 0.0f, 0.0f, 0.0f})
+            [
+                SNew(SCkDebug_StatusPill)
+                .Text(FText::FromString(TEXT("NANITE")))
+                .Tone(ECk_Tone::Neutral)
+                .ShowDot(false)
+            ];
+        }
+
+        if (_Row->BudgetSeverity.IsSet())
+        {
+            Cell->AddSlot()
+            .AutoWidth()
+            .VAlign(VAlign_Center)
+            .Padding(FMargin{CkStyle::SpaceXS, 0.0f, CkStyle::SpaceS, 0.0f})
+            [
+                SNew(SCkDebug_StatusPill)
+                .Text(FText::FromString(Get_SeverityLabel(_Row->BudgetSeverity.GetValue()).ToUpper()))
+                .Tone(Get_SeverityTone(_Row->BudgetSeverity.GetValue()))
+            ];
+        }
+
+        return Cell;
+    }
+
+    TSharedPtr<FRowType> _Row;
+};
 
 // --------------------------------------------------------------------------------------------------------------------
 
@@ -2670,6 +2847,30 @@ auto
                     DoOnToggle_SnapshotSelectionMode();
                 })
             ]
+
+            + SHorizontalBox::Slot()
+            .AutoWidth()
+            .HAlign(HAlign_Left)
+            .VAlign(VAlign_Center)
+            .Padding(CkStyle::SpaceS, 0.0f, 0.0f, 0.0f)
+            [
+                SNew(SCkDebug_IconToggle)
+                .IconId(ECk_Icon::Catalog)
+                .Label(FText::FromString(TEXT("Mesh List")))
+                .ToolTip(FText::FromString(
+                    TEXT("Every mesh in the picture as a sortable table. Selecting a row selects it in the ")
+                    TEXT("picture, and selecting in the picture selects the row - it is one selection.")))
+                .IsEnabled_Lambda([this]() -> bool { return _SnapshotCount > 0; })
+                .IsOn_Lambda([this]() -> bool { return _SnapshotMeshListVisible; })
+                .OnStateChanged_Lambda([this](bool)
+                {
+                    _SnapshotMeshListVisible = NOT _SnapshotMeshListVisible;
+
+                    // Built on DEMAND: the rows need the coverage count, which needs the ID map decoded, and a
+                    // reader who never opens the list should never pay for either.
+                    DoRebuild_SnapshotMeshList();
+                })
+            ]
         ]
 
         + SVerticalBox::Slot()
@@ -2780,6 +2981,24 @@ auto
                     .AutoWrapText(true)
                     .ColorAndOpacity(FSlateColor{CkStyle::TextDim()})
                 ]
+
+                + SVerticalBox::Slot()
+                .FillHeight(k_SnapshotMeshListHeightFraction)
+                .Padding(0.0f, CkStyle::SpaceS, 0.0f, 0.0f)
+                [
+                    SAssignNew(_SnapshotMeshList, SListView<FSnapshotMeshItem>)
+                    .ListItemsSource(&_SnapshotMeshItems)
+                    .OnGenerateRow(this, &SCkOptimizationDebuggerWindow::DoGenerate_SnapshotMeshRow)
+                    .OnSelectionChanged(this, &SCkOptimizationDebuggerWindow::DoOnSnapshotMeshSelectionChanged)
+                    .SelectionMode(ESelectionMode::Multi)
+                    .HeaderRow(DoCreate_SnapshotMeshHeaderRow())
+                    .Visibility_Lambda([this]() -> EVisibility
+                    {
+                        return _SnapshotMeshListVisible && _SnapshotCount > 0
+                            ? EVisibility::Visible
+                            : EVisibility::Collapsed;
+                    })
+                ]
             ]
 
             + SSplitter::Slot()
@@ -2877,6 +3096,8 @@ auto
 
         DoSelect_SnapshotView(ViewIsDrawable ? _SnapshotView : FCkOptimizationDebugger_SnapshotView{});
     }
+
+    DoRebuild_SnapshotMeshList();
 
     _SnapshotHoverText = FString{};
 
@@ -3383,7 +3604,232 @@ auto
     if (ck::IsValid(_SnapshotViewer))
     { _SnapshotViewer->Invalidate_Overlay(); }
 
+    // The list follows the picture, guarded so it cannot report the push back as a click of its own.
+    DoSync_SnapshotMeshSelection();
+
     DoRebuild_SnapshotDetail();
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkOptimizationDebuggerWindow::
+    DoRebuild_SnapshotMeshList()
+    -> void
+{
+    using namespace ck_optimization_debugger_snapshot_lens;
+
+    if (NOT ck::IsValid(_SnapshotMeshList))
+    { return; }
+
+    _SnapshotMeshItems.Reset();
+
+    const auto* Active = _Model.TryGet_ActiveSnapshot();
+
+    // Collapsed means not built: the rows need coverage, coverage needs the ID map decoded, and that decode is the
+    // largest allocation on this page. A reader who never opens the list never pays for it.
+    if (Active == nullptr || NOT _SnapshotMeshListVisible)
+    {
+        _SnapshotMeshList->RequestListRefresh();
+        return;
+    }
+
+    const auto Coverage = ck::IsValid(_SnapshotViewer)
+        ? _SnapshotViewer->Get_ScreenCoverage()
+        : TArray<int32>{};
+
+    // Budgets read ONCE per rebuild and handed in, exactly as the lens takes them.
+    const auto Rows = Get_SortedSnapshotMeshRows(
+        Build_SnapshotMeshRows(*Active, Coverage, ck_optimization_debugger_thresholds::Build_FromSettings()),
+        _SnapshotMeshSortColumn,
+        _SnapshotMeshSortAscending);
+
+    _SnapshotMeshItems.Reserve(Rows.Num());
+
+    for (const auto& Row : Rows)
+    { _SnapshotMeshItems.Add(MakeShared<FCkOptimizationDebugger_SnapshotMeshRow>(Row)); }
+
+    _SnapshotMeshList->RequestListRefresh();
+
+    DoSync_SnapshotMeshSelection();
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkOptimizationDebuggerWindow::
+    DoSync_SnapshotMeshSelection()
+    -> void
+{
+    if (NOT ck::IsValid(_SnapshotMeshList))
+    { return; }
+
+    const auto* Active = _Model.TryGet_ActiveSnapshot();
+
+    // The guard is what makes image and list ONE selection rather than two that chase each other: without it this
+    // push fires the list's change callback, which writes the selection back, which pushes again.
+    _SnapshotSelectionSyncGuard = true;
+
+    _SnapshotMeshList->ClearSelection();
+
+    if (Active != nullptr)
+    {
+        for (const auto& Item : _SnapshotMeshItems)
+        {
+            if (Item.IsValid() && Active->SelectedPrims.Contains(Item->PrimIndex))
+            { _SnapshotMeshList->SetItemSelection(Item, true, ESelectInfo::Direct); }
+        }
+    }
+
+    _SnapshotSelectionSyncGuard = false;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkOptimizationDebuggerWindow::
+    DoOnSnapshotMeshSelectionChanged(
+        FSnapshotMeshItem InItem,
+        ESelectInfo::Type InSelectInfo)
+    -> void
+{
+    if (_SnapshotSelectionSyncGuard || InSelectInfo == ESelectInfo::Direct)
+    { return; }
+
+    auto* Active = _Model.TryGet_MutableActiveSnapshot();
+
+    if (Active == nullptr)
+    { return; }
+
+    auto Selected = TArray<int32>{};
+
+    for (const auto& Item : _SnapshotMeshList->GetSelectedItems())
+    {
+        if (Item.IsValid())
+        { Selected.Add(Item->PrimIndex); }
+    }
+
+    // Through the model's rule, never by writing the set here: a selection is only as trustworthy as the snapshot it
+    // was made against, and that distrust lives in one place.
+    ck_optimization_debugger_snapshot::Apply_SnapshotSelection(*Active, Selected);
+
+    if (ck::IsValid(_SnapshotViewer))
+    { _SnapshotViewer->Invalidate_Overlay(); }
+
+    DoRebuild_SnapshotDetail();
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkOptimizationDebuggerWindow::
+    DoCreate_SnapshotMeshHeaderRow()
+    -> TSharedRef<SHeaderRow>
+{
+    using namespace ck_optimization_debugger_snapshot_lens;
+    using namespace ck_optimization_debugger_window;
+
+    const auto SortMode = [this](ECkOptimizationDebugger_SnapshotMeshColumn InColumn)
+        -> TAttribute<EColumnSortMode::Type>
+    {
+        return TAttribute<EColumnSortMode::Type>::CreateLambda([this, InColumn]() -> EColumnSortMode::Type
+        {
+            return Get_SnapshotMeshSortMode(InColumn);
+        });
+    };
+
+    const auto OnSort = FOnSortModeChanged::CreateSP(
+        this, &SCkOptimizationDebuggerWindow::DoOnSnapshotMeshSortChanged);
+
+    const auto WidthOf = [](ECkOptimizationDebugger_SnapshotMeshColumn InColumn) -> float
+    {
+        switch (InColumn)
+        {
+            case ECkOptimizationDebugger_SnapshotMeshColumn::Kind:    return k_SnapshotMeshKindColumnWidth;
+            case ECkOptimizationDebugger_SnapshotMeshColumn::Density: return k_SnapshotMeshDensityColumnWidth;
+            case ECkOptimizationDebugger_SnapshotMeshColumn::Slots:   return k_SnapshotMeshSlotsColumnWidth;
+            default:                                                  return k_SnapshotMeshNumberColumnWidth;
+        }
+    };
+
+    auto Header = SNew(SHeaderRow);
+
+    for (const auto& Column : Get_AllMeshColumns())
+    {
+        const auto IsNameColumn = Column == ECkOptimizationDebugger_SnapshotMeshColumn::Mesh;
+
+        auto ColumnArgs = SHeaderRow::Column(Get_MeshColumnId(Column))
+            .DefaultLabel(FText::FromString(Get_MeshColumnLabel(Column)))
+            .SortMode(SortMode(Column))
+            .OnSort(OnSort);
+
+        if (IsNameColumn)
+        { ColumnArgs.FillWidth(1.0f); }
+        else
+        { ColumnArgs.FixedWidth(WidthOf(Column)).HAlignHeader(HAlign_Right); }
+
+        Header->AddColumn(ColumnArgs);
+    }
+
+    return Header;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkOptimizationDebuggerWindow::
+    DoGenerate_SnapshotMeshRow(
+        FSnapshotMeshItem InItem,
+        const TSharedRef<STableViewBase>& InOwnerTable)
+    -> TSharedRef<ITableRow>
+{
+    using namespace ck_optimization_debugger_window;
+
+    if (NOT InItem.IsValid())
+    {
+        return SNew(STableRow<FSnapshotMeshItem>, InOwnerTable)
+            .Style(&Get_RowStyle());
+    }
+
+    return SNew(SCkOptimizationDebugger_SnapshotMeshTableRow, InOwnerTable)
+        .Row(InItem);
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkOptimizationDebuggerWindow::
+    DoOnSnapshotMeshSortChanged(
+        EColumnSortPriority::Type InPriority,
+        const FName& InColumnId,
+        EColumnSortMode::Type InSortMode)
+    -> void
+{
+    using namespace ck_optimization_debugger_snapshot_lens;
+
+    const auto Column = TryGet_MeshColumnFromId(InColumnId);
+
+    if (NOT Column.IsSet())
+    { return; }
+
+    _SnapshotMeshSortColumn = Column.GetValue();
+    _SnapshotMeshSortAscending = InSortMode != EColumnSortMode::Descending;
+
+    DoRebuild_SnapshotMeshList();
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkOptimizationDebuggerWindow::
+    Get_SnapshotMeshSortMode(
+        ck_optimization_debugger_snapshot_lens::ECkOptimizationDebugger_SnapshotMeshColumn InColumn) const
+    -> EColumnSortMode::Type
+{
+    if (InColumn != _SnapshotMeshSortColumn)
+    { return EColumnSortMode::None; }
+
+    return _SnapshotMeshSortAscending ? EColumnSortMode::Ascending : EColumnSortMode::Descending;
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -3542,6 +3988,29 @@ auto
         .SubText(FText::FromString(ck::Format_UE(TEXT("{}{}"),
             Get_SnapshotPrimKindLabel(Prim.Kind), Prim.IsNanite ? TEXT(" · NANITE") : TEXT(""))))
     ];
+
+    // The same grading the budget lens paints and the mesh list badges. One rule, three surfaces: a mesh cannot be
+    // red in the picture and unbadged in the panel.
+    if (const auto BudgetSeverity = ck_optimization_debugger_snapshot_lens::TryGet_BudgetSeverity(
+            Prim, ck_optimization_debugger_thresholds::Build_FromSettings());
+        BudgetSeverity.IsSet())
+    {
+        _SnapshotFactsBox->AddSlot()
+        .AutoHeight()
+        .Padding(0.0f, 0.0f, 0.0f, CkStyle::SpaceS)
+        [
+            SNew(SHorizontalBox)
+
+            + SHorizontalBox::Slot()
+            .AutoWidth()
+            [
+                SNew(SCkDebug_StatusPill)
+                .Text(FText::FromString(ck::Format_UE(TEXT("{} · OVER BUDGET"),
+                    Get_SeverityLabel(BudgetSeverity.GetValue()).ToUpper())))
+                .Tone(Get_SeverityTone(BudgetSeverity.GetValue()))
+            ]
+        ];
+    }
 
     // Go To and Open Asset reuse the SAME navigation trio every finding uses, against a target built from the
     // mesh the capture recorded — so a snapshot row and a finding row cannot navigate differently.

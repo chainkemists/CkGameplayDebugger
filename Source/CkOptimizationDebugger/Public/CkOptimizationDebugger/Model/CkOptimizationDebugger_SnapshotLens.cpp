@@ -189,6 +189,62 @@ namespace ck_optimization_debugger_snapshot_lens_impl
 
         return static_cast<float>((FMath::Loge(1.0 + InValue) - LogMin) / (LogMax - LogMin));
     }
+    // ----------------------------------------------------------------------------------------------------------------
+
+    /** Everything one capture says about one mesh asset, summed over its placements. The comparison works on these
+     *  rather than on prims, so "the same mesh" survives a prim table that renumbered between captures. */
+    struct FMeshTotals
+    {
+        FString DisplayName;
+
+        int32 Placements = 0;
+        int64 Lod0Triangles = 0;
+        int32 Instances = 0;
+        int64 MeshMemoryBytes = 0;
+        int32 CoveredPixels = 0;
+    };
+
+    // ----------------------------------------------------------------------------------------------------------------
+
+    auto
+        Build_MeshTotals(
+            const FCkOptimizationDebugger_Snapshot& InSnapshot)
+        -> TMap<FString, FMeshTotals>
+    {
+        using namespace ck_optimization_debugger_snapshot;
+        using namespace ck_optimization_debugger_snapshot_lens;
+
+        const auto DecodedIds = InSnapshot.HasIdMap ? Decode_IdMapRle(InSnapshot.IdMapRle) : TArray<uint32>{};
+        const auto Coverage = Get_ScreenCoverage(DecodedIds, InSnapshot.Prims.Num());
+
+        auto Totals = TMap<FString, FMeshTotals>{};
+
+        for (auto PrimIndex = 0; PrimIndex < InSnapshot.Prims.Num(); ++PrimIndex)
+        {
+            const auto& Prim = InSnapshot.Prims[PrimIndex];
+
+            // The asset path is the identity; a capture that recorded none falls back to the display name, which is
+            // still stable between two captures of the same placement.
+            const auto Key = Prim.MeshAssetPath.IsNull() ? Prim.DisplayName : Prim.MeshAssetPath.ToString();
+
+            auto& Entry = Totals.FindOrAdd(Key);
+
+            if (Entry.DisplayName.IsEmpty())
+            { Entry.DisplayName = Prim.MeshDisplayName.IsEmpty() ? Prim.DisplayName : Prim.MeshDisplayName; }
+
+            ++Entry.Placements;
+            Entry.Lod0Triangles += Prim.Lods.IsEmpty() ? 0 : Prim.Lods[0].Triangles;
+            Entry.Instances += Prim.InstanceCount;
+
+            // The asset's size, not a sum: ten placements of one mesh cost one mesh's memory.
+            Entry.MeshMemoryBytes = Prim.MeshResourceSizeBytes;
+
+            if (Coverage.IsValidIndex(PrimIndex))
+            { Entry.CoveredPixels += Coverage[PrimIndex]; }
+        }
+
+        return Totals;
+    }
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -359,6 +415,106 @@ namespace ck_optimization_debugger_snapshot_lens
         { Largest = FMath::Max(Largest, Slot.UsedTextureCount); }
 
         return Largest;
+    }
+
+    // ----------------------------------------------------------------------------------------------------------------
+
+    auto
+        Build_SnapshotDelta(
+            const FCkOptimizationDebugger_Snapshot& InBaseline,
+            const FCkOptimizationDebugger_Snapshot& InCurrent)
+        -> TArray<FCkOptimizationDebugger_SnapshotDeltaRow>
+    {
+        using namespace ck_optimization_debugger_snapshot_lens_impl;
+
+        const auto BaselineTotals = Build_MeshTotals(InBaseline);
+        const auto CurrentTotals = Build_MeshTotals(InCurrent);
+
+        // Coverage is only comparable when BOTH sides counted pixels.
+        const auto CoverageComparable = InBaseline.HasIdMap && InCurrent.HasIdMap;
+
+        auto Rows = TArray<FCkOptimizationDebugger_SnapshotDeltaRow>{};
+
+        for (const auto& Current : CurrentTotals)
+        {
+            const auto* Baseline = BaselineTotals.Find(Current.Key);
+
+            auto Row = FCkOptimizationDebugger_SnapshotDeltaRow{};
+            Row.Key = Current.Key;
+            Row.DisplayName = Current.Value.DisplayName;
+
+            if (Baseline == nullptr)
+            {
+                Row.Kind = ECkOptimizationDebugger_SnapshotDeltaKind::Added;
+                Row.PlacementDelta = Current.Value.Placements;
+                Row.Lod0TriangleDelta = Current.Value.Lod0Triangles;
+                Row.InstanceDelta = Current.Value.Instances;
+                Row.MeshMemoryDelta = Current.Value.MeshMemoryBytes;
+
+                if (CoverageComparable)
+                { Row.CoverageDelta = Current.Value.CoveredPixels; }
+
+                Rows.Add(MoveTemp(Row));
+                continue;
+            }
+
+            Row.Kind = ECkOptimizationDebugger_SnapshotDeltaKind::Changed;
+            Row.PlacementDelta = Current.Value.Placements - Baseline->Placements;
+            Row.Lod0TriangleDelta = Current.Value.Lod0Triangles - Baseline->Lod0Triangles;
+            Row.InstanceDelta = Current.Value.Instances - Baseline->Instances;
+            Row.MeshMemoryDelta = Current.Value.MeshMemoryBytes - Baseline->MeshMemoryBytes;
+
+            if (CoverageComparable)
+            { Row.CoverageDelta = Current.Value.CoveredPixels - Baseline->CoveredPixels; }
+
+            const auto NothingMoved = Row.PlacementDelta == 0
+                && Row.Lod0TriangleDelta == 0
+                && Row.InstanceDelta == 0
+                && Row.MeshMemoryDelta == 0
+                && Row.CoverageDelta.Get(0) == 0;
+
+            // A mesh that is identical in both captures is not a finding. Listing it would bury the handful of rows
+            // that ARE the answer under every mesh that simply stayed put.
+            if (NothingMoved)
+            { continue; }
+
+            Rows.Add(MoveTemp(Row));
+        }
+
+        for (const auto& Baseline : BaselineTotals)
+        {
+            if (CurrentTotals.Contains(Baseline.Key))
+            { continue; }
+
+            auto Row = FCkOptimizationDebugger_SnapshotDeltaRow{};
+            Row.Kind = ECkOptimizationDebugger_SnapshotDeltaKind::Removed;
+            Row.Key = Baseline.Key;
+            Row.DisplayName = Baseline.Value.DisplayName;
+            Row.PlacementDelta = -Baseline.Value.Placements;
+            Row.Lod0TriangleDelta = -Baseline.Value.Lod0Triangles;
+            Row.InstanceDelta = -Baseline.Value.Instances;
+            Row.MeshMemoryDelta = -Baseline.Value.MeshMemoryBytes;
+
+            if (CoverageComparable)
+            { Row.CoverageDelta = -Baseline.Value.CoveredPixels; }
+
+            Rows.Add(MoveTemp(Row));
+        }
+
+        Rows.Sort([](const FCkOptimizationDebugger_SnapshotDeltaRow& InLhs,
+            const FCkOptimizationDebugger_SnapshotDeltaRow& InRhs) -> bool
+        {
+            // Worst REGRESSION first: the reader is asking what got more expensive, so the biggest positive triangle
+            // delta leads and the savings sort to the bottom.
+            if (InLhs.Lod0TriangleDelta != InRhs.Lod0TriangleDelta)
+            { return InLhs.Lod0TriangleDelta > InRhs.Lod0TriangleDelta; }
+
+            // TMap iteration order is a hashing detail and TArray::Sort is unstable, so the key is what makes two
+            // runs over the same pair produce the same table.
+            return InLhs.Key.Compare(InRhs.Key, ESearchCase::CaseSensitive) < 0;
+        });
+
+        return Rows;
     }
 
     // ----------------------------------------------------------------------------------------------------------------

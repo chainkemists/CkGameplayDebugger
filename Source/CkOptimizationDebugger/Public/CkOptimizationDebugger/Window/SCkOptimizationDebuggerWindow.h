@@ -346,6 +346,18 @@ private:
     auto Get_SnapshotMeshSortMode(
         ck_optimization_debugger_snapshot_lens::ECkOptimizationDebugger_SnapshotMeshColumn InColumn) const
         -> EColumnSortMode::Type;
+
+    /** The other stored snapshots, as things to compare the one on screen AGAINST. Built when opened so it lists
+     *  what exists now rather than what existed when the page was constructed. */
+    auto DoCreate_SnapshotCompareMenu() -> TSharedRef<SWidget>;
+
+    /** `INDEX_NONE` stops comparing. Anything else names the BASELINE — the older capture the one on screen is read
+     *  as a change from. */
+    auto DoSelect_SnapshotCompare(int32 InBaselineIndex) -> void;
+
+    /** Copy paths, and nothing that mutates: the mesh list is a view of a stored capture, so there is no action here
+     *  that could act on the world it pictured. */
+    auto DoBuild_SnapshotMeshContextMenu() -> TSharedPtr<SWidget>;
     auto DoOnSnapshotHoveredPrimChanged(TOptional<int32> InPrimIndex) -> void;
     auto DoOnSnapshotPrimClicked(TOptional<int32> InPrimIndex,
         ECkOptimizationDebugger_SnapshotClickModifier InModifier) -> void;
@@ -538,6 +550,12 @@ private:
         ck_optimization_debugger_snapshot_lens::ECkOptimizationDebugger_SnapshotMeshColumn::Triangles;
 
     bool _SnapshotMeshSortAscending = false;
+
+    // The snapshot the one on screen is compared AGAINST, by index into the model's array, or INDEX_NONE. An index
+    // rather than a copy, because the strip has to mark that chip and the model owns the array.
+    int32 _SnapshotCompareIndex = INDEX_NONE;
+
+    bool _SnapshotSoloMode = false;
 
     // What the readout under the image says. Cached like every other attribute-read string on this window.
     FString _SnapshotHoverText;

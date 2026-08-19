@@ -58,6 +58,10 @@ public:
 
     auto Get_View() const -> const FCkOptimizationDebugger_SnapshotView& { return _View; }
 
+    /** Isolate the selection: everything that is not selected — sky included — dims hard, so a mesh picked out of a
+     *  crowded frame can be SEEN rather than merely outlined. Off means the normal hover/selection tint. */
+    auto Set_SoloMode(bool InEnabled) -> void;
+
     /** Pixel counts per prim for the snapshot on screen, computed off the ID map this widget already decodes for
      *  picking. Empty when there is no identification to count. The window reads it rather than decoding a second
      *  copy of a map that is one uint32 per pixel. */
@@ -101,6 +105,8 @@ private:
 
     FCkOptimizationDebugger_SnapshotView _View;
     FCkOptimizationDebugger_Thresholds _Thresholds;
+
+    bool _SoloMode = false;
 
     TOptional<int32> _HoveredPrim;
 

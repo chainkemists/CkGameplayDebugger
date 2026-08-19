@@ -1189,4 +1189,123 @@ bool FCkOptimizationDebugger_Snapshot_MeshListSort::RunTest(const FString& Param
 
 // --------------------------------------------------------------------------------------------------------------------
 
+namespace ck_optimization_debugger_snapshot_spec
+{
+    auto
+        Make_ComparePrim(
+            const FString& InMeshName,
+            const FString& InPath,
+            int32 InTriangles,
+            int32 InInstances)
+        -> FCkOptimizationDebugger_SnapshotPrim
+    {
+        auto Prim = Make_Prim(InMeshName, InTriangles, 1, InInstances);
+        Prim.MeshDisplayName = InMeshName;
+        Prim.MeshAssetPath = FSoftObjectPath{InPath};
+        Prim.MeshResourceSizeBytes = 1000;
+
+        return Prim;
+    }
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FCkOptimizationDebugger_Snapshot_CompareDelta,
+    "Ck.OptimizationDebugger.Snapshot.CompareDelta",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCkOptimizationDebugger_Snapshot_CompareDelta::RunTest(const FString& Parameters)
+{
+    using namespace ck_optimization_debugger_snapshot;
+    using namespace ck_optimization_debugger_snapshot_lens;
+    using namespace ck_optimization_debugger_snapshot_spec;
+
+    // The baseline: one shelf and one crate, both identified in the picture.
+    auto Baseline = FCkOptimizationDebugger_Snapshot{};
+    Baseline.Prims.Add(Make_ComparePrim(TEXT("SM_Shelf"), TEXT("/Game/Spec/SM_Shelf.SM_Shelf"), 100, 1));
+    Baseline.Prims.Add(Make_ComparePrim(TEXT("SM_Crate"), TEXT("/Game/Spec/SM_Crate.SM_Crate"), 500, 1));
+    Baseline.HasIdMap = true;
+    Baseline.IdMapRle = Encode_IdMapRle(TArray<uint32>{0u, 0u, 1u, k_NoPrim});
+
+    // The current capture: a second shelf was placed, a barrel appeared, the crate is gone. Prim indices renumbered,
+    // which is exactly what a comparison keyed on index would get wrong.
+    auto Current = FCkOptimizationDebugger_Snapshot{};
+    Current.Prims.Add(Make_ComparePrim(TEXT("SM_Barrel"), TEXT("/Game/Spec/SM_Barrel.SM_Barrel"), 50, 1));
+    Current.Prims.Add(Make_ComparePrim(TEXT("SM_Shelf"), TEXT("/Game/Spec/SM_Shelf.SM_Shelf"), 100, 1));
+    Current.Prims.Add(Make_ComparePrim(TEXT("SM_Shelf"), TEXT("/Game/Spec/SM_Shelf.SM_Shelf"), 100, 3));
+    Current.HasIdMap = true;
+    Current.IdMapRle = Encode_IdMapRle(TArray<uint32>{1u, 1u, 2u, 0u});
+
+    const auto Delta = Build_SnapshotDelta(Baseline, Current);
+
+    if (NOT TestEqual(TEXT("One row per changed mesh asset"), Delta.Num(), 3))
+    { return false; }
+
+    // Worst regression first: the shelf gained a placement, the barrel is new and smaller, the crate is a saving.
+    TestEqual(TEXT("The biggest regression leads"), Delta[0].DisplayName, FString{TEXT("SM_Shelf")});
+    TestEqual(TEXT("...as a change, not an addition"),
+        static_cast<int32>(Delta[0].Kind),
+        static_cast<int32>(ECkOptimizationDebugger_SnapshotDeltaKind::Changed));
+    TestEqual(TEXT("...whose placements grew"), Delta[0].PlacementDelta, 1);
+    TestEqual(TEXT("...and whose triangles grew with them"), static_cast<int32>(Delta[0].Lod0TriangleDelta), 100);
+    TestEqual(TEXT("...and whose instances grew by three"), Delta[0].InstanceDelta, 3);
+
+    // One asset, two placements: the memory delta is the ASSET's, so re-using a mesh does not read as new memory.
+    TestEqual(TEXT("Re-using an asset costs no new mesh memory"), static_cast<int32>(Delta[0].MeshMemoryDelta), 0);
+
+    TestEqual(TEXT("The new mesh is next"), Delta[1].DisplayName, FString{TEXT("SM_Barrel")});
+    TestEqual(TEXT("...as an addition"),
+        static_cast<int32>(Delta[1].Kind),
+        static_cast<int32>(ECkOptimizationDebugger_SnapshotDeltaKind::Added));
+    TestEqual(TEXT("...carrying its whole cost"), static_cast<int32>(Delta[1].Lod0TriangleDelta), 50);
+
+    TestEqual(TEXT("The saving sorts last"), Delta[2].DisplayName, FString{TEXT("SM_Crate")});
+    TestEqual(TEXT("...as a removal"),
+        static_cast<int32>(Delta[2].Kind),
+        static_cast<int32>(ECkOptimizationDebugger_SnapshotDeltaKind::Removed));
+    TestEqual(TEXT("...as a negative delta"), static_cast<int32>(Delta[2].Lod0TriangleDelta), -500);
+
+    // Coverage IS comparable here: both sides counted pixels. The shelf owned two of them and now owns three.
+    if (TestTrue(TEXT("Coverage is compared when both sides have an ID map"), Delta[0].CoverageDelta.IsSet()))
+    { TestEqual(TEXT("...as a pixel difference"), Delta[0].CoverageDelta.GetValue(), 1); }
+
+    // ---- A snapshot that never counted pixels cannot be compared on them ----
+    auto WithoutIdMap = Current;
+    WithoutIdMap.HasIdMap = false;
+    WithoutIdMap.IdMapRle.Reset();
+
+    const auto BlindDelta = Build_SnapshotDelta(Baseline, WithoutIdMap);
+
+    if (TestEqual(TEXT("The comparison still runs without identification"), BlindDelta.Num(), 3))
+    {
+        // Unset, never zero: zero would read as "this mesh takes up the same room", which is a claim neither
+        // capture supports.
+        TestFalse(TEXT("...but coverage is unset rather than zero"), BlindDelta[0].CoverageDelta.IsSet());
+    }
+
+    // ---- Identical captures are not a table of zeroes ----
+    TestEqual(TEXT("A capture compared with itself reports nothing"),
+        Build_SnapshotDelta(Current, Current).Num(), 0);
+
+    // ---- Determinism ----
+    const auto SecondDelta = Build_SnapshotDelta(Baseline, Current);
+
+    if (TestEqual(TEXT("Two runs produce the same number of rows"), SecondDelta.Num(), Delta.Num()))
+    {
+        auto SameOrder = true;
+
+        for (auto Index = 0; Index < Delta.Num(); ++Index)
+        { SameOrder = SameOrder && SecondDelta[Index].Key == Delta[Index].Key; }
+
+        // TMap iteration is a hashing detail, so without the key tie-break two reads of one comparison could
+        // disagree about the order and every re-read would look like a fresh diff.
+        TestTrue(TEXT("...in the same order"), SameOrder);
+    }
+
+    return true;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
 #endif

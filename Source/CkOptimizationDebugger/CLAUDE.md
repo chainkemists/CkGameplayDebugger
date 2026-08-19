@@ -27,6 +27,7 @@ the three back in the change that actually lands the export, together with its d
 | **Memory** | "What is actually resident?" — textures, render targets and static meshes in three sortable tables with resource and GPU totals, guarded texture-streaming metrics, search, copy and Content Browser sync | P4 |
 | **Profiling** | "Let me look at it running" — eight stat overlays, a GPU capture, six view modes, the Nanite / Lumen / virtual-shadow-map visualizers, and a console box, all applied to the active level editor viewport | P5 |
 | **Cleanup** | "What can I delete, and what is wrong with my project's shape?" — unreferenced assets, possible duplicates, **name collisions**, redirectors and dirty packages under `/Game`, in five sub-tabs over one list, with deletion routed through the editor's own confirmation dialog | P6 (P8 added name collisions + the external-reference gate) |
+| **Snapshots** | "What is the camera actually drawing, and what is in that picture?" — captures the view as a stored image plus a table of every static / instanced / skeletal mesh in frame with its per-LOD triangles, sections and material slots, cycled through a chip strip | P10 (capture + viewer; per-pixel mesh identification is unfinished — see below) |
 
 The page bar is `SCkDebug_UnderlineTabs` over an `SWidgetSwitcher`. **The switcher's slots are added in
 `ECkOptimizationDebugger_Page` declaration order** and `ck_optimization_debugger_model::Get_PageIndex` is the enum's
@@ -58,7 +59,7 @@ does not override `Tick` at all. The base's gated style-revision watch is the on
 `OnStyleRevisionChanged` routes into the same `DoRebuild_*` entry points a user action would.
 
 **Known gap — style revision does not restyle everything.** `OnStyleRevisionChanged` reaches the dashboard (which is
-torn down and rebuilt) and the recent-command chips, and nothing else: the five page bodies are built once in
+torn down and rebuilt) and the recent-command chips, and nothing else: the six page bodies are built once in
 `Construct`, and list ROWS are cached by `SListView` against their item pointer, so `RequestListRefresh` on an
 unchanged set does not regenerate them. Re-styling those needs `RebuildList()`, which the suite uses elsewhere
 (`SCkCrowdDebugger_AgentListPanel`, `SCkEqsDebugger_QueryList`, `SCkGoapDebugger_Sidebar`). This matches
@@ -70,6 +71,14 @@ to "No scan yet." after a cleanup or memory scan.
 
 A finding names an ACTOR by soft path plus the owning level's name. It never retains an `AActor*` — a debugger that
 outlives a map change is exactly the one that must not hold one.
+
+**One amendment, for the snapshots page.** Capture is the single place this module reads the LIVE world: inside one
+explicit press it walks the world's primitives, creates a transient `USceneCaptureComponent2D`, registers it against
+the world, reads a render target back and destroys the component through a scope guard. Nothing survives that call
+but plain data — soft paths, strings and copied numbers — so the invariant holds where it matters: a stored snapshot
+retains no object, and it is not polled, ticked or refreshed. "Mutates no registry and spawns nothing" is still true
+of the ECS registry; the transient capture component is the one component this module has ever created, and it does
+not outlive the press. See "The snapshots page".
 
 ---
 
@@ -981,6 +990,74 @@ the button takes — because an action that changed what is on disk changed the 
 
 ---
 
+## The snapshots page
+
+**Status: partially built.** Capture, storage and the viewer are in (P10). Per-pixel mesh identification and
+the selection/stats UI on top of it are NOT — the plan for them is
+`docs/plans/2026-08-18-optimization-accuracy-and-snapshots/`, and they are blocked on a plugin-content
+material that does not exist yet. A snapshot taken today carries `HasIdMap == false` and the page says so
+rather than offering a selection mode that would do nothing.
+
+A snapshot is a picture of the camera's view plus the table of what was in it. The question it answers is the
+one no asset scan can: *this* framing, *these* meshes, at *this* moment — and it stays answerable after the
+world moves on, which is the entire reason it is stored rather than recomputed.
+
+### It is plain data, and that is what keeps the no-live-handle invariant true
+
+`FCkOptimizationDebugger_Snapshot` holds an FGuid, a compressed PNG, sizes, an ID-map byte array, and a table
+of `FCkOptimizationDebugger_SnapshotPrim` — display strings, `FSoftObjectPath`s and copied numbers. **No
+UObject, no component, no handle.** This is the one feature most able to break the module's invariant, because
+it is the one that reads the live world at all; the answer is that it reads it once, inside a single explicit
+press, and keeps only what it copied out. Nothing is retained, nothing is polled, and no `Tick` was added.
+
+Capture touching the live world transiently during one press is the invariant's only amendment: the section
+above says the module "mutates no registry and spawns nothing", and that remains true — a transient
+`USceneCaptureComponent2D` is created, registered against the world, used and destroyed inside `Run_Capture`,
+through a scope guard so a failed readback cannot leave one registered.
+
+### Rules the capture holds to
+
+- **One visibility predicate.** `ShouldRender()` decides what is a candidate, and it is named in a comment as
+  the predicate the future stencil passes must reuse. Two predicates would put a primitive in the picture and
+  out of the ID map, and the symptom is a mesh that cannot be clicked with nothing on screen explaining why.
+- **What cannot be described is COUNTED.** Landscape, BSP, effects and anything without render data are
+  excluded by design (per-instance ISM picking is out of scope too); the count lands in `CaptureNotes`, so a
+  region that never identifies reads as stated scope rather than a defect. Same for the `MaxPrims` truncation.
+- **Determinism.** Candidates sort by distance then actor name, because world iteration order depends on what
+  happened to load — and prim indices that moved between two captures of the same scene would make a stored
+  ID map name the wrong meshes.
+- **Failure is loud and total.** `Run_Capture` returns unset plus a filled reason on every failure path. A
+  half-snapshot would be a picture a reader draws conclusions from.
+- **The capture core is NOT behind `#if WITH_EDITOR`** — only the editor-viewport POV branch is. That is what
+  "works in a packaged Development build" rests on.
+
+### Snapshots survive `Reset()`
+
+Deliberately, and for a stronger version of the cleanup rows' reason. A PIE boundary invalidates answers
+*about the world now*; a snapshot is a picture of a moment that has already passed and every number in it was
+captured with the image. Dropping them at the boundary would delete exactly the evidence a reader took a
+snapshot in order to compare against. `Ck.OptimizationDebugger.Snapshot.StorageAndCycling` pins it, along with
+the oldest-first eviction and the wrap-around cycling.
+
+The store cap is **handed in** to `Add_Snapshot`, never read off the settings CDO — the same rule the analysis
+thresholds follow, and for the same reason: a cap edited half way through would make two stores disagree.
+
+### One letterbox implementation
+
+`Get_LetterboxGeometry` is the only place the aspect-fit arithmetic lives. The viewer's draw rect and the
+click-to-pixel mapping both come from it, because geometry that disagreed with the picture would select the
+mesh beside the cursor — worst at the edges, and never obviously wrong. The viewer caches exactly one decoded
+brush (the active snapshot's) and releases it on switch and on destruction.
+
+### The threshold panel filters by category
+
+`Get_ThresholdEntries` walks every `CPF_Config` int on the settings class, so the two Snapshots settings would
+have appeared under "Analysis thresholds" as budgets the scan judges something against. The walk now also
+requires `Category == "Thresholds"`. That metadata is stripped from a cooked build, so in packaged
+Development/DebugGame the panel falls back to listing every config int under its raw property name — the same
+fallback its labels already take, and preferable to a hard-coded name list that would drift from the class.
+---
+
 ## Presentation contracts
 
 The window owns no bespoke look: every surface is a `CkDebuggerCommon` widget over `FCkDebuggerStyle` brushes and
@@ -1110,7 +1187,7 @@ else's branch.
 - Run `Ck.DebuggerLauncher`; its catalog spec asserts the exact tool census, so adding or renaming this tab id
   requires editing `CkDebuggerLauncher/Private/Tests/CkDebuggerLauncherCatalog.spec.cpp` in the same change.
 - `[EDITOR-VERIFY]` Open **Tools > Debug > CK Optimization Debugger** (or `ck.OptimizationDebugger 1`). Confirm the
-  five page tabs switch the body and the status strip reads "No scan yet." with a neutral dot. Open the launcher
+  six page tabs switch the body and the status strip reads "No scan yet." with a neutral dot. Open the launcher
   and confirm the tool appears in the Tools group with the stopwatch glyph, and that clicking it twice focuses the
   existing tab rather than duplicating it.
 - `[EDITOR-VERIFY]` With a real level open, press **Scan**. Confirm the progress dialog appears and **Cancel**

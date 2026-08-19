@@ -43,6 +43,10 @@ namespace ck_optimization_snapshot_viewer
      *  hover and selection have to be distinguishable at a glance on top of arbitrary scene colour. */
     constexpr auto k_SelectionAlpha = 110;
     constexpr auto k_HoverAlpha = 60;
+
+    /** Solo dims hard on purpose: half-hiding the rest of the frame reads as a rendering artifact, and the point of
+     *  isolating a mesh is that the answer to "which one is it" stops being a matter of squinting. */
+    constexpr auto k_SoloDimAlpha = 200;
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -152,6 +156,21 @@ auto
     DoEnsure_DecodedIds();
 
     return _Coverage;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkOptimizationSnapshotViewer::
+    Set_SoloMode(
+        bool InEnabled)
+    -> void
+{
+    if (_SoloMode == InEnabled)
+    { return; }
+
+    _SoloMode = InEnabled;
+    _OverlayDirty = true;
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -363,6 +382,10 @@ auto
     if (NOT HasAnythingToPaint)
     { return; }
 
+    // Solo needs a subject. With nothing selected it would dim the entire picture, which is a blank widget the
+    // reader has no way to explain.
+    const auto SoloActive = _SoloMode && NOT _Snapshot->SelectedPrims.IsEmpty();
+
     DoEnsure_DecodedIds();
 
     const auto PixelCount = _Snapshot->Width * _Snapshot->Height;
@@ -378,13 +401,25 @@ auto
     for (auto PixelIndex = 0; PixelIndex < PixelCount; ++PixelIndex)
     {
         const auto Id = _DecodedIds[PixelIndex];
-
-        if (Id == k_NoPrim)
-        { continue; }
-
         const auto PrimIndex = static_cast<int32>(Id);
-        const auto IsSelected = _Snapshot->SelectedPrims.Contains(PrimIndex);
-        const auto IsHovered = _HoveredPrim.IsSet() && _HoveredPrim.GetValue() == PrimIndex;
+
+        const auto IsPrim = Id != k_NoPrim;
+        const auto IsSelected = IsPrim && _Snapshot->SelectedPrims.Contains(PrimIndex);
+        const auto IsHovered = IsPrim && _HoveredPrim.IsSet() && _HoveredPrim.GetValue() == PrimIndex;
+
+        if (SoloActive && NOT IsSelected)
+        {
+            // Sky included: what "isolate" means is that everything which is not the subject goes away, and the
+            // subject's silhouette against a dimmed sky is exactly the shape the reader is checking.
+            const auto DimIndex = PixelIndex * 4;
+
+            Bytes[DimIndex + 0] = 0;
+            Bytes[DimIndex + 1] = 0;
+            Bytes[DimIndex + 2] = 0;
+            Bytes[DimIndex + 3] = static_cast<uint8>(k_SoloDimAlpha);
+
+            continue;
+        }
 
         if (NOT IsSelected && NOT IsHovered)
         { continue; }

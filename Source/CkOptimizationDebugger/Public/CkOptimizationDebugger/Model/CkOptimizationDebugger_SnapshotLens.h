@@ -225,6 +225,55 @@ namespace ck_optimization_debugger_snapshot_lens
 
     // ----------------------------------------------------------------------------------------------------------------
 
+    enum class ECkOptimizationDebugger_SnapshotDeltaKind : uint8
+    {
+        Added,
+        Removed,
+        Changed,
+    };
+
+    /** One mesh's difference between two captures.
+     *
+     *  Keyed by mesh ASSET rather than by prim index, because prim indices are per capture: the same shelf is index 4
+     *  in one snapshot and index 11 in the next, and a comparison that matched on index would report every mesh as
+     *  both added and removed. Placements of one asset aggregate into a single row — what changed between two
+     *  captures of a level is "there are three more of these", not three unrelated rows. */
+    struct CKOPTIMIZATIONDEBUGGER_API FCkOptimizationDebugger_SnapshotDeltaRow
+    {
+        ECkOptimizationDebugger_SnapshotDeltaKind Kind = ECkOptimizationDebugger_SnapshotDeltaKind::Changed;
+
+        /** The asset path, or the display name when the capture recorded no path. Stable across captures either way,
+         *  which is the only property the key needs. */
+        FString Key;
+
+        FString DisplayName;
+
+        int32 PlacementDelta = 0;
+        int64 Lod0TriangleDelta = 0;
+        int32 InstanceDelta = 0;
+
+        /** The ASSET's size, so it is a difference only when the asset itself changed between the two captures —
+         *  summing it per placement would report a re-used mesh as new memory it does not cost. */
+        int64 MeshMemoryDelta = 0;
+
+        /** Unset when EITHER side lacks an ID map: coverage cannot be compared against a capture that never counted
+         *  pixels, and a zero there would read as "this mesh takes up the same room" rather than "unknown". */
+        TOptional<int32> CoverageDelta;
+    };
+
+    /** What changed between two captures, worst regression first.
+     *
+     *  Pure over the two snapshots: coverage is recomputed from each side's own stored RLE rather than handed in,
+     *  because the baseline is not the snapshot on screen and nothing else has its pixels counted. Rows sort by
+     *  triangle delta descending with the key as a total tie-break, so two runs over the same pair are byte-identical
+     *  — a comparison table that reshuffled itself would make every re-read a fresh diff. */
+    CKOPTIMIZATIONDEBUGGER_API auto
+    Build_SnapshotDelta(
+        const FCkOptimizationDebugger_Snapshot& InBaseline,
+        const FCkOptimizationDebugger_Snapshot& InCurrent) -> TArray<FCkOptimizationDebugger_SnapshotDeltaRow>;
+
+    // ----------------------------------------------------------------------------------------------------------------
+
     /** The largest sampler count any ONE of the mesh's materials uses. The budget is per material, so the maximum is
      *  the number that breaches it — a sum would flag a mesh with six modest materials and miss the one material
      *  that actually exceeds the platform's limit. */

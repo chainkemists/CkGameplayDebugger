@@ -59,6 +59,7 @@
 #include <UObject/UnrealType.h>
 #include <Widgets/Input/SButton.h>
 #include <Widgets/Input/SCheckBox.h>
+#include <Widgets/Input/SComboButton.h>
 #include <Widgets/Input/SEditableTextBox.h>
 #include <Widgets/Layout/SBox.h>
 #include <Widgets/Layout/SScrollBox.h>
@@ -2605,6 +2606,50 @@ auto
             .VAlign(VAlign_Center)
             .Padding(CkStyle::SpaceM, 0.0f, 0.0f, 0.0f)
             [
+                SNew(SComboButton)
+                .ButtonStyle(FAppStyle::Get(), "SimpleButton")
+                .ContentPadding(FMargin{CkStyle::SpaceS, 2.0f})
+                .ToolTipText(FText::FromString(TEXT("Which image to show: the capture, one of the optimization ")
+                    TEXT("lenses computed from the mesh identification, or a captured auxiliary view")))
+                .IsEnabled_Lambda([this]() -> bool { return _SnapshotCount > 0; })
+                .OnGetMenuContent(FOnGetContent::CreateSP(
+                    this, &SCkOptimizationDebuggerWindow::DoCreate_SnapshotViewMenu))
+                .ButtonContent()
+                [
+                    SNew(SHorizontalBox)
+
+                    + SHorizontalBox::Slot()
+                    .AutoWidth()
+                    .VAlign(VAlign_Center)
+                    .Padding(0.0f, 0.0f, CkStyle::SpaceXS, 0.0f)
+                    [
+                        SNew(SCkDebug_Icon)
+                        .Brush(Get_IconBrush(ECk_Icon::Visibility))
+                        .Meaning(FText::FromString(TEXT("View")))
+                        .ColorAndOpacity(FSlateColor{CkStyle::TextDim()})
+                        .Size(FVector2D{k_PanelIconSize, k_PanelIconSize})
+                    ]
+
+                    + SHorizontalBox::Slot()
+                    .AutoWidth()
+                    .VAlign(VAlign_Center)
+                    [
+                        SNew(STextBlock)
+                        .Text_Lambda([this]() -> FText
+                        {
+                            return FText::FromString(DoGet_SnapshotViewLabel(_SnapshotView));
+                        })
+                        .ColorAndOpacity(FSlateColor{CkStyle::Text()})
+                    ]
+                ]
+            ]
+
+            + SHorizontalBox::Slot()
+            .AutoWidth()
+            .HAlign(HAlign_Left)
+            .VAlign(VAlign_Center)
+            .Padding(CkStyle::SpaceM, 0.0f, 0.0f, 0.0f)
+            [
                 SNew(SCkDebug_IconToggle)
                 .IconId(ECk_Icon::SelectInViewport)
                 .Label(FText::FromString(TEXT("Selection Mode")))
@@ -2719,6 +2764,22 @@ auto
                     })
                     .ColorAndOpacity(FSlateColor{CkStyle::TextMute()})
                 ]
+
+                + SVerticalBox::Slot()
+                .AutoHeight()
+                .Padding(0.0f, CkStyle::SpaceXS, 0.0f, 0.0f)
+                [
+                    // What the colours on screen MEAN. A heatmap without this line is a picture the reader has to
+                    // guess the units of, and a guessed unit is worse than no measurement.
+                    SNew(STextBlock)
+                    .Text_Lambda([this]() -> FText { return FText::FromString(_SnapshotLensLegend); })
+                    .Visibility_Lambda([this]() -> EVisibility
+                    {
+                        return _SnapshotLensLegend.IsEmpty() ? EVisibility::Collapsed : EVisibility::Visible;
+                    })
+                    .AutoWrapText(true)
+                    .ColorAndOpacity(FSlateColor{CkStyle::TextDim()})
+                ]
             ]
 
             + SSplitter::Slot()
@@ -2797,6 +2858,24 @@ auto
         // mean hovering does nothing with nothing on screen explaining why.
         const auto CanSelect = _SnapshotSelectionMode && Active != nullptr && Active->HasIdMap;
         _SnapshotViewer->Set_InteractionEnabled(CanSelect);
+
+        // A view the NEW snapshot cannot draw — a lens with no identification behind it, or an auxiliary image
+        // this one does not carry — falls back to the capture. Leaving it selected would show an empty widget
+        // with the selector still claiming a view.
+        const auto ViewIsDrawable = [this, Active]() -> bool
+        {
+            if (Active == nullptr)
+            { return false; }
+
+            switch (_SnapshotView.Kind)
+            {
+                case ECkOptimizationDebugger_SnapshotViewKind::Lens: return Active->HasIdMap;
+                case ECkOptimizationDebugger_SnapshotViewKind::Aux:  return Active->AuxImages.IsValidIndex(_SnapshotView.AuxIndex);
+                default:                                            return true;
+            }
+        }();
+
+        DoSelect_SnapshotView(ViewIsDrawable ? _SnapshotView : FCkOptimizationDebugger_SnapshotView{});
     }
 
     _SnapshotHoverText = FString{};
@@ -3136,6 +3215,130 @@ auto
 
 auto
     SCkOptimizationDebuggerWindow::
+    DoGet_SnapshotViewLabel(
+        const FCkOptimizationDebugger_SnapshotView& InView) const
+    -> FString
+{
+    using namespace ck_optimization_debugger_snapshot_lens;
+
+    if (InView.Kind == ECkOptimizationDebugger_SnapshotViewKind::Aux)
+    {
+        const auto* Active = _Model.TryGet_ActiveSnapshot();
+
+        return Active != nullptr && Active->AuxImages.IsValidIndex(InView.AuxIndex)
+            ? Active->AuxImages[InView.AuxIndex].Name
+            : FString{TEXT("Auxiliary")};
+    }
+
+    if (InView.Kind == ECkOptimizationDebugger_SnapshotViewKind::Lens)
+    { return Get_LensLabel(InView.Lens); }
+
+    return FString{TEXT("Capture")};
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkOptimizationDebuggerWindow::
+    DoCreate_SnapshotViewMenu()
+    -> TSharedRef<SWidget>
+{
+    using namespace ck_optimization_debugger_snapshot_lens;
+
+    auto MenuBuilder = FMenuBuilder{true, nullptr};
+
+    const auto* Active = _Model.TryGet_ActiveSnapshot();
+    const auto HasIdMap = Active != nullptr && Active->HasIdMap;
+
+    const auto AddEntry = [this, &MenuBuilder](
+        const FCkOptimizationDebugger_SnapshotView& InView, const FString& InLabel, const FString& InToolTip,
+        bool InEnabled) -> void
+    {
+        MenuBuilder.AddMenuEntry(
+            FText::FromString(InLabel),
+            FText::FromString(InToolTip),
+            FSlateIcon{},
+            FUIAction(
+                FExecuteAction::CreateSP(this, &SCkOptimizationDebuggerWindow::DoSelect_SnapshotView, InView),
+                FCanExecuteAction::CreateLambda([InEnabled]() -> bool { return InEnabled; }),
+                FIsActionChecked::CreateLambda([this, InView]() -> bool { return _SnapshotView == InView; })),
+            NAME_None,
+            EUserInterfaceActionType::RadioButton);
+    };
+
+    auto CaptureView = FCkOptimizationDebugger_SnapshotView{};
+    AddEntry(CaptureView, TEXT("Capture"), TEXT("What the camera saw"), true);
+
+    MenuBuilder.BeginSection(NAME_None, FText::FromString(TEXT("Lenses")));
+
+    for (const auto& Lens : Get_AllLenses())
+    {
+        if (Lens == ECkOptimizationDebugger_SnapshotLens::None)
+        { continue; }
+
+        auto LensView = FCkOptimizationDebugger_SnapshotView{};
+        LensView.Kind = ECkOptimizationDebugger_SnapshotViewKind::Lens;
+        LensView.Lens = Lens;
+
+        // Every lens is painted FROM the ID map, so a snapshot without one has none of them. Disabled with the
+        // legend as the tooltip beats hiding them: the reader learns the views exist and why this capture has none.
+        AddEntry(LensView, Get_LensLabel(Lens),
+            HasIdMap
+                ? Get_LensLegendText(Lens)
+                : FString{TEXT("This snapshot carries no mesh identification, so nothing can be measured per pixel")},
+            HasIdMap);
+    }
+
+    MenuBuilder.EndSection();
+
+    if (Active != nullptr && NOT Active->AuxImages.IsEmpty())
+    {
+        MenuBuilder.BeginSection(NAME_None, FText::FromString(TEXT("Captured views")));
+
+        for (auto AuxIndex = 0; AuxIndex < Active->AuxImages.Num(); ++AuxIndex)
+        {
+            auto AuxView = FCkOptimizationDebugger_SnapshotView{};
+            AuxView.Kind = ECkOptimizationDebugger_SnapshotViewKind::Aux;
+            AuxView.AuxIndex = AuxIndex;
+
+            AddEntry(AuxView, Active->AuxImages[AuxIndex].Name,
+                TEXT("An image captured beside the picture, stored with the snapshot"), true);
+        }
+
+        MenuBuilder.EndSection();
+    }
+
+    return MenuBuilder.MakeWidget();
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkOptimizationDebuggerWindow::
+    DoSelect_SnapshotView(
+        FCkOptimizationDebugger_SnapshotView InView)
+    -> void
+{
+    using namespace ck_optimization_debugger_snapshot_lens;
+
+    _SnapshotView = InView;
+
+    _SnapshotLensLegend = InView.Kind == ECkOptimizationDebugger_SnapshotViewKind::Lens
+        ? Get_LensLegendText(InView.Lens)
+        : FString{};
+
+    if (ck::IsValid(_SnapshotViewer))
+    {
+        // The budgets are read HERE, once per selection, and handed in. Nothing that paints a measurement reaches
+        // for the settings CDO — the rule the checks follow, for the reason a spec can build the struct.
+        _SnapshotViewer->Set_View(InView, ck_optimization_debugger_thresholds::Build_FromSettings());
+    }
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkOptimizationDebuggerWindow::
     DoOnSnapshotHoveredPrimChanged(
         TOptional<int32> InPrimIndex)
     -> void
@@ -3375,7 +3578,28 @@ auto
     AddKeyValue(TEXT("Instances"), FString::FromInt(Prim.InstanceCount));
     AddKeyValue(TEXT("Distance"), ck::Format_UE(TEXT("{} cm"), FMath::RoundToInt(Prim.DistanceFromCamera)));
     AddKeyValue(TEXT("Mesh memory"), Format_ByteSize(Prim.MeshResourceSizeBytes));
+    AddKeyValue(TEXT("Texture memory"), Format_ByteSize(Prim.TextureResidentBytes));
     AddKeyValue(TEXT("Draw calls"), Get_EstimatedDrawCallText(Prim));
+
+    // How much of the picture this mesh actually occupies, and what it spends per pixel of it. The pair is the whole
+    // argument for a snapshot over an asset scan: 200k triangles is a different finding at forty pixels than at
+    // half the screen, and only this view knows which one it is.
+    if (ck::IsValid(_SnapshotViewer))
+    {
+        const auto& Coverage = _SnapshotViewer->Get_ScreenCoverage();
+
+        if (Coverage.IsValidIndex(PrimIndex))
+        {
+            const auto CoveredPixels = Coverage[PrimIndex];
+            const auto TotalPixels = FMath::Max(1, Active->Width * Active->Height);
+
+            AddKeyValue(TEXT("Screen coverage"), ck::Format_UE(TEXT("{} px · {:.2f}%"),
+                CoveredPixels, 100.0f * static_cast<float>(CoveredPixels) / static_cast<float>(TotalPixels)));
+
+            AddKeyValue(TEXT("Triangles / pixel"), ck::Format_UE(TEXT("{:.2f}"),
+                ck_optimization_debugger_snapshot_lens::Get_TrianglesPerCoveredPixel(Prim, CoveredPixels)));
+        }
+    }
     AddLine(Prim.MeshAssetPath.ToString());
 
     AddSection(TEXT("LODs"));

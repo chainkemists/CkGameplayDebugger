@@ -1,6 +1,7 @@
 #pragma once
 
 #include "CkOptimizationDebugger/Model/CkOptimizationDebugger_Snapshot.h"
+#include "CkOptimizationDebugger/Model/CkOptimizationDebugger_SnapshotLens.h"
 
 #include "CoreMinimal.h"
 
@@ -46,6 +47,22 @@ public:
     /** Off by default: with it off, mouse events pass straight through and no ID map is ever decoded. */
     auto Set_InteractionEnabled(bool InEnabled) -> void;
 
+    /** Which of the snapshot's images to draw: the capture, a computed lens, or a stored auxiliary view.
+     *
+     *  Thresholds arrive WITH the view rather than being read here, because a lens is a measurement and the budgets
+     *  it measures against belong to the caller — the same rule every check in this module follows. The brush is
+     *  rebuilt on the next paint after a change, and exactly one is ever held. */
+    auto Set_View(
+        const FCkOptimizationDebugger_SnapshotView& InView,
+        const FCkOptimizationDebugger_Thresholds& InThresholds) -> void;
+
+    auto Get_View() const -> const FCkOptimizationDebugger_SnapshotView& { return _View; }
+
+    /** Pixel counts per prim for the snapshot on screen, computed off the ID map this widget already decodes for
+     *  picking. Empty when there is no identification to count. The window reads it rather than decoding a second
+     *  copy of a map that is one uint32 per pixel. */
+    auto Get_ScreenCoverage() const -> const TArray<int32>&;
+
     /** Called by the window after IT has changed the selection, since the overlay paints selection as well as
      *  hover and the viewer is deliberately not the thing that knows a click landed. */
     auto Invalidate_Overlay() -> void;
@@ -68,7 +85,7 @@ protected:
 
 private:
     auto DoRelease_Brushes() -> void;
-    auto DoEnsure_ColorBrush() const -> void;
+    auto DoEnsure_ViewBrush() const -> void;
     auto DoEnsure_Overlay() const -> void;
     auto DoEnsure_DecodedIds() const -> void;
 
@@ -82,16 +99,25 @@ private:
 
     bool _InteractionEnabled = false;
 
+    FCkOptimizationDebugger_SnapshotView _View;
+    FCkOptimizationDebugger_Thresholds _Thresholds;
+
     TOptional<int32> _HoveredPrim;
 
     // Mutable because all three caches are filled on the first paint or interaction that needs them: `Set_Snapshot`
     // is called from rebuild paths that may point at a snapshot the reader never looks at, and decoding an ID map
     // for a snapshot nobody clicks into would be pure waste.
-    mutable TSharedPtr<FSlateDynamicImageBrush> _ColorBrush;
+    // ONE brush, for whichever view is active. A viewer that cached a brush per lens would hold eleven full-size
+    // textures for a page the reader looks at one view of at a time. The counter is part of the resource NAME for
+    // the same reason the overlay's is: a renderer may cache by name, so new bytes need a new name.
+    mutable TSharedPtr<FSlateDynamicImageBrush> _ViewBrush;
     mutable FGuid _BrushSnapshotId;
+    mutable FCkOptimizationDebugger_SnapshotView _BrushView;
     mutable bool _BrushDecodeFailed = false;
+    mutable int32 _BrushCounter = 0;
 
     mutable TArray<uint32> _DecodedIds;
+    mutable TArray<int32> _Coverage;
     mutable FGuid _DecodedIdsSnapshotId;
 
     // Rebuilt on hover-change, selection-change and snapshot-switch — never per paint, because it costs one pass

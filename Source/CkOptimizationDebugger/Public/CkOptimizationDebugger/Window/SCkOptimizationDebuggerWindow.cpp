@@ -2871,6 +2871,62 @@ auto
                     DoRebuild_SnapshotMeshList();
                 })
             ]
+
+            + SHorizontalBox::Slot()
+            .AutoWidth()
+            .HAlign(HAlign_Left)
+            .VAlign(VAlign_Center)
+            .Padding(CkStyle::SpaceS, 0.0f, 0.0f, 0.0f)
+            [
+                SNew(SCkDebug_IconToggle)
+                .IconId(ECk_Icon::Visibility)
+                .Label(FText::FromString(TEXT("Solo")))
+                .ToolTip(FText::FromString(
+                    TEXT("Dim everything that is not selected, so the mesh you picked can be seen rather than ")
+                    TEXT("merely outlined. Needs a selection.")))
+                .IsEnabled_Lambda([this]() -> bool
+                {
+                    const auto* Active = _Model.TryGet_ActiveSnapshot();
+                    return Active != nullptr && Active->HasIdMap;
+                })
+                .IsOn_Lambda([this]() -> bool { return _SnapshotSoloMode; })
+                .OnStateChanged_Lambda([this](bool)
+                {
+                    _SnapshotSoloMode = NOT _SnapshotSoloMode;
+
+                    if (ck::IsValid(_SnapshotViewer))
+                    { _SnapshotViewer->Set_SoloMode(_SnapshotSoloMode); }
+                })
+            ]
+
+            + SHorizontalBox::Slot()
+            .AutoWidth()
+            .HAlign(HAlign_Left)
+            .VAlign(VAlign_Center)
+            .Padding(CkStyle::SpaceM, 0.0f, 0.0f, 0.0f)
+            [
+                SNew(SComboButton)
+                .ButtonStyle(FAppStyle::Get(), "SimpleButton")
+                .ContentPadding(FMargin{CkStyle::SpaceS, 2.0f})
+                .ToolTipText(FText::FromString(TEXT("Compare this snapshot against another stored one: what was ")
+                    TEXT("added, what went away, and what got more expensive")))
+                .IsEnabled_Lambda([this]() -> bool { return _SnapshotCount > 1; })
+                .OnGetMenuContent(FOnGetContent::CreateSP(
+                    this, &SCkOptimizationDebuggerWindow::DoCreate_SnapshotCompareMenu))
+                .ButtonContent()
+                [
+                    SNew(STextBlock)
+                    .Text_Lambda([this]() -> FText
+                    {
+                        const auto& Snapshots = _Model.Get_Snapshots();
+
+                        return FText::FromString(Snapshots.IsValidIndex(_SnapshotCompareIndex)
+                            ? ck::Format_UE(TEXT("vs {}"), Snapshots[_SnapshotCompareIndex].Label)
+                            : FString{TEXT("Compare With...")});
+                    })
+                    .ColorAndOpacity(FSlateColor{CkStyle::Text()})
+                ]
+            ]
         ]
 
         + SVerticalBox::Slot()
@@ -2990,6 +3046,7 @@ auto
                     .ListItemsSource(&_SnapshotMeshItems)
                     .OnGenerateRow(this, &SCkOptimizationDebuggerWindow::DoGenerate_SnapshotMeshRow)
                     .OnSelectionChanged(this, &SCkOptimizationDebuggerWindow::DoOnSnapshotMeshSelectionChanged)
+                    .OnContextMenuOpening(this, &SCkOptimizationDebuggerWindow::DoBuild_SnapshotMeshContextMenu)
                     .SelectionMode(ESelectionMode::Multi)
                     .HeaderRow(DoCreate_SnapshotMeshHeaderRow())
                     .Visibility_Lambda([this]() -> EVisibility
@@ -3060,8 +3117,14 @@ auto
                 })
                 [
                     SNew(STextBlock)
-                    .Text(FText::FromString(Snapshot.Label))
-                    .ColorAndOpacity(FSlateColor{IsActive ? CkStyle::Accent() : CkStyle::TextDim()})
+                    // The baseline says so on the chip: with a comparison running, "which one am I reading this
+                    // against" is the first thing the numbers depend on.
+                    .Text(FText::FromString(Index == _SnapshotCompareIndex
+                        ? ck::Format_UE(TEXT("BASE · {}"), Snapshot.Label)
+                        : Snapshot.Label))
+                    .ColorAndOpacity(FSlateColor{IsActive
+                        ? CkStyle::Accent()
+                        : (Index == _SnapshotCompareIndex ? CkStyle::Warn() : CkStyle::TextDim())})
                 ]
             ];
         }
@@ -3095,6 +3158,8 @@ auto
         }();
 
         DoSelect_SnapshotView(ViewIsDrawable ? _SnapshotView : FCkOptimizationDebugger_SnapshotView{});
+
+        _SnapshotViewer->Set_SoloMode(_SnapshotSoloMode);
     }
 
     DoRebuild_SnapshotMeshList();
@@ -3614,6 +3679,114 @@ auto
 
 auto
     SCkOptimizationDebuggerWindow::
+    DoCreate_SnapshotCompareMenu()
+    -> TSharedRef<SWidget>
+{
+    auto MenuBuilder = FMenuBuilder{true, nullptr};
+
+    MenuBuilder.AddMenuEntry(
+        FText::FromString(TEXT("Stop comparing")),
+        FText::FromString(TEXT("Show this snapshot on its own terms again")),
+        FSlateIcon{},
+        FUIAction(
+            FExecuteAction::CreateSP(this, &SCkOptimizationDebuggerWindow::DoSelect_SnapshotCompare, INDEX_NONE),
+            FCanExecuteAction{},
+            FIsActionChecked::CreateLambda([this]() -> bool { return _SnapshotCompareIndex == INDEX_NONE; })),
+        NAME_None,
+        EUserInterfaceActionType::RadioButton);
+
+    MenuBuilder.BeginSection(NAME_None, FText::FromString(TEXT("Compare against")));
+
+    const auto& Snapshots = _Model.Get_Snapshots();
+
+    for (auto Index = 0; Index < Snapshots.Num(); ++Index)
+    {
+        // Comparing a capture with itself is a table of zeroes, so the one on screen is not offered as its own
+        // baseline.
+        if (Index == _Model.Get_ActiveSnapshotIndex())
+        { continue; }
+
+        MenuBuilder.AddMenuEntry(
+            FText::FromString(Snapshots[Index].Label),
+            FText::FromString(ck::Format_UE(TEXT("Read the snapshot on screen as a change FROM {}"),
+                Snapshots[Index].Label)),
+            FSlateIcon{},
+            FUIAction(
+                FExecuteAction::CreateSP(this, &SCkOptimizationDebuggerWindow::DoSelect_SnapshotCompare, Index),
+                FCanExecuteAction{},
+                FIsActionChecked::CreateLambda([this, Index]() -> bool { return _SnapshotCompareIndex == Index; })),
+            NAME_None,
+            EUserInterfaceActionType::RadioButton);
+    }
+
+    MenuBuilder.EndSection();
+
+    return MenuBuilder.MakeWidget();
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkOptimizationDebuggerWindow::
+    DoSelect_SnapshotCompare(
+        int32 InBaselineIndex)
+    -> void
+{
+    _SnapshotCompareIndex = InBaselineIndex;
+
+    DoRebuild_Snapshots();
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkOptimizationDebuggerWindow::
+    DoBuild_SnapshotMeshContextMenu()
+    -> TSharedPtr<SWidget>
+{
+    if (NOT ck::IsValid(_SnapshotMeshList))
+    { return nullptr; }
+
+    const auto* Active = _Model.TryGet_ActiveSnapshot();
+
+    if (Active == nullptr)
+    { return nullptr; }
+
+    auto Names = TArray<FString>{};
+    auto Paths = TArray<FString>{};
+
+    for (const auto& Item : _SnapshotMeshList->GetSelectedItems())
+    {
+        if (NOT Item.IsValid() || NOT Active->Prims.IsValidIndex(Item->PrimIndex))
+        { continue; }
+
+        Names.Add(Item->DisplayName);
+        Paths.Add(Active->Prims[Item->PrimIndex].MeshAssetPath.ToString());
+    }
+
+    if (Paths.IsEmpty())
+    { return nullptr; }
+
+    auto MenuBuilder = FMenuBuilder{true, nullptr};
+
+    // The module's only clipboard route, here as everywhere else.
+    ck::DebugCopyMenu::AddCopyEntry(MenuBuilder,
+        FText::FromString(TEXT("Copy Mesh Path")),
+        FText::FromString(TEXT("Copy the selected meshes' asset paths, one per line")),
+        FString::Join(Paths, TEXT("\n")));
+
+    ck::DebugCopyMenu::AddCopyEntry(MenuBuilder,
+        FText::FromString(TEXT("Copy Name")),
+        FText::FromString(TEXT("Copy the selected meshes' names, one per line")),
+        FString::Join(Names, TEXT("\n")));
+
+    return MenuBuilder.MakeWidget();
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkOptimizationDebuggerWindow::
     DoRebuild_SnapshotMeshList()
     -> void
 {
@@ -3888,6 +4061,54 @@ auto
             .Label(FText::FromString(InTitle))
         ];
     };
+
+    // ---- Comparing: what CHANGED is the answer, and the capture's own facts are not ----
+    if (const auto& Snapshots = _Model.Get_Snapshots(); Snapshots.IsValidIndex(_SnapshotCompareIndex)
+        && Active->SelectedPrims.IsEmpty())
+    {
+        using namespace ck_optimization_debugger_snapshot_lens;
+
+        const auto& Baseline = Snapshots[_SnapshotCompareIndex];
+        const auto Delta = Build_SnapshotDelta(Baseline, *Active);
+
+        AddSection(ck::Format_UE(TEXT("Change from {}"), Baseline.Label));
+
+        if (Delta.IsEmpty())
+        {
+            AddLine(TEXT("Nothing changed between these two captures."));
+            return;
+        }
+
+        const auto SignedText = [](int64 InValue) -> FString
+        {
+            return InValue > 0 ? ck::Format_UE(TEXT("+{}"), InValue) : ck::Format_UE(TEXT("{}"), InValue);
+        };
+
+        for (const auto& Row : Delta)
+        {
+            const auto KindLabel = [&Row]() -> const TCHAR*
+            {
+                switch (Row.Kind)
+                {
+                    case ECkOptimizationDebugger_SnapshotDeltaKind::Added:   return TEXT("added");
+                    case ECkOptimizationDebugger_SnapshotDeltaKind::Removed: return TEXT("removed");
+                    default:                                                 return TEXT("changed");
+                }
+            }();
+
+            AddKeyValue(Row.DisplayName, ck::Format_UE(TEXT("{} · {} tris"),
+                KindLabel, SignedText(Row.Lod0TriangleDelta)));
+
+            const auto CoverageText = Row.CoverageDelta.IsSet()
+                ? ck::Format_UE(TEXT("{} px"), SignedText(Row.CoverageDelta.GetValue()))
+                : FString{TEXT("coverage not comparable")};
+
+            AddLine(ck::Format_UE(TEXT("    {} placement(s) · {} instance(s) · {}"),
+                SignedText(Row.PlacementDelta), SignedText(Row.InstanceDelta), CoverageText));
+        }
+
+        return;
+    }
 
     // ---- Nothing selected: the capture's facts, then what the whole view costs ----
     if (Active->SelectedPrims.IsEmpty())

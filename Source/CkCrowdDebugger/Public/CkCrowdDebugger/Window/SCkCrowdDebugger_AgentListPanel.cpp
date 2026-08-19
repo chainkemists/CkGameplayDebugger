@@ -77,7 +77,7 @@ namespace
 			return InSnapshot.HasPathTroubleEvent
 				&& InSnapshot.TroubleNavigationStatus == ECk_Nav_PathStatus::Pending
 				? InSnapshot.PathTroubleSummary
-				: FString(TEXT("UNREAL NAV: Pending"));
+				: CkCrowdDebugger_MakePendingLabel(InSnapshot.ActiveProvider);
 		}
 
 		if (InSnapshot.HasPathTroubleEvent)

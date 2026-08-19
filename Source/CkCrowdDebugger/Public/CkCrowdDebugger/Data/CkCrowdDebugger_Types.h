@@ -2,6 +2,8 @@
 
 #include "CkEcs/Handle/CkHandle.h"
 
+#include "CkCrowd/Agent/CkCrowdAgent_Fragment_Data.h"
+
 #include "CkNavigation/Nav/CkNav_Fragment_Data.h"
 
 #include "CkPathNetwork/Network/CkPathNetwork_Fragment_Data.h"
@@ -77,6 +79,9 @@ struct FCkCrowdDebugger_AgentSnapshot
 	bool                     UsedNavigationFallback = false;
 	ECk_PathNetwork_RouteFailReason PathNetworkFailReason = ECk_PathNetwork_RouteFailReason::None;
 	ECk_Nav_PathStatus       TroubleNavigationStatus = ECk_Nav_PathStatus::None;
+	// Which backend owns the in-flight query. Every provider parks the same nav slot, so without
+	// this the panels would name CkNavigation for a stalled sidewalk or volumetric route.
+	ECk_CrowdAgent_PathProvider ActiveProvider = ECk_CrowdAgent_PathProvider::None;
 	ECk_Nav_PathFailReason   TroubleNavigationFailReason = ECk_Nav_PathFailReason::None;
 	FVector                  PathTroubleAgentPosition = FVector::ZeroVector;
 	FVector                  PathTroubleGoal = FVector::ZeroVector;
@@ -136,5 +141,22 @@ struct FCkCrowdDebugger_PathNetworkRibbonSnapshot
 	TArray<FVector> Points;
 	TArray<float> HalfWidths;
 };
+
+// --------------------------------------------------------------------------------------------------------------------
+
+// --------------------------------------------------------------------------------------------------------------------
+
+// Every provider parks the SAME nav-path slot, so a pending label that hard-codes CkNavigation
+// reports a stalled sidewalk or volumetric route as an Unreal-navmesh problem. One definition,
+// shared by the overlay-facing summary and both panels, so they cannot drift into disagreeing.
+inline auto CkCrowdDebugger_MakePendingLabel(ECk_CrowdAgent_PathProvider InProvider) -> FString
+{
+	switch (InProvider)
+	{
+		case ECk_CrowdAgent_PathProvider::PathNetwork: return TEXT("SIDEWALK: Pending");
+		case ECk_CrowdAgent_PathProvider::VoxelNav:    return TEXT("VOXEL NAV: Pending");
+		default:                                      return TEXT("UNREAL NAV: Pending");
+	}
+}
 
 // --------------------------------------------------------------------------------------------------------------------

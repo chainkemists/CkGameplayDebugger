@@ -208,7 +208,7 @@ auto
 			&& Selected->TroubleNavigationStatus == ECk_Nav_PathStatus::Pending;
 		_IntentPathFadeLabel = IsCurrentSidewalkFallback
 			? Selected->PathTroubleSummary
-			: FString(TEXT("UNREAL NAV: Pending"));
+			: CkCrowdDebugger_MakePendingLabel(Selected->ActiveProvider);
 		// KEPT LOCAL — canvas semantics. On the 2D map the intent line encodes WHICH routing layer
 		// gave up (sidewalk fallback vs plain nav), and the hue is the only channel carrying that; a
 		// Warn/Err role would collapse two different failures into one look. Same class as the AStar

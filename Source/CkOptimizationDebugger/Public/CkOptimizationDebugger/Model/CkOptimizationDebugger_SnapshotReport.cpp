@@ -1,6 +1,7 @@
 #include "CkOptimizationDebugger/Model/CkOptimizationDebugger_SnapshotReport.h"
 
 #include "CkOptimizationDebugger/Model/CkOptimizationDebugger_Model.h"
+#include "CkOptimizationDebugger/Model/CkOptimizationDebugger_SnapshotLens.h"
 
 #include "CkCore/Format/CkFormat.h"
 #include "CkCore/Macros/CkMacros.h"
@@ -35,7 +36,8 @@ namespace ck_optimization_debugger_snapshot_report_impl
 
     auto
         Build_IdMapPngBase64(
-            const FCkOptimizationDebugger_Snapshot& InSnapshot)
+            const FCkOptimizationDebugger_Snapshot& InSnapshot,
+            const TArray<uint32>& InIds)
         -> FString
     {
         using namespace ck_optimization_debugger_snapshot;
@@ -43,7 +45,7 @@ namespace ck_optimization_debugger_snapshot_report_impl
         if (NOT InSnapshot.HasIdMap)
         { return {}; }
 
-        const auto Ids = Decode_IdMapRle(InSnapshot.IdMapRle);
+        const auto& Ids = InIds;
         const auto ExpectedPixels = InSnapshot.Width * InSnapshot.Height;
 
         if (Ids.Num() != ExpectedPixels)
@@ -77,9 +79,15 @@ namespace ck_optimization_debugger_snapshot_report
     {
         using namespace ck_optimization_debugger_model;
         using namespace ck_optimization_debugger_snapshot;
+        using namespace ck_optimization_debugger_snapshot_lens;
         using namespace ck_optimization_debugger_snapshot_report_impl;
 
         const auto Aggregates = Get_SnapshotAggregates(InSnapshot.Prims);
+
+        // Decoded ONCE and shared by the identification image and the coverage columns — a second decode of a map
+        // that is one uint32 per pixel would double what a report costs for the same answer.
+        const auto DecodedIds = InSnapshot.HasIdMap ? Decode_IdMapRle(InSnapshot.IdMapRle) : TArray<uint32>{};
+        const auto Coverage = Get_ScreenCoverage(DecodedIds, InSnapshot.Prims.Num());
 
         auto Html = FString{};
         Html.Reserve(64 * 1024);
@@ -130,7 +138,7 @@ namespace ck_optimization_debugger_snapshot_report
         Html += ck::Format_UE(TEXT("<img src=\"data:image/png;base64,{}\" alt=\"capture\">\n"),
             FBase64::Encode(InSnapshot.ColorPng.GetData(), InSnapshot.ColorPng.Num()));
 
-        if (const auto IdMapBase64 = Build_IdMapPngBase64(InSnapshot); NOT IdMapBase64.IsEmpty())
+        if (const auto IdMapBase64 = Build_IdMapPngBase64(InSnapshot, DecodedIds); NOT IdMapBase64.IsEmpty())
         {
             Html += TEXT("<h2>Mesh identification</h2>\n");
             Html += TEXT("<p class=\"dim\">Each colour is one mesh; black is sky or an excluded primitive. The ")
@@ -181,7 +189,7 @@ namespace ck_optimization_debugger_snapshot_report
 
         Html += TEXT("<h2>Meshes</h2>\n<table>\n<tr><th>Mesh</th><th>Kind</th><th>LOD0 tris</th><th>Sections</th>")
             TEXT("<th>Verts</th><th>LODs</th><th>Instances</th><th>Distance</th><th>Mesh memory</th>")
-            TEXT("<th>Slots</th></tr>\n");
+            TEXT("<th>Texture memory</th><th>Coverage</th><th>Tris/px</th><th>Slots</th></tr>\n");
 
         for (const auto& Index : SortedIndices)
         {
@@ -198,12 +206,26 @@ namespace ck_optimization_debugger_snapshot_report
                 }
             }();
 
+            // A snapshot with no identification has no coverage to report, and a zero there would read as "this
+            // mesh is not visible" rather than "this report cannot tell".
+            const auto CoveredPixels = Coverage.IsValidIndex(Index) ? Coverage[Index] : INDEX_NONE;
+
+            const auto CoverageText = CoveredPixels >= 0
+                ? ck::Format_UE(TEXT("{}"), CoveredPixels)
+                : FString{TEXT("&mdash;")};
+
+            const auto DensityText = CoveredPixels > 0
+                ? ck::Format_UE(TEXT("{:.2f}"), Get_TrianglesPerCoveredPixel(Prim, CoveredPixels))
+                : FString{TEXT("&mdash;")};
+
             Html += ck::Format_UE(TEXT("<tr><td>{}{}</td><td>{}</td><td class=\"num\">{}</td><td class=\"num\">{}</td>")
                 TEXT("<td class=\"num\">{}</td><td class=\"num\">{}</td><td class=\"num\">{}</td>")
-                TEXT("<td class=\"num\">{} cm</td><td class=\"num\">{}</td><td class=\"num\">{}</td></tr>\n"),
+                TEXT("<td class=\"num\">{} cm</td><td class=\"num\">{}</td><td class=\"num\">{}</td>")
+                TEXT("<td class=\"num\">{}</td><td class=\"num\">{}</td><td class=\"num\">{}</td></tr>\n"),
                 Escape_Html(Prim.DisplayName), Prim.IsNanite ? TEXT(" <b>N</b>") : TEXT(""),
                 KindLabel, Lod0.Triangles, Lod0.Sections, Lod0.Vertices, Prim.Lods.Num(), Prim.InstanceCount,
                 FMath::RoundToInt(Prim.DistanceFromCamera), Format_ByteSize(Prim.MeshResourceSizeBytes),
+                Format_ByteSize(Prim.TextureResidentBytes), CoverageText, DensityText,
                 Prim.MaterialSlots.Num());
         }
 

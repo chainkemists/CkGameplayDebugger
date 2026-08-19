@@ -148,6 +148,7 @@ namespace ck_optimization_debugger_snapshot_codec
             Writer << Prim.InstanceCount;
             Writer << Prim.DistanceFromCamera;
             Writer << Prim.MeshResourceSizeBytes;
+            Writer << Prim.TextureResidentBytes;
 
             auto LodCount = Prim.Lods.Num();
             Writer << LodCount;
@@ -284,6 +285,7 @@ namespace ck_optimization_debugger_snapshot_codec
             Reader << Prim.InstanceCount;
             Reader << Prim.DistanceFromCamera;
             Reader << Prim.MeshResourceSizeBytes;
+            Reader << Prim.TextureResidentBytes;
 
             auto LodCount = 0;
 

@@ -1,6 +1,7 @@
 #include "CkOptimizationDebugger/Model/CkOptimizationDebugger_Model.h"
 #include "CkOptimizationDebugger/Model/CkOptimizationDebugger_Snapshot.h"
 #include "CkOptimizationDebugger/Model/CkOptimizationDebugger_SnapshotCodec.h"
+#include "CkOptimizationDebugger/Model/CkOptimizationDebugger_SnapshotLens.h"
 #include "CkOptimizationDebugger/Model/CkOptimizationDebugger_SnapshotReport.h"
 
 #include "CkCore/Format/CkFormat.h"
@@ -865,6 +866,196 @@ bool FCkOptimizationDebugger_Snapshot_ReportDeterminism::RunTest(const FString& 
     const auto ShelfAt = First.Find(TEXT("SM_ShelfBody"));
     const auto PersonAt = First.Find(TEXT("SK_Person"));
     TestTrue(TEXT("The mesh table is sorted worst-first"), ShelfAt != INDEX_NONE && PersonAt != INDEX_NONE && ShelfAt < PersonAt);
+
+    return true;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FCkOptimizationDebugger_Snapshot_ScreenCoverage,
+    "Ck.OptimizationDebugger.Snapshot.ScreenCoverage",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCkOptimizationDebugger_Snapshot_ScreenCoverage::RunTest(const FString& Parameters)
+{
+    using namespace ck_optimization_debugger_snapshot;
+    using namespace ck_optimization_debugger_snapshot_lens;
+    using namespace ck_optimization_debugger_snapshot_spec;
+
+    // Two prims, one sentinel pixel, and one id no table can back — which is what a stored map read against the
+    // wrong snapshot looks like.
+    const auto Ids = TArray<uint32>{0u, 0u, 1u, k_NoPrim, 1u, 1u, 0u, 7u};
+
+    const auto Coverage = Get_ScreenCoverage(Ids, 2);
+
+    if (TestEqual(TEXT("Coverage is indexed by prim"), Coverage.Num(), 2))
+    {
+        TestEqual(TEXT("The first prim owns its pixels"), Coverage[0], 3);
+        TestEqual(TEXT("...and so does the second"), Coverage[1], 3);
+    }
+
+    TestEqual(TEXT("A table with no prims has no coverage"), Get_ScreenCoverage(Ids, 0).Num(), 0);
+    TestEqual(TEXT("An empty map covers nothing"), Get_ScreenCoverage(TArray<uint32>{}, 2).Num(), 2);
+
+    // Density is per pixel the mesh actually occupies, and a mesh nothing can see has none to report: an infinity or
+    // a sentinel here would sort to the top of every list that ranks by it.
+    const auto Prim = Make_Prim(TEXT("SM_Dense"), 1000, 1);
+
+    TestEqual(TEXT("Density divides by covered pixels"), Get_TrianglesPerCoveredPixel(Prim, 100), 10.0f);
+    TestEqual(TEXT("An unseen mesh has no density"), Get_TrianglesPerCoveredPixel(Prim, 0), 0.0f);
+
+    return true;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FCkOptimizationDebugger_Snapshot_LensRules,
+    "Ck.OptimizationDebugger.Snapshot.LensRules",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCkOptimizationDebugger_Snapshot_LensRules::RunTest(const FString& Parameters)
+{
+    using namespace ck_optimization_debugger_snapshot;
+    using namespace ck_optimization_debugger_snapshot_lens;
+    using namespace ck_optimization_debugger_snapshot_spec;
+
+    // Two meshes and a sky pixel. Prim 0 is the expensive one in every dimension the lenses measure, prim 1 carries
+    // the flags it does not.
+    auto Snapshot = FCkOptimizationDebugger_Snapshot{};
+    Snapshot.Width = 2;
+    Snapshot.Height = 2;
+    Snapshot.HasIdMap = true;
+
+    auto Heavy = Make_Prim(TEXT("SM_Heavy"), 4000, 2);
+    Heavy.IsNanite = true;
+    Heavy.MeshResourceSizeBytes = 4 * 1024 * 1024;
+
+    auto HeavySlot = FCkOptimizationDebugger_SnapshotMaterialSlot{};
+    HeavySlot.BlendMode = FString{TEXT("Opaque")};
+    HeavySlot.UsedTextureCount = 20;
+    Heavy.MaterialSlots.Add(HeavySlot);
+
+    auto Light = Make_Prim(TEXT("SM_Light"), 100, 1);
+    Light.MeshResourceSizeBytes = 4 * 1024;
+
+    auto LightSlot = FCkOptimizationDebugger_SnapshotMaterialSlot{};
+    LightSlot.BlendMode = FString{TEXT("Translucent")};
+    LightSlot.UsedTextureCount = 2;
+    Light.MaterialSlots.Add(LightSlot);
+
+    Snapshot.Prims.Add(Heavy);
+    Snapshot.Prims.Add(Light);
+
+    const auto Ids = TArray<uint32>{0u, 0u, 1u, k_NoPrim};
+
+    auto Thresholds = FCkOptimizationDebugger_Thresholds{};
+    Thresholds.MaxTriangleCountLOD0 = 500;
+    Thresholds.MaxMaterialSlots = 8;
+    Thresholds.MaxTextureSamplers = 16;
+
+    // ---- The capture is not a lens ----
+    TestEqual(TEXT("The capture view paints nothing"),
+        Build_LensPixels(Snapshot, Ids, ECkOptimizationDebugger_SnapshotLens::None, Thresholds).Num(), 0);
+
+    // An ID map that does not match the picture cannot be painted onto it; a lens drawn at the wrong stride would be
+    // a convincing image of nothing.
+    TestEqual(TEXT("A mismatched ID map paints nothing"),
+        Build_LensPixels(Snapshot, TArray<uint32>{0u, 1u}, ECkOptimizationDebugger_SnapshotLens::NaniteMask,
+            Thresholds).Num(), 0);
+
+    // ---- A mask tints only its members ----
+    const auto NanitePixels = Build_LensPixels(
+        Snapshot, Ids, ECkOptimizationDebugger_SnapshotLens::NaniteMask, Thresholds);
+
+    if (TestEqual(TEXT("A lens covers every pixel"), NanitePixels.Num(), 4))
+    {
+        TestTrue(TEXT("One mesh reads as one colour"), NanitePixels[0] == NanitePixels[1]);
+        TestFalse(TEXT("The Nanite mesh is not painted as the other one"), NanitePixels[0] == NanitePixels[2]);
+        TestTrue(TEXT("Sky is black on a lens"), NanitePixels[3] == FColor::Black);
+    }
+
+    // ---- Unidentified inverts it: the sentinel is the subject ----
+    const auto UnidentifiedPixels = Build_LensPixels(
+        Snapshot, Ids, ECkOptimizationDebugger_SnapshotLens::Unidentified, Thresholds);
+
+    if (TestEqual(TEXT("The unidentified lens covers every pixel"), UnidentifiedPixels.Num(), 4))
+    {
+        TestTrue(TEXT("Both meshes dim together"), UnidentifiedPixels[0] == UnidentifiedPixels[2]);
+        TestFalse(TEXT("...and the sky is the highlight"), UnidentifiedPixels[3] == UnidentifiedPixels[0]);
+        TestFalse(TEXT("...which is not the sentinel black"), UnidentifiedPixels[3] == FColor::Black);
+    }
+
+    // ---- Two-sided or non-opaque is a mask over the material slots ----
+    const auto FlagPixels = Build_LensPixels(
+        Snapshot, Ids, ECkOptimizationDebugger_SnapshotLens::MaterialFlags, Thresholds);
+
+    if (TestEqual(TEXT("The material-flag lens covers every pixel"), FlagPixels.Num(), 4))
+    {
+        // The translucent mesh is the member here, and it is NOT the mesh the Nanite mask picked. A lens that
+        // painted the same mesh on every mask would be reading one flag for all of them.
+        TestFalse(TEXT("The translucent mesh is flagged, the opaque one is not"), FlagPixels[0] == FlagPixels[2]);
+        TestTrue(TEXT("...and the two masks disagree about which mesh"),
+            (NanitePixels[0] == FlagPixels[2]) && (NanitePixels[2] == FlagPixels[0]));
+    }
+
+    // ---- A scalar lens normalizes across the view ----
+    const auto DensityPixels = Build_LensPixels(
+        Snapshot, Ids, ECkOptimizationDebugger_SnapshotLens::TriangleDensity, Thresholds);
+
+    if (TestEqual(TEXT("The density lens covers every pixel"), DensityPixels.Num(), 4))
+    {
+        TestFalse(TEXT("Two densities are two colours"), DensityPixels[0] == DensityPixels[2]);
+        TestTrue(TEXT("...and sky still has none"), DensityPixels[3] == FColor::Black);
+    }
+
+    // ---- The budget lens colours exactly what a check would flag ----
+    const auto HeavySeverity = TryGet_BudgetSeverity(Snapshot.Prims[0], Thresholds);
+    const auto LightSeverity = TryGet_BudgetSeverity(Snapshot.Prims[1], Thresholds);
+
+    TestTrue(TEXT("The over-budget mesh is graded"), HeavySeverity.IsSet());
+    TestFalse(TEXT("...and the mesh within every budget is not"), LightSeverity.IsSet());
+
+    if (HeavySeverity.IsSet())
+    {
+        // 4000 triangles against a 500 budget is eight times over, which is past the doubling the analysis engine
+        // escalates at: the same grading the findings page would apply to the same mesh.
+        TestEqual(TEXT("...as Critical, because it is past twice the budget"),
+            static_cast<int32>(HeavySeverity.GetValue()),
+            static_cast<int32>(ECkOptimizationDebugger_Severity::Critical));
+    }
+
+    const auto BudgetPixels = Build_LensPixels(
+        Snapshot, Ids, ECkOptimizationDebugger_SnapshotLens::Budget, Thresholds);
+
+    if (TestEqual(TEXT("The budget lens covers every pixel"), BudgetPixels.Num(), 4))
+    { TestFalse(TEXT("The over-budget mesh is not painted as the compliant one"), BudgetPixels[0] == BudgetPixels[2]); }
+
+    // The largest sampler count of any ONE material is what breaches a per-material budget; a sum would flag six
+    // modest materials and miss the one that actually exceeds the platform limit.
+    TestEqual(TEXT("Samplers are the largest of any one slot"), Get_MaxSamplerCount(Snapshot.Prims[0]), 20);
+
+    // ---- Determinism, and a legend for every lens ----
+    const auto SecondDensityPixels = Build_LensPixels(
+        Snapshot, Ids, ECkOptimizationDebugger_SnapshotLens::TriangleDensity, Thresholds);
+
+    TestTrue(TEXT("The same inputs paint the same pixels"), DensityPixels == SecondDensityPixels);
+
+    for (const auto& Lens : Get_AllLenses())
+    {
+        const auto Legend = Get_LensLegendText(Lens);
+
+        if (Lens == ECkOptimizationDebugger_SnapshotLens::None)
+        {
+            TestTrue(TEXT("The capture has no legend, because it is not a measurement"), Legend.IsEmpty());
+            continue;
+        }
+
+        // A heatmap without a legend is a picture, not a measurement.
+        TestFalse(TEXT("Every lens says what its colours mean"), Legend.IsEmpty());
+        TestFalse(TEXT("...and every lens is named"), Get_LensLabel(Lens).IsEmpty());
+    }
 
     return true;
 }

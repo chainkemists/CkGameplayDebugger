@@ -305,6 +305,18 @@ private:
     auto DoRebuild_SnapshotDetail() -> void;
 
     auto DoOnToggle_SnapshotSelectionMode() -> void;
+
+    /** The one control that decides which of the snapshot's images is on screen. Building the menu here rather than
+     *  from an attribute means the auxiliary entries reflect the ACTIVE snapshot at the moment it is opened. */
+    auto DoCreate_SnapshotViewMenu() -> TSharedRef<SWidget>;
+
+    /** Pushes the chosen view and the current budgets into the viewer, then refreshes the legend line. The budgets
+     *  are read HERE — a lens is a measurement, and nothing that computes one may reach for the settings CDO. */
+    auto DoSelect_SnapshotView(FCkOptimizationDebugger_SnapshotView InView) -> void;
+
+    /** What the selector button reads. Auxiliary views print their stored NAME, so a snapshot carrying views this
+     *  build has never heard of still labels them honestly. */
+    auto DoGet_SnapshotViewLabel(const FCkOptimizationDebugger_SnapshotView& InView) const -> FString;
     auto DoOnSnapshotHoveredPrimChanged(TOptional<int32> InPrimIndex) -> void;
     auto DoOnSnapshotPrimClicked(TOptional<int32> InPrimIndex,
         ECkOptimizationDebugger_SnapshotClickModifier InModifier) -> void;
@@ -479,6 +491,11 @@ private:
     // Input-routing state, so it lives on the WINDOW rather than in the model — it is not something a snapshot has,
     // it is something the reader is currently doing.
     bool _SnapshotSelectionMode = false;
+
+    // Which image the viewer is drawing, and what its colours mean. The legend is CACHED rather than recomputed in
+    // the text attribute, which is evaluated on the paint path.
+    FCkOptimizationDebugger_SnapshotView _SnapshotView;
+    FString _SnapshotLensLegend;
 
     // What the readout under the image says. Cached like every other attribute-read string on this window.
     FString _SnapshotHoverText;

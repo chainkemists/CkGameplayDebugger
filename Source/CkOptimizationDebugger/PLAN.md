@@ -34,6 +34,8 @@ is only "done" when its gates below are green on the FINAL artifact, not on a ru
 
 | **P11** | Per-pixel mesh identification + selection UI | **2026-08-18.** The stencil-batch ID map (≤255 primitives per CustomDepth-Stencil pass, every candidate rendering custom depth in EVERY pass so occlusion stays honest, all passes in one game-thread scope, a ledger that restores foreign custom-depth users and the `r.CustomDepth` cvar on every exit path); the debug-dump harness that proves silhouette-exactness to a human; and selection mode over it — delta-gated hover, an overlay rebuilt only on change and never per paint, an ID map decoded once per snapshot, and a detail panel rebuilt on selection change but never on hover. Identity renders through CkUsf's **`StencilId`** look rather than a hand-authored material: `.ush` + an AngelScript asset declaration, at a new `ReplacingTonemapper` blendable location added to CkUsf for it (CkFoundation `84d117c84`). Pure rules pinned by `Snapshot.{StencilBatching, PassResolution}` | **Code complete, visually unverified** — gates 52/52 throughout; needs `Ck_Usf_GenerateLooks StencilId` plus the harness comparison. See `docs/plans/2026-08-18-optimization-accuracy-and-snapshots/PROGRESS.md` |
 
+| **P12** | Snapshot QA round: panel, stats, report, save/load | **2026-08-18.** Adam's feedback after verifying the core loop. Richer capture data (LOD vertices and authored screen size, the mesh asset's exclusive resource size, per-slot texture names, deduplicated unique-material / unique-texture counts and resident texture bytes) behind ONE `Get_SnapshotAggregates` projection the panel and the report both read. An `SSplitter` in place of the fixed-width facts panel and an `SScrollBox` over it, fixing a live overflow on a many-slot mesh. `Model/CkOptimizationDebugger_SnapshotReport.{h,cpp}` — a PURE self-contained-HTML builder (embedded base64 images, escaped names, worst-first table, timestamp handed in) landing the export the module doc had reserved for whatever change could arrive WITH a determinism spec. `Model/CkOptimizationDebugger_SnapshotCodec.{h,cpp}` — a versioned `.cksnap` file that round-trips every field including the selection, decoding whole-or-nothing, plus a bare-`.png` load path for any screenshot. `DesktopPlatform` returns to the MAIN dependency block because QA saves from packaged Development | **Code complete, UNGATED** — committed `f13e900` without a build at Adam's direction; the pattern gate is owed |
+| **P13** | Optimization lenses, mesh list, A/B compare, auxiliary views | **2026-08-18.** The ID map says which mesh owns every pixel and the prim table says what that mesh costs, so **every per-mesh statistic is a heatmap a pure function can paint** — eleven lenses (triangle density, samplers, texture and mesh memory, instances, distance, Nanite / material-flag / unidentified masks, and a budget lens painting the analysis engine's own grading), each with a legend line saying what its colours mean. Screen coverage — pixels per prim, counted in the decode picking already pays for — turns "200k triangles" into "200k triangles across forty pixels" and feeds the panel, the report and the density lens. Codec **v2** (no v1 compatibility): the snapshot carries its POV, its capture context (`sg.*`, screen percentage, build version) and auxiliary images, which is what makes "Recapture From Here" and cross-machine comparison possible. A sortable mesh list whose selection IS the picture's selection, guarded against echo. `Build_SnapshotDelta` — a pure A/B comparison keyed by mesh ASSET, aggregating placements, worst regression first. Solo isolates the selection; the list's context menu copies paths. Auxiliary base-colour and world-normal captures ride the same component, POV and game-thread scope | **Code complete, UNGATED and visually unverified** — five commits (`a6e326a`, `b6283c3`, `854721c`, `a2ddc4f`, `16420b9`), no build run at Adam's direction |
 
 ---
 
@@ -226,6 +228,37 @@ claiming a PIE or editor outcome.
     and worded generically because it is the "show me the stencil" pass, not a debugger feature — capability in
     CkFoundation, consumption here.
 
+45. **The snapshot file format is v2 with NO v1 compatibility** (settled in P13). Nothing had been published, so a
+    compatibility path would have been a reader for a format with no files in the wild. Both unknown-version
+    directions — older and newer — decode to nothing rather than to a guess, which is the same whole-or-nothing rule
+    the RLE decoder follows and for the same reason: half a prim table under a real picture reads as the truth about
+    that picture.
+46. **Optimization views are COMPUTED from the ID map, not captured** (settled in P13). A lens needs no GPU pass, so
+    it works on a snapshot loaded from a file on a machine that never saw the level, in a packaged Development build
+    where the engine's debug viewmodes are gone, and inside a spec. Captured views are reserved for the questions a
+    real buffer answers and statistics cannot (base colour, world normal). Every lens ships with a legend, because a
+    heatmap whose units the reader has to guess is worse than no measurement — and the scalar ramps normalize across
+    THIS view rather than an absolute project-wide scale, which the legend also says.
+47. **The mesh list and the picture are ONE selection** (settled in P13). Two selection models over one snapshot
+    would disagree the moment either is filtered or sorted. The window owns the single mutation path
+    (`Apply_SnapshotClick` for a pixel, `Apply_SnapshotSelection` for a set, both dropping indices the prim table
+    cannot back) and an apply-guard around the window-to-list push is what keeps one click from echoing into an
+    endless refresh — the `DebugSelectionSync` receive-side idiom, applied locally.
+48. **A/B compare is a pure delta keyed by mesh ASSET** (settled in P13). Prim indices are per capture — the same
+    shelf is index 4 in one snapshot and index 11 in the next — so an index-keyed comparison would report every mesh
+    as both added and removed. Placements aggregate into one row because what changed between two captures of a level
+    is "there are three more of these"; mesh memory is the ASSET's so re-use never reads as new memory; and coverage
+    deltas are UNSET rather than zero when either side lacks an ID map, because zero would claim the mesh occupies the
+    same room and neither capture supports that.
+49. **The report's mesh table stays sorted by LOD0 triangles, with triangles-per-pixel as a COLUMN only** (settled in
+    P13). Density is the better question but it is only answerable when the snapshot carries an ID map, and a sort key
+    that changes with the presence of identification would make two reports of the same meshes disagree about their
+    order. The index tie-break stays, so re-generating a report is byte-identical.
+50. **The fragile half of the captured views was not built** (settled in P13). Depth needs a float target plus a
+    normalization heuristic, and shader complexity needs a debug viewmode that may not apply inside a scene capture in
+    5.7; both are only knowable by a human looking at a readback. PHASE_8 pre-authorized shipping without them rather
+    than shipping fragility, so base colour and world normal — plain GBuffer reads that need no viewmode — are what
+    landed.
 
 ---
 

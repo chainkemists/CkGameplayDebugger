@@ -3689,7 +3689,10 @@ auto
         FText::FromString(TEXT("Show this snapshot on its own terms again")),
         FSlateIcon{},
         FUIAction(
-            FExecuteAction::CreateSP(this, &SCkOptimizationDebuggerWindow::DoSelect_SnapshotCompare, INDEX_NONE),
+            // Cast, not the bare constant: INDEX_NONE is an unnamed-enum value, so as a delegate PAYLOAD it deduces
+            // to that enum and stops matching a member taking int32.
+            FExecuteAction::CreateSP(this, &SCkOptimizationDebuggerWindow::DoSelect_SnapshotCompare,
+                static_cast<int32>(INDEX_NONE)),
             FCanExecuteAction{},
             FIsActionChecked::CreateLambda([this]() -> bool { return _SnapshotCompareIndex == INDEX_NONE; })),
         NAME_None,
@@ -3866,6 +3869,9 @@ auto
         ESelectInfo::Type InSelectInfo)
     -> void
 {
+    // The whole SET is read below, so which row moved is not information this needs.
+    (void)InItem;
+
     if (_SnapshotSelectionSyncGuard || InSelectInfo == ESelectInfo::Direct)
     { return; }
 
@@ -3979,6 +3985,9 @@ auto
     -> void
 {
     using namespace ck_optimization_debugger_snapshot_lens;
+
+    // One sort key, so the priority Slate offers for multi-column sorting is not a state this window keeps.
+    (void)InPriority;
 
     const auto Column = TryGet_MeshColumnFromId(InColumnId);
 

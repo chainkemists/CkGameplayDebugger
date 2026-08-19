@@ -31,6 +31,7 @@ public class CkOptimizationDebugger : CkModuleRules
             "CkEcs",  // CkCore's SharedPCH instantiates global ECS registrations — every CK module must link CkEcs
 
             "CkDebuggerCommon",
+            "CkUsf",  // ck::usf::Get_GeneratedMasterObjectPath — where the StencilId look's generated master lives
             "CkEditorTools",  // shared CkStyle:: tokens used directly by the window
         });
 

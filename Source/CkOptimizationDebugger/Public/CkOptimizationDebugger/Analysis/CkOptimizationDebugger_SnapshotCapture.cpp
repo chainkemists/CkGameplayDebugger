@@ -17,6 +17,9 @@
 #include "GameFramework/Actor.h"
 #include "GameFramework/PlayerController.h"
 #include "Camera/PlayerCameraManager.h"
+#include "CkUsf/LookDefinition/CkUsf_LookDefinition_Naming.h"
+
+#include "HAL/IConsoleManager.h"
 #include "ImageUtils.h"
 #include "Materials/MaterialInterface.h"
 #include "Rendering/SkeletalMeshRenderData.h"
@@ -85,6 +88,98 @@ namespace ck_optimization_debugger_snapshot_capture_impl
         // `ShouldRender` folds the component's own visibility, the owner's hidden-in-game state and the world's
         // rules together, which is exactly the question "is this in the picture".
         return InComponent->ShouldRender();
+    }
+
+    // ----------------------------------------------------------------------------------------------------------------
+
+    /** What a component's custom-depth state was before the capture touched it. Every mutated component gets one, and
+     *  the guard that holds them restores on EVERY exit path — success, failure and early return alike. A capture that
+     *  left the world's stencil state rewritten would break whatever was using it (CkUsf outlines and cel shading both
+     *  are) in a way the reader would blame on anything but a debugger screenshot. */
+    struct FLedgerEntry
+    {
+        TWeakObjectPtr<UPrimitiveComponent> Component;
+        bool RenderCustomDepth = false;
+        int32 StencilValue = 0;
+    };
+
+    // ----------------------------------------------------------------------------------------------------------------
+
+    struct FStencilLedger
+    {
+        FStencilLedger() = default;
+
+        FStencilLedger(const FStencilLedger&) = delete;
+        auto operator=(const FStencilLedger&) -> FStencilLedger& = delete;
+
+        ~FStencilLedger()
+        {
+            for (const auto& Entry : Entries)
+            {
+                auto* Component = Entry.Component.Get();
+
+                if (Component == nullptr)
+                { continue; }
+
+                Component->SetCustomDepthStencilValue(Entry.StencilValue);
+                Component->SetRenderCustomDepth(Entry.RenderCustomDepth);
+            }
+
+            if (PriorCustomDepthMode.IsSet())
+            {
+                if (auto* CVar = IConsoleManager::Get().FindConsoleVariable(TEXT("r.CustomDepth")))
+                { CVar->Set(PriorCustomDepthMode.GetValue(), ECVF_SetByCode); }
+            }
+        }
+
+        auto Record(UPrimitiveComponent* InComponent) -> void
+        {
+            if (InComponent == nullptr)
+            { return; }
+
+            auto Entry = FLedgerEntry{};
+            Entry.Component = InComponent;
+            Entry.RenderCustomDepth = InComponent->bRenderCustomDepth;
+            Entry.StencilValue = InComponent->CustomDepthStencilValue;
+
+            Entries.Add(MoveTemp(Entry));
+        }
+
+        TArray<FLedgerEntry> Entries;
+        TOptional<int32> PriorCustomDepthMode;
+    };
+
+    // ----------------------------------------------------------------------------------------------------------------
+
+    /** The generated master for the `StencilId` look, or null when it has not been generated yet. Resolved by the
+     *  naming helper rather than a literal path, so the debugger and CkUsf cannot disagree about where looks live. */
+    auto
+        TryLoad_StencilVisMaterial()
+        -> UMaterialInterface*
+    {
+        const auto ObjectPath = ck::usf::Get_GeneratedMasterObjectPath(FName{TEXT("StencilId")});
+
+        return Cast<UMaterialInterface>(FSoftObjectPath{ObjectPath}.TryLoad());
+    }
+
+    // ----------------------------------------------------------------------------------------------------------------
+
+    /** One identity pass read back. Kept beside the colour readback rather than sharing it: this one wants only the
+     *  red channel and must not be tempted into the PNG path. */
+    auto
+        Resource_ReadIdPass(
+            UTextureRenderTarget2D* InRenderTarget,
+            TArray<FColor>& OutPixels,
+            int32 InWidth,
+            int32 InHeight)
+        -> bool
+    {
+        auto* Resource = InRenderTarget->GameThread_GetRenderTargetResource();
+
+        if (Resource == nullptr)
+        { return false; }
+
+        return Resource->ReadPixels(OutPixels) && OutPixels.Num() == InWidth * InHeight;
     }
 
     // ----------------------------------------------------------------------------------------------------------------
@@ -349,6 +444,7 @@ namespace ck_optimization_debugger_snapshot_capture
         -> TOptional<FCkOptimizationDebugger_Snapshot>
     {
         using namespace ck_optimization_debugger_snapshot_capture_impl;
+        using namespace ck_optimization_debugger_snapshot;
 
         OutFailureReason.Reset();
 
@@ -565,6 +661,190 @@ namespace ck_optimization_debugger_snapshot_capture
 
         Snapshot.CaptureNotes = FString::Join(Notes, TEXT(". "));
         Snapshot.UnidentifiedPixelCount = 0;
+
+        // ---- Identity ----
+        // A failure here NEVER discards the colour snapshot and never retries silently: the reader gets the picture
+        // plus a sentence saying why it cannot be clicked into. Same rule the cancelled scan follows.
+        const auto IdMapFailure = [&Snapshot](const FString& InReason) -> void
+        {
+            Snapshot.HasIdMap = false;
+            Snapshot.CaptureNotes = Snapshot.CaptureNotes.IsEmpty()
+                ? InReason
+                : ck::Format_UE(TEXT("{}. {}"), Snapshot.CaptureNotes, InReason);
+        };
+
+        auto* StencilVisMaterial = TryLoad_StencilVisMaterial();
+
+        if (ck::Is_NOT_Valid(StencilVisMaterial))
+        {
+            IdMapFailure(TEXT("mesh identification unavailable: the StencilId look master has not been generated "
+                "(run Ck_Usf_GenerateLooks StencilId in the editor and commit the result)"));
+
+            return Snapshot;
+        }
+
+        if (Snapshot.Prims.IsEmpty())
+        {
+            IdMapFailure(TEXT("mesh identification skipped: nothing identifiable is in frame"));
+            return Snapshot;
+        }
+
+        // Declared BEFORE the first mutation, so every exit path below restores what this touched.
+        auto Ledger = FStencilLedger{};
+
+        // Stencil has to be written at all. BusterBlock ships with it on for CkUsf's per-object patterns, so this
+        // branch is rare — but a capture that silently produced an empty ID map would look like a broken feature.
+        if (auto* CustomDepthCVar = IConsoleManager::Get().FindConsoleVariable(TEXT("r.CustomDepth"));
+            CustomDepthCVar != nullptr && CustomDepthCVar->GetInt() < 3)
+        {
+            Ledger.PriorCustomDepthMode = CustomDepthCVar->GetInt();
+            CustomDepthCVar->Set(3, ECVF_SetByCode);
+        }
+
+        // Every candidate renders custom depth for the WHOLE capture; batch membership decides the stencil VALUE
+        // only. Gating the flag per batch instead would let an out-of-batch occluder go undepth-tested, so a hidden
+        // primitive would stamp its id wherever the occluder is visible — the single most likely way to build this
+        // wrong, and it looks plausible until you compare silhouettes.
+        auto CandidateComponents = TSet<UPrimitiveComponent*>{};
+
+        for (const auto& Candidate : Candidates)
+        { CandidateComponents.Add(Candidate.Component); }
+
+        for (auto ActorIt = TActorIterator<AActor>{InWorld}; ActorIt; ++ActorIt)
+        {
+            auto* Actor = *ActorIt;
+
+            if (ck::Is_NOT_Valid(Actor))
+            { continue; }
+
+            for (auto* WorldPrimitive : TInlineComponentArray<UPrimitiveComponent*>{Actor})
+            {
+                if (WorldPrimitive == nullptr)
+                { continue; }
+
+                const auto IsCandidate = CandidateComponents.Contains(WorldPrimitive);
+
+                // A foreign custom-depth user — a CkUsf outline or cel-shade subject — would stamp its own stencil
+                // into every pass and be read back as whichever primitive happens to share its value.
+                if (NOT IsCandidate && NOT WorldPrimitive->bRenderCustomDepth)
+                { continue; }
+
+                Ledger.Record(WorldPrimitive);
+
+                if (IsCandidate)
+                {
+                    WorldPrimitive->SetRenderCustomDepth(true);
+                    continue;
+                }
+
+                WorldPrimitive->SetRenderCustomDepth(false);
+            }
+        }
+
+        auto* IdRenderTarget = NewObject<UTextureRenderTarget2D>(GetTransientPackage());
+
+        if (ck::Is_NOT_Valid(IdRenderTarget))
+        {
+            IdMapFailure(TEXT("mesh identification unavailable: the identity render target could not be created"));
+            return Snapshot;
+        }
+
+        // LINEAR, unlike the colour target: the stencil byte is data, and an sRGB encode on the way out would warp
+        // the values nearest the batch boundaries into their neighbours.
+        constexpr auto ForceLinearGammaForIds = true;
+        IdRenderTarget->InitCustomFormat(Width, Height, PF_B8G8R8A8, ForceLinearGammaForIds);
+        IdRenderTarget->ClearColor = FLinearColor::Black;
+
+        Component->TextureTarget = IdRenderTarget;
+        Component->PostProcessBlendWeight = 1.0f;
+        Component->PostProcessSettings.WeightedBlendables.Array.Add(
+            FWeightedBlendable{1.0f, StencilVisMaterial});
+
+        const auto PassCount = Get_StencilPassCount(Snapshot.Prims.Num());
+
+        auto PerPassStencil = TArray<TArray<uint8>>{};
+        PerPassStencil.Reserve(PassCount);
+
+        // Every pass runs in THIS scope with no frame yielded between them: a skeletal pose or a world-position
+        // offset that advanced mid-sequence would silhouette differently per pass, and the disagreement would read
+        // as a conflict rather than as time having moved.
+        for (auto PassIndex = 0; PassIndex < PassCount; ++PassIndex)
+        {
+            for (auto PrimIndex = 0; PrimIndex < Snapshot.Prims.Num(); ++PrimIndex)
+            {
+                if (NOT Candidates.IsValidIndex(PrimIndex) || Candidates[PrimIndex].Component == nullptr)
+                { continue; }
+
+                const auto Slot = Get_StencilSlot(PrimIndex);
+
+                Candidates[PrimIndex].Component->SetCustomDepthStencilValue(
+                    Slot.PassIndex == PassIndex ? static_cast<int32>(Slot.StencilValue) : 0);
+            }
+
+            Component->CaptureScene();
+
+            auto PassPixels = TArray<FColor>{};
+
+            if (NOT Resource_ReadIdPass(IdRenderTarget, PassPixels, Width, Height))
+            {
+                IdMapFailure(ck::Format_UE(TEXT("mesh identification unavailable: reading identity pass {} back "
+                    "from the GPU failed"), PassIndex));
+
+                return Snapshot;
+            }
+
+            auto PassValues = TArray<uint8>{};
+            PassValues.Reserve(PassPixels.Num());
+
+            for (const auto& Pixel : PassPixels)
+            { PassValues.Add(Pixel.R); }
+
+            PerPassStencil.Add(MoveTemp(PassValues));
+        }
+
+        // ---- Resolve ----
+        auto Ids = TArray<uint32>{};
+        Ids.Reserve(Width * Height);
+
+        auto ConflictCount = 0;
+        auto UnidentifiedCount = 0;
+        auto PixelPassValues = TArray<uint8>{};
+        PixelPassValues.SetNum(PassCount);
+
+        for (auto PixelIndex = 0; PixelIndex < Width * Height; ++PixelIndex)
+        {
+            for (auto PassIndex = 0; PassIndex < PassCount; ++PassIndex)
+            {
+                PixelPassValues[PassIndex] = PerPassStencil[PassIndex].IsValidIndex(PixelIndex)
+                    ? PerPassStencil[PassIndex][PixelIndex]
+                    : 0;
+            }
+
+            const auto Resolved = Resolve_PrimFromPassValues(PixelPassValues, Snapshot.Prims.Num(), ConflictCount);
+
+            if (NOT Resolved.IsSet())
+            {
+                ++UnidentifiedCount;
+                Ids.Add(k_NoPrim);
+                continue;
+            }
+
+            Ids.Add(static_cast<uint32>(Resolved.GetValue()));
+        }
+
+        Snapshot.IdMapRle = Encode_IdMapRle(Ids);
+        Snapshot.UnidentifiedPixelCount = UnidentifiedCount;
+        Snapshot.HasIdMap = true;
+
+        if (ConflictCount > 0)
+        {
+            // Reported rather than swallowed: inside one game-thread scope this should be impossible, so a non-zero
+            // count is the capture telling on itself.
+            Snapshot.CaptureNotes = Snapshot.CaptureNotes.IsEmpty()
+                ? ck::Format_UE(TEXT("{} pixel(s) were claimed by more than one identity pass"), ConflictCount)
+                : ck::Format_UE(TEXT("{}. {} pixel(s) were claimed by more than one identity pass"),
+                    Snapshot.CaptureNotes, ConflictCount);
+        }
 
         return Snapshot;
     }

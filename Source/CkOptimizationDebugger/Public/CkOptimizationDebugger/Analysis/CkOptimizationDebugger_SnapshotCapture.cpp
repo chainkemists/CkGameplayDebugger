@@ -243,6 +243,18 @@ namespace ck_optimization_debugger_snapshot_capture_impl
         TSet<FSoftObjectPath> Materials;
         TSet<FSoftObjectPath> Textures;
         int64 TextureResidentBytes = 0;
+
+        // Reset per prim by the fill functions. The snapshot-wide sets answer "what does this VIEW cost", which
+        // counts a shared texture once; a lens colouring one mesh has to answer "what does THIS mesh cost", which
+        // counts it for every mesh that samples it. Two questions, two accumulators.
+        TSet<FSoftObjectPath> PrimTextures;
+        int64 PrimTextureResidentBytes = 0;
+
+        auto Begin_Prim() -> void
+        {
+            PrimTextures.Reset();
+            PrimTextureResidentBytes = 0;
+        }
     };
 
     // ----------------------------------------------------------------------------------------------------------------
@@ -291,16 +303,23 @@ namespace ck_optimization_debugger_snapshot_capture_impl
                 Slot.UsedTextureNames.Add(Texture->GetName());
             }
 
+            // Resident size, exclusive — the memory analyzer's own API and mode, so these totals and its table agree.
+            auto Size = FResourceSizeEx{EResourceSizeMode::Exclusive};
+            Texture->GetResourceSizeEx(Size);
+
+            const auto ResidentBytes = static_cast<int64>(Size.GetTotalMemoryBytes());
+
+            if (NOT InOutCensus.PrimTextures.Contains(TexturePath))
+            {
+                InOutCensus.PrimTextures.Add(TexturePath);
+                InOutCensus.PrimTextureResidentBytes += ResidentBytes;
+            }
+
             if (InOutCensus.Textures.Contains(TexturePath))
             { continue; }
 
             InOutCensus.Textures.Add(TexturePath);
-
-            // Resident size, exclusive — the memory analyzer's own API and mode, so this total and its table agree.
-            auto Size = FResourceSizeEx{EResourceSizeMode::Exclusive};
-            Texture->GetResourceSizeEx(Size);
-
-            InOutCensus.TextureResidentBytes += static_cast<int64>(Size.GetTotalMemoryBytes());
+            InOutCensus.TextureResidentBytes += ResidentBytes;
         }
 
         Slot.UsedTextureCount = UniqueTextures.Num();
@@ -365,6 +384,8 @@ namespace ck_optimization_debugger_snapshot_capture_impl
         -> bool
     {
         // `.Get()` because the accessor hands back a TObjectPtr; validity is asked of the raw pointer.
+        InOutCensus.Begin_Prim();
+
         auto* Mesh = InComponent->GetStaticMesh().Get();
 
         if (ck::Is_NOT_Valid(Mesh))
@@ -406,6 +427,8 @@ namespace ck_optimization_debugger_snapshot_capture_impl
                 StaticMaterials[SlotIndex].MaterialSlotName, InComponent->GetMaterial(SlotIndex), InOutCensus));
         }
 
+        OutPrim.TextureResidentBytes = InOutCensus.PrimTextureResidentBytes;
+
         if (const auto* Instanced = Cast<UInstancedStaticMeshComponent>(InComponent))
         {
             OutPrim.Kind = ECkOptimizationDebugger_SnapshotPrimKind::InstancedStaticMesh;
@@ -424,6 +447,8 @@ namespace ck_optimization_debugger_snapshot_capture_impl
             FMaterialCensus& InOutCensus)
         -> bool
     {
+        InOutCensus.Begin_Prim();
+
         auto* Mesh = InComponent->GetSkeletalMeshAsset();
 
         if (ck::Is_NOT_Valid(Mesh))
@@ -466,6 +491,8 @@ namespace ck_optimization_debugger_snapshot_capture_impl
             OutPrim.MaterialSlots.Add(Build_MaterialSlot(
                 Materials[SlotIndex].MaterialSlotName, InComponent->GetMaterial(SlotIndex), InOutCensus));
         }
+
+        OutPrim.TextureResidentBytes = InOutCensus.PrimTextureResidentBytes;
 
         return true;
     }

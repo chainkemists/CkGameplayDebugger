@@ -75,6 +75,11 @@ struct CKOPTIMIZATIONDEBUGGER_API FCkOptimizationDebugger_SnapshotPrim
     // numbers cannot disagree about one mesh.
     int64 MeshResourceSizeBytes = 0;
 
+    // Resident bytes of the textures THIS mesh's materials sample, deduplicated within the mesh. Two meshes sharing
+    // a texture each count it, which is the honest answer to "what does this mesh cost to draw" and deliberately
+    // not the same question the snapshot-wide total answers.
+    int64 TextureResidentBytes = 0;
+
     TArray<FCkOptimizationDebugger_SnapshotLod> Lods;
     TArray<FCkOptimizationDebugger_SnapshotMaterialSlot> MaterialSlots;
 };

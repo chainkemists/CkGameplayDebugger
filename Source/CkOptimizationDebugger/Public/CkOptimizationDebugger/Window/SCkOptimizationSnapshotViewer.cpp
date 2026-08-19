@@ -18,11 +18,12 @@
 namespace ck_optimization_snapshot_viewer
 {
     auto
-        Build_BrushName(
-            const FGuid& InSnapshotId)
+        Build_ViewBrushName(
+            const FGuid& InSnapshotId,
+            int32 InCounter)
         -> FName
     {
-        return FName{*ck::Format_UE(TEXT("CkOptSnapColor_{}"), InSnapshotId.ToString())};
+        return FName{*ck::Format_UE(TEXT("CkOptSnapView_{}_{}"), InSnapshotId.ToString(), InCounter)};
     }
 
     // ----------------------------------------------------------------------------------------------------------------
@@ -118,6 +119,45 @@ auto
 
 auto
     SCkOptimizationSnapshotViewer::
+    Set_View(
+        const FCkOptimizationDebugger_SnapshotView& InView,
+        const FCkOptimizationDebugger_Thresholds& InThresholds)
+    -> void
+{
+    _Thresholds = InThresholds;
+
+    if (_View == InView)
+    { return; }
+
+    _View = InView;
+
+    // Released HERE rather than at the next paint: the outgoing brush is a full-size GPU allocation, and the reader
+    // has already stopped looking at it.
+    if (_ViewBrush.IsValid())
+    {
+        _ViewBrush->ReleaseResource();
+        _ViewBrush.Reset();
+    }
+
+    _BrushDecodeFailed = false;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkOptimizationSnapshotViewer::
+    Get_ScreenCoverage() const
+    -> const TArray<int32>&
+{
+    DoEnsure_DecodedIds();
+
+    return _Coverage;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkOptimizationSnapshotViewer::
     Invalidate_Overlay()
     -> void
 {
@@ -131,19 +171,21 @@ auto
     DoRelease_Brushes()
     -> void
 {
-    if (_ColorBrush.IsValid())
-    { _ColorBrush->ReleaseResource(); }
+    if (_ViewBrush.IsValid())
+    { _ViewBrush->ReleaseResource(); }
 
     if (_OverlayBrush.IsValid())
     { _OverlayBrush->ReleaseResource(); }
 
-    _ColorBrush.Reset();
+    _ViewBrush.Reset();
     _OverlayBrush.Reset();
 
     _BrushSnapshotId = FGuid{};
+    _BrushView = FCkOptimizationDebugger_SnapshotView{};
     _BrushDecodeFailed = false;
 
     _DecodedIds.Reset();
+    _Coverage.Reset();
     _DecodedIdsSnapshotId = FGuid{};
 
     _OverlayDirty = true;
@@ -153,48 +195,110 @@ auto
 
 auto
     SCkOptimizationSnapshotViewer::
-    DoEnsure_ColorBrush() const
+    DoEnsure_ViewBrush() const
     -> void
 {
+    using namespace ck_optimization_debugger_snapshot_lens;
     using namespace ck_optimization_snapshot_viewer;
 
-    if (_Snapshot == nullptr || _ColorBrush.IsValid())
+    if (_Snapshot == nullptr)
     { return; }
 
-    // One attempt per snapshot. Without this a picture that cannot be decoded would be re-decoded on every paint,
-    // which is a stutter the reader cannot explain and cannot escape without switching snapshots.
-    if (_BrushDecodeFailed && _BrushSnapshotId == _Snapshot->Id)
-    { return; }
+    const auto BrushMatchesWhatIsShown = _BrushSnapshotId == _Snapshot->Id && _BrushView == _View;
+
+    if (BrushMatchesWhatIsShown && (_ViewBrush.IsValid() || _BrushDecodeFailed))
+    {
+        // One attempt per (snapshot, view). Without the failed half a picture that cannot be decoded would be
+        // re-decoded on every paint, which is a stutter the reader cannot explain and cannot escape.
+        return;
+    }
+
+    if (_ViewBrush.IsValid())
+    {
+        _ViewBrush->ReleaseResource();
+        _ViewBrush.Reset();
+    }
 
     _BrushSnapshotId = _Snapshot->Id;
+    _BrushView = _View;
     _BrushDecodeFailed = true;
 
-    if (_Snapshot->ColorPng.IsEmpty() || _Snapshot->Width <= 0 || _Snapshot->Height <= 0)
-    { return; }
+    ++_BrushCounter;
 
-    auto Decoded = FImage{};
+    const auto BrushName = Build_ViewBrushName(_Snapshot->Id, _BrushCounter);
 
-    if (NOT FImageUtils::DecompressImage(_Snapshot->ColorPng.GetData(), _Snapshot->ColorPng.Num(), Decoded))
-    { return; }
+    // ---- A stored PNG: the capture itself, or one of the auxiliary views ----
+    const auto TryBuild_FromPng = [this, &BrushName](const TArray64<uint8>& InPng) -> void
+    {
+        if (InPng.IsEmpty())
+        { return; }
 
-    // `CreateWithImageData` documents its payload as BGRA, which is what the capture read back and what the PNG
-    // decodes to once asked for that format.
-    Decoded.ChangeFormat(ERawImageFormat::BGRA8, EGammaSpace::sRGB);
+        auto Decoded = FImage{};
 
-    const auto ExpectedBytes = static_cast<int64>(Decoded.SizeX) * Decoded.SizeY * 4;
+        if (NOT FImageUtils::DecompressImage(InPng.GetData(), InPng.Num(), Decoded))
+        { return; }
 
-    if (Decoded.RawData.Num() < ExpectedBytes)
-    { return; }
+        // `CreateWithImageData` documents its payload as BGRA, which is what the capture read back and what the PNG
+        // decodes to once asked for that format.
+        Decoded.ChangeFormat(ERawImageFormat::BGRA8, EGammaSpace::sRGB);
 
-    auto Bytes = TArray<uint8>{};
-    Bytes.Append(Decoded.RawData.GetData(), ExpectedBytes);
+        const auto ExpectedBytes = static_cast<int64>(Decoded.SizeX) * Decoded.SizeY * 4;
 
-    _ColorBrush = FSlateDynamicImageBrush::CreateWithImageData(
-        Build_BrushName(_Snapshot->Id),
-        FVector2D{static_cast<double>(Decoded.SizeX), static_cast<double>(Decoded.SizeY)},
-        Bytes);
+        if (Decoded.RawData.Num() < ExpectedBytes)
+        { return; }
 
-    _BrushDecodeFailed = NOT _ColorBrush.IsValid();
+        auto Bytes = TArray<uint8>{};
+        Bytes.Append(Decoded.RawData.GetData(), ExpectedBytes);
+
+        _ViewBrush = FSlateDynamicImageBrush::CreateWithImageData(
+            BrushName,
+            FVector2D{static_cast<double>(Decoded.SizeX), static_cast<double>(Decoded.SizeY)},
+            Bytes);
+    };
+
+    switch (_View.Kind)
+    {
+        case ECkOptimizationDebugger_SnapshotViewKind::Aux:
+        {
+            if (_Snapshot->AuxImages.IsValidIndex(_View.AuxIndex))
+            { TryBuild_FromPng(_Snapshot->AuxImages[_View.AuxIndex].Png); }
+
+            break;
+        }
+        case ECkOptimizationDebugger_SnapshotViewKind::Lens:
+        {
+            if (_Snapshot->Width <= 0 || _Snapshot->Height <= 0 || NOT _Snapshot->HasIdMap)
+            { break; }
+
+            DoEnsure_DecodedIds();
+
+            // Computed, never captured: this is what lets a lens work on a snapshot loaded from a file, on a machine
+            // that never saw the level it pictures.
+            const auto Pixels = Build_LensPixels(*_Snapshot, _DecodedIds, _View.Lens, _Thresholds);
+
+            if (Pixels.Num() != _Snapshot->Width * _Snapshot->Height)
+            { break; }
+
+            auto Bytes = TArray<uint8>{};
+            Bytes.Append(reinterpret_cast<const uint8*>(Pixels.GetData()), Pixels.Num() * sizeof(FColor));
+
+            _ViewBrush = FSlateDynamicImageBrush::CreateWithImageData(
+                BrushName,
+                FVector2D{static_cast<double>(_Snapshot->Width), static_cast<double>(_Snapshot->Height)},
+                Bytes);
+
+            break;
+        }
+        default:
+        {
+            if (_Snapshot->Width > 0 && _Snapshot->Height > 0)
+            { TryBuild_FromPng(_Snapshot->ColorPng); }
+
+            break;
+        }
+    }
+
+    _BrushDecodeFailed = NOT _ViewBrush.IsValid();
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -207,7 +311,15 @@ auto
     using namespace ck_optimization_debugger_snapshot;
 
     if (_Snapshot == nullptr || NOT _Snapshot->HasIdMap)
-    { return; }
+    {
+        // A colour-only snapshot has no coverage, and keeping the last one's would answer questions about a picture
+        // that is no longer on screen.
+        _DecodedIds.Reset();
+        _Coverage.Reset();
+        _DecodedIdsSnapshotId = FGuid{};
+
+        return;
+    }
 
     if (_DecodedIdsSnapshotId == _Snapshot->Id)
     { return; }
@@ -216,6 +328,10 @@ auto
     // for a snapshot the reader only glances at would be the largest allocation on this page for no reason.
     _DecodedIdsSnapshotId = _Snapshot->Id;
     _DecodedIds = Decode_IdMapRle(_Snapshot->IdMapRle);
+
+    // Counted in the same pass the decode already pays for. Picking, every lens and the mesh list all want it, and
+    // three separate walks over a million pixels would be three times the same answer.
+    _Coverage = ck_optimization_debugger_snapshot_lens::Get_ScreenCoverage(_DecodedIds, _Snapshot->Prims.Num());
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -409,9 +525,9 @@ auto
     auto LayerId = SCompoundWidget::OnPaint(
         InArgs, InAllottedGeometry, InCullingRect, OutDrawElements, InLayerId, InWidgetStyle, InParentEnabled);
 
-    DoEnsure_ColorBrush();
+    DoEnsure_ViewBrush();
 
-    if (_Snapshot == nullptr || NOT _ColorBrush.IsValid())
+    if (_Snapshot == nullptr || NOT _ViewBrush.IsValid())
     { return LayerId; }
 
     const auto Geometry = Get_LetterboxGeometry(
@@ -427,7 +543,7 @@ auto
     ++LayerId;
 
     FSlateDrawElement::MakeBox(
-        OutDrawElements, LayerId, PaintGeometry, _ColorBrush.Get(), ESlateDrawEffect::None, FLinearColor::White);
+        OutDrawElements, LayerId, PaintGeometry, _ViewBrush.Get(), ESlateDrawEffect::None, FLinearColor::White);
 
     DoEnsure_Overlay();
 

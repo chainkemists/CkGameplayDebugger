@@ -19,8 +19,11 @@
 #include "Camera/PlayerCameraManager.h"
 #include "CkUsf/LookDefinition/CkUsf_LookDefinition_Naming.h"
 
+#include "HAL/FileManager.h"
 #include "HAL/IConsoleManager.h"
 #include "ImageUtils.h"
+#include "Misc/FileHelper.h"
+#include "Misc/Paths.h"
 #include "Materials/MaterialInterface.h"
 #include "Rendering/SkeletalMeshRenderData.h"
 #include "Engine/SkeletalMesh.h"
@@ -851,3 +854,95 @@ namespace ck_optimization_debugger_snapshot_capture
 }
 
 // --------------------------------------------------------------------------------------------------------------------
+
+// --------------------------------------------------------------------------------------------------------------------
+
+namespace ck_optimization_debugger_snapshot_capture
+{
+    auto
+        Dump_DebugImages(
+            const FCkOptimizationDebugger_Snapshot& InSnapshot,
+            FString& OutFailureReason)
+        -> bool
+    {
+        using namespace ck_optimization_debugger_snapshot;
+
+        OutFailureReason.Reset();
+
+        if (InSnapshot.Width <= 0 || InSnapshot.Height <= 0 || InSnapshot.ColorPng.IsEmpty())
+        {
+            OutFailureReason = TEXT("the snapshot carries no image to dump");
+            return false;
+        }
+
+        const auto Directory = FPaths::Combine(FPaths::ProjectSavedDir(), TEXT("CkOptimizationDebugger"));
+        auto& FileManager = IFileManager::Get();
+
+        if (NOT FileManager.MakeDirectory(*Directory, true))
+        {
+            OutFailureReason = ck::Format_UE(TEXT("could not create {}"), Directory);
+            return false;
+        }
+
+        // The GUID rather than the label: two snapshots taken in the same second share a label, and a dump that
+        // silently overwrote the pair being compared would be the worst possible failure for a debugging aid.
+        const auto Stem = InSnapshot.Id.ToString(EGuidFormats::Digits).Left(8);
+
+        const auto ColorPath = FPaths::Combine(Directory, ck::Format_UE(TEXT("Snapshot_{}_Color.png"), Stem));
+
+        if (NOT FFileHelper::SaveArrayToFile(InSnapshot.ColorPng, *ColorPath))
+        {
+            OutFailureReason = ck::Format_UE(TEXT("could not write {}"), ColorPath);
+            return false;
+        }
+
+        if (NOT InSnapshot.HasIdMap)
+        {
+            OutFailureReason = TEXT("wrote the colour image only - this snapshot carries no mesh identification");
+            return false;
+        }
+
+        const auto Ids = Decode_IdMapRle(InSnapshot.IdMapRle);
+        const auto ExpectedPixels = InSnapshot.Width * InSnapshot.Height;
+
+        if (Ids.Num() != ExpectedPixels)
+        {
+            OutFailureReason = ck::Format_UE(TEXT("the ID map decoded to {} pixel(s) rather than {}"),
+                Ids.Num(), ExpectedPixels);
+
+            return false;
+        }
+
+        auto IdPixels = TArray<FColor>{};
+        IdPixels.Reserve(ExpectedPixels);
+
+        for (const auto& Id : Ids)
+        {
+            // Sentinel black, everything else a seeded colour per prim index. Adjacent indices getting unrelated
+            // colours is the POINT: two meshes that share an edge have to be told apart by eye, which a gradient
+            // over the index would make impossible exactly where it matters.
+            IdPixels.Add(Id == k_NoPrim
+                ? FColor::Black
+                : FColor::MakeRandomSeededColor(static_cast<int32>(Id)));
+        }
+
+        auto IdPng = TArray64<uint8>{};
+        const auto IdImageView = FImageView{IdPixels.GetData(), InSnapshot.Width, InSnapshot.Height, ERawImageFormat::BGRA8};
+
+        if (NOT FImageUtils::CompressImage(IdPng, TEXT("png"), IdImageView))
+        {
+            OutFailureReason = TEXT("compressing the ID map image failed");
+            return false;
+        }
+
+        const auto IdPath = FPaths::Combine(Directory, ck::Format_UE(TEXT("Snapshot_{}_IdMap.png"), Stem));
+
+        if (NOT FFileHelper::SaveArrayToFile(IdPng, *IdPath))
+        {
+            OutFailureReason = ck::Format_UE(TEXT("could not write {}"), IdPath);
+            return false;
+        }
+
+        return true;
+    }
+}

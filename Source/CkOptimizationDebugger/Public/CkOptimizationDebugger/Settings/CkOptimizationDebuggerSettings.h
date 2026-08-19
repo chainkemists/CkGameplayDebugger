@@ -116,6 +116,11 @@ public:
             ToolTip = "Snapshot image width in pixels; height follows the camera's aspect ratio."))
     int32 SnapshotCaptureWidth = 1280;
 
+    UPROPERTY(config, EditAnywhere, Category = "Snapshots",
+        meta = (DisplayName = "Dump Snapshot Debug Images",
+            ToolTip = "Writes each captured snapshot to <Project>/Saved/CkOptimizationDebugger/ as two PNGs - the colour image and a false-coloured mesh-ID map. The pair is how mesh identification is proven correct: the ID map has to be a silhouette-exact copy of the colour image."))
+    bool DumpSnapshotDebugImages = false;
+
     // ----------------------------------------------------------------------------------------------------------------
     // SCAN SCOPE
     // ----------------------------------------------------------------------------------------------------------------

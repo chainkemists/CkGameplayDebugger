@@ -21,6 +21,7 @@
 
 #include "HAL/FileManager.h"
 #include "HAL/IConsoleManager.h"
+#include "Misc/App.h"
 #include "ImageUtils.h"
 #include "Misc/FileHelper.h"
 #include "ProfilingDebugging/ResourceSize.h"
@@ -309,6 +310,53 @@ namespace ck_optimization_debugger_snapshot_capture_impl
 
     // ----------------------------------------------------------------------------------------------------------------
 
+    /** The scalability preset as one printable line. Read at capture time rather than stored per cvar, because what
+     *  a reader needs from it is "were these two captures taken at the same quality" — one string compares, ten
+     *  numbers do not. A cvar this build does not have prints `?` rather than a zero that would read as Low. */
+    auto
+        Build_ScalabilityPresetText()
+        -> FString
+    {
+        const auto Groups = TArray<TPair<const TCHAR*, const TCHAR*>>{
+            {TEXT("View"),    TEXT("sg.ViewDistanceQuality")},
+            {TEXT("AA"),      TEXT("sg.AntiAliasingQuality")},
+            {TEXT("Shadow"),  TEXT("sg.ShadowQuality")},
+            {TEXT("GI"),      TEXT("sg.GlobalIlluminationQuality")},
+            {TEXT("Refl"),    TEXT("sg.ReflectionQuality")},
+            {TEXT("PP"),      TEXT("sg.PostProcessQuality")},
+            {TEXT("Tex"),     TEXT("sg.TextureQuality")},
+            {TEXT("FX"),      TEXT("sg.EffectsQuality")},
+            {TEXT("Foliage"), TEXT("sg.FoliageQuality")},
+            {TEXT("Shading"), TEXT("sg.ShadingQuality")}};
+
+        auto Parts = TArray<FString>{};
+        Parts.Reserve(Groups.Num());
+
+        for (const auto& Group : Groups)
+        {
+            const auto* CVar = IConsoleManager::Get().FindConsoleVariable(Group.Value);
+
+            Parts.Add(CVar != nullptr
+                ? ck::Format_UE(TEXT("{} {}"), Group.Key, CVar->GetInt())
+                : ck::Format_UE(TEXT("{} ?"), Group.Key));
+        }
+
+        return FString::Join(Parts, TEXT(" · "));
+    }
+
+    // ----------------------------------------------------------------------------------------------------------------
+
+    auto
+        Get_ScreenPercentage()
+        -> float
+    {
+        const auto* CVar = IConsoleManager::Get().FindConsoleVariable(TEXT("r.ScreenPercentage"));
+
+        return CVar != nullptr ? CVar->GetFloat() : 0.0f;
+    }
+
+    // ----------------------------------------------------------------------------------------------------------------
+
     auto
         Fill_StaticMeshPrim(
             UStaticMeshComponent* InComponent,
@@ -506,7 +554,9 @@ namespace ck_optimization_debugger_snapshot_capture
             return {};
         }
 
-        const auto View = TryGet_CaptureView(InWorld);
+        // The override is a REPLAY of a stored point of view, so it wins over the live camera outright — asking the
+        // world first and substituting afterwards would make a recapture depend on there being a camera it ignores.
+        const auto View = InParams.ViewOverride.IsSet() ? InParams.ViewOverride : TryGet_CaptureView(InWorld);
 
         if (NOT View.IsSet())
         {
@@ -603,6 +653,16 @@ namespace ck_optimization_debugger_snapshot_capture
         Snapshot.WorldName = InWorld->GetMapName();
         Snapshot.Width = Width;
         Snapshot.Height = Height;
+
+        // The PROJECTION view, not the raw one: it carries the aspect the picture was actually rasterized with, so
+        // replaying it reproduces this framing rather than a differently-cropped version of it.
+        Snapshot.CameraLocation = ProjectionView.Location;
+        Snapshot.CameraRotation = ProjectionView.Rotation;
+        Snapshot.CameraFov = ProjectionView.FOV;
+
+        Snapshot.ScalabilityPreset = Build_ScalabilityPresetText();
+        Snapshot.ScreenPercentage = Get_ScreenPercentage();
+        Snapshot.BuildVersion = FApp::GetBuildVersion();
 
         auto MaterialCensus = FMaterialCensus{};
 

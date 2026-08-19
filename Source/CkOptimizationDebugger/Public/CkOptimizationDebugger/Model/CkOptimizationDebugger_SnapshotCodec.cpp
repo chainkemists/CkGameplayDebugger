@@ -103,7 +103,24 @@ namespace ck_optimization_debugger_snapshot_codec
         Writer << Snapshot.Width;
         Writer << Snapshot.Height;
 
+        Writer << Snapshot.CameraLocation;
+        Writer << Snapshot.CameraRotation;
+        Writer << Snapshot.CameraFov;
+
+        Writer << Snapshot.ScalabilityPreset;
+        Writer << Snapshot.ScreenPercentage;
+        Writer << Snapshot.BuildVersion;
+
         Write_Bytes64(Writer, Snapshot.ColorPng);
+
+        auto AuxCount = Snapshot.AuxImages.Num();
+        Writer << AuxCount;
+
+        for (auto& Aux : Snapshot.AuxImages)
+        {
+            Writer << Aux.Name;
+            Write_Bytes64(Writer, Aux.Png);
+        }
 
         Writer << Snapshot.HasIdMap;
         Writer << Snapshot.IdMapRle;
@@ -203,8 +220,35 @@ namespace ck_optimization_debugger_snapshot_codec
         Reader << Snapshot.Width;
         Reader << Snapshot.Height;
 
+        Reader << Snapshot.CameraLocation;
+        Reader << Snapshot.CameraRotation;
+        Reader << Snapshot.CameraFov;
+
+        Reader << Snapshot.ScalabilityPreset;
+        Reader << Snapshot.ScreenPercentage;
+        Reader << Snapshot.BuildVersion;
+
         if (NOT Read_Bytes64(Reader, Snapshot.ColorPng))
         { return {}; }
+
+        auto AuxCount = 0;
+
+        if (NOT Read_Count(Reader, AuxCount))
+        { return {}; }
+
+        Snapshot.AuxImages.Reserve(AuxCount);
+
+        for (auto AuxIndex = 0; AuxIndex < AuxCount; ++AuxIndex)
+        {
+            auto Aux = FCkOptimizationDebugger_SnapshotAuxImage{};
+
+            Reader << Aux.Name;
+
+            if (Reader.IsError() || NOT Read_Bytes64(Reader, Aux.Png))
+            { return {}; }
+
+            Snapshot.AuxImages.Add(MoveTemp(Aux));
+        }
 
         Reader << Snapshot.HasIdMap;
         Reader << Snapshot.IdMapRle;

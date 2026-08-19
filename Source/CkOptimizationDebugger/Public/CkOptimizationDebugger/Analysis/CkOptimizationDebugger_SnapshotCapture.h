@@ -26,6 +26,11 @@ struct CKOPTIMIZATIONDEBUGGER_API FCkOptimizationDebugger_SnapshotCaptureParams
     FDateTime CapturedAt;
 
     FString Label;
+
+    /** Capture from THIS view instead of asking the world for one. Set only by "recapture from here", which replays
+     *  a stored snapshot's point of view so the two pictures can be compared pixel for pixel; unset means the live
+     *  camera, which is every other capture. */
+    TOptional<FMinimalViewInfo> ViewOverride;
 };
 
 // --------------------------------------------------------------------------------------------------------------------

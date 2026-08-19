@@ -11,8 +11,11 @@
  *  meshes" travels with the file. */
 namespace ck_optimization_debugger_snapshot_codec
 {
-    /** Bumped when the layout changes. A file from a NEWER version loads to nothing rather than to a guess. */
-    inline constexpr uint32 k_SnapshotFileVersion = 1;
+    /** Bumped when the layout changes. A file from a NEWER version loads to nothing rather than to a guess, and so
+     *  does one from an OLDER: v2 added the point of view, the capture context and the auxiliary images, and no v1
+     *  file exists outside the machine that wrote it (nothing has been published), so carrying a compatibility path
+     *  would mean maintaining a reader for a format with no readers. */
+    inline constexpr uint32 k_SnapshotFileVersion = 2;
 
     CKOPTIMIZATIONDEBUGGER_API auto
     Encode_SnapshotFile(

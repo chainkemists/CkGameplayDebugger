@@ -35,6 +35,8 @@
 #include "CkOptimizationDebugger/Commands/CkOptimizationDebugger_ProfileCommands.h"
 #include "CkOptimizationDebugger/Analysis/CkOptimizationDebugger_MemoryScan.h"
 #include "CkOptimizationDebugger/Analysis/CkOptimizationDebugger_SnapshotCapture.h"
+#include "CkOptimizationDebugger/Model/CkOptimizationDebugger_SnapshotCodec.h"
+#include "CkOptimizationDebugger/Model/CkOptimizationDebugger_SnapshotReport.h"
 #include "CkOptimizationDebugger/Analysis/CkOptimizationDebugger_Thresholds.h"
 #include "CkOptimizationDebugger/Fixes/CkOptimizationDebugger_Fixes.h"
 #include "CkOptimizationDebugger/Fixes/CkOptimizationDebugger_Navigation.h"
@@ -46,6 +48,11 @@
 #include <Framework/MultiBox/MultiBoxBuilder.h>
 #include <Textures/SlateIcon.h>
 #include <Misc/DateTime.h>
+#include <DesktopPlatformModule.h>
+#include <HAL/FileManager.h>
+#include <ImageUtils.h>
+#include <Misc/FileHelper.h>
+#include <Misc/Paths.h>
 #include <Misc/MessageDialog.h>
 #include <Styling/AppStyle.h>
 #include <UObject/Class.h>
@@ -95,8 +102,6 @@ namespace ck_optimization_debugger_window
     constexpr auto k_MemorySizeColumnWidth      = 130.0f;
     constexpr auto k_MemoryGpuColumnWidth       = 110.0f;
 
-    // The snapshot facts column. Fixed so the picture beside it does not resize as the facts change length.
-    constexpr auto k_SnapshotFactsWidth = 260.0f;
 
     auto
         Get_SnapshotPrimKindLabel(
@@ -2539,6 +2544,46 @@ auto
             .AutoWidth()
             .HAlign(HAlign_Left)
             .VAlign(VAlign_Center)
+            .Padding(CkStyle::SpaceM, 0.0f, CkStyle::SpaceXS, 0.0f)
+            [
+                Build_ActionButton(ECk_Icon::Report,
+                    FText::FromString(TEXT("Report")),
+                    FText::FromString(TEXT("Write this snapshot as one self-contained HTML file — picture, mesh ")
+                        TEXT("identification and per-mesh stats — ready to attach to a ticket")),
+                    FOnClicked::CreateSP(this, &SCkOptimizationDebuggerWindow::DoOnSnapshotReportClicked),
+                    TAttribute<bool>::CreateLambda(HasSnapshots))
+            ]
+
+            + SHorizontalBox::Slot()
+            .AutoWidth()
+            .HAlign(HAlign_Left)
+            .VAlign(VAlign_Center)
+            .Padding(0.0f, 0.0f, CkStyle::SpaceXS, 0.0f)
+            [
+                Build_ActionButton(ECk_Icon::Save,
+                    FText::FromString(TEXT("Save")),
+                    FText::FromString(TEXT("Save this snapshot as a .cksnap file — picture, identification and ")
+                        TEXT("selection travel with it")),
+                    FOnClicked::CreateSP(this, &SCkOptimizationDebuggerWindow::DoOnSnapshotSaveClicked),
+                    TAttribute<bool>::CreateLambda(HasSnapshots))
+            ]
+
+            + SHorizontalBox::Slot()
+            .AutoWidth()
+            .HAlign(HAlign_Left)
+            .VAlign(VAlign_Center)
+            [
+                Build_ActionButton(ECk_Icon::SaveSlot,
+                    FText::FromString(TEXT("Load")),
+                    FText::FromString(TEXT("Load a .cksnap — or any .png, viewable but without mesh identification")),
+                    FOnClicked::CreateSP(this, &SCkOptimizationDebuggerWindow::DoOnSnapshotLoadClicked),
+                    TAttribute<bool>{true})
+            ]
+
+            + SHorizontalBox::Slot()
+            .AutoWidth()
+            .HAlign(HAlign_Left)
+            .VAlign(VAlign_Center)
             .Padding(CkStyle::SpaceM, 0.0f, 0.0f, 0.0f)
             [
                 SNew(SCkDebug_IconToggle)
@@ -2613,14 +2658,17 @@ auto
         .FillHeight(1.0f)
         .Padding(CkStyle::SpaceM, CkStyle::SpaceS, CkStyle::SpaceM, CkStyle::SpaceM)
         [
-            SNew(SHorizontalBox)
+            // A splitter rather than a fixed-width panel: what a reader needs to see here varies from a one-line
+            // hint to a full material table, and only they know which deserves the room.
+            SNew(SSplitter)
+            .Orientation(Orient_Horizontal)
             .Visibility_Lambda([this]() -> EVisibility
             {
                 return _SnapshotCount > 0 ? EVisibility::Visible : EVisibility::Collapsed;
             })
 
-            + SHorizontalBox::Slot()
-            .FillWidth(1.0f)
+            + SSplitter::Slot()
+            .Value(0.75f)
             [
                 SNew(SVerticalBox)
 
@@ -2654,16 +2702,22 @@ auto
                 ]
             ]
 
-            + SHorizontalBox::Slot()
-            .AutoWidth()
-            .Padding(CkStyle::SpaceM, 0.0f, 0.0f, 0.0f)
+            + SSplitter::Slot()
+            .Value(0.25f)
             [
                 SNew(SBox)
-                .WidthOverride(k_SnapshotFactsWidth)
+                .Padding(FMargin{CkStyle::SpaceM, 0.0f, 0.0f, 0.0f})
                 [
                     SNew(SCkDebug_Card)
                     [
-                        SAssignNew(_SnapshotFactsBox, SVerticalBox)
+                        // Scrolled, because a mesh with many material slots produces more rows than any panel
+                        // height holds — an unscrolled overflow here was a live layout bug.
+                        SNew(SScrollBox)
+
+                        + SScrollBox::Slot()
+                        [
+                            SAssignNew(_SnapshotFactsBox, SVerticalBox)
+                        ]
                     ]
                 ]
             ]
@@ -2811,6 +2865,182 @@ auto
 
 auto
     SCkOptimizationDebuggerWindow::
+    DoOnSnapshotReportClicked()
+    -> FReply
+{
+    using namespace ck_optimization_debugger_snapshot_report;
+
+    const auto* Active = _Model.TryGet_ActiveSnapshot();
+
+    if (Active == nullptr)
+    { return FReply::Handled(); }
+
+    const auto Directory = FPaths::Combine(FPaths::ProjectSavedDir(), TEXT("CkOptimizationDebugger"));
+
+    if (NOT IFileManager::Get().MakeDirectory(*Directory, true))
+    {
+        DoSet_Status(ck::Format_UE(TEXT("Could not create {}."), Directory), ECk_Tone::Warn);
+        return FReply::Handled();
+    }
+
+    // The window reads the clock; the builder never does — the same split that keeps the model's scan times
+    // spec-able keeps the report's determinism spec honest.
+    const auto Html = Build_SnapshotReportHtml(*Active, FDateTime::Now());
+
+    const auto Path = FPaths::Combine(Directory,
+        ck::Format_UE(TEXT("Snapshot_{}_Report.html"), Active->Id.ToString(EGuidFormats::Digits).Left(8)));
+
+    if (NOT FFileHelper::SaveStringToFile(Html, *Path, FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM))
+    {
+        DoSet_Status(ck::Format_UE(TEXT("Could not write {}."), Path), ECk_Tone::Warn);
+        return FReply::Handled();
+    }
+
+    DoSet_Status(ck::Format_UE(TEXT("Report written: {}"), Path), ECk_Tone::Ok);
+    FPlatformProcess::ExploreFolder(*Path);
+
+    return FReply::Handled();
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkOptimizationDebuggerWindow::
+    DoOnSnapshotSaveClicked()
+    -> FReply
+{
+    using namespace ck_optimization_debugger_snapshot_codec;
+
+    const auto* Active = _Model.TryGet_ActiveSnapshot();
+    auto* DesktopPlatform = FDesktopPlatformModule::Get();
+
+    if (Active == nullptr || DesktopPlatform == nullptr)
+    { return FReply::Handled(); }
+
+    const auto DefaultDirectory = FPaths::Combine(FPaths::ProjectSavedDir(), TEXT("CkOptimizationDebugger"));
+    IFileManager::Get().MakeDirectory(*DefaultDirectory, true);
+
+    auto Filenames = TArray<FString>{};
+
+    const auto Picked = DesktopPlatform->SaveFileDialog(
+        FSlateApplication::Get().FindBestParentWindowHandleForDialogs(AsShared()),
+        TEXT("Save Snapshot"),
+        DefaultDirectory,
+        ck::Format_UE(TEXT("Snapshot_{}.cksnap"), Active->Id.ToString(EGuidFormats::Digits).Left(8)),
+        TEXT("Ck Snapshot (*.cksnap)|*.cksnap"),
+        EFileDialogFlags::None,
+        Filenames);
+
+    if (NOT Picked || Filenames.IsEmpty())
+    { return FReply::Handled(); }
+
+    const auto Bytes = Encode_SnapshotFile(*Active);
+
+    if (NOT FFileHelper::SaveArrayToFile(Bytes, *Filenames[0]))
+    {
+        DoSet_Status(ck::Format_UE(TEXT("Could not write {}."), Filenames[0]), ECk_Tone::Warn);
+        return FReply::Handled();
+    }
+
+    DoSet_Status(ck::Format_UE(TEXT("Snapshot saved: {}"), Filenames[0]), ECk_Tone::Ok);
+
+    return FReply::Handled();
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkOptimizationDebuggerWindow::
+    DoOnSnapshotLoadClicked()
+    -> FReply
+{
+    using namespace ck_optimization_debugger_snapshot_codec;
+
+    auto* DesktopPlatform = FDesktopPlatformModule::Get();
+
+    if (DesktopPlatform == nullptr)
+    { return FReply::Handled(); }
+
+    auto Filenames = TArray<FString>{};
+
+    const auto Picked = DesktopPlatform->OpenFileDialog(
+        FSlateApplication::Get().FindBestParentWindowHandleForDialogs(AsShared()),
+        TEXT("Load Snapshot"),
+        FPaths::Combine(FPaths::ProjectSavedDir(), TEXT("CkOptimizationDebugger")),
+        FString{},
+        TEXT("Snapshots (*.cksnap;*.png)|*.cksnap;*.png"),
+        EFileDialogFlags::None,
+        Filenames);
+
+    if (NOT Picked || Filenames.IsEmpty())
+    { return FReply::Handled(); }
+
+    const auto& Filename = Filenames[0];
+
+    auto FileBytes = TArray<uint8>{};
+
+    if (NOT FFileHelper::LoadFileToArray(FileBytes, *Filename))
+    {
+        DoSet_Status(ck::Format_UE(TEXT("Could not read {}."), Filename), ECk_Tone::Warn);
+        return FReply::Handled();
+    }
+
+    auto Loaded = TOptional<FCkOptimizationDebugger_Snapshot>{};
+
+    if (Filename.EndsWith(TEXT(".png"), ESearchCase::IgnoreCase))
+    {
+        // Any screenshot can be viewed in context — it just cannot be clicked into, and the snapshot says so the
+        // same way a capture whose identification failed does.
+        auto Decoded = FImage{};
+
+        if (FImageUtils::DecompressImage(FileBytes.GetData(), FileBytes.Num(), Decoded))
+        {
+            auto Snapshot = FCkOptimizationDebugger_Snapshot{};
+            Snapshot.Label = ck::Format_UE(TEXT("Loaded — {}"), FPaths::GetCleanFilename(Filename));
+            Snapshot.CapturedAt = FDateTime::Now();
+            Snapshot.WorldName = FString{TEXT("(image file)")};
+            Snapshot.Width = Decoded.SizeX;
+            Snapshot.Height = Decoded.SizeY;
+            Snapshot.ColorPng.Append(FileBytes.GetData(), FileBytes.Num());
+            Snapshot.CaptureNotes = FString{TEXT("loaded from an image file — no mesh identification")};
+
+            Loaded = MoveTemp(Snapshot);
+        }
+    }
+    else
+    {
+        Loaded = Decode_SnapshotFile(FileBytes);
+    }
+
+    if (NOT Loaded.IsSet())
+    {
+        DoSet_Status(ck::Format_UE(TEXT("{} is not a snapshot this version can read."),
+            FPaths::GetCleanFilename(Filename)), ECk_Tone::Warn);
+
+        return FReply::Handled();
+    }
+
+    // Re-keyed on load: the id is the viewer's brush-cache key, and loading the same file twice must not hand two
+    // strip entries one key. The codec round-trips the id untouched — this is the WINDOW deciding two loads are
+    // two snapshots, not the file format losing data.
+    Loaded->Id = FGuid::NewGuid();
+
+    if (ck::IsValid(_SnapshotViewer))
+    { _SnapshotViewer->Set_Snapshot(nullptr); }
+
+    const auto* Settings = UCkOptimizationDebuggerSettings::Get();
+    _Model.Add_Snapshot(MoveTemp(Loaded.GetValue()), Settings != nullptr ? Settings->MaxStoredSnapshots : 8);
+
+    DoRebuild_Snapshots();
+    DoSet_Status(ck::Format_UE(TEXT("Loaded {}."), FPaths::GetCleanFilename(Filename)), ECk_Tone::Ok);
+
+    return FReply::Handled();
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkOptimizationDebuggerWindow::
     DoOnCycleSnapshotClicked(
         int32 InDelta)
     -> FReply
@@ -2911,6 +3141,7 @@ auto
     DoRebuild_SnapshotDetail()
     -> void
 {
+    using namespace ck_optimization_debugger_model;
     using namespace ck_optimization_debugger_scan;
     using namespace ck_optimization_debugger_snapshot;
     using namespace ck_optimization_debugger_window;
@@ -2938,15 +3169,51 @@ auto
         ];
     };
 
-    // ---- Nothing selected: the capture's own facts ----
+    const auto AddKeyValue = [this](const FString& InKey, const FString& InValue) -> void
+    {
+        _SnapshotFactsBox->AddSlot()
+        .AutoHeight()
+        [
+            SNew(SCkDebug_KeyValueRow)
+            .KeyText(FText::FromString(InKey))
+            .ValueText(FText::FromString(InValue))
+        ];
+    };
+
+    const auto AddSection = [this](const FString& InTitle) -> void
+    {
+        _SnapshotFactsBox->AddSlot()
+        .AutoHeight()
+        .Padding(0.0f, CkStyle::SpaceS, 0.0f, CkStyle::SpaceXS)
+        [
+            SNew(SCkDebug_SectionHeader)
+            .Label(FText::FromString(InTitle))
+        ];
+    };
+
+    // ---- Nothing selected: the capture's facts, then what the whole view costs ----
     if (Active->SelectedPrims.IsEmpty())
     {
-        AddLine(ck::Format_UE(TEXT("World: {}"), Active->WorldName));
-        AddLine(ck::Format_UE(TEXT("Size: {}x{}"), Active->Width, Active->Height));
-        AddLine(ck::Format_UE(TEXT("Meshes: {}"), Active->Prims.Num()));
+        AddSection(TEXT("Capture"));
+        AddKeyValue(TEXT("World"), Active->WorldName);
+        AddKeyValue(TEXT("Size"), ck::Format_UE(TEXT("{}x{}"), Active->Width, Active->Height));
+        AddKeyValue(TEXT("Meshes"), FString::FromInt(Active->Prims.Num()));
 
         if (NOT Active->CaptureNotes.IsEmpty())
-        { AddLine(ck::Format_UE(TEXT("Notes: {}"), Active->CaptureNotes)); }
+        { AddLine(Active->CaptureNotes); }
+
+        const auto Aggregates = Get_SnapshotAggregates(Active->Prims);
+
+        AddSection(TEXT("This view"));
+        AddKeyValue(TEXT("Triangles (LOD0)"), FString::FromInt(static_cast<int32>(Aggregates.TotalLod0Triangles)));
+        AddKeyValue(TEXT("≈ Draw calls"), FString::FromInt(Aggregates.TotalLod0Sections));
+        AddKeyValue(TEXT("Instances"), FString::FromInt(Aggregates.TotalInstances));
+        AddKeyValue(TEXT("By kind"), ck::Format_UE(TEXT("{} static · {} instanced · {} skeletal"),
+            Aggregates.StaticCount, Aggregates.InstancedCount, Aggregates.SkeletalCount));
+        AddKeyValue(TEXT("Nanite meshes"), FString::FromInt(Aggregates.NaniteCount));
+        AddKeyValue(TEXT("Unique materials"), FString::FromInt(Active->UniqueMaterialCount));
+        AddKeyValue(TEXT("Unique textures"), FString::FromInt(Active->UniqueTextureCount));
+        AddKeyValue(TEXT("Texture memory"), Format_ByteSize(Active->TextureResidentBytes));
 
         AddLine(Active->HasIdMap
             ? FString{TEXT("Turn on Selection Mode, then click a mesh in the picture.")}
@@ -3037,22 +3304,32 @@ auto
         ]
     ];
 
-    AddLine(ck::Format_UE(TEXT("Mesh: {}"), Prim.MeshAssetPath.ToString()));
-    AddLine(ck::Format_UE(TEXT("Instances: {}"), Prim.InstanceCount));
-    AddLine(ck::Format_UE(TEXT("Distance: {} cm"), FMath::RoundToInt(Prim.DistanceFromCamera)));
-    AddLine(Get_EstimatedDrawCallText(Prim));
+    AddKeyValue(TEXT("Instances"), FString::FromInt(Prim.InstanceCount));
+    AddKeyValue(TEXT("Distance"), ck::Format_UE(TEXT("{} cm"), FMath::RoundToInt(Prim.DistanceFromCamera)));
+    AddKeyValue(TEXT("Mesh memory"), Format_ByteSize(Prim.MeshResourceSizeBytes));
+    AddKeyValue(TEXT("Draw calls"), Get_EstimatedDrawCallText(Prim));
+    AddLine(Prim.MeshAssetPath.ToString());
+
+    AddSection(TEXT("LODs"));
 
     for (auto LodIndex = 0; LodIndex < Prim.Lods.Num(); ++LodIndex)
     {
         const auto& Lod = Prim.Lods[LodIndex];
-        AddLine(ck::Format_UE(TEXT("LOD {} — {} tris · {} sections"), LodIndex, Lod.Triangles, Lod.Sections));
+
+        AddLine(ck::Format_UE(TEXT("LOD {} — {} tris · {} sections · {} verts · screen {:.2f}"),
+            LodIndex, Lod.Triangles, Lod.Sections, Lod.Vertices, Lod.ScreenSize));
     }
+
+    AddSection(TEXT("Materials"));
 
     for (const auto& Slot : Prim.MaterialSlots)
     {
         AddLine(ck::Format_UE(TEXT("{}: {} — {} · {}{} · {} sampler(s)"),
             Slot.SlotName, Slot.MaterialName, Slot.BlendMode, Slot.ShadingModel,
             Slot.IsTwoSided ? TEXT(" · two-sided") : TEXT(""), Slot.UsedTextureCount));
+
+        if (NOT Slot.UsedTextureNames.IsEmpty())
+        { AddLine(ck::Format_UE(TEXT("    {}"), FString::Join(Slot.UsedTextureNames, TEXT(", ")))); }
     }
 }
 

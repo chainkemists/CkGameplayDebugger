@@ -316,6 +316,52 @@ namespace ck_optimization_debugger_snapshot
     // ----------------------------------------------------------------------------------------------------------------
 
     auto
+        Get_PrimIndexColor(
+            uint32 InId)
+        -> FColor
+    {
+        if (InId == k_NoPrim)
+        { return FColor::Black; }
+
+        return FColor::MakeRandomSeededColor(static_cast<int32>(InId));
+    }
+
+    // ----------------------------------------------------------------------------------------------------------------
+
+    auto
+        Get_SnapshotAggregates(
+            const TArray<FCkOptimizationDebugger_SnapshotPrim>& InPrims)
+        -> FCkOptimizationDebugger_SnapshotAggregates
+    {
+        auto Aggregates = FCkOptimizationDebugger_SnapshotAggregates{};
+
+        for (const auto& Prim : InPrims)
+        {
+            Aggregates.TotalInstances += Prim.InstanceCount;
+
+            if (Prim.IsNanite)
+            { ++Aggregates.NaniteCount; }
+
+            switch (Prim.Kind)
+            {
+                case ECkOptimizationDebugger_SnapshotPrimKind::InstancedStaticMesh: ++Aggregates.InstancedCount; break;
+                case ECkOptimizationDebugger_SnapshotPrimKind::SkeletalMesh:        ++Aggregates.SkeletalCount;  break;
+                default:                                                            ++Aggregates.StaticCount;    break;
+            }
+
+            if (Prim.Lods.IsEmpty())
+            { continue; }
+
+            Aggregates.TotalLod0Triangles += Prim.Lods[0].Triangles;
+            Aggregates.TotalLod0Sections += Prim.Lods[0].Sections;
+        }
+
+        return Aggregates;
+    }
+
+    // ----------------------------------------------------------------------------------------------------------------
+
+    auto
         Get_EstimatedDrawCallText(
             const FCkOptimizationDebugger_SnapshotPrim& InPrim)
         -> FString

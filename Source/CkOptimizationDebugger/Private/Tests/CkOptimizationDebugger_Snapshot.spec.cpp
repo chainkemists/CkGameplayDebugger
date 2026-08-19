@@ -490,4 +490,108 @@ bool FCkOptimizationDebugger_Snapshot_DrawCallText::RunTest(const FString& Param
 
 // --------------------------------------------------------------------------------------------------------------------
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FCkOptimizationDebugger_Snapshot_StencilBatching,
+    "Ck.OptimizationDebugger.Snapshot.StencilBatching",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCkOptimizationDebugger_Snapshot_StencilBatching::RunTest(const FString& Parameters)
+{
+    using namespace ck_optimization_debugger_snapshot;
+
+    // Stencil 0 is what every primitive OUTSIDE the current pass is set to, so it cannot also mean "the first
+    // primitive" — which is the whole reason a pass carries 255 rather than 256.
+    const auto First = Get_StencilSlot(0);
+    TestEqual(TEXT("The first prim is in the first pass"), First.PassIndex, 0);
+    TestEqual(TEXT("...with stencil one, never zero"), static_cast<int32>(First.StencilValue), 1);
+
+    const auto LastOfFirstPass = Get_StencilSlot(k_StencilBatchSize - 1);
+    TestEqual(TEXT("The 255th prim is still in the first pass"), LastOfFirstPass.PassIndex, 0);
+    TestEqual(TEXT("...carrying the highest stencil value"),
+        static_cast<int32>(LastOfFirstPass.StencilValue), 255);
+
+    const auto FirstOfSecondPass = Get_StencilSlot(k_StencilBatchSize);
+    TestEqual(TEXT("The 256th prim starts the second pass"), FirstOfSecondPass.PassIndex, 1);
+    TestEqual(TEXT("...back at stencil one"), static_cast<int32>(FirstOfSecondPass.StencilValue), 1);
+
+    // Every slot must round-trip through the resolve rule, or a pixel names the wrong mesh.
+    for (const auto PrimIndex : {0, 1, 100, 254, 255, 256, 509, 510, 4095})
+    {
+        const auto Slot = Get_StencilSlot(PrimIndex);
+
+        auto PerPass = TArray<uint8>{};
+        PerPass.Init(0, Get_StencilPassCount(4096));
+        PerPass[Slot.PassIndex] = Slot.StencilValue;
+
+        auto Conflicts = 0;
+        const auto Resolved = Resolve_PrimFromPassValues(PerPass, 4096, Conflicts);
+
+        TestEqual(ck::Format_UE(TEXT("Prim {} round-trips through its slot"), PrimIndex),
+            Resolved.Get(INDEX_NONE), PrimIndex);
+    }
+
+    TestEqual(TEXT("No prims need no passes"), Get_StencilPassCount(0), 0);
+    TestEqual(TEXT("One prim needs one pass"), Get_StencilPassCount(1), 1);
+    TestEqual(TEXT("A full batch is still one pass"), Get_StencilPassCount(255), 1);
+    TestEqual(TEXT("One past a full batch needs two"), Get_StencilPassCount(256), 2);
+    TestEqual(TEXT("The prim cap needs seventeen"), Get_StencilPassCount(4096), 17);
+
+    // A negative count is not a capture with negative work in it.
+    TestEqual(TEXT("A negative count needs no passes"), Get_StencilPassCount(-5), 0);
+
+    return true;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FCkOptimizationDebugger_Snapshot_PassResolution,
+    "Ck.OptimizationDebugger.Snapshot.PassResolution",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCkOptimizationDebugger_Snapshot_PassResolution::RunTest(const FString& Parameters)
+{
+    using namespace ck_optimization_debugger_snapshot;
+
+    constexpr auto PrimCount = 300;
+
+    auto Conflicts = 0;
+
+    // The ordinary pixel: one pass saw something, the rest saw the batch's zero.
+    const auto Single = Resolve_PrimFromPassValues(TArray<uint8>{0, 7}, PrimCount, Conflicts);
+    TestEqual(TEXT("A single non-zero pass resolves to its prim"),
+        Single.Get(INDEX_NONE), k_StencilBatchSize + 6);
+    TestEqual(TEXT("...with nothing to disagree about"), Conflicts, 0);
+
+    // Sky, an excluded primitive type, or a translucent material that writes no custom depth.
+    Conflicts = 0;
+    TestFalse(TEXT("All-zero passes resolve to no prim"),
+        Resolve_PrimFromPassValues(TArray<uint8>{0, 0, 0}, PrimCount, Conflicts).IsSet());
+    TestEqual(TEXT("...and that is not a conflict"), Conflicts, 0);
+
+    // Two passes claiming one pixel cannot happen inside a single game-thread scope, so if it does the capture is
+    // wrong in a way worth counting rather than worth crashing over.
+    Conflicts = 0;
+    const auto Conflicted = Resolve_PrimFromPassValues(TArray<uint8>{3, 9}, PrimCount, Conflicts);
+    TestEqual(TEXT("Two claims resolve to the first"), Conflicted.Get(INDEX_NONE), 2);
+    TestEqual(TEXT("...and the disagreement is counted"), Conflicts, 1);
+
+    // The last pass is nearly always partial: 300 prims means pass 1 holds 45 of them, so a reading of 200 there is
+    // a misread and naming a prim for it would name one the snapshot does not contain.
+    Conflicts = 0;
+    TestFalse(TEXT("A value past the end of a partial batch resolves to nothing"),
+        Resolve_PrimFromPassValues(TArray<uint8>{0, 200}, PrimCount, Conflicts).IsSet());
+
+    // Which also means it must not be counted as a conflict — nothing disagreed, one reading was simply not real.
+    TestEqual(TEXT("...and is not counted as a conflict"), Conflicts, 0);
+
+    Conflicts = 0;
+    TestFalse(TEXT("No passes at all resolve to nothing"),
+        Resolve_PrimFromPassValues(TArray<uint8>{}, PrimCount, Conflicts).IsSet());
+
+    return true;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
 #endif

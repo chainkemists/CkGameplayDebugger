@@ -5,6 +5,7 @@
 #include "CkOptimizationDebugger/Commands/CkOptimizationDebugger_CleanupCommands.h"
 #include "CkOptimizationDebugger/Commands/CkOptimizationDebugger_ProfileCommands.h"
 #include "CkOptimizationDebugger/Model/CkOptimizationDebugger_Model.h"
+#include "CkOptimizationDebugger/Window/SCkOptimizationSnapshotViewer.h"
 
 #include "CkEditorTools/Style/CkStyle.h"
 
@@ -189,6 +190,9 @@ private:
 
     auto DoOnGoToClicked() -> FReply;
     auto DoOnOpenAssetClicked() -> FReply;
+    auto DoOnCaptureSnapshotClicked() -> FReply;
+    auto DoOnCycleSnapshotClicked(int32 InDelta) -> FReply;
+    auto DoOnDeleteSnapshotClicked() -> FReply;
     auto DoOnApplyFixClicked() -> FReply;
 
     /** The one scan path. `DoOnScanClicked` and the post-fix refresh both go through it, so a fix cannot end up
@@ -278,6 +282,13 @@ private:
      *  every findings rebuild — never from an attribute lambda, because an attribute that re-derived the selection
      *  would do it on the paint path, every frame. */
     auto DoRefresh_SelectionCommands() -> void;
+
+    /** Re-points the viewer, refills the strip and refreshes the tab count and the facts panel. Event-driven only —
+     *  capture, cycle, delete, strip click. The window overrides no `Tick`, and this is not a place to start. */
+    auto DoRebuild_Snapshots() -> void;
+
+    /** One synchronous capture, from the button. Everything it can fail at is reported on the status strip. */
+    auto DoRun_SnapshotCapture() -> void;
 
     auto DoSelect_Page(ECkOptimizationDebugger_Page InPage) -> void;
 
@@ -531,6 +542,13 @@ private:
 
     // ---- Project cleanup ----
     TSharedPtr<SListView<FCleanupItem>> _CleanupList;
+
+    // ---- Snapshots page ----
+    // The strip is a fixed panel of clickable chips rather than a list: a click-consuming widget inside an
+    // `SListView` row swallows the row's own hit, which is the module's row-safety rule.
+    TSharedPtr<SHorizontalBox> _SnapshotStrip;
+    TSharedPtr<SVerticalBox> _SnapshotFactsBox;
+    TSharedPtr<SCkOptimizationSnapshotViewer> _SnapshotViewer;
     TArray<FCleanupItem> _CleanupItems;
 
     // Stable row identity across FILTER and CATEGORY passes, keyed by `<category id>|<asset path>`. Dropped by a

@@ -140,32 +140,122 @@ namespace ck_optimization_debugger_snapshot
     // ----------------------------------------------------------------------------------------------------------------
 
     auto
+        Get_StencilSlot(
+            int32 InPrimIndex)
+        -> FCkOptimizationDebugger_StencilSlot
+    {
+        auto Slot = FCkOptimizationDebugger_StencilSlot{};
+
+        if (InPrimIndex < 0)
+        { return Slot; }
+
+        Slot.PassIndex = InPrimIndex / k_StencilBatchSize;
+
+        // 1-based within the pass: stencil 0 is what every primitive NOT in this pass is set to, so it can never
+        // also mean "the first one".
+        Slot.StencilValue = static_cast<uint8>((InPrimIndex % k_StencilBatchSize) + 1);
+
+        return Slot;
+    }
+
+    // ----------------------------------------------------------------------------------------------------------------
+
+    auto
+        Get_StencilPassCount(
+            int32 InPrimCount)
+        -> int32
+    {
+        if (InPrimCount <= 0)
+        { return 0; }
+
+        return FMath::DivideAndRoundUp(InPrimCount, k_StencilBatchSize);
+    }
+
+    // ----------------------------------------------------------------------------------------------------------------
+
+    auto
+        Resolve_PrimFromPassValues(
+            const TArray<uint8>& InPerPassStencil,
+            int32 InPrimCount,
+            int32& OutConflictCount)
+        -> TOptional<int32>
+    {
+        auto Resolved = TOptional<int32>{};
+
+        for (auto PassIndex = 0; PassIndex < InPerPassStencil.Num(); ++PassIndex)
+        {
+            const auto Value = InPerPassStencil[PassIndex];
+
+            if (Value == 0)
+            { continue; }
+
+            const auto PrimIndex = PassIndex * k_StencilBatchSize + (static_cast<int32>(Value) - 1);
+
+            // The last pass is usually partial, so a value past the end of the table is a misread rather than a
+            // primitive - taking it would name a mesh that is not in the snapshot.
+            if (PrimIndex < 0 || PrimIndex >= InPrimCount)
+            { continue; }
+
+            if (Resolved.IsSet())
+            {
+                ++OutConflictCount;
+                continue;
+            }
+
+            Resolved = PrimIndex;
+        }
+
+        return Resolved;
+    }
+
+    // ----------------------------------------------------------------------------------------------------------------
+
+    auto
+        Get_LetterboxGeometry(
+            FVector2D InLocalSize,
+            FIntPoint InImageSize)
+        -> TOptional<FCkOptimizationDebugger_LetterboxGeometry>
+    {
+        if (InLocalSize.X <= 0.0 || InLocalSize.Y <= 0.0 || InImageSize.X <= 0 || InImageSize.Y <= 0)
+        { return {}; }
+
+        auto Geometry = FCkOptimizationDebugger_LetterboxGeometry{};
+
+        Geometry.Scale = FMath::Min(
+            InLocalSize.X / static_cast<double>(InImageSize.X),
+            InLocalSize.Y / static_cast<double>(InImageSize.Y));
+
+        Geometry.DrawnSize = FVector2D{InImageSize.X * Geometry.Scale, InImageSize.Y * Geometry.Scale};
+        Geometry.Offset = (InLocalSize - Geometry.DrawnSize) * 0.5;
+
+        return Geometry;
+    }
+
+    // ----------------------------------------------------------------------------------------------------------------
+
+    auto
         Map_ViewerPointToPixel(
             FVector2D InLocalSize,
             FIntPoint InImageSize,
             FVector2D InLocalPoint)
         -> TOptional<FIntPoint>
     {
-        if (InLocalSize.X <= 0.0 || InLocalSize.Y <= 0.0 || InImageSize.X <= 0 || InImageSize.Y <= 0)
+        const auto Geometry = Get_LetterboxGeometry(InLocalSize, InImageSize);
+
+        if (NOT Geometry.IsSet())
         { return {}; }
 
-        const auto Scale = FMath::Min(
-            InLocalSize.X / static_cast<double>(InImageSize.X),
-            InLocalSize.Y / static_cast<double>(InImageSize.Y));
+        const auto InImage = InLocalPoint - Geometry->Offset;
 
-        const auto DrawnSize = FVector2D{InImageSize.X * Scale, InImageSize.Y * Scale};
-        const auto Origin = (InLocalSize - DrawnSize) * 0.5;
-
-        const auto InImage = InLocalPoint - Origin;
-
-        if (InImage.X < 0.0 || InImage.Y < 0.0 || InImage.X >= DrawnSize.X || InImage.Y >= DrawnSize.Y)
+        if (InImage.X < 0.0 || InImage.Y < 0.0 ||
+            InImage.X >= Geometry->DrawnSize.X || InImage.Y >= Geometry->DrawnSize.Y)
         { return {}; }
 
         // Floored, then clamped: the clamp only ever catches the last row and column, where floating-point error at
         // exactly the far edge would otherwise index one past the image.
         const auto Pixel = FIntPoint{
-            FMath::Clamp(FMath::FloorToInt32(InImage.X / Scale), 0, InImageSize.X - 1),
-            FMath::Clamp(FMath::FloorToInt32(InImage.Y / Scale), 0, InImageSize.Y - 1)};
+            FMath::Clamp(FMath::FloorToInt32(InImage.X / Geometry->Scale), 0, InImageSize.X - 1),
+            FMath::Clamp(FMath::FloorToInt32(InImage.Y / Geometry->Scale), 0, InImageSize.Y - 1)};
 
         return Pixel;
     }

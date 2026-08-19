@@ -508,6 +508,10 @@ auto
 	{
 		Snapshot.PlannedPath = InHandle.Get<ck::FFragment_Nav_PathResult>().Get_Waypoints();
 	}
+	if (InHandle.Has<ck::FFragment_CrowdAgent_PathFollow>())
+	{
+		Snapshot.ActiveProvider = InHandle.Get<ck::FFragment_CrowdAgent_PathFollow>().Get_ActiveProvider();
+	}
 	if (InHandle.Has<ck::FFragment_CrowdAgent_PathTrouble>())
 	{
 		const auto& Trouble = InHandle.Get<ck::FFragment_CrowdAgent_PathTrouble>();

@@ -260,6 +260,17 @@ namespace ck_optimization_debugger_snapshot
         TOptional<int32> InPrimIndex,
         ECkOptimizationDebugger_SnapshotClickModifier InModifier) -> void;
 
+    /** Replaces the selection outright with the indices given, dropping any the prim table cannot back.
+     *
+     *  The mesh list's path in. It is deliberately NOT expressible as a click: a list hands over a whole SET, and
+     *  routing that through `Apply_SnapshotClick` one index at a time would make the order of a multi-row selection
+     *  change what it means. Both paths land here-or-there with the same distrust of stale indices, which is the
+     *  part that matters. */
+    CKOPTIMIZATIONDEBUGGER_API auto
+    Apply_SnapshotSelection(
+        FCkOptimizationDebugger_Snapshot& InSnapshot,
+        const TArray<int32>& InPrimIndices) -> void;
+
     /** The ONE false-colour rule for painting an ID map — the debug dump and the report both use it, so the two
      *  images a reader compares cannot colour one mesh differently. Seeded per index rather than a gradient on
      *  purpose: adjacent indices getting unrelated colours is what lets two meshes sharing an edge be told apart,

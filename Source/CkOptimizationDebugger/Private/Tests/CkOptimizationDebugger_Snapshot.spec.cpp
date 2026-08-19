@@ -302,6 +302,40 @@ bool FCkOptimizationDebugger_Snapshot_ClickSemantics::RunTest(const FString& Par
 // --------------------------------------------------------------------------------------------------------------------
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FCkOptimizationDebugger_Snapshot_SelectionSet,
+    "Ck.OptimizationDebugger.Snapshot.SelectionSet",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCkOptimizationDebugger_Snapshot_SelectionSet::RunTest(const FString& Parameters)
+{
+    using namespace ck_optimization_debugger_snapshot;
+    using namespace ck_optimization_debugger_snapshot_spec;
+
+    auto Snapshot = Make_Snapshot(3);
+
+    Apply_SnapshotSelection(Snapshot, TArray<int32>{2, 0});
+
+    TestEqual(TEXT("A set selection replaces what was there"), Snapshot.SelectedPrims.Num(), 2);
+    TestTrue(TEXT("...with exactly its members"),
+        Snapshot.SelectedPrims.Contains(0) && Snapshot.SelectedPrims.Contains(2));
+
+    // The mesh list can hand over a row that outlived the snapshot it was built from; the same distrust every click
+    // applies has to apply here, or a stale index becomes a selection nothing can explain.
+    Apply_SnapshotSelection(Snapshot, TArray<int32>{1, 99, -4});
+
+    TestEqual(TEXT("Indices the table cannot back are dropped"), Snapshot.SelectedPrims.Num(), 1);
+    TestTrue(TEXT("...leaving the valid one"), Snapshot.SelectedPrims.Contains(1));
+
+    Apply_SnapshotSelection(Snapshot, TArray<int32>{});
+
+    TestEqual(TEXT("An empty selection clears"), Snapshot.SelectedPrims.Num(), 0);
+
+    return true;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
     FCkOptimizationDebugger_Snapshot_StorageAndCycling,
     "Ck.OptimizationDebugger.Snapshot.StorageAndCycling",
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
@@ -1056,6 +1090,99 @@ bool FCkOptimizationDebugger_Snapshot_LensRules::RunTest(const FString& Paramete
         TestFalse(TEXT("Every lens says what its colours mean"), Legend.IsEmpty());
         TestFalse(TEXT("...and every lens is named"), Get_LensLabel(Lens).IsEmpty());
     }
+
+    return true;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FCkOptimizationDebugger_Snapshot_MeshListSort,
+    "Ck.OptimizationDebugger.Snapshot.MeshListSort",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCkOptimizationDebugger_Snapshot_MeshListSort::RunTest(const FString& Parameters)
+{
+    using namespace ck_optimization_debugger_snapshot;
+    using namespace ck_optimization_debugger_snapshot_lens;
+    using namespace ck_optimization_debugger_snapshot_spec;
+
+    auto Snapshot = FCkOptimizationDebugger_Snapshot{};
+
+    // Two meshes with the SAME triangle count, so the tie-break is what decides their order, plus one heavier mesh.
+    Snapshot.Prims.Add(Make_Prim(TEXT("SM_TiedA"), 500, 1));
+    Snapshot.Prims.Add(Make_Prim(TEXT("SM_Heavy"), 9000, 4));
+    Snapshot.Prims.Add(Make_Prim(TEXT("SM_TiedB"), 500, 1));
+
+    auto Thresholds = FCkOptimizationDebugger_Thresholds{};
+    Thresholds.MaxTriangleCountLOD0 = 1000;
+    Thresholds.MaxMaterialSlots = 8;
+    Thresholds.MaxTextureSamplers = 16;
+
+    const auto Coverage = TArray<int32>{100, 0, 250};
+    const auto Rows = Build_SnapshotMeshRows(Snapshot, Coverage, Thresholds);
+
+    if (TestEqual(TEXT("One row per prim, in prim order"), Rows.Num(), 3))
+    {
+        TestEqual(TEXT("A row knows its prim"), Rows[0].PrimIndex, 0);
+        TestEqual(TEXT("...and its coverage"), Rows[0].CoveredPixels, 100);
+        TestEqual(TEXT("...and the density that follows from it"), Rows[0].TrianglesPerPixel, 5.0f);
+
+        // A prim nothing can see is covered by zero pixels, which is a measurement; it is NOT the em-dash case.
+        TestEqual(TEXT("An unseen mesh reads as zero coverage"), Rows[1].CoveredPixels, 0);
+
+        TestTrue(TEXT("The over-budget mesh carries its severity"), Rows[1].BudgetSeverity.IsSet());
+        TestFalse(TEXT("...and a compliant one carries none"), Rows[0].BudgetSeverity.IsSet());
+    }
+
+    // No coverage at all is the no-identification case: unset, so the table prints an em dash rather than a zero
+    // that would read as "not visible".
+    const auto RowsWithoutCoverage = Build_SnapshotMeshRows(Snapshot, TArray<int32>{}, Thresholds);
+
+    if (TestEqual(TEXT("Rows survive a snapshot with no identification"), RowsWithoutCoverage.Num(), 3))
+    {
+        TestEqual(TEXT("...with coverage unset"), RowsWithoutCoverage[0].CoveredPixels, INDEX_NONE);
+        TestEqual(TEXT("...and no density"), RowsWithoutCoverage[0].TrianglesPerPixel, 0.0f);
+    }
+
+    // ---- Sorting ----
+    const auto Descending = Get_SortedSnapshotMeshRows(
+        Rows, ECkOptimizationDebugger_SnapshotMeshColumn::Triangles, false);
+
+    if (TestEqual(TEXT("Sorting keeps every row"), Descending.Num(), 3))
+    {
+        TestEqual(TEXT("Worst first when descending"), Descending[0].PrimIndex, 1);
+        TestEqual(TEXT("Ties keep prim order"), Descending[1].PrimIndex, 0);
+        TestEqual(TEXT("...both of them"), Descending[2].PrimIndex, 2);
+    }
+
+    const auto Ascending = Get_SortedSnapshotMeshRows(
+        Rows, ECkOptimizationDebugger_SnapshotMeshColumn::Triangles, true);
+
+    if (TestEqual(TEXT("Reversing keeps every row"), Ascending.Num(), 3))
+    {
+        TestEqual(TEXT("Smallest first when ascending"), Ascending[0].PrimIndex, 0);
+
+        // The tie-break NEVER reverses with the arrow: rows equal on the sorted column jumping around when the
+        // reader flips the header is how a table stops being trusted.
+        TestEqual(TEXT("...and the tie-break still runs in prim order"), Ascending[1].PrimIndex, 2);
+        TestEqual(TEXT("...with the heaviest last"), Ascending[2].PrimIndex, 1);
+    }
+
+    // ---- Columns ----
+    for (const auto& Column : Get_AllMeshColumns())
+    {
+        const auto RoundTripped = TryGet_MeshColumnFromId(Get_MeshColumnId(Column));
+
+        // The header row addresses columns by FName; an id that does not map back is a column that silently cannot
+        // be sorted.
+        if (TestTrue(TEXT("Every column id maps back to its column"), RoundTripped.IsSet()))
+        { TestEqual(TEXT("...to the same one"), static_cast<int32>(RoundTripped.GetValue()), static_cast<int32>(Column)); }
+
+        TestFalse(TEXT("...and every column is labelled"), Get_MeshColumnLabel(Column).IsEmpty());
+    }
+
+    TestFalse(TEXT("An unknown column id maps to nothing"), TryGet_MeshColumnFromId(FName{TEXT("NotAColumn")}).IsSet());
 
     return true;
 }

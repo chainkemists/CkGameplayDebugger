@@ -316,6 +316,25 @@ namespace ck_optimization_debugger_snapshot
     // ----------------------------------------------------------------------------------------------------------------
 
     auto
+        Apply_SnapshotSelection(
+            FCkOptimizationDebugger_Snapshot& InSnapshot,
+            const TArray<int32>& InPrimIndices)
+        -> void
+    {
+        InSnapshot.SelectedPrims.Reset();
+
+        for (const auto& PrimIndex : InPrimIndices)
+        {
+            if (NOT InSnapshot.Prims.IsValidIndex(PrimIndex))
+            { continue; }
+
+            InSnapshot.SelectedPrims.Add(PrimIndex);
+        }
+    }
+
+    // ----------------------------------------------------------------------------------------------------------------
+
+    auto
         Get_PrimIndexColor(
             uint32 InId)
         -> FColor

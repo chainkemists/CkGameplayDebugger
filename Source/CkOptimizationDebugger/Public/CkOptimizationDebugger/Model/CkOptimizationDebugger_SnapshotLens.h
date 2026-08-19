@@ -136,6 +136,95 @@ namespace ck_optimization_debugger_snapshot_lens
         const FCkOptimizationDebugger_SnapshotPrim& InPrim,
         const FCkOptimizationDebugger_Thresholds& InThresholds) -> TOptional<ECkOptimizationDebugger_Severity>;
 
+    // ----------------------------------------------------------------------------------------------------------------
+
+    /** One row of the mesh list: everything the table shows about one captured primitive, already measured against
+     *  this view and this project's budgets. Built once per refresh so the list, its sort and its badges all read
+     *  the same numbers — a row that recomputed per column could sort by one value and print another. */
+    struct CKOPTIMIZATIONDEBUGGER_API FCkOptimizationDebugger_SnapshotMeshRow
+    {
+        int32 PrimIndex = INDEX_NONE;
+
+        FString DisplayName;
+
+        ECkOptimizationDebugger_SnapshotPrimKind Kind = ECkOptimizationDebugger_SnapshotPrimKind::StaticMesh;
+
+        bool IsNanite = false;
+
+        int32 Lod0Triangles = 0;
+
+        /** `INDEX_NONE` when the snapshot carries no identification — which is not the same as zero pixels, and a
+         *  zero printed there would read as "this mesh is not visible" rather than "this snapshot cannot tell". */
+        int32 CoveredPixels = INDEX_NONE;
+
+        float TrianglesPerPixel = 0.0f;
+
+        int64 MeshResourceSizeBytes = 0;
+        int64 TextureResidentBytes = 0;
+
+        int32 InstanceCount = 0;
+        int32 SlotCount = 0;
+
+        TOptional<ECkOptimizationDebugger_Severity> BudgetSeverity;
+    };
+
+    // ----------------------------------------------------------------------------------------------------------------
+
+    enum class ECkOptimizationDebugger_SnapshotMeshColumn : uint8
+    {
+        Mesh,
+        Kind,
+        Triangles,
+        Coverage,
+        Density,
+        MeshMemory,
+        Instances,
+        Slots,
+    };
+
+    CKOPTIMIZATIONDEBUGGER_API auto
+    Get_AllMeshColumns() -> TArray<ECkOptimizationDebugger_SnapshotMeshColumn>;
+
+    CKOPTIMIZATIONDEBUGGER_API auto
+    Get_MeshColumnId(
+        ECkOptimizationDebugger_SnapshotMeshColumn InColumn) -> FName;
+
+    CKOPTIMIZATIONDEBUGGER_API auto
+    Get_MeshColumnLabel(
+        ECkOptimizationDebugger_SnapshotMeshColumn InColumn) -> FString;
+
+    CKOPTIMIZATIONDEBUGGER_API auto
+    TryGet_MeshColumnFromId(
+        FName InColumnId) -> TOptional<ECkOptimizationDebugger_SnapshotMeshColumn>;
+
+    /** One row per captured prim, in prim order. Coverage is handed in rather than recomputed so the list, the lens
+     *  on screen and the picking all count the same pixels; pass an empty array for a snapshot without an ID map and
+     *  the rows say so instead of claiming zero. */
+    CKOPTIMIZATIONDEBUGGER_API auto
+    Build_SnapshotMeshRows(
+        const FCkOptimizationDebugger_Snapshot& InSnapshot,
+        const TArray<int32>& InCoverage,
+        const FCkOptimizationDebugger_Thresholds& InThresholds) -> TArray<FCkOptimizationDebugger_SnapshotMeshRow>;
+
+    /** Negative, zero or positive, exactly like a comparator: the sort and any future consumer share ONE ordering
+     *  rule per column rather than two that can drift. */
+    CKOPTIMIZATIONDEBUGGER_API auto
+    Compare_SnapshotMeshRows(
+        const FCkOptimizationDebugger_SnapshotMeshRow& InLhs,
+        const FCkOptimizationDebugger_SnapshotMeshRow& InRhs,
+        ECkOptimizationDebugger_SnapshotMeshColumn InColumn) -> int32;
+
+    /** Total by construction: the prim index breaks every tie, and it does so ASCENDING in both directions — the
+     *  header toggle reverses the COLUMN, never the tie-break, so rows equal on the sorted column keep their relative
+     *  order whichever way the arrow points. The memory page's rule, applied to a second table. */
+    CKOPTIMIZATIONDEBUGGER_API auto
+    Get_SortedSnapshotMeshRows(
+        const TArray<FCkOptimizationDebugger_SnapshotMeshRow>& InRows,
+        ECkOptimizationDebugger_SnapshotMeshColumn InColumn,
+        bool InAscending) -> TArray<FCkOptimizationDebugger_SnapshotMeshRow>;
+
+    // ----------------------------------------------------------------------------------------------------------------
+
     /** The largest sampler count any ONE of the mesh's materials uses. The budget is per material, so the maximum is
      *  the number that breaches it — a sum would flag a mesh with six modest materials and miss the one material
      *  that actually exceeds the platform's limit. */

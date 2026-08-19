@@ -6,15 +6,20 @@ editor and packaged Development/DebugGame targets; Test and Shipping exclude it.
 `ck.OptimizationDebugger` console command, **Tools > Debug > CK Optimization Debugger**, or the shared debugger
 launcher (**Tools** category, slot 40, `Stopwatch` glyph).
 
-**Depends on:** `CkCore`, `CkEcs`, `CkDebuggerCommon`, `CkEditorTools`, `DeveloperSettings`, `PhysicsCore`, and
-`UnrealEd` / `AssetRegistry` / `AssetTools` / `Settings` / `WorkspaceMenuStructure` behind `Target.bBuildEditor`.
-`AssetTools` is there for exactly one symbol: `IAssetTools::FixupReferencers`, whose implementation is Private to
-that module, so the interface is the only supported route. Module registration mirrors `CkSaveDebugger`.
+**Depends on:** `CkCore`, `CkEcs`, `CkDebuggerCommon`, `CkEditorTools`, `CkUsf` (the `StencilId` look's generated
+master path), `DeveloperSettings`, `PhysicsCore`, `ImageCore` (decoding snapshot PNGs for the viewer),
+`DesktopPlatform` (the `.cksnap` file dialogs — in the MAIN block because QA saves from packaged Development), and
+`UnrealEd` / `AssetRegistry` / `AssetTools` / `Settings` / `TargetPlatform` / `WorkspaceMenuStructure` behind
+`Target.bBuildEditor`. `AssetTools` is there for exactly one symbol: `IAssetTools::FixupReferencers`, whose
+implementation is Private to that module, so the interface is the only supported route. `TargetPlatform` for one
+too: `GetBuiltTextureSize` needs the running `ITargetPlatform`. Module registration mirrors `CkSaveDebugger`.
 
-**There is no report export.** It is unscheduled (PLAN.md), and `ApplicationCore` / `DesktopPlatform` / `Json` are
-deliberately NOT declared — they were carried for a while with comments describing an export that had never been
-written. Clipboard copy goes through `CkDebuggerCommon`'s `ck::DebugCopyMenu`, not `FPlatformApplicationMisc`. Add
-the three back in the change that actually lands the export, together with its determinism spec.
+**The one report export is the snapshot report** (P12): `Build_SnapshotReportHtml` — a PURE builder whose
+determinism spec (`Snapshot.ReportDeterminism`) arrived in the same change, exactly as the earlier version of this
+paragraph demanded of any export that ever landed. The findings/scan pages still have NO export, and `Json` /
+`ApplicationCore` remain deliberately NOT declared: the report is plain HTML strings, and clipboard copy still goes
+through `CkDebuggerCommon`'s `ck::DebugCopyMenu`, not `FPlatformApplicationMisc`. A findings export, if ever asked
+for, follows the same rule — it lands WITH its determinism spec or not at all.
 
 ---
 

@@ -14,6 +14,10 @@ public class CkOptimizationDebugger : CkModuleRules
 
             "InputCore",
 
+            // IDesktopPlatform's file dialogs, for saving and loading .cksnap snapshot files. In the MAIN block on
+            // purpose: QA saves from packaged Development builds, so it cannot sit behind bBuildEditor.
+            "DesktopPlatform",
+
             // FImage::ChangeFormat, converting a decoded snapshot PNG to the BGRA the Slate brush wants. Engine
             // pulls ImageCore in transitively, but a transitive link is luck rather than policy.
             "ImageCore",

@@ -1,5 +1,7 @@
 #include "CkOptimizationDebugger/Model/CkOptimizationDebugger_Model.h"
 #include "CkOptimizationDebugger/Model/CkOptimizationDebugger_Snapshot.h"
+#include "CkOptimizationDebugger/Model/CkOptimizationDebugger_SnapshotCodec.h"
+#include "CkOptimizationDebugger/Model/CkOptimizationDebugger_SnapshotReport.h"
 
 #include "CkCore/Format/CkFormat.h"
 #include "CkCore/Macros/CkMacros.h"
@@ -588,6 +590,243 @@ bool FCkOptimizationDebugger_Snapshot_PassResolution::RunTest(const FString& Par
     Conflicts = 0;
     TestFalse(TEXT("No passes at all resolve to nothing"),
         Resolve_PrimFromPassValues(TArray<uint8>{}, PrimCount, Conflicts).IsSet());
+
+    return true;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FCkOptimizationDebugger_Snapshot_Aggregates,
+    "Ck.OptimizationDebugger.Snapshot.Aggregates",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCkOptimizationDebugger_Snapshot_Aggregates::RunTest(const FString& Parameters)
+{
+    using namespace ck_optimization_debugger_snapshot;
+    using namespace ck_optimization_debugger_snapshot_spec;
+
+    auto Prims = TArray<FCkOptimizationDebugger_SnapshotPrim>{};
+
+    const auto Empty = Get_SnapshotAggregates(Prims);
+    TestEqual(TEXT("No prims total nothing"), static_cast<int32>(Empty.TotalLod0Triangles), 0);
+    TestEqual(TEXT("...and count as nothing"), Empty.StaticCount + Empty.InstancedCount + Empty.SkeletalCount, 0);
+
+    Prims.Add(Make_Prim(TEXT("SM_A"), 100, 2, 1));
+
+    auto Instanced = Make_Prim(TEXT("ISM_B"), 250, 3, 40);
+    Instanced.Kind = ECkOptimizationDebugger_SnapshotPrimKind::InstancedStaticMesh;
+    Instanced.IsNanite = true;
+    Prims.Add(Instanced);
+
+    auto Skeletal = Make_Prim(TEXT("SK_C"), 999, 5, 1);
+    Skeletal.Kind = ECkOptimizationDebugger_SnapshotPrimKind::SkeletalMesh;
+    Prims.Add(Skeletal);
+
+    // A capture can fail to read a mesh's LODs; the prim still counts as a prim and contributes no triangles.
+    auto Lodless = FCkOptimizationDebugger_SnapshotPrim{};
+    Lodless.InstanceCount = 3;
+    Prims.Add(Lodless);
+
+    const auto Aggregates = Get_SnapshotAggregates(Prims);
+
+    TestEqual(TEXT("Triangles sum over LOD0"), static_cast<int32>(Aggregates.TotalLod0Triangles), 1349);
+    TestEqual(TEXT("Sections sum over LOD0"), Aggregates.TotalLod0Sections, 10);
+    TestEqual(TEXT("Instances sum over every prim"), Aggregates.TotalInstances, 45);
+    TestEqual(TEXT("Static prims counted"), Aggregates.StaticCount, 2);
+    TestEqual(TEXT("Instanced prims counted"), Aggregates.InstancedCount, 1);
+    TestEqual(TEXT("Skeletal prims counted"), Aggregates.SkeletalCount, 1);
+    TestEqual(TEXT("Nanite prims counted"), Aggregates.NaniteCount, 1);
+
+    return true;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+// Every field a capture writes, populated with distinct values, so a codec or report that drops one shows up as a
+// mismatch rather than as a lucky pass over defaults.
+namespace ck_optimization_debugger_snapshot_spec
+{
+    auto
+        Make_FullSnapshot()
+        -> FCkOptimizationDebugger_Snapshot
+    {
+        using namespace ck_optimization_debugger_snapshot;
+
+        auto Snapshot = FCkOptimizationDebugger_Snapshot{};
+
+        Snapshot.Id = FGuid{0x11111111, 0x22222222, 0x33333333, 0x44444444};
+        Snapshot.Label = FString{TEXT("Snapshot 3 — 14:52:10")};
+        Snapshot.CapturedAt = FDateTime{2026, 8, 18, 14, 52, 10};
+        Snapshot.WorldName = FString{TEXT("L_Spec & <World>")};
+        Snapshot.Width = 4;
+        Snapshot.Height = 2;
+        Snapshot.ColorPng = TArray64<uint8>{{0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x01, 0x02}};
+        Snapshot.HasIdMap = true;
+        Snapshot.IdMapRle = Encode_IdMapRle(TArray<uint32>{0u, 0u, 1u, k_NoPrim, 1u, 1u, 0u, k_NoPrim});
+        Snapshot.UnidentifiedPixelCount = 2;
+        Snapshot.CaptureNotes = FString{TEXT("3 primitive(s) excluded")};
+        Snapshot.UniqueMaterialCount = 2;
+        Snapshot.UniqueTextureCount = 5;
+        Snapshot.TextureResidentBytes = 123456789;
+
+        auto PrimA = Make_Prim(TEXT("Shelf_12 / SM_ShelfBody"), 4210, 3, 1);
+        PrimA.MeshDisplayName = FString{TEXT("SM_ShelfBody")};
+        PrimA.MeshAssetPath = FSoftObjectPath{TEXT("/Game/Spec/SM_ShelfBody.SM_ShelfBody")};
+        PrimA.MeshResourceSizeBytes = 987654;
+        PrimA.Lods[0].Vertices = 2900;
+        PrimA.Lods[0].ScreenSize = 1.0f;
+
+        auto Slot = FCkOptimizationDebugger_SnapshotMaterialSlot{};
+        Slot.SlotName = FString{TEXT("Body")};
+        Slot.MaterialName = FString{TEXT("M_Shelf <inst>")};
+        Slot.MaterialPath = FSoftObjectPath{TEXT("/Game/Spec/M_Shelf.M_Shelf")};
+        Slot.BlendMode = FString{TEXT("Opaque")};
+        Slot.ShadingModel = FString{TEXT("Lit")};
+        Slot.IsTwoSided = true;
+        Slot.UsedTextureCount = 2;
+        Slot.UsedTextureNames = TArray<FString>{TEXT("T_Shelf_D"), TEXT("T_Shelf_N")};
+        PrimA.MaterialSlots.Add(Slot);
+
+        auto PrimB = Make_Prim(TEXT("Crowd / SK_Person"), 999, 5, 7);
+        PrimB.Kind = ECkOptimizationDebugger_SnapshotPrimKind::SkeletalMesh;
+        PrimB.IsNanite = true;
+        PrimB.DistanceFromCamera = 345.5f;
+
+        Snapshot.Prims.Add(PrimA);
+        Snapshot.Prims.Add(PrimB);
+
+        Snapshot.SelectedPrims.Add(1);
+        Snapshot.SelectedPrims.Add(0);
+
+        return Snapshot;
+    }
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FCkOptimizationDebugger_Snapshot_FileCodecRoundTrip,
+    "Ck.OptimizationDebugger.Snapshot.FileCodecRoundTrip",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCkOptimizationDebugger_Snapshot_FileCodecRoundTrip::RunTest(const FString& Parameters)
+{
+    using namespace ck_optimization_debugger_snapshot_codec;
+    using namespace ck_optimization_debugger_snapshot_spec;
+
+    const auto Original = Make_FullSnapshot();
+    const auto Bytes = Encode_SnapshotFile(Original);
+
+    TestTrue(TEXT("A snapshot encodes to something"), Bytes.Num() > 0);
+
+    const auto Decoded = Decode_SnapshotFile(Bytes);
+
+    if (NOT TestTrue(TEXT("A whole file decodes"), Decoded.IsSet()))
+    { return false; }
+
+    // Field-by-field rather than a byte compare of re-encoded output: a re-encode could cancel out a bug that
+    // loses data symmetrically, and the fields are the contract.
+    TestEqual(TEXT("Id survives"), Decoded->Id, Original.Id);
+    TestEqual(TEXT("Label survives"), Decoded->Label, Original.Label);
+    TestEqual(TEXT("CapturedAt survives"), Decoded->CapturedAt, Original.CapturedAt);
+    TestEqual(TEXT("World survives"), Decoded->WorldName, Original.WorldName);
+    TestEqual(TEXT("Width survives"), Decoded->Width, Original.Width);
+    TestEqual(TEXT("Height survives"), Decoded->Height, Original.Height);
+    TestEqual(TEXT("Colour byte count survives"), static_cast<int32>(Decoded->ColorPng.Num()), static_cast<int32>(Original.ColorPng.Num()));
+    TestTrue(TEXT("...identically"), Decoded->ColorPng == Original.ColorPng);
+    TestEqual(TEXT("HasIdMap survives"), Decoded->HasIdMap, Original.HasIdMap);
+    TestTrue(TEXT("The RLE map survives"), Decoded->IdMapRle == Original.IdMapRle);
+    TestEqual(TEXT("Unidentified count survives"), Decoded->UnidentifiedPixelCount, Original.UnidentifiedPixelCount);
+    TestEqual(TEXT("Notes survive"), Decoded->CaptureNotes, Original.CaptureNotes);
+    TestEqual(TEXT("Unique materials survive"), Decoded->UniqueMaterialCount, Original.UniqueMaterialCount);
+    TestEqual(TEXT("Unique textures survive"), Decoded->UniqueTextureCount, Original.UniqueTextureCount);
+    TestEqual(TEXT("Texture bytes survive"), Decoded->TextureResidentBytes, Original.TextureResidentBytes);
+
+    if (TestEqual(TEXT("The prim table survives whole"), Decoded->Prims.Num(), Original.Prims.Num()))
+    {
+        const auto& PrimA = Decoded->Prims[0];
+
+        TestEqual(TEXT("A prim's name survives"), PrimA.DisplayName, Original.Prims[0].DisplayName);
+        TestEqual(TEXT("...its mesh path"), PrimA.MeshAssetPath.ToString(), Original.Prims[0].MeshAssetPath.ToString());
+        TestEqual(TEXT("...its resource size"), PrimA.MeshResourceSizeBytes, Original.Prims[0].MeshResourceSizeBytes);
+        TestEqual(TEXT("...its LOD vertices"), PrimA.Lods[0].Vertices, Original.Prims[0].Lods[0].Vertices);
+        TestEqual(TEXT("...its LOD screen size"), PrimA.Lods[0].ScreenSize, Original.Prims[0].Lods[0].ScreenSize);
+
+        if (TestEqual(TEXT("...its material slots"), PrimA.MaterialSlots.Num(), 1))
+        {
+            TestEqual(TEXT("...a slot's texture names"),
+                FString::Join(PrimA.MaterialSlots[0].UsedTextureNames, TEXT(",")),
+                FString::Join(Original.Prims[0].MaterialSlots[0].UsedTextureNames, TEXT(",")));
+            TestEqual(TEXT("...a slot's two-sidedness"),
+                PrimA.MaterialSlots[0].IsTwoSided, Original.Prims[0].MaterialSlots[0].IsTwoSided);
+        }
+
+        TestEqual(TEXT("The second prim's kind survives"),
+            static_cast<int32>(Decoded->Prims[1].Kind), static_cast<int32>(Original.Prims[1].Kind));
+        TestEqual(TEXT("...and its Nanite flag"), Decoded->Prims[1].IsNanite, Original.Prims[1].IsNanite);
+    }
+
+    TestEqual(TEXT("The selection survives"), Decoded->SelectedPrims.Num(), 2);
+    TestTrue(TEXT("...with its members"),
+        Decoded->SelectedPrims.Contains(0) && Decoded->SelectedPrims.Contains(1));
+
+    // ---- The refusals ----
+    auto Truncated = Bytes;
+    Truncated.SetNum(Bytes.Num() - 7);
+    TestFalse(TEXT("A truncated file decodes to nothing, never a partial snapshot"),
+        Decode_SnapshotFile(Truncated).IsSet());
+
+    auto WrongMagic = Bytes;
+    WrongMagic[0] = 0x00;
+    TestFalse(TEXT("A file with the wrong magic decodes to nothing"),
+        Decode_SnapshotFile(WrongMagic).IsSet());
+
+    auto FutureVersion = Bytes;
+    FutureVersion[4] = 0xFF;
+    TestFalse(TEXT("A file from a future version decodes to nothing, never a guess"),
+        Decode_SnapshotFile(FutureVersion).IsSet());
+
+    TestFalse(TEXT("An empty buffer decodes to nothing"), Decode_SnapshotFile(TArray<uint8>{}).IsSet());
+
+    return true;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FCkOptimizationDebugger_Snapshot_ReportDeterminism,
+    "Ck.OptimizationDebugger.Snapshot.ReportDeterminism",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCkOptimizationDebugger_Snapshot_ReportDeterminism::RunTest(const FString& Parameters)
+{
+    using namespace ck_optimization_debugger_snapshot_report;
+    using namespace ck_optimization_debugger_snapshot_spec;
+
+    const auto Snapshot = Make_FullSnapshot();
+    const auto GeneratedAt = FDateTime{2026, 8, 18, 15, 0, 0};
+
+    const auto First = Build_SnapshotReportHtml(Snapshot, GeneratedAt);
+    const auto Second = Build_SnapshotReportHtml(Snapshot, GeneratedAt);
+
+    // The determinism the module doctrine demanded the export arrive with: same input, byte-identical output. A
+    // report that differed between two generations would turn every diff of two reports into noise.
+    TestTrue(TEXT("Two builds of the same snapshot are byte-identical"), First.Equals(Second, ESearchCase::CaseSensitive));
+
+    TestTrue(TEXT("The report carries the LOD0 triangle total"), First.Contains(TEXT("5209")));
+    TestTrue(TEXT("...the texture memory figure"), First.Contains(TEXT("117.7 MB")));
+    TestTrue(TEXT("...the embedded capture image"), First.Contains(TEXT("data:image/png;base64,")));
+    TestTrue(TEXT("...the mesh identification image"), First.Contains(TEXT("Mesh identification")));
+
+    // Names come from artist assets and can carry markup; unescaped, one asset name breaks the whole file.
+    TestTrue(TEXT("Names are HTML-escaped"), First.Contains(TEXT("L_Spec &amp; &lt;World&gt;")));
+    TestFalse(TEXT("...and never raw"), First.Contains(TEXT("M_Shelf <inst>")));
+
+    // Worst-first: the 4210-triangle shelf outranks the 999-triangle skeletal.
+    const auto ShelfAt = First.Find(TEXT("SM_ShelfBody"));
+    const auto PersonAt = First.Find(TEXT("SK_Person"));
+    TestTrue(TEXT("The mesh table is sorted worst-first"), ShelfAt != INDEX_NONE && PersonAt != INDEX_NONE && ShelfAt < PersonAt);
 
     return true;
 }

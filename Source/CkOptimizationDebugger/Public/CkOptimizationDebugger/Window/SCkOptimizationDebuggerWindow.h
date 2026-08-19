@@ -191,6 +191,9 @@ private:
     auto DoOnGoToClicked() -> FReply;
     auto DoOnOpenAssetClicked() -> FReply;
     auto DoOnCaptureSnapshotClicked() -> FReply;
+    auto DoOnSnapshotReportClicked() -> FReply;
+    auto DoOnSnapshotSaveClicked() -> FReply;
+    auto DoOnSnapshotLoadClicked() -> FReply;
     auto DoOnCycleSnapshotClicked(int32 InDelta) -> FReply;
     auto DoOnDeleteSnapshotClicked() -> FReply;
     auto DoOnApplyFixClicked() -> FReply;

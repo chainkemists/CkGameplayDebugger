@@ -34,6 +34,7 @@
 #include "CkOptimizationDebugger/Commands/CkOptimizationDebugger_CleanupCommands.h"
 #include "CkOptimizationDebugger/Commands/CkOptimizationDebugger_ProfileCommands.h"
 #include "CkOptimizationDebugger/Analysis/CkOptimizationDebugger_MemoryScan.h"
+#include "CkOptimizationDebugger/Analysis/CkOptimizationDebugger_SnapshotCapture.h"
 #include "CkOptimizationDebugger/Analysis/CkOptimizationDebugger_Thresholds.h"
 #include "CkOptimizationDebugger/Fixes/CkOptimizationDebugger_Fixes.h"
 #include "CkOptimizationDebugger/Fixes/CkOptimizationDebugger_Navigation.h"
@@ -93,6 +94,9 @@ namespace ck_optimization_debugger_window
     constexpr auto k_MemoryDimensionColumnWidth = 230.0f;
     constexpr auto k_MemorySizeColumnWidth      = 130.0f;
     constexpr auto k_MemoryGpuColumnWidth       = 110.0f;
+
+    // The snapshot facts column. Fixed so the picture beside it does not resize as the facts change length.
+    constexpr auto k_SnapshotFactsWidth = 260.0f;
     constexpr auto k_MemoryStreamingColumnWidth = 120.0f;
     constexpr auto k_MemoryRowMeterWidth        = 110.0f;
     constexpr auto k_MemoryRowMeterHeight       = 3.0f;
@@ -2453,13 +2457,81 @@ auto
 {
     using namespace ck_optimization_debugger_window;
 
+    // Built ONCE, like every other page. Capture, cycling and deletion move the viewer's pointer, the strip's
+    // children and the facts box's rows — never this tree. Swapping a page's children on a data change is the
+    // one-frame-scrunch defect.
+    const auto HasSnapshots = [this]() -> bool { return _SnapshotCount > 0; };
+
     return SNew(SVerticalBox)
 
         + SVerticalBox::Slot()
         .AutoHeight()
         .Padding(CkStyle::SpaceM, CkStyle::SpaceM, CkStyle::SpaceM, 0.0f)
         [
+            SNew(SHorizontalBox)
+
+            + SHorizontalBox::Slot()
+            .AutoWidth()
+            .HAlign(HAlign_Left)
+            .VAlign(VAlign_Center)
+            .Padding(0.0f, 0.0f, CkStyle::SpaceS, 0.0f)
+            [
+                Build_ActionButton(ECk_Icon::Capture,
+                    FText::FromString(TEXT("Capture Snapshot")),
+                    FText::FromString(TEXT("Capture what the camera sees — the game camera in a play session or a ")
+                        TEXT("build, the level viewport camera otherwise")),
+                    FOnClicked::CreateSP(this, &SCkOptimizationDebuggerWindow::DoOnCaptureSnapshotClicked),
+                    TAttribute<bool>{true})
+            ]
+
+            + SHorizontalBox::Slot()
+            .AutoWidth()
+            .HAlign(HAlign_Left)
+            .VAlign(VAlign_Center)
+            .Padding(0.0f, 0.0f, CkStyle::SpaceXS, 0.0f)
+            [
+                Build_ActionButton(ECk_Icon::SkipBackward,
+                    FText::FromString(TEXT("Previous")),
+                    FText::FromString(TEXT("Show the previous snapshot, wrapping round to the newest")),
+                    FOnClicked::CreateSP(this, &SCkOptimizationDebuggerWindow::DoOnCycleSnapshotClicked, -1),
+                    TAttribute<bool>::CreateLambda(HasSnapshots))
+            ]
+
+            + SHorizontalBox::Slot()
+            .AutoWidth()
+            .HAlign(HAlign_Left)
+            .VAlign(VAlign_Center)
+            .Padding(0.0f, 0.0f, CkStyle::SpaceS, 0.0f)
+            [
+                Build_ActionButton(ECk_Icon::SkipForward,
+                    FText::FromString(TEXT("Next")),
+                    FText::FromString(TEXT("Show the next snapshot, wrapping round to the oldest")),
+                    FOnClicked::CreateSP(this, &SCkOptimizationDebuggerWindow::DoOnCycleSnapshotClicked, 1),
+                    TAttribute<bool>::CreateLambda(HasSnapshots))
+            ]
+
+            + SHorizontalBox::Slot()
+            .AutoWidth()
+            .HAlign(HAlign_Left)
+            .VAlign(VAlign_Center)
+            [
+                Build_ActionButton(ECk_Icon::Delete,
+                    FText::FromString(TEXT("Delete")),
+                    FText::FromString(TEXT("Discard the snapshot on screen")),
+                    FOnClicked::CreateSP(this, &SCkOptimizationDebuggerWindow::DoOnDeleteSnapshotClicked),
+                    TAttribute<bool>::CreateLambda(HasSnapshots))
+            ]
+        ]
+
+        + SVerticalBox::Slot()
+        .AutoHeight()
+        .Padding(CkStyle::SpaceM, CkStyle::SpaceM, CkStyle::SpaceM, 0.0f)
+        [
             SNew(SCkDebug_Card)
+            .Visibility_Lambda([this]() -> EVisibility
+            {
+                return _SnapshotCount > 0 ? EVisibility::Collapsed : EVisibility::Visible;
+            })
             [
                 SNew(SHorizontalBox)
 
@@ -2488,7 +2560,223 @@ auto
                     .ColorAndOpacity(FSlateColor{CkStyle::TextDim()})
                 ]
             ]
+        ]
+
+        + SVerticalBox::Slot()
+        .AutoHeight()
+        .Padding(CkStyle::SpaceM, CkStyle::SpaceS, CkStyle::SpaceM, 0.0f)
+        [
+            SAssignNew(_SnapshotStrip, SHorizontalBox)
+        ]
+
+        + SVerticalBox::Slot()
+        .FillHeight(1.0f)
+        .Padding(CkStyle::SpaceM, CkStyle::SpaceS, CkStyle::SpaceM, CkStyle::SpaceM)
+        [
+            SNew(SHorizontalBox)
+            .Visibility_Lambda([this]() -> EVisibility
+            {
+                return _SnapshotCount > 0 ? EVisibility::Visible : EVisibility::Collapsed;
+            })
+
+            + SHorizontalBox::Slot()
+            .FillWidth(1.0f)
+            [
+                SAssignNew(_SnapshotViewer, SCkOptimizationSnapshotViewer)
+            ]
+
+            + SHorizontalBox::Slot()
+            .AutoWidth()
+            .Padding(CkStyle::SpaceM, 0.0f, 0.0f, 0.0f)
+            [
+                SNew(SBox)
+                .WidthOverride(k_SnapshotFactsWidth)
+                [
+                    SNew(SCkDebug_Card)
+                    [
+                        SAssignNew(_SnapshotFactsBox, SVerticalBox)
+                    ]
+                ]
+            ]
         ];
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkOptimizationDebuggerWindow::
+    DoRebuild_Snapshots()
+    -> void
+{
+    using namespace ck_optimization_debugger_window;
+
+    _SnapshotCount = _Model.Get_Snapshots().Num();
+
+    if (ck::IsValid(_SnapshotStrip))
+    {
+        _SnapshotStrip->ClearChildren();
+
+        for (auto Index = 0; Index < _Model.Get_Snapshots().Num(); ++Index)
+        {
+            const auto& Snapshot = _Model.Get_Snapshots()[Index];
+            const auto IsActive = Index == _Model.Get_ActiveSnapshotIndex();
+
+            _SnapshotStrip->AddSlot()
+            .AutoWidth()
+            .Padding(0.0f, 0.0f, CkStyle::SpaceXS, 0.0f)
+            [
+                SNew(SButton)
+                .ToolTipText(FText::FromString(ck::Format_UE(TEXT("{} — {}x{}, {} mesh(es)"),
+                    Snapshot.Label, Snapshot.Width, Snapshot.Height, Snapshot.Prims.Num())))
+                .ContentPadding(FMargin{CkStyle::SpaceS, CkStyle::SpaceXS})
+                .OnClicked_Lambda([this, Index]() -> FReply
+                {
+                    _Model.Set_ActiveSnapshotIndex(Index);
+                    DoRebuild_Snapshots();
+
+                    return FReply::Handled();
+                })
+                [
+                    SNew(STextBlock)
+                    .Text(FText::FromString(Snapshot.Label))
+                    .ColorAndOpacity(FSlateColor{IsActive ? CkStyle::Accent() : CkStyle::TextDim()})
+                ]
+            ];
+        }
+    }
+
+    const auto* Active = _Model.TryGet_ActiveSnapshot();
+
+    if (ck::IsValid(_SnapshotViewer))
+    { _SnapshotViewer->Set_Snapshot(Active); }
+
+    if (NOT ck::IsValid(_SnapshotFactsBox))
+    { return; }
+
+    _SnapshotFactsBox->ClearChildren();
+
+    if (Active == nullptr)
+    { return; }
+
+    const auto AddFact = [this](const FString& InLabel, const FString& InValue) -> void
+    {
+        _SnapshotFactsBox->AddSlot()
+        .AutoHeight()
+        .Padding(0.0f, 0.0f, 0.0f, CkStyle::SpaceXS)
+        [
+            SNew(STextBlock)
+            .Text(FText::FromString(ck::Format_UE(TEXT("{}: {}"), InLabel, InValue)))
+            .AutoWrapText(true)
+            .ColorAndOpacity(FSlateColor{CkStyle::TextDim()})
+        ];
+    };
+
+    AddFact(TEXT("World"), Active->WorldName);
+    AddFact(TEXT("Size"), ck::Format_UE(TEXT("{}x{}"), Active->Width, Active->Height));
+    AddFact(TEXT("Meshes"), FString::FromInt(Active->Prims.Num()));
+
+    if (NOT Active->CaptureNotes.IsEmpty())
+    { AddFact(TEXT("Notes"), Active->CaptureNotes); }
+
+    if (NOT Active->HasIdMap)
+    {
+        // Said plainly rather than left to be discovered by clicking and having nothing happen.
+        AddFact(TEXT("Selection"), TEXT("this snapshot carries no mesh identification, so it cannot be clicked into"));
+    }
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkOptimizationDebuggerWindow::
+    DoRun_SnapshotCapture()
+    -> void
+{
+    using namespace ck_optimization_debugger_snapshot_capture;
+
+    auto* World = TryGet_CaptureWorld();
+
+    if (ck::Is_NOT_Valid(World))
+    {
+        DoSet_Status(TEXT("No world to capture."), ECk_Tone::Warn);
+        return;
+    }
+
+    const auto* Settings = UCkOptimizationDebuggerSettings::Get();
+    const auto CapturedAt = FDateTime::Now();
+
+    auto Params = FCkOptimizationDebugger_SnapshotCaptureParams{};
+    Params.CaptureWidth = Settings != nullptr ? Settings->SnapshotCaptureWidth : 1280;
+    Params.CapturedAt = CapturedAt;
+    Params.Label = ck::Format_UE(TEXT("Snapshot {} — {}"),
+        _Model.Get_Snapshots().Num() + 1, CapturedAt.ToString(TEXT("%H:%M:%S")));
+
+    auto FailureReason = FString{};
+    auto Captured = Run_Capture(World, Params, FailureReason);
+
+    if (NOT Captured.IsSet())
+    {
+        DoSet_Status(FailureReason.IsEmpty() ? FString{TEXT("The capture failed.")} : FailureReason, ECk_Tone::Warn);
+        return;
+    }
+
+    const auto PrimCount = Captured->Prims.Num();
+    const auto Notes = Captured->CaptureNotes;
+
+    // The viewer holds a pointer INTO the array this is about to grow, and growing it can reallocate.
+    if (ck::IsValid(_SnapshotViewer))
+    { _SnapshotViewer->Set_Snapshot(nullptr); }
+
+    _Model.Add_Snapshot(MoveTemp(Captured.GetValue()), Settings != nullptr ? Settings->MaxStoredSnapshots : 8);
+
+    DoRebuild_Snapshots();
+
+    DoSet_Status(Notes.IsEmpty()
+        ? ck::Format_UE(TEXT("Captured {} mesh(es)."), PrimCount)
+        : ck::Format_UE(TEXT("Captured {} mesh(es). {}."), PrimCount, Notes), ECk_Tone::Ok);
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkOptimizationDebuggerWindow::
+    DoOnCaptureSnapshotClicked()
+    -> FReply
+{
+    DoRun_SnapshotCapture();
+
+    return FReply::Handled();
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkOptimizationDebuggerWindow::
+    DoOnCycleSnapshotClicked(
+        int32 InDelta)
+    -> FReply
+{
+    _Model.Cycle_ActiveSnapshot(InDelta);
+    DoRebuild_Snapshots();
+
+    return FReply::Handled();
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkOptimizationDebuggerWindow::
+    DoOnDeleteSnapshotClicked()
+    -> FReply
+{
+    // Same reallocation hazard as capture: removing shifts every later element.
+    if (ck::IsValid(_SnapshotViewer))
+    { _SnapshotViewer->Set_Snapshot(nullptr); }
+
+    _Model.Remove_ActiveSnapshot();
+    DoRebuild_Snapshots();
+
+    return FReply::Handled();
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -3031,6 +3319,10 @@ auto
     // deliberately still there: an asset nothing references does not stop being unreferenced because somebody
     // pressed Play.
     DoRebuild_Cleanup();
+
+    // And again for the snapshots, which survive a session invalidation for a stronger version of the same reason:
+    // every one is a picture of a moment that has already passed.
+    DoRebuild_Snapshots();
 }
 
 // --------------------------------------------------------------------------------------------------------------------

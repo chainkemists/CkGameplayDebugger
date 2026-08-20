@@ -3,6 +3,8 @@
 #include "CkDynamic/CkDynamic_Fragment_Data.h"
 #include "CkDynamic/CkDynamic_FragmentDisplaySchema.h"
 
+#include "CkEcs/Snapshot/CkSnapshot_Posture.h" // an empty reflected struct nobody registers a schema for
+
 #include "UObject/UnrealType.h"
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -49,7 +51,7 @@ bool FCkEcsDebuggerDynamicFragmentDisplaySchema_UsesCookedSchemaLabels::RunTest(
         ck::dynamic::Resolve_EnumValueDisplayName(FragmentType, Enum, static_cast<int64>(ECk_DestroyFilter::Teardown)),
         FString{TEXT("Tear it down, now")});
 
-    const auto* FallbackType = FCk_DynamicFragment_SnapshotTransient::StaticStruct();
+    const auto* FallbackType = FCk_Snapshot_Session::StaticStruct();
     TestNotNull(TEXT("Fallback Dynamic Fragment type is reflected"), FallbackType);
     if (FallbackType != nullptr)
     {

@@ -30,7 +30,7 @@ struct FCk_InputHud_RenderStyle
     float ChipPaddingX     = 5.0f;
     float ChipPaddingY     = 3.0f;
     float KeyCornerRadius  = 3.0f;
-    float KeyOpacity       = 1.0f;
+    float OverallOpacity   = 1.0f;
     float ChipMinWidth     = 18.0f;
     float ChipGap          = 3.0f;
     float GlyphRowHeight   = 6.0f;
@@ -86,10 +86,16 @@ namespace ck::input_hud
         float InPaddingX,
         float InMinWidth) -> float;
 
+    // The overlay composites as ONE surface. The idle fade-out, the ck.InputOverlay.Opacity cvar, and the user's
+    // Overall opacity all multiply into the panel's RenderOpacity, which Slate blends down into every descendant
+    // (including the ribbon's draw elements). Per-element tint alpha cannot express this: a key drawn at reduced
+    // alpha blends toward the panel fill behind it, which reads as dimming rather than transparency.
+    // The cvar keeps its own legibility floor; an explicitly authored Overall opacity is allowed to reach zero.
     CKINPUTHUDOVERLAY_API auto
-    Get_ComposedKeyOpacity(
-        float InEventFade,
-        float InKeyOpacity) -> float;
+    Get_ComposedOverlayOpacity(
+        float InIdleFade,
+        float InCVarOpacity,
+        float InOverallOpacity) -> float;
 
     CKINPUTHUDOVERLAY_API auto
     Get_DeckVisibility(

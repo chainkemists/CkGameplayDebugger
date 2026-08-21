@@ -41,7 +41,7 @@ namespace ck_input_hud_spec
         float KeyPaddingX;
         float KeyPaddingY;
         float KeyCornerRadius;
-        float KeyOpacity;
+        float OverallOpacity;
         bool UseCustomColors;
         FLinearColor CustomKeyBorder;
         FLinearColor CustomContainerOutline;
@@ -69,7 +69,7 @@ namespace ck_input_hud_spec
             , KeyPaddingX(Settings->KeyPaddingX)
             , KeyPaddingY(Settings->KeyPaddingY)
             , KeyCornerRadius(Settings->KeyCornerRadius)
-            , KeyOpacity(Settings->KeyOpacity)
+            , OverallOpacity(Settings->OverallOpacity)
             , UseCustomColors(Settings->UseCustomColors)
             , CustomKeyBorder(Settings->CustomKeyBorder)
             , CustomContainerOutline(Settings->CustomContainerOutline)
@@ -98,7 +98,7 @@ namespace ck_input_hud_spec
             Settings->KeyPaddingX = KeyPaddingX;
             Settings->KeyPaddingY = KeyPaddingY;
             Settings->KeyCornerRadius = KeyCornerRadius;
-            Settings->KeyOpacity = KeyOpacity;
+            Settings->OverallOpacity = OverallOpacity;
             Settings->UseCustomColors = UseCustomColors;
             Settings->CustomKeyBorder = CustomKeyBorder;
             Settings->CustomContainerOutline = CustomContainerOutline;
@@ -187,8 +187,8 @@ bool FCkInputHud_RenderStyle_Test::RunTest(const FString&)
     TestTrue(TEXT("history uses a restrained border and bright-muted text"),
         FMath::IsNearlyEqual(Default.KeyBorderOpacity, 0.50f) &&
         FMath::IsNearlyEqual(Default.HistoryBrightness, 0.82f));
-    TestTrue(TEXT("overall key opacity defaults to a neutral multiplier"),
-        FMath::IsNearlyEqual(Default.KeyOpacity, 1.0f));
+    TestTrue(TEXT("overall opacity defaults to fully opaque"),
+        FMath::IsNearlyEqual(Default.OverallOpacity, 1.0f));
     TestFalse(TEXT("released keys remain distinct from the panel"), Default.Palette.HistoryFill.Equals(Default.Palette.Panel));
     TestTrue(TEXT("Arctic bound signal uses the palette's cyan family"),
         Default.Palette.Resolved.Equals(Default.Palette.Active));
@@ -315,16 +315,26 @@ bool FCkInputHud_RenderStyle_Test::RunTest(const FString&)
     Settings->Set_KeyPaddingX(99.0f);
     Settings->Set_KeyPaddingY(-1.0f);
     Settings->Set_KeyCornerRadius(99.0f);
-    Settings->Set_KeyOpacity(-1.0f);
+    Settings->Set_OverallOpacity(-1.0f);
     TestTrue(TEXT("horizontal key padding is clamped"), UCk_InputHud_UserSettings::Get_KeyPaddingX() <= 12.0f);
     TestTrue(TEXT("vertical key padding is clamped"), UCk_InputHud_UserSettings::Get_KeyPaddingY() >= 0.0f);
     TestTrue(TEXT("numeric key radius is clamped"), UCk_InputHud_UserSettings::Get_KeyCornerRadius() <= 12.0f);
-    TestTrue(TEXT("overall key opacity is clamped"), UCk_InputHud_UserSettings::Get_KeyOpacity() >= 0.0f);
+    TestTrue(TEXT("overall opacity is clamped"), UCk_InputHud_UserSettings::Get_OverallOpacity() >= 0.0f);
 
-    TestEqual(TEXT("overall opacity multiplies the event fade"),
-        Get_ComposedKeyOpacity(0.5f, 0.8f), 0.4f, 0.001f);
-    TestEqual(TEXT("composed opacity clamps malformed inputs"),
-        Get_ComposedKeyOpacity(2.0f, -1.0f), 0.0f, 0.001f);
+    TestEqual(TEXT("overlay opacity multiplies the idle fade, the cvar, and the user setting"),
+        Get_ComposedOverlayOpacity(0.5f, 0.8f, 0.5f), 0.2f, 0.001f);
+    TestEqual(TEXT("composed overlay opacity clamps malformed inputs"),
+        Get_ComposedOverlayOpacity(2.0f, 2.0f, -1.0f), 0.0f, 0.001f);
+
+    // The cvar keeps the legibility floor it has always had, so a stray `ck.InputOverlay.Opacity 0` cannot make the
+    // overlay invisible and unreportable...
+    TestEqual(TEXT("the cvar keeps its legibility floor"),
+        Get_ComposedOverlayOpacity(1.0f, 0.0f, 1.0f), 0.15f, 0.001f);
+
+    // ...but that floor must NOT leak onto the explicit, persisted user setting, or Overall opacity 0 would leave a
+    // ghost of the strip on screen with no way to clear it.
+    TestEqual(TEXT("an explicit overall opacity of zero is fully transparent"),
+        Get_ComposedOverlayOpacity(1.0f, 1.0f, 0.0f), 0.0f, 0.001f);
 
     Settings->Reset_VisualTuning();
     const auto AnimationStyle = Get_ActiveRenderStyle();

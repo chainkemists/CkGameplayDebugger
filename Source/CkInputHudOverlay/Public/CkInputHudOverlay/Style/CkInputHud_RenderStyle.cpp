@@ -163,7 +163,7 @@ auto
     Result.ChipPaddingX    = UCk_InputHud_UserSettings::Get_KeyPaddingX();
     Result.ChipPaddingY    = UCk_InputHud_UserSettings::Get_KeyPaddingY();
     Result.KeyCornerRadius = UCk_InputHud_UserSettings::Get_KeyCornerRadius();
-    Result.KeyOpacity      = UCk_InputHud_UserSettings::Get_KeyOpacity();
+    Result.OverallOpacity  = UCk_InputHud_UserSettings::Get_OverallOpacity();
     return Result;
 }
 
@@ -205,12 +205,18 @@ auto
 
 auto
     ck::input_hud::
-    Get_ComposedKeyOpacity(
-        float InEventFade,
-        float InKeyOpacity)
+    Get_ComposedOverlayOpacity(
+        float InIdleFade,
+        float InCVarOpacity,
+        float InOverallOpacity)
     -> float
 {
-    return FMath::Clamp(InEventFade, 0.0f, 1.0f) * FMath::Clamp(InKeyOpacity, 0.0f, 1.0f);
+    // The cvar keeps the legibility floor it has always had: a stray `ck.InputOverlay.Opacity 0` must not make the
+    // overlay silently invisible and unreportable. The Overall opacity setting is an explicit, discoverable, and
+    // persisted choice, so it is allowed all the way to zero — the floor must NOT leak onto it.
+    return FMath::Clamp(InIdleFade, 0.0f, 1.0f) *
+           FMath::Clamp(InCVarOpacity, 0.15f, 1.0f) *
+           FMath::Clamp(InOverallOpacity, 0.0f, 1.0f);
 }
 
 auto

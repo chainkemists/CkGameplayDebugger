@@ -1,5 +1,7 @@
 #pragma once
 
+#include "CkOptimizationDebugger/Model/CkOptimizationDebugger_Suppression.h"
+
 #include "Engine/DeveloperSettings.h"
 
 #include "Containers/Set.h"
@@ -122,6 +124,12 @@ public:
     bool DumpSnapshotDebugImages = false;
 
     // ----------------------------------------------------------------------------------------------------------------
+    UPROPERTY(config, EditAnywhere, Category = "Thresholds",
+              meta = (DisplayName = "Min Sound Duration For Streaming (s)", ClampMin = "1",
+                      ToolTip = "A sound wave longer than this that is not set to stream is decoded whole into memory when it loads."))
+    int32 MinSoundDurationForStreaming = 10;
+
+    // ----------------------------------------------------------------------------------------------------------------
     // SCAN SCOPE
     // ----------------------------------------------------------------------------------------------------------------
 
@@ -137,14 +145,22 @@ public:
     TArray<FName> ExcludedLevelNames;
 
     /**
-     * Stable keys of findings the reader muted. Driven by the findings list's context menu, never typed here — same
-     * reasoning as `ExcludedLevelNames` above, and stored sorted for the same reason.
-     *
-     * It grows without bound by design: a key is small, and pruning it against "findings the current scan produced"
-     * would silently un-mute everything the reader had triaged on a level they have not opened this session.
+     * Stable keys of findings the reader muted, BEFORE suppressions existed. Read once at load and migrated into
+     * `PersonalSuppressions`, then cleared — kept only so an existing user's triage decisions survive the change
+     * rather than silently reappearing as a hundred findings they had already dealt with.
      */
     UPROPERTY(config)
     TArray<FString> MutedFindingKeys;
+
+    /**
+     * This user's own suppressions, one serialized record per line. Driven by the findings list, never typed here —
+     * same reasoning as `ExcludedLevelNames` above, and stored sorted for the same reason.
+     *
+     * PERSONAL rather than project: "I have looked at this and I am not acting on it today" is one person's
+     * judgement. The team-wide equivalent lives in `UCkOptimizationDebuggerSuppressions`, which is committed.
+     */
+    UPROPERTY(config)
+    TArray<FString> PersonalSuppressions;
 
     /**
      * Check ids whose group the findings list draws folded. Driven by the group headers, never typed here — same
@@ -198,37 +214,61 @@ public:
 
     // ----------------------------------------------------------------------------------------------------------------
 
-    /** The findings the reader has triaged away, by stable key.
+    /** This user's own suppressions, plus anything migrated out of the old muted-key list.
      *
-     *  Same shape and same reasoning as `ExcludedLevelNames`: no `EditAnywhere`, because a stable key hand-typed into
-     *  a preferences page would match nothing, and `config` because a triage decision that evaporated on restart is
-     *  one nobody would make twice. Per-USER rather than project config for the same reason the thresholds are: "I
-     *  have looked at this and I am not acting on it" is one person's judgement, not team policy, and one QA pass
-     *  must never silently hide findings from everybody else. */
-    static auto Load_MutedStableKeys() -> TSet<FString>
+     *  Per-USER for the same reason the thresholds are: a personal "not today" must never silently hide findings
+     *  from everybody else. The team-wide tier is a different object and a different file — see
+     *  `UCkOptimizationDebuggerSuppressions`.
+     *
+     *  `OutDroppedCount` carries the lines that would not parse. A suppression whose scope cannot be read would
+     *  hide findings nobody chose to hide, so it is dropped and the caller says so. */
+    static auto Load_PersonalSuppressions(int32& OutDroppedCount) -> TArray<FCkOptimizationDebugger_Suppression>
     {
-        const auto* Settings = Get();
+        OutDroppedCount = 0;
+
+        auto* Settings = GetMutableDefault<UCkOptimizationDebuggerSettings>();
 
         if (Settings == nullptr)
-        { return TSet<FString>{}; }
+        { return TArray<FCkOptimizationDebugger_Suppression>{}; }
 
-        return TSet<FString>{Settings->MutedFindingKeys};
+        auto Loaded = ck_optimization_debugger_suppression::Parse_All(
+            Settings->PersonalSuppressions,
+            ECkOptimizationDebugger_SuppressionTier::Personal,
+            OutDroppedCount);
+
+        // One-time migration off the pre-suppression muted-key list. Done here rather than in the window so the
+        // conversion happens once per user whichever entry point loads first, and so the old key list can be
+        // cleared in the same breath — two stores answering "don't show me this" is one too many.
+        if (NOT Settings->MutedFindingKeys.IsEmpty())
+        {
+            for (const auto& StableKey : Settings->MutedFindingKeys)
+            {
+                auto Migrated = FCkOptimizationDebugger_Suppression{};
+                Migrated.Scope = ECkOptimizationDebugger_SuppressionScope::Finding;
+                Migrated.Tier = ECkOptimizationDebugger_SuppressionTier::Personal;
+                Migrated.Pattern = StableKey;
+                Migrated.Reason = TEXT("Muted before suppressions existed");
+
+                Loaded.Add(MoveTemp(Migrated));
+            }
+
+            Settings->MutedFindingKeys.Reset();
+            Save_PersonalSuppressions(Loaded);
+        }
+
+        return Loaded;
     }
 
-    /** Writes the muted set back out, SORTED — the same anti-spurious-diff rule the exclusion set follows. */
-    static auto Save_MutedStableKeys(const TSet<FString>& InStableKeys) -> void
+    /** Writes this user's suppressions back out, SORTED — the same anti-spurious-diff rule the exclusion set
+     *  follows, and it matters more here because the project tier's file is committed. */
+    static auto Save_PersonalSuppressions(const TArray<FCkOptimizationDebugger_Suppression>& InSuppressions) -> void
     {
         auto* Settings = GetMutableDefault<UCkOptimizationDebuggerSettings>();
 
         if (Settings == nullptr)
         { return; }
 
-        Settings->MutedFindingKeys = InStableKeys.Array();
-        Settings->MutedFindingKeys.Sort([](const FString& InLhs, const FString& InRhs)
-        {
-            return InLhs.Compare(InRhs, ESearchCase::CaseSensitive) < 0;
-        });
-
+        Settings->PersonalSuppressions = ck_optimization_debugger_suppression::Serialize_All(InSuppressions);
         Settings->SaveConfig();
     }
 
@@ -260,6 +300,85 @@ public:
         });
 
         Settings->SaveConfig();
+    }
+};
+
+// ====================================================================================================================
+
+/**
+ * The TEAM's suppressions — the exceptions everyone inherits.
+ *
+ * `defaultconfig` + `config=CkOptimizationDebugger` puts these in `Config/DefaultCkOptimizationDebugger.ini`, which
+ * is committed with the project. That is the whole point: "this 4096 texture is the hero prop and it is meant to be
+ * 4096" is a RULING, and a ruling that lives on one QA machine is one every teammate re-litigates.
+ *
+ * It is deliberately NOT a `UDeveloperSettings` and carries no `EditAnywhere`: the records are made from the
+ * findings list, where the reader can see what they are excusing, and a preferences page offering a free-text
+ * `Scope=...;Pattern=...` field would be a page that silently does nothing useful.
+ *
+ * This does NOT reopen the thresholds decision. A threshold is one person's calibration of what they want flagged,
+ * so it stays per-user; a suppression is the team's ruling that a flagged thing is intentional. The two were never
+ * the same kind of statement.
+ */
+UCLASS(defaultconfig, config = CkOptimizationDebugger)
+class CKOPTIMIZATIONDEBUGGER_API UCkOptimizationDebuggerSuppressions : public UObject
+{
+    GENERATED_BODY()
+
+public:
+    /** One serialized record per line. Text rather than a struct array so the committed file is readable in a diff
+     *  and mergeable by hand when two people add an exception in the same week. */
+    UPROPERTY(config)
+    TArray<FString> Suppressions;
+
+public:
+    /** The team's suppressions. `OutDroppedCount` carries lines that would not parse — dropped rather than
+     *  half-applied, and reported by the caller. */
+    static auto Load(int32& OutDroppedCount) -> TArray<FCkOptimizationDebugger_Suppression>
+    {
+        OutDroppedCount = 0;
+
+        const auto* Store = GetDefault<UCkOptimizationDebuggerSuppressions>();
+
+        if (Store == nullptr)
+        { return TArray<FCkOptimizationDebugger_Suppression>{}; }
+
+        return ck_optimization_debugger_suppression::Parse_All(
+            Store->Suppressions,
+            ECkOptimizationDebugger_SuppressionTier::Project,
+            OutDroppedCount);
+    }
+
+    /** Writes the team's suppressions to the committed config file, SORTED.
+     *
+     *  `TryUpdateDefaultConfigFile` and its RESULT is checked, exactly as the texture-streaming fix does: a
+     *  `Default*.ini` that is read-only under source control would otherwise absorb the write and leave the editor
+     *  claiming an exception the file never received. Returns false so the caller can say so. */
+    static auto TrySave(const TArray<FCkOptimizationDebugger_Suppression>& InSuppressions) -> bool
+    {
+        auto* Store = GetMutableDefault<UCkOptimizationDebuggerSuppressions>();
+
+        if (Store == nullptr)
+        { return false; }
+
+        const auto Previous = Store->Suppressions;
+
+        Store->Suppressions = ck_optimization_debugger_suppression::Serialize_All(InSuppressions);
+
+        if (Store->TryUpdateDefaultConfigFile())
+        { return true; }
+
+        // Rolled back so the running editor and the file on disk keep agreeing.
+        Store->Suppressions = Previous;
+
+        return false;
+    }
+
+    static auto Get_ConfigFilePath() -> FString
+    {
+        const auto* Store = GetDefault<UCkOptimizationDebuggerSuppressions>();
+
+        return Store != nullptr ? Store->GetDefaultConfigFilename() : FString{};
     }
 };
 

@@ -247,7 +247,7 @@ auto
         + SVerticalBox::Slot().AutoHeight()
         [
             ck_intent_debugger_input_hud_controls::Make_Row(
-                TEXT("Corner"), TEXT("Viewport anchor: top-left, top-right, bottom-left, bottom-right."),
+                TEXT("Corner"), TEXT("Viewport anchor: top-left, top-right, bottom-left, bottom-right. PERSISTS across runs, including packaged builds -- unlike Scale and Opacity, which are session-only."),
                 SNew(SSegmentedControl<int32>)
                     .Value_Lambda([]() { return FMath::Clamp(ck_intent_debugger_input_hud_controls::Get_CVarInt(TEXT("ck.InputOverlay.Corner"), 1), 0, 3); })
                     .OnValueChanged_Lambda([](int32 InValue) { ck_intent_debugger_input_hud_controls::Set_CVarInt(TEXT("ck.InputOverlay.Corner"), InValue); })
@@ -255,7 +255,19 @@ auto
                     + SSegmentedControl<int32>::Slot(1).Text(FText::FromString(TEXT("TR")))
                     + SSegmentedControl<int32>::Slot(2).Text(FText::FromString(TEXT("BL")))
                     + SSegmentedControl<int32>::Slot(3).Text(FText::FromString(TEXT("BR"))))
-        ];
+        ]
+        + SVerticalBox::Slot().AutoHeight().Padding(0.0f, CkStyle::SpaceXS, 0.0f, 0.0f)
+        [MakeNumeric(TEXT("Offset X"), TEXT("Distance inward from the anchored corner. Always positive - it pushes the overlay away from whichever corner it is pinned to, so changing corners mirrors the placement. Persists."),
+            TAttribute<double>::CreateLambda([]() { return static_cast<double>(ck_intent_debugger_input_hud_controls::Get_CVarFloat(TEXT("ck.InputOverlay.OffsetX"), 0.0f)); }),
+            TOptional<double>{0.0}, TOptional<double>{512.0}, 0,
+            FOnCkDebug_NumericCommitted::CreateLambda([](double InValue)
+            { ck_intent_debugger_input_hud_controls::Set_CVarFloat(TEXT("ck.InputOverlay.OffsetX"), static_cast<float>(InValue)); }))]
+        + SVerticalBox::Slot().AutoHeight().Padding(0.0f, CkStyle::SpaceXS, 0.0f, 0.0f)
+        [MakeNumeric(TEXT("Offset Y"), TEXT("Distance inward from the anchored corner, vertically. See Offset X. Persists."),
+            TAttribute<double>::CreateLambda([]() { return static_cast<double>(ck_intent_debugger_input_hud_controls::Get_CVarFloat(TEXT("ck.InputOverlay.OffsetY"), 0.0f)); }),
+            TOptional<double>{0.0}, TOptional<double>{512.0}, 0,
+            FOnCkDebug_NumericCommitted::CreateLambda([](double InValue)
+            { ck_intent_debugger_input_hud_controls::Set_CVarFloat(TEXT("ck.InputOverlay.OffsetY"), static_cast<float>(InValue)); }))];
 }
 
 auto

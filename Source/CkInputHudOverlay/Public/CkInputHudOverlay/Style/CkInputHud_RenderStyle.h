@@ -31,6 +31,9 @@ struct FCk_InputHud_RenderStyle
     float ChipPaddingY     = 3.0f;
     float KeyCornerRadius  = 3.0f;
     float OverallOpacity   = 1.0f;
+    ECk_InputHud_AnchorCorner AnchorCorner = ECk_InputHud_AnchorCorner::TopRight;
+    float AnchorOffsetX    = 6.0f;
+    float AnchorOffsetY    = 4.0f;
     float ChipMinWidth     = 18.0f;
     float ChipGap          = 3.0f;
     float GlyphRowHeight   = 6.0f;

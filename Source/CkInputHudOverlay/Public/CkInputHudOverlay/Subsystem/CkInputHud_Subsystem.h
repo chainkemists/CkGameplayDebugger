@@ -60,6 +60,10 @@ private:
 
     auto OnCVar_MasterChanged(IConsoleVariable* InVar) -> void;
 
+    // Placement cvars WRITE THROUGH to the persisted user settings rather than acting as parallel state, so a QA
+    // tweak from the console survives relaunch exactly like one made in Style Lab or the Intent Debugger.
+    auto OnCVar_PlacementChanged(IConsoleVariable* InVar) -> void;
+
     // Bound to UCommonInputSubsystem::OnInputMethodChangedNative (a native multicast delegate — no UFUNCTION, and
     // none is possible here: this whole block is compiled out in Shipping).
     auto OnInputMethodChanged(ECommonInputType InNewInputType) -> void;
@@ -82,6 +86,8 @@ private:
     TAutoConsoleVariable<float>* _CVar_Scale   = nullptr;
     TAutoConsoleVariable<int32>* _CVar_Corner  = nullptr;
     TAutoConsoleVariable<float>* _CVar_Opacity = nullptr;
+    TAutoConsoleVariable<float>* _CVar_OffsetX = nullptr;
+    TAutoConsoleVariable<float>* _CVar_OffsetY = nullptr;
 
     // True if this instance registered the console objects (first LP subsystem wins).
     bool _bIsPrimaryConsoleOwner = false;

@@ -1,6 +1,7 @@
 ﻿#pragma once
 
 #include "CkOptimizationDebugger/Model/CkOptimizationDebugger_Snapshot.h"
+#include "CkOptimizationDebugger/Model/CkOptimizationDebugger_Suppression.h"
 
 #include "CkCore/Macros/CkMacros.h"
 
@@ -53,6 +54,10 @@ enum class ECkOptimizationDebugger_Category : uint8
     Actor,
     Blueprint,
     ProjectSettings,
+
+    // Appended LAST on purpose: a category's enum VALUE is its bit in `CategoryMask`, so inserting one in the
+    // middle would renumber every bit above it.
+    Audio,
 };
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -124,6 +129,32 @@ struct CKOPTIMIZATIONDEBUGGER_API FCkOptimizationDebugger_FindingRow
 
 // --------------------------------------------------------------------------------------------------------------------
 
+/** One applied fix, in plain language, kept for the session.
+ *
+ *  A result message that lives only on the status strip is a result message the next status update destroys. The
+ *  log is what makes "what did I just change" answerable an hour later, and what makes the change describable in
+ *  the commit that carries it. */
+struct CKOPTIMIZATIONDEBUGGER_API FCkOptimizationDebugger_FixLogEntry
+{
+    FName CheckId;
+
+    FString FixVerb;
+
+    // The finding's own target, so the entry is attributable back to the row it came from.
+    FString TargetLabel;
+
+    // What actually happened, as the apply reported it.
+    FString Message;
+
+    bool Succeeded = false;
+
+    /** Every object the apply wrote to. Kept as paths rather than packages: the panel that lists them re-asks the
+     *  package whether it is STILL dirty, so an entry cannot claim an unsaved change the reader has since saved. */
+    TArray<FSoftObjectPath> WrittenObjectPaths;
+};
+
+// --------------------------------------------------------------------------------------------------------------------
+
 /** What the user has narrowed the findings list to. Two independent text queries (the suite's Filter/Highlight
  *  contract) plus one visibility bit per severity and per category. */
 struct CKOPTIMIZATIONDEBUGGER_API FCkOptimizationDebugger_FilterState
@@ -135,7 +166,7 @@ struct CKOPTIMIZATIONDEBUGGER_API FCkOptimizationDebugger_FilterState
     // zero-init, because a zero mask would read as "hide everything" — the one state a fresh filter must never be in.
     // `k_AllSeverityMask` / `k_AllCategoryMask` below are the same values, pinned by a spec.
     uint8 SeverityMask = 0x07;
-    uint8 CategoryMask = 0x7F;
+    uint8 CategoryMask = 0xFF;
 
     /** Only findings whose target path begins with this, case-insensitively. Empty means no scoping.
      *
@@ -156,17 +187,19 @@ struct CKOPTIMIZATIONDEBUGGER_API FCkOptimizationDebugger_FilterState
      *  Wording the filter as the narrower claim is what keeps it from promising an enabled button. */
     bool ShowOnlyWithSuggestedFix = false;
 
-    /** Stable keys the reader has triaged and asked not to see again. Empty is the resting state.
+    /** The exceptions the reader — or their team — has marked. Empty is the resting state.
      *
-     *  Keyed by `StableKey` because that is already the identity a row is REUSED by across re-scans — so a muted
-     *  finding stays muted when the same problem is found again, which is the whole point, while a genuinely new
-     *  finding on the same asset gets its own key and shows up. */
-    TSet<FString> MutedStableKeys;
+     *  Carried ON the filter state so `Passes_Filter` stays pure over one struct. A `Finding`-scoped entry is keyed
+     *  by `StableKey`, which is already the identity a row is REUSED by across re-scans, so a suppressed finding
+     *  stays suppressed when the same problem is found again while a genuinely new finding on the same asset gets
+     *  its own key and shows up. The wider scopes (asset, folder, check) are what make a project-level ruling
+     *  expressible without one row per instance. */
+    TArray<FCkOptimizationDebugger_Suppression> Suppressions;
 
-    /** Show muted findings anyway (still visibly marked as muted). The escape hatch that keeps muting honest: a
-     *  filter that can permanently hide findings with no way to see what it hid is a filter that makes the tool lie
-     *  about the project, and the reader who muted something six months ago cannot audit their own past decisions. */
-    bool ShowMuted = false;
+    /** Show suppressed findings anyway (still visibly marked as such, with the reason). The escape hatch that keeps
+     *  suppression honest: a filter that can permanently hide findings with no way to see what it hid is a filter
+     *  that makes the tool lie about the project, and nobody should inherit a silent exception from a teammate. */
+    bool ShowSuppressed = false;
 
     /** Only findings at or past this multiple of their own budget. Zero — the resting state — admits everything.
      *
@@ -734,39 +767,58 @@ public:
         bool InShowOnly) -> void;
 
 public:
-    /** Whether this finding is on the triage list. Keyed by stable key, so it survives a re-scan that reproduces the
-     *  same finding — which is the entire reason to have it. */
+    /** Whether some suppression covers this finding. Takes the whole ROW rather than a key, because the wider
+     *  scopes match on the target path and the check id, neither of which a stable key can be taken apart into. */
     auto
-    Get_IsMuted(
-        const FString& InStableKey) const -> bool;
+    Get_IsSuppressed(
+        const FCkOptimizationDebugger_FindingRow& InFinding) const -> bool;
+
+    /** WHICH suppression covers it, so the row can print the reason. A suppressed finding whose reason cannot be
+     *  read is the silent exception this feature exists to prevent. */
+    auto
+    TryGet_Suppression(
+        const FCkOptimizationDebugger_FindingRow& InFinding) const -> const FCkOptimizationDebugger_Suppression*;
 
     auto
-    Set_Muted(
-        const FString& InStableKey,
-        bool InMuted) -> void;
+    Add_Suppression(
+        const FCkOptimizationDebugger_Suppression& InSuppression) -> void;
+
+    /** Drops every suppression that covers this finding, whatever its scope — the un-suppress verb. Broad on
+     *  purpose: a reader clicking "stop hiding this" means the row, not one rule out of three that hide it. */
+    auto
+    Remove_SuppressionsCovering(
+        const FCkOptimizationDebugger_FindingRow& InFinding) -> int32;
 
     auto
-    Get_ShowMuted() const -> bool;
+    Remove_SuppressionAt(
+        int32 InIndex) -> void;
 
     auto
-    Set_ShowMuted(
-        bool InShowMuted) -> void;
-
-    /** How many of the CURRENT findings are muted — the number the "show muted" affordance prints so the reader can
-     *  see there is something hidden without turning it on. Deliberately not the size of the muted SET: that set
-     *  accumulates keys from scans and branches this project no longer has, and printing it would claim this level
-     *  hides more than it does. */
-    auto
-    Get_MutedFindingCount() const -> int32;
-
-    /** Replaces the whole muted set — how the persisted settings are loaded back in at window construction, exactly
-     *  as the level-exclusion set is. */
-    auto
-    Set_MutedStableKeys(
-        TSet<FString> InStableKeys) -> void;
+    Get_ShowSuppressed() const -> bool;
 
     auto
-    Get_MutedStableKeys() const -> const TSet<FString>&;
+    Set_ShowSuppressed(
+        bool InShowSuppressed) -> void;
+
+    /** How many of the CURRENT findings are suppressed — the number the affordance prints so the reader can see
+     *  there is something hidden without turning it on. Deliberately not the size of the suppression LIST: that
+     *  list holds rules for assets and branches this project may no longer have, and printing it would claim this
+     *  level hides more than it does. */
+    auto
+    Get_SuppressedFindingCount() const -> int32;
+
+    /** Replaces the whole set — how the two persisted stores are loaded back in at window construction. */
+    auto
+    Set_Suppressions(
+        TArray<FCkOptimizationDebugger_Suppression> InSuppressions) -> void;
+
+    auto
+    Get_Suppressions() const -> const TArray<FCkOptimizationDebugger_Suppression>&;
+
+    /** Just one tier's worth, in list order — what each store writes back. */
+    auto
+    Get_SuppressionsForTier(
+        ECkOptimizationDebugger_SuppressionTier InTier) const -> TArray<FCkOptimizationDebugger_Suppression>;
 
 public:
     auto
@@ -862,6 +914,26 @@ public:
 
     auto
     Get_QueuedStableKeys() const -> const TSet<FString>&;
+
+public:
+    /** Every fix applied this session, in the order they ran.
+     *
+     *  It SURVIVES `Reset()`, for the same reason the snapshots do and a stronger one: a PIE boundary invalidates
+     *  what is true about the world, and this is a record of what the reader already did to it. Dropping it there
+     *  would delete the only account of a change that is still sitting unsaved in their packages. */
+    auto
+    Get_FixLog() const -> const TArray<FCkOptimizationDebugger_FixLogEntry>&;
+
+    auto
+    Add_FixLogEntries(
+        const TArray<FCkOptimizationDebugger_FixLogEntry>& InEntries) -> void;
+
+    auto
+    Clear_FixLog() -> void;
+
+    /** How many of the logged fixes actually wrote something — what the panel header counts. */
+    auto
+    Get_AppliedFixCount() const -> int32;
 
 public:
     /** Whether the NEXT scan will skip this level. Excluded levels still appear on the dashboard, greyed — a level
@@ -996,6 +1068,11 @@ private:
     // one restored across an editor restart would apply fixes the reader had forgotten they queued.
     TSet<FString> _QueuedStableKeys;
 
+    // What this session has applied. Append-only within a session and never persisted: an entry describes a change
+    // sitting in the reader's packages right now, and one restored across a restart would describe a change that is
+    // either long saved or long discarded.
+    TArray<FCkOptimizationDebugger_FixLogEntry> _FixLog;
+
     // What was resident when the memory analyzer last ran. Independent of the level scan in both directions: a level
     // scan does not refresh it and it does not touch the findings, because "what is in this level" and "what is
     // loaded right now" are different questions with different answers.
@@ -1068,7 +1145,7 @@ namespace ck_optimization_debugger_model
 {
     constexpr auto k_PageCount         = 6;
     constexpr auto k_SeverityCount     = 3;
-    constexpr auto k_CategoryCount     = 7;
+    constexpr auto k_CategoryCount     = 8;
     constexpr auto k_DiskCategoryCount = 8;
     constexpr auto k_MemoryTableCount  = 3;
     constexpr auto k_MemoryColumnCount = 6;
@@ -1076,7 +1153,7 @@ namespace ck_optimization_debugger_model
 
     // All bits set == no filtering. Kept next to the counts so the two can never disagree.
     constexpr auto k_AllSeverityMask = static_cast<uint8>(0x07);
-    constexpr auto k_AllCategoryMask = static_cast<uint8>(0x7F);
+    constexpr auto k_AllCategoryMask = static_cast<uint8>(0xFF);
 
     // ----------------------------------------------------------------------------------------------------------------
 

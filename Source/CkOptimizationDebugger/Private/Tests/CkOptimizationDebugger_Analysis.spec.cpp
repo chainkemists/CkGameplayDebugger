@@ -53,6 +53,8 @@ bool FCkOptimizationDebugger_Analysis_ThresholdDefaults::RunTest(const FString& 
         Defaults.MaxBlueprintDependencies, Settings->MaxBlueprintDependencies);
     TestEqual(TEXT("MinTexturesForStreamingWarning agrees"),
         Defaults.MinTexturesForStreamingWarning, Settings->MinTexturesForStreamingWarning);
+    TestEqual(TEXT("MinSoundDurationForStreaming agrees"),
+        Defaults.MinSoundDurationForStreaming, Settings->MinSoundDurationForStreaming);
 
     // Copying from a null settings pointer must not zero the struct: a scan judged by zero budgets would flag every
     // asset in the project, which is the loudest possible way to say nothing.

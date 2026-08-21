@@ -36,6 +36,43 @@ readers, census, progressive session write, heartbeat, self-timeout — and exit
 - Self-watchdog: absolute wall-clock budget from the request; exceeded → flush partial session with
   `state=Failed_Timeout` + exit. (The host adds its own outer timeout in Phase 5 — belt and braces.)
 
+### 4.0 Environment assertion — refuse to measure, never hope (NEW, Fable-raised 2026-08-21)
+
+Before the first sample, the runner asserts its measurement environment and **refuses to run** (typed
+failure + heartbeat reason) if any check fails. A throttled or chrome-polluted child reports success
+while producing quietly garbage numbers — that is the single highest-severity silent-corruption risk
+in this campaign, and it must be a gate, not an assumption. Assert and log on the first heartbeat:
+
+1. Real RHI — `NOT GUsingNullRHI` (`RHIGlobals.h:840`); GPU timestamps returning non-zero, or the
+   GPU metric is marked unavailable up front rather than mid-run.
+2. **No background/idle throttling.** The child window is unattended and usually unfocused. The
+   governing cvar is **`t.IdleWhenNotForeground`** (`Core/Private/HAL/ConsoleManager.cpp:4159-4160`),
+   read by `FEngineLoop::ShouldUseIdleMode()` (`LaunchEngineLoop.cpp:5263-5271`, applied at `:5755`).
+   **Its engine default is 0** (no idle throttling) — verified Phase 0 — so the common case is safe,
+   but a consumer project's ini can set it to 1 and every number would then measure the throttle
+   rather than the level. **Assert the resolved value is 0 in-process; do not merely pass it on the
+   command line.** Record it in `environment.forcedCvars`.
+3. Frame-rate uncapped: `t.MaxFPS 0`, `r.VSync 0` — read back in-process, not assumed (a consumer
+   ini can re-set them).
+3b. **Frame-rate smoothing OFF — the easy one to miss.** `UEngine::bSmoothFrameRate` (`Engine.h:1609`)
+   clamps frame times into `SmoothedFrameRateRange` (`:1621`) and **applies in `-game`**, silently
+   flooring fast frames and corrupting every statistic downstream. The gate is
+   `UnrealEngine.cpp:11875`:
+   `FPlatformProperties::AllowsFramerateSmoothing() && bSmoothFrameRate && !bForceDisableFrameRateSmoothing && !IsRunningDedicatedServer()`.
+   **Prefer setting `GEngine->bForceDisableFrameRateSmoothing = true`** — it is the runtime lever that
+   wins regardless of config — and assert the whole expression evaluates false.
+3c. **Window must not be minimized.** A minimized window makes Slate skip rendering entirely;
+   unfocused-but-visible is fine. Never minimize the child; assert via `GEngine->GameViewport`.
+4. `FApp::UseFixedTimeStep()` is false (addendum §1.1 — the frame-time source silently changes if
+   true).
+5. Source control provider disabled in the child via **`-SCCProvider=None`** — a real switch,
+   parsed at `Developer/SourceControl/Private/SourceControlSettings.cpp:58-60` (verified Phase 0).
+   **Not moot:** `GitSourceControl.uplugin` declares its module `UncookedOnly`, not `Editor`, so it
+   *does* load in a `-game` run on an editor binary. An SCC init inside a measurement process is
+   pure noise and a startup-time hazard.
+
+Record all five into `environment` (SCHEMA.md) so a reader can audit the conditions after the fact.
+
 ### 4.2 The run state machine (`Private/CkPerfLab/Runner/CkPerfLab_Runner_StateMachine.{h,cpp}`)
 
 Model as `ck::Technique` named steps (doctrine: replaces phase comments):

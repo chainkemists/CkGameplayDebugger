@@ -77,6 +77,48 @@ Row format: **What was asked** · **Options weighed** · **Decision + why** · *
 - **Amendments applied:** VALIDATION.md §A rows 6/6a/6b + §B post-campaign row; PHASE_6.md §6.4
   items 6–7; PHASE_4.md runner "budget is carried, never baked" bullet.
 
+### D-005 — D2 overturned, then reinstated: the child-binary finding **(Fable-ruled twice)**
+
+**This is the durable artifact of the Phase 0 gate. PHASE_5 cites it.**
+
+- **What happened:** PHASE_0's smoke fired its STOP gate. I misdiagnosed the cause, escalated to
+  Fable to re-litigate locked decision D2, and the advisor ruled to **overturn** D2 (child becomes a
+  separate *editor* instance). I then found the true root cause, sent the falsifying evidence, and
+  the advisor **withdrew its ruling**. D2 stands as originally written.
+- **The two commands that settle it:**
+  - **FAILS** (engine binary): `D:/Repositories/UnrealEngine-Angelscript/Engine/Binaries/Win64/UnrealEditor-Cmd.exe <proj> /CkTests/TestGyms/TestGyms_CkTests_Level -game -windowed -resx=1280 -resy=720 -unattended -nosplash`
+    → exit 1 in ~20 s, `Plugin 'CkFoundation' failed to load because module 'CkIskmRendererVF' could not be found`. **Reproduced identically with `-game` removed** — which is what falsified the `-game` theory.
+  - **PASSES** (project's own binary): `D:/Repositories/CkRepos/CkPlugins_Other/Binaries/Win64/CkPluginsEditor-Cmd.exe <proj> "/CkTests/TestGyms/TestGyms_CkTests_Level" -game -windowed -resx=1280 -resy=720 -unattended -nosplash -abslog=... -ExecCmds="t.MaxFPS 0, r.VSync 0"`
+    → ran the full 220 s bound (exit 124 = we killed it), D3D12, map loaded in 1.02 s, world up at max tick rate 0, zero plugin errors, zero `LogWindows: Error`.
+- **Root cause:** `Source/CkPluginsEditor.Target.cs:18` sets
+  `BuildEnvironment = TargetBuildEnvironment.Unique`; the project builds its own
+  `CkPluginsEditor-Cmd.exe` + 747 `CkPluginsEditor-*.dll`, which the engine's stock binary cannot
+  resolve **in any mode**.
+- **Decision:** D2 unchanged except that the launcher uses `FPlatformProcess::ExecutablePath()`
+  verbatim (self-correcting for Unique *and* shared-environment consumer projects). Do not
+  synthesize a `-Cmd` variant; guard boot-failure legibility by surfacing the child's `-abslog` tail.
+- **Advisor: Fable** (ruled, then withdrew on evidence). Its withdrawal reasoning: bootability is now
+  equal by construction, and every remaining axis — GameThread validity, no editor chrome in GPU
+  numbers, `UGameInstanceSubsystem` viability, boot speed — favours `-game`.
+- **What I got wrong (worth Adam's attention):** I escalated a *decision* before finishing the
+  *diagnosis*. The correlation I had (stale Game target, zero Game DLLs) was real but causally
+  irrelevant. Had the advisor's first ruling been applied, the campaign would have adopted a
+  strictly worse architecture on a false premise. The lesson is already doctrine — reproduce before
+  claiming cause — and I broke it under time pressure.
+- **What the advisor got wrong (I did not follow it):** it advised that `-SCCProvider=None` was
+  probably moot because GitSourceControl is Editor-type. It is **`UncookedOnly`** (verified in
+  `GitSourceControl.uplugin`), which *does* load in `-game` on an editor binary — so the flag stays.
+- **Kept from the overturned ruling** (premise-independent risks, now folded into PHASE_4 §4.0):
+  the environment-assertion gate; `t.IdleWhenNotForeground` (default 0, assert anyway);
+  **`bSmoothFrameRate`**, which applies in `-game` and silently floors fast frames — verified at
+  `UnrealEngine.cpp:11875`, with `bForceDisableFrameRateSmoothing` as the cleaner runtime lever;
+  never-minimize-the-window; `-abslog` isolation; shader-compile activity as a validity signal;
+  actual-vs-requested viewport size.
+- **Blast radius:** architecture of the measurement child — the campaign's single largest technical
+  commitment.
+- **Reverse:** the editor-child alternative is fully written up in this session's advisor exchange
+  and re-rejected in PROMPT.md's rejected-approaches table with its reasoning intact.
+
 ### D-004 — Plan-vs-code corrections found in Phase 0 (no ruling needed, recorded for audit)
 
 - `PHASE_2.md` claimed CkGameplayDebugger modules use plain `ModuleRules`. **False** —

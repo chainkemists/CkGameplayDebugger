@@ -23,10 +23,19 @@ a progress model, enforce an outer timeout with kill, and enumerate/load complet
 
 ### 5.1 Launcher (`Private/CkPerfLab/Host/CkPerfLab_Subprocess.{h,cpp}`)
 
-- Resolve the running editor's own binary dir for `UnrealEditor-Cmd.exe`
-  (`FPlatformProcess::ExecutablePath()` family / `FPaths::EngineDir()` — Phase 0 addendum names the
-  exact call) + `FPaths::GetProjectFilePath()`. Compose the Phase-4-proven command line; single quote
-  discipline for spaced paths.
+- **Child binary = `FPlatformProcess::ExecutablePath()`, verbatim** — the exact executable the host
+  is running. This is self-correcting on both build environments (Unique → `CkPluginsEditor*.exe`;
+  shared → `UnrealEditor.exe`) and eliminates the bug class that cost Phase 0 three failed smokes.
+  **Fences:** never compose from `FPaths::EngineDir()` + a hardcoded binary name; do **not**
+  synthesize the `-Cmd` variant (the GUI binary with `-game` is exactly the Standalone-Game path, and
+  `-abslog` already covers logging — deriving `-Cmd` only adds a file-may-not-exist branch).
+  Project file from `FPaths::GetProjectFilePath()`. Compose the Phase-4-proven command line; quote
+  every path (spaces are normal on Windows).
+- **Boot-fail legibility (the failure mode to guard).** Self-path cannot dangle, so resolution is not
+  the risk — a child that dies before its first heartbeat is. When that happens, the host must read
+  the **tail of the child's `-abslog` file** into the surfaced error, turning a silent dead child
+  into a diagnosable verdict (plugin conflict, AS compile gate, damaged ini). Phase 0's own
+  three-failure sequence is the worked example of why this matters.
 - Non-blocking: launch returns a handle object owning PID + session dir; polling API
   (`Get_Heartbeat()`, `Get_State()`, `Request_Cancel()` → graceful file-flag then `TerminateProc`
   after grace, `Get_IsAlive()`).

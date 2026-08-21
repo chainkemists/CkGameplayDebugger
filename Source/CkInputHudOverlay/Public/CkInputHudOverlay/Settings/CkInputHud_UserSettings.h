@@ -131,8 +131,10 @@ public:
     UPROPERTY(Config, EditAnywhere, Category="Geometry", meta=(ClampMin="0.0", ClampMax="12.0"))
     float KeyCornerRadius = 3.0f;
 
+    /** Opacity of the whole Signal Strip against the game - panel, keys and readouts fade together, so lowering this
+     * reveals gameplay behind the overlay. Multiplies with the ck.InputOverlay.Opacity cvar and the idle fade-out. */
     UPROPERTY(Config, EditAnywhere, Category="Appearance", meta=(ClampMin="0.0", ClampMax="1.0"))
-    float KeyOpacity = 1.0f;
+    float OverallOpacity = 1.0f;
 
     UPROPERTY(Config, EditAnywhere, Category="Appearance", meta=(ClampMin="0.0", ClampMax="2.0"))
     float KeyBorderWidth = 1.0f;
@@ -226,7 +228,7 @@ public:
     Get_KeyCornerRadius() -> float;
 
     static auto
-    Get_KeyOpacity() -> float;
+    Get_OverallOpacity() -> float;
 
     static auto
     Get_KeyBorderWidth() -> float;
@@ -283,7 +285,7 @@ public:
     Set_KeyCornerRadius(float InValue) -> void;
 
     auto
-    Set_KeyOpacity(float InValue) -> void;
+    Set_OverallOpacity(float InValue) -> void;
 
     auto
     Set_KeyBorderWidth(float InValue) -> void;

@@ -1,5 +1,8 @@
 #include "CkOptimizationDebugger/Fixes/CkOptimizationDebugger_Fixes.h"
 
+#include "CkOptimizationDebugger/Fixes/CkOptimizationDebugger_FixPreflight.h"
+#include "CkOptimizationDebugger/Fixes/CkOptimizationDebugger_FixPlan.h"
+
 #include "CkCore/Format/CkFormat.h"
 #include "CkCore/Macros/CkMacros.h"
 #include "CkCore/Validation/CkIsValid.h"
@@ -10,6 +13,7 @@
 #include "CkOptimizationDebugger/Analysis/CkOptimizationDebugger_Thresholds.h"
 
 #include "BodySetupEnums.h"
+#include "Editor/GroupActor.h"
 #include "LevelUtils.h"
 #include "Components/HierarchicalInstancedStaticMeshComponent.h"
 #include "Components/LightComponent.h"
@@ -88,6 +92,119 @@ namespace ck_optimization_debugger_fixes_impl
         Result.ChangedState = InChangedState;
 
         return Result;
+    }
+
+    // ----------------------------------------------------------------------------------------------------------------
+    // Plan construction
+    //
+    // A plan is what a fix WOULD do, computed without doing it, and it is where every fix's re-validation lives.
+    // Each planner ends by capturing the objects it resolved into `Plan.Execute` — so the apply never re-resolves,
+    // never re-validates, and cannot write a property the plan did not list.
+    // ----------------------------------------------------------------------------------------------------------------
+
+    auto
+        Get_FixVerb(
+            FName InCheckId)
+        -> FString
+    {
+        const auto* FixInfo = ck_optimization_debugger_fixes::TryGet_FixInfo(InCheckId);
+
+        return FixInfo != nullptr ? FixInfo->DisplayVerb : FString{TEXT("Fix")};
+    }
+
+    // ----------------------------------------------------------------------------------------------------------------
+
+    auto
+        Make_RefusedPlan(
+            const FCkOptimizationDebugger_FindingRow& InFinding,
+            const FString& InReason)
+        -> FCkOptimizationDebugger_FixPlan
+    {
+        auto Plan = FCkOptimizationDebugger_FixPlan{};
+        Plan.Finding = InFinding;
+        Plan.FixVerb = Get_FixVerb(InFinding.CheckId);
+        Plan.CanApply = false;
+        Plan.RefusalReason = InReason;
+
+        return Plan;
+    }
+
+    // ----------------------------------------------------------------------------------------------------------------
+
+    auto
+        Make_Plan(
+            const FCkOptimizationDebugger_FindingRow& InFinding)
+        -> FCkOptimizationDebugger_FixPlan
+    {
+        auto Plan = FCkOptimizationDebugger_FixPlan{};
+        Plan.Finding = InFinding;
+        Plan.FixVerb = Get_FixVerb(InFinding.CheckId);
+        Plan.CanApply = true;
+
+        return Plan;
+    }
+
+    // ----------------------------------------------------------------------------------------------------------------
+
+    auto
+        Add_Change(
+            FCkOptimizationDebugger_FixPlan& InOutPlan,
+            const UObject* InObject,
+            const FString& InPropertyLabel,
+            const FString& InBeforeText,
+            const FString& InAfterText)
+        -> void
+    {
+        auto Change = FCkOptimizationDebugger_PlannedChange{};
+        Change.ObjectPath = InObject != nullptr ? FSoftObjectPath{InObject} : FSoftObjectPath{};
+        Change.ObjectLabel = InObject != nullptr ? InObject->GetName() : FString{};
+        Change.PropertyLabel = InPropertyLabel;
+        Change.BeforeText = InBeforeText;
+        Change.AfterText = InAfterText;
+
+        InOutPlan.Changes.Add(MoveTemp(Change));
+    }
+
+    // ----------------------------------------------------------------------------------------------------------------
+
+    auto
+        Add_Effect(
+            FCkOptimizationDebugger_FixPlan& InOutPlan,
+            const FString& InDescription,
+            bool InIsRisk)
+        -> void
+    {
+        auto Effect = FCkOptimizationDebugger_PlannedEffect{};
+        Effect.Description = InDescription;
+        Effect.IsRisk = InIsRisk;
+
+        InOutPlan.Effects.Add(MoveTemp(Effect));
+    }
+
+    // ----------------------------------------------------------------------------------------------------------------
+
+    auto
+        Format_OnOff(
+            bool InValue)
+        -> FString
+    {
+        return InValue ? FString{TEXT("On")} : FString{TEXT("Off")};
+    }
+
+    // ----------------------------------------------------------------------------------------------------------------
+
+    /** Whether the reader left this change ticked. Asked by every write, so a cleared tick is honoured by the code
+     *  that writes rather than by the code that draws the row. */
+    auto
+        Is_Ticked(
+            const FCkOptimizationDebugger_FixPlan& InPlan,
+            const UObject* InObject,
+            const FString& InPropertyLabel)
+        -> bool
+    {
+        return ck_optimization_debugger_fixplan::Get_IsChangeIncluded(InPlan,
+            InObject != nullptr ? FSoftObjectPath{InObject} : FSoftObjectPath{},
+            InPropertyLabel);
     }
 
 #if WITH_EDITOR
@@ -190,16 +307,16 @@ namespace ck_optimization_debugger_fixes_impl
     // ----------------------------------------------------------------------------------------------------------------
 
     auto
-        Apply_NaniteEnabled(
+        Plan_NaniteEnabled(
             const FCkOptimizationDebugger_FindingRow& InFinding,
             bool InEnabled)
-        -> FCkOptimizationDebugger_FixResult
+        -> FCkOptimizationDebugger_FixPlan
     {
         auto* Mesh = Cast<UStaticMesh>(TryLoad_Asset(InFinding.Target.Path));
 
         if (ck::Is_NOT_Valid(Mesh))
         {
-            return Make_Failure(ck::Format_UE(TEXT("{}: the static mesh could not be loaded."),
+            return Make_RefusedPlan(InFinding, ck::Format_UE(TEXT("{}: the static mesh could not be loaded."),
                 InFinding.Target.DisplayName));
         }
 
@@ -207,7 +324,7 @@ namespace ck_optimization_debugger_fixes_impl
 
         if (Mesh->IsNaniteEnabled() == InEnabled)
         {
-            return Make_Failure(ck::Format_UE(TEXT("{}: Nanite is already {} — nothing to do."),
+            return Make_RefusedPlan(InFinding, ck::Format_UE(TEXT("{}: Nanite is already {} — nothing to do."),
                 InFinding.Target.DisplayName, StateWord));
         }
 
@@ -221,32 +338,81 @@ namespace ck_optimization_debugger_fixes_impl
 
         if (InEnabled && TriangleCount < Thresholds.MinTrianglesForNanite)
         {
-            return Make_Failure(ck::Format_UE(
+            return Make_RefusedPlan(InFinding, ck::Format_UE(
                 TEXT("{}: now {} triangles, under the {}-triangle Nanite floor — re-scan."),
                 InFinding.Target.DisplayName, TriangleCount, Thresholds.MinTrianglesForNanite));
         }
 
         if (NOT InEnabled && TriangleCount >= Thresholds.MaxTrianglesForNaniteWarning)
         {
-            return Make_Failure(ck::Format_UE(
+            return Make_RefusedPlan(InFinding, ck::Format_UE(
                 TEXT("{}: now {} triangles, at or over the {}-triangle low-poly floor — Nanite left on. Re-scan."),
                 InFinding.Target.DisplayName, TriangleCount, Thresholds.MaxTrianglesForNaniteWarning));
         }
 
-        Mesh->Modify();
+        // A material that animates vertices is the one case where turning Nanite ON is not cost-neutral: World
+        // Position Offset is evaluated differently and stops being evaluated past a distance, so wind, panners and
+        // any displaced geometry change on screen. Refused rather than warned — a warning inside a batch
+        // confirmation is a warning the reader learns to dismiss, and nobody connects "the wind stopped" back to a
+        // checkbox they ticked last week. Only ever asked when ENABLING; turning Nanite off restores the old path.
+        if (InEnabled)
+        {
+            auto WpoMaterialNames = TArray<FString>{};
 
-        auto Settings = Mesh->GetNaniteSettings();
-        Settings.bEnabled = InEnabled;
-        Mesh->SetNaniteSettings(Settings);
+            switch (ck_optimization_debugger_preflight::Get_WorldPositionOffsetAnswer(Mesh, WpoMaterialNames))
+            {
+                case ECkOptimizationDebugger_WpoAnswer::UsesWorldPositionOffset:
+                {
+                    return Make_RefusedPlan(InFinding, ck::Format_UE(
+                        TEXT("{}: left alone — {} of its material(s) animate vertices with World Position Offset ({}). ")
+                        TEXT("Nanite evaluates that differently and stops past a distance, so enable it by hand once ")
+                        TEXT("you have looked at the result."),
+                        InFinding.Target.DisplayName,
+                        WpoMaterialNames.Num(),
+                        FString::Join(WpoMaterialNames, TEXT(", "))));
+                }
+                case ECkOptimizationDebugger_WpoAnswer::Unknown:
+                {
+                    return Make_RefusedPlan(InFinding, ck::Format_UE(
+                        TEXT("{}: left alone — a slot material carries no cached expression data, so whether it uses ")
+                        TEXT("World Position Offset could not be answered. Open the material and enable Nanite by hand."),
+                        InFinding.Target.DisplayName));
+                }
+                default: break;
+            }
+        }
 
-        // The same PostEditChangeProperty the mesh editor's own Nanite checkbox raises — and the thing that actually
-        // builds or drops the Nanite data. Setting the struct alone would leave the flag saying one thing and the
-        // built data saying another.
-        Mesh->NotifyNaniteSettingsChanged();
-        Mesh->MarkPackageDirty();
+        auto Plan = Make_Plan(InFinding);
 
-        return Make_Success(ck::Format_UE(TEXT("{}: Nanite {}."),
-            InFinding.Target.DisplayName, StateWord), true);
+        Add_Change(Plan, Mesh, TEXT("Nanite Enabled"), Format_OnOff(NOT InEnabled), Format_OnOff(InEnabled));
+        Add_Effect(Plan, InEnabled
+            ? ck::Format_UE(TEXT("Builds Nanite data for {} triangles"), TriangleCount)
+            : FString{TEXT("Drops the mesh's built Nanite data")}, false);
+
+        Plan.Execute = [Mesh, InEnabled, StateWord](const FCkOptimizationDebugger_FixPlan& InPlan)
+            -> FCkOptimizationDebugger_FixResult
+        {
+            const auto DisplayName = InPlan.Finding.Target.DisplayName;
+
+            if (NOT Is_Ticked(InPlan, Mesh, TEXT("Nanite Enabled")))
+            { return Make_Failure(ck::Format_UE(TEXT("{}: left unticked — nothing written."), DisplayName)); }
+
+            Mesh->Modify();
+
+            auto Settings = Mesh->GetNaniteSettings();
+            Settings.bEnabled = InEnabled;
+            Mesh->SetNaniteSettings(Settings);
+
+            // The same PostEditChangeProperty the mesh editor's own Nanite checkbox raises — and the thing that
+            // actually builds or drops the Nanite data. Setting the struct alone would leave the flag saying one
+            // thing and the built data saying another.
+            Mesh->NotifyNaniteSettingsChanged();
+            Mesh->MarkPackageDirty();
+
+            return Make_Success(ck::Format_UE(TEXT("{}: Nanite {}."), DisplayName, StateWord), true);
+        };
+
+        return Plan;
     }
 
     // ----------------------------------------------------------------------------------------------------------------
@@ -284,21 +450,21 @@ namespace ck_optimization_debugger_fixes_impl
     // ----------------------------------------------------------------------------------------------------------------
 
     auto
-        Apply_GenerateLods(
+        Plan_GenerateLods(
             const FCkOptimizationDebugger_FindingRow& InFinding)
-        -> FCkOptimizationDebugger_FixResult
+        -> FCkOptimizationDebugger_FixPlan
     {
         auto* Mesh = Cast<UStaticMesh>(TryLoad_Asset(InFinding.Target.Path));
 
         if (ck::Is_NOT_Valid(Mesh))
         {
-            return Make_Failure(ck::Format_UE(TEXT("{}: the static mesh could not be loaded."),
+            return Make_RefusedPlan(InFinding, ck::Format_UE(TEXT("{}: the static mesh could not be loaded."),
                 InFinding.Target.DisplayName));
         }
 
         if (Mesh->GetNumLODs() > 1)
         {
-            return Make_Failure(ck::Format_UE(TEXT("{}: the mesh already has {} LODs — re-scan."),
+            return Make_RefusedPlan(InFinding, ck::Format_UE(TEXT("{}: the mesh already has {} LODs — re-scan."),
                 InFinding.Target.DisplayName, Mesh->GetNumLODs()));
         }
 
@@ -306,40 +472,59 @@ namespace ck_optimization_debugger_fixes_impl
 
         if (Group.IsNone())
         {
-            return Make_Failure(ck::Format_UE(TEXT("{}: this platform has no configured static-mesh LOD groups, so there is no reduction setup to apply."),
+            return Make_RefusedPlan(InFinding, ck::Format_UE(TEXT("{}: this platform has no configured static-mesh LOD groups, so there is no reduction setup to apply."),
                 InFinding.Target.DisplayName));
         }
 
-        if (Mesh->GetLODGroup() == Group)
+        const auto PreviousGroup = Mesh->GetLODGroup();
+
+        if (PreviousGroup == Group)
         {
-            return Make_Failure(ck::Format_UE(TEXT("{}: already assigned to the {} LOD group yet still has one LOD — generate the chain in the Static Mesh editor."),
+            return Make_RefusedPlan(InFinding, ck::Format_UE(TEXT("{}: already assigned to the {} LOD group yet still has one LOD — generate the chain in the Static Mesh editor."),
                 InFinding.Target.DisplayName, Group));
         }
 
-        Mesh->Modify();
+        auto Plan = Make_Plan(InFinding);
 
-        // `SetLODGroup` is the engine's own path: it applies the group's default LOD count and per-LOD reduction
-        // settings and rebuilds. Driving the reduction interface directly from here would be a second, worse copy of
-        // that rule — and the mesh-editor tooling that owns it is not reachable from a non-editor module.
-        Mesh->SetLODGroup(Group);
-        Mesh->MarkPackageDirty();
+        Add_Change(Plan, Mesh, TEXT("LOD Group"),
+            PreviousGroup.IsNone() ? FString{TEXT("None")} : PreviousGroup.ToString(), Group.ToString());
+        Add_Effect(Plan, TEXT("Applies the group's LOD count and per-LOD reduction settings, and rebuilds the mesh"), false);
 
-        return Make_Success(ck::Format_UE(TEXT("{}: assigned to the {} LOD group, which generated its LOD chain from the group's reduction settings."),
-            InFinding.Target.DisplayName, Group), true);
+        Plan.Execute = [Mesh, Group](const FCkOptimizationDebugger_FixPlan& InPlan)
+            -> FCkOptimizationDebugger_FixResult
+        {
+            const auto DisplayName = InPlan.Finding.Target.DisplayName;
+
+            if (NOT Is_Ticked(InPlan, Mesh, TEXT("LOD Group")))
+            { return Make_Failure(ck::Format_UE(TEXT("{}: left unticked — nothing written."), DisplayName)); }
+
+            Mesh->Modify();
+
+            // `SetLODGroup` is the engine's own path: it applies the group's default LOD count and per-LOD reduction
+            // settings and rebuilds. Driving the reduction interface directly from here would be a second, worse
+            // copy of that rule — and the mesh-editor tooling that owns it is not reachable from a non-editor module.
+            Mesh->SetLODGroup(Group);
+            Mesh->MarkPackageDirty();
+
+            return Make_Success(ck::Format_UE(TEXT("{}: assigned to the {} LOD group, which generated its LOD chain from the group's reduction settings."),
+                DisplayName, Group), true);
+        };
+
+        return Plan;
     }
 
     // ----------------------------------------------------------------------------------------------------------------
 
     auto
-        Apply_SimpleCollision(
+        Plan_SimpleCollision(
             const FCkOptimizationDebugger_FindingRow& InFinding)
-        -> FCkOptimizationDebugger_FixResult
+        -> FCkOptimizationDebugger_FixPlan
     {
         auto* Mesh = Cast<UStaticMesh>(TryLoad_Asset(InFinding.Target.Path));
 
         if (ck::Is_NOT_Valid(Mesh))
         {
-            return Make_Failure(ck::Format_UE(TEXT("{}: the static mesh could not be loaded."),
+            return Make_RefusedPlan(InFinding, ck::Format_UE(TEXT("{}: the static mesh could not be loaded."),
                 InFinding.Target.DisplayName));
         }
 
@@ -347,30 +532,61 @@ namespace ck_optimization_debugger_fixes_impl
 
         if (ck::Is_NOT_Valid(BodySetup))
         {
-            return Make_Failure(ck::Format_UE(TEXT("{}: the mesh has no body setup to change."),
+            return Make_RefusedPlan(InFinding, ck::Format_UE(TEXT("{}: the mesh has no body setup to change."),
                 InFinding.Target.DisplayName));
         }
 
         if (BodySetup->GetCollisionTraceFlag() != CTF_UseComplexAsSimple)
         {
-            return Make_Failure(ck::Format_UE(TEXT("{}: collision complexity is no longer Use Complex As Simple — re-scan."),
+            return Make_RefusedPlan(InFinding, ck::Format_UE(TEXT("{}: collision complexity is no longer Use Complex As Simple — re-scan."),
                 InFinding.Target.DisplayName));
         }
 
-        Mesh->Modify();
-        BodySetup->Modify();
+        auto Plan = Make_Plan(InFinding);
+
+        Add_Change(Plan, Mesh, TEXT("Collision Complexity"),
+            TEXT("Use Complex As Simple"), TEXT("Use Simple And Complex"));
 
         // A mesh with the flag flipped and NO simple primitives would collide with nothing at all — a silent
-        // behaviour change far worse than the cost the finding was about. One box from the mesh's own bounds is the
-        // conservative stand-in; the reader is told to replace it with a real hull.
-        auto AddedBox = false;
+        // behaviour change far worse than the cost the finding was about. The box is a SECOND change rather than a
+        // silent side effect of the first, so a reader who has a hull in mind can untick it and keep the flag.
+        const auto NeedsBox = BodySetup->AggGeom.GetElementCount() == 0
+            && NOT Mesh->GetBounds().BoxExtent.IsNearlyZero();
 
-        if (BodySetup->AggGeom.GetElementCount() == 0)
+        if (NeedsBox)
         {
-            const auto Bounds = Mesh->GetBounds();
+            Add_Change(Plan, Mesh, TEXT("Simple Collision"), TEXT("none"), TEXT("1 box from the mesh bounds"));
+            Add_Effect(Plan, TEXT("The box is a stand-in, not a fitted hull — replace it when you can"), false);
+        }
 
-            if (NOT Bounds.BoxExtent.IsNearlyZero())
+        Plan.Execute = [Mesh, BodySetup, NeedsBox](const FCkOptimizationDebugger_FixPlan& InPlan)
+            -> FCkOptimizationDebugger_FixResult
+        {
+            const auto DisplayName = InPlan.Finding.Target.DisplayName;
+
+            if (NOT Is_Ticked(InPlan, Mesh, TEXT("Collision Complexity")))
+            { return Make_Failure(ck::Format_UE(TEXT("{}: left unticked — nothing written."), DisplayName)); }
+
+            const auto AddBox = NeedsBox && Is_Ticked(InPlan, Mesh, TEXT("Simple Collision"));
+
+            // Refused rather than half-applied. Flipping the flag with no simple primitives leaves a mesh that
+            // collides with nothing, so unticking the box while keeping the flag is a combination that must not be
+            // written — and saying why beats writing it and mentioning the consequence afterwards.
+            if (NeedsBox && NOT AddBox)
             {
+                return Make_Failure(ck::Format_UE(
+                    TEXT("{}: this mesh has no simple collision, so flipping the flag without adding a primitive ")
+                    TEXT("would leave it colliding with nothing. Tick the box primitive too, or add a hull by hand."),
+                    DisplayName));
+            }
+
+            Mesh->Modify();
+            BodySetup->Modify();
+
+            if (AddBox)
+            {
+                const auto Bounds = Mesh->GetBounds();
+
                 auto BoxElem = FKBoxElem{};
                 BoxElem.Center = Bounds.Origin;
                 BoxElem.X = static_cast<float>(Bounds.BoxExtent.X * 2.0);
@@ -378,23 +594,24 @@ namespace ck_optimization_debugger_fixes_impl
                 BoxElem.Z = static_cast<float>(Bounds.BoxExtent.Z * 2.0);
 
                 BodySetup->AggGeom.BoxElems.Add(BoxElem);
-                AddedBox = true;
             }
-        }
 
-        BodySetup->CollisionTraceFlag = CTF_UseSimpleAndComplex;
+            BodySetup->CollisionTraceFlag = CTF_UseSimpleAndComplex;
 
-        BodySetup->InvalidatePhysicsData();
-        BodySetup->CreatePhysicsMeshes();
+            BodySetup->InvalidatePhysicsData();
+            BodySetup->CreatePhysicsMeshes();
 
-        Mesh->PostEditChange();
-        Mesh->MarkPackageDirty();
+            Mesh->PostEditChange();
+            Mesh->MarkPackageDirty();
 
-        return Make_Success(AddedBox
-            ? ck::Format_UE(TEXT("{}: collision complexity set to Simple And Complex, with a box primitive added from the mesh bounds — replace it with a fitted hull when you can."),
-                InFinding.Target.DisplayName)
-            : ck::Format_UE(TEXT("{}: collision complexity set to Simple And Complex over the existing simple primitives."),
-                InFinding.Target.DisplayName), true);
+            return Make_Success(AddBox
+                ? ck::Format_UE(TEXT("{}: collision complexity set to Simple And Complex, with a box primitive added from the mesh bounds — replace it with a fitted hull when you can."),
+                    DisplayName)
+                : ck::Format_UE(TEXT("{}: collision complexity set to Simple And Complex over the existing simple primitives."),
+                    DisplayName), true);
+        };
+
+        return Plan;
     }
 
     // ----------------------------------------------------------------------------------------------------------------
@@ -402,57 +619,92 @@ namespace ck_optimization_debugger_fixes_impl
     // ----------------------------------------------------------------------------------------------------------------
 
     auto
-        Apply_NormalMapCompression(
+        Plan_NormalMapCompression(
             const FCkOptimizationDebugger_FindingRow& InFinding)
-        -> FCkOptimizationDebugger_FixResult
+        -> FCkOptimizationDebugger_FixPlan
     {
         auto* Texture = Cast<UTexture>(TryLoad_Asset(InFinding.Target.Path));
 
         if (ck::Is_NOT_Valid(Texture))
         {
-            return Make_Failure(ck::Format_UE(TEXT("{}: the texture could not be loaded."),
+            return Make_RefusedPlan(InFinding, ck::Format_UE(TEXT("{}: the texture could not be loaded."),
                 InFinding.Target.DisplayName));
         }
 
         if (Texture->CompressionSettings == TC_Normalmap && Texture->SRGB == 0)
         {
-            return Make_Failure(ck::Format_UE(TEXT("{}: already compressed as a normal map — re-scan."),
+            return Make_RefusedPlan(InFinding, ck::Format_UE(TEXT("{}: already compressed as a normal map — re-scan."),
                 InFinding.Target.DisplayName));
         }
 
-        Texture->Modify();
+        auto Plan = Make_Plan(InFinding);
 
-        Texture->CompressionSettings = TC_Normalmap;
+        const auto CompressionEnum = StaticEnum<TextureCompressionSettings>();
+
+        if (Texture->CompressionSettings != TC_Normalmap)
+        {
+            Add_Change(Plan, Texture, TEXT("Compression Settings"),
+                CompressionEnum != nullptr
+                    ? CompressionEnum->GetNameStringByValue(static_cast<int64>(Texture->CompressionSettings.GetValue()))
+                    : FString{TEXT("?")},
+                TEXT("TC_Normalmap"));
+        }
 
         // A normal map is not colour data. Leaving sRGB on would apply a gamma curve to vectors, which is the same
-        // defect the compression setting is being fixed for.
-        Texture->SRGB = 0;
+        // defect the compression setting is being fixed for — but it is a SECOND property, so it gets its own row
+        // and its own tick rather than riding along invisibly.
+        if (Texture->SRGB != 0)
+        { Add_Change(Plan, Texture, TEXT("sRGB"), Format_OnOff(true), Format_OnOff(false)); }
 
-        Texture->PostEditChange();
-        Texture->MarkPackageDirty();
+        Plan.Execute = [Texture](const FCkOptimizationDebugger_FixPlan& InPlan)
+            -> FCkOptimizationDebugger_FixResult
+        {
+            const auto DisplayName = InPlan.Finding.Target.DisplayName;
 
-        return Make_Success(ck::Format_UE(TEXT("{}: compression set to Normalmap and sRGB turned off."),
-            InFinding.Target.DisplayName), true);
+            const auto WriteCompression = Is_Ticked(InPlan, Texture, TEXT("Compression Settings"));
+            const auto WriteSrgb = Is_Ticked(InPlan, Texture, TEXT("sRGB"));
+
+            if (NOT WriteCompression && NOT WriteSrgb)
+            { return Make_Failure(ck::Format_UE(TEXT("{}: left unticked — nothing written."), DisplayName)); }
+
+            Texture->Modify();
+
+            if (WriteCompression)
+            { Texture->CompressionSettings = TC_Normalmap; }
+
+            if (WriteSrgb)
+            { Texture->SRGB = 0; }
+
+            Texture->PostEditChange();
+            Texture->MarkPackageDirty();
+
+            return Make_Success(WriteCompression && WriteSrgb
+                ? ck::Format_UE(TEXT("{}: compression set to Normalmap and sRGB turned off."), DisplayName)
+                : ck::Format_UE(TEXT("{}: {}."), DisplayName,
+                    WriteCompression ? TEXT("compression set to Normalmap") : TEXT("sRGB turned off")), true);
+        };
+
+        return Plan;
     }
 
     // ----------------------------------------------------------------------------------------------------------------
 
     auto
-        Apply_DisableSrgb(
+        Plan_DisableSrgb(
             const FCkOptimizationDebugger_FindingRow& InFinding)
-        -> FCkOptimizationDebugger_FixResult
+        -> FCkOptimizationDebugger_FixPlan
     {
         auto* Texture = Cast<UTexture>(TryLoad_Asset(InFinding.Target.Path));
 
         if (ck::Is_NOT_Valid(Texture))
         {
-            return Make_Failure(ck::Format_UE(TEXT("{}: the texture could not be loaded."),
+            return Make_RefusedPlan(InFinding, ck::Format_UE(TEXT("{}: the texture could not be loaded."),
                 InFinding.Target.DisplayName));
         }
 
         if (Texture->SRGB == 0)
         {
-            return Make_Failure(ck::Format_UE(TEXT("{}: sRGB is already off — re-scan."),
+            return Make_RefusedPlan(InFinding, ck::Format_UE(TEXT("{}: sRGB is already off — re-scan."),
                 InFinding.Target.DisplayName));
         }
 
@@ -462,39 +714,54 @@ namespace ck_optimization_debugger_fixes_impl
         // would be a silent visual regression reported as a successful fix.
         if (NOT ck_optimization_debugger_checks_texture::Is_DataTexture(Texture, Texture->GetName()))
         {
-            return Make_Failure(ck::Format_UE(
+            return Make_RefusedPlan(InFinding, ck::Format_UE(
                 TEXT("{}: this no longer reads as a data texture — its compression settings or name have changed since the scan. sRGB left on; re-scan."),
                 InFinding.Target.DisplayName));
         }
 
-        Texture->Modify();
+        auto Plan = Make_Plan(InFinding);
 
-        Texture->SRGB = 0;
+        Add_Change(Plan, Texture, TEXT("sRGB"), Format_OnOff(true), Format_OnOff(false));
 
-        Texture->PostEditChange();
-        Texture->MarkPackageDirty();
+        Plan.Execute = [Texture](const FCkOptimizationDebugger_FixPlan& InPlan)
+            -> FCkOptimizationDebugger_FixResult
+        {
+            const auto DisplayName = InPlan.Finding.Target.DisplayName;
 
-        return Make_Success(ck::Format_UE(TEXT("{}: sRGB turned off."), InFinding.Target.DisplayName), true);
+            if (NOT Is_Ticked(InPlan, Texture, TEXT("sRGB")))
+            { return Make_Failure(ck::Format_UE(TEXT("{}: left unticked — nothing written."), DisplayName)); }
+
+            Texture->Modify();
+
+            Texture->SRGB = 0;
+
+            Texture->PostEditChange();
+            Texture->MarkPackageDirty();
+
+            return Make_Success(ck::Format_UE(TEXT("{}: sRGB turned off."), DisplayName), true);
+        };
+
+        return Plan;
     }
 
     // ----------------------------------------------------------------------------------------------------------------
 
     auto
-        Apply_RestoreMipmaps(
+        Plan_RestoreMipmaps(
             const FCkOptimizationDebugger_FindingRow& InFinding)
-        -> FCkOptimizationDebugger_FixResult
+        -> FCkOptimizationDebugger_FixPlan
     {
         auto* Texture = Cast<UTexture>(TryLoad_Asset(InFinding.Target.Path));
 
         if (ck::Is_NOT_Valid(Texture))
         {
-            return Make_Failure(ck::Format_UE(TEXT("{}: the texture could not be loaded."),
+            return Make_RefusedPlan(InFinding, ck::Format_UE(TEXT("{}: the texture could not be loaded."),
                 InFinding.Target.DisplayName));
         }
 
         if (Texture->MipGenSettings != TMGS_NoMipmaps)
         {
-            return Make_Failure(ck::Format_UE(TEXT("{}: mip generation is already on — re-scan."),
+            return Make_RefusedPlan(InFinding, ck::Format_UE(TEXT("{}: mip generation is already on — re-scan."),
                 InFinding.Target.DisplayName));
         }
 
@@ -503,37 +770,53 @@ namespace ck_optimization_debugger_fixes_impl
         // deliberate authoring decision and report it as a fix.
         if (Texture->LODGroup == TEXTUREGROUP_UI)
         {
-            return Make_Failure(ck::Format_UE(
+            return Make_RefusedPlan(InFinding, ck::Format_UE(
                 TEXT("{}: this is now in the UI texture group, where shipping without mips is correct. Left alone; re-scan."),
                 InFinding.Target.DisplayName));
         }
 
-        Texture->Modify();
+        auto Plan = Make_Plan(InFinding);
 
-        // `FromTextureGroup` rather than a specific setting: the group is where a project states its mip policy, so
-        // this hands the decision back to that policy instead of this tool inventing one per texture.
-        Texture->MipGenSettings = TMGS_FromTextureGroup;
+        Add_Change(Plan, Texture, TEXT("Mip Gen Settings"), TEXT("NoMipmaps"), TEXT("FromTextureGroup"));
+        Add_Effect(Plan, TEXT("Rebuilds the texture with a mip chain"), false);
 
-        Texture->PostEditChange();
-        Texture->MarkPackageDirty();
+        Plan.Execute = [Texture](const FCkOptimizationDebugger_FixPlan& InPlan)
+            -> FCkOptimizationDebugger_FixResult
+        {
+            const auto DisplayName = InPlan.Finding.Target.DisplayName;
 
-        return Make_Success(ck::Format_UE(
-            TEXT("{}: mip generation set to FromTextureGroup — the texture rebuilds with mips."),
-            InFinding.Target.DisplayName), true);
+            if (NOT Is_Ticked(InPlan, Texture, TEXT("Mip Gen Settings")))
+            { return Make_Failure(ck::Format_UE(TEXT("{}: left unticked — nothing written."), DisplayName)); }
+
+            Texture->Modify();
+
+            // `FromTextureGroup` rather than a specific setting: the group is where a project states its mip policy,
+            // so this hands the decision back to that policy instead of this tool inventing one per texture.
+            Texture->MipGenSettings = TMGS_FromTextureGroup;
+
+            Texture->PostEditChange();
+            Texture->MarkPackageDirty();
+
+            return Make_Success(ck::Format_UE(
+                TEXT("{}: mip generation set to FromTextureGroup — the texture rebuilds with mips."),
+                DisplayName), true);
+        };
+
+        return Plan;
     }
 
     // ----------------------------------------------------------------------------------------------------------------
 
     auto
-        Apply_NaniteMaterialUsage(
+        Plan_NaniteMaterialUsage(
             const FCkOptimizationDebugger_FindingRow& InFinding)
-        -> FCkOptimizationDebugger_FixResult
+        -> FCkOptimizationDebugger_FixPlan
     {
         auto* Mesh = Cast<UStaticMesh>(TryLoad_Asset(InFinding.Target.Path));
 
         if (ck::Is_NOT_Valid(Mesh))
         {
-            return Make_Failure(ck::Format_UE(TEXT("{}: the mesh could not be loaded."),
+            return Make_RefusedPlan(InFinding, ck::Format_UE(TEXT("{}: the mesh could not be loaded."),
                 InFinding.Target.DisplayName));
         }
 
@@ -542,12 +825,13 @@ namespace ck_optimization_debugger_fixes_impl
         // shaders for a claim nothing is making.
         if (NOT Mesh->GetNaniteSettings().bEnabled)
         {
-            return Make_Failure(ck::Format_UE(
+            return Make_RefusedPlan(InFinding, ck::Format_UE(
                 TEXT("{}: Nanite is no longer enabled on this mesh, so its materials do not need the usage flag. Re-scan."),
                 InFinding.Target.DisplayName));
         }
 
-        auto ChangedNames = TArray<FString>{};
+        auto Plan = Make_Plan(InFinding);
+        auto BaseMaterials = TArray<UMaterial*>{};
 
         for (const auto& StaticMaterial : Mesh->GetStaticMaterials())
         {
@@ -558,35 +842,69 @@ namespace ck_optimization_debugger_fixes_impl
 
             auto* BaseMaterial = StaticMaterial.MaterialInterface->GetMaterial();
 
-            if (BaseMaterial == nullptr)
+            if (BaseMaterial == nullptr || BaseMaterials.Contains(BaseMaterial))
             { continue; }
 
-            // The BASE material carries the usage flag, so a mesh using several instances of one parent is fixed
-            // once — `Is_NaniteIncompatible` stops matching for the rest on the next iteration.
-            BaseMaterial->Modify();
+            BaseMaterials.Add(BaseMaterial);
 
-            BaseMaterial->bUsedWithNanite = 1;
+            // One row PER MATERIAL, because this fix edits SHARED assets and each one has its own blast radius. A
+            // reader who is happy to flag one parent and not another can now say so.
+            Add_Change(Plan, BaseMaterial, TEXT("Used With Nanite"), Format_OnOff(false), Format_OnOff(true));
 
-            BaseMaterial->PostEditChange();
-            BaseMaterial->MarkPackageDirty();
+            const auto ReferencingCount = ck_optimization_debugger_preflight::Get_ReferencingPackageCount(
+                FSoftObjectPath{BaseMaterial});
 
-            ChangedNames.AddUnique(BaseMaterial->GetName());
+            if (ReferencingCount > 0)
+            {
+                Add_Effect(Plan, ck::Format_UE(TEXT("{} is also used by {} other package(s) — all of them inherit this"),
+                    BaseMaterial->GetName(), ReferencingCount), true);
+            }
         }
 
-        if (ChangedNames.IsEmpty())
+        if (BaseMaterials.IsEmpty())
         {
-            return Make_Failure(ck::Format_UE(
+            return Make_RefusedPlan(InFinding, ck::Format_UE(
                 TEXT("{}: every material on this mesh already declares Used With Nanite — re-scan."),
                 InFinding.Target.DisplayName));
         }
 
-        // Said out loud, because it is the cost the reader is about to pay and nothing else on screen would tell
-        // them: setting the usage flag invalidates the material's shader map and queues a compile.
-        return Make_Success(ck::Format_UE(
-            TEXT("{}: Used With Nanite set on {} material(s) ({}). This queues a shader compile."),
-            InFinding.Target.DisplayName,
-            ChangedNames.Num(),
-            FString::Join(ChangedNames, TEXT(", "))), true);
+        Add_Effect(Plan, TEXT("Queues a shader compile"), false);
+
+        Plan.Execute = [BaseMaterials](const FCkOptimizationDebugger_FixPlan& InPlan)
+            -> FCkOptimizationDebugger_FixResult
+        {
+            const auto DisplayName = InPlan.Finding.Target.DisplayName;
+
+            auto ChangedNames = TArray<FString>{};
+
+            for (auto* BaseMaterial : BaseMaterials)
+            {
+                if (NOT Is_Ticked(InPlan, BaseMaterial, TEXT("Used With Nanite")))
+                { continue; }
+
+                // The BASE material carries the usage flag, so a mesh using several instances of one parent is
+                // fixed once.
+                BaseMaterial->Modify();
+
+                BaseMaterial->bUsedWithNanite = 1;
+
+                BaseMaterial->PostEditChange();
+                BaseMaterial->MarkPackageDirty();
+
+                ChangedNames.Add(BaseMaterial->GetName());
+            }
+
+            if (ChangedNames.IsEmpty())
+            { return Make_Failure(ck::Format_UE(TEXT("{}: every material left unticked — nothing written."), DisplayName)); }
+
+            // Said out loud, because it is the cost the reader is about to pay and nothing else on screen would
+            // tell them: setting the usage flag invalidates the material's shader map and queues a compile.
+            return Make_Success(ck::Format_UE(
+                TEXT("{}: Used With Nanite set on {} material(s) ({}). This queues a shader compile."),
+                DisplayName, ChangedNames.Num(), FString::Join(ChangedNames, TEXT(", "))), true);
+        };
+
+        return Plan;
     }
 
     // ----------------------------------------------------------------------------------------------------------------
@@ -594,15 +912,15 @@ namespace ck_optimization_debugger_fixes_impl
     // ----------------------------------------------------------------------------------------------------------------
 
     auto
-        Apply_ClampLightmapResolution(
+        Plan_ClampLightmapResolution(
             const FCkOptimizationDebugger_FindingRow& InFinding)
-        -> FCkOptimizationDebugger_FixResult
+        -> FCkOptimizationDebugger_FixPlan
     {
         auto* Actor = TryResolve_Actor(InFinding.Target.Path);
 
         if (ck::Is_NOT_Valid(Actor))
         {
-            return Make_Failure(ck::Format_UE(TEXT("{}: the actor is no longer in a loaded level — re-scan."),
+            return Make_RefusedPlan(InFinding, ck::Format_UE(TEXT("{}: the actor is no longer in a loaded level — re-scan."),
                 InFinding.Target.DisplayName));
         }
 
@@ -613,28 +931,28 @@ namespace ck_optimization_debugger_fixes_impl
 
         if (Budget <= 0)
         {
-            return Make_Failure(ck::Format_UE(
+            return Make_RefusedPlan(InFinding, ck::Format_UE(
                 TEXT("{}: the lightmap-resolution budget is not a positive number, so there is nothing to clamp to."),
                 InFinding.Target.DisplayName));
         }
 
-        // The level lock is checked BEFORE anything is modified, exactly as the two destructive actor fixes do:
+        // The level lock is checked BEFORE anything is planned, exactly as the two destructive actor fixes do:
         // `Modify` on a component in a locked level would rewrite a level the editor is protecting.
         if (Is_ActorLevelLocked(Actor))
         {
-            return Make_Failure(ck::Format_UE(TEXT("{}: its level is locked — unlock it first. Nothing changed."),
+            return Make_RefusedPlan(InFinding, ck::Format_UE(TEXT("{}: its level is locked — unlock it first. Nothing changed."),
                 InFinding.Target.DisplayName));
         }
 
         auto Components = TArray<UStaticMeshComponent*>{};
         Actor->GetComponents<UStaticMeshComponent>(Components);
 
-        auto ChangedCount = 0;
-        auto WorstBefore = 0;
+        auto Plan = Make_Plan(InFinding);
+        auto OverBudget = TArray<UStaticMeshComponent*>{};
 
         // EVERY over-budget component on the actor, not the first. The check aggregates per actor precisely because
         // one actor can carry several over-budget overrides, so a fix that clamped one of them would leave a finding
-        // the reader watched "fix" and then reappear.
+        // the reader watched "fix" and then reappear. One row each, so each can be judged on its own.
         for (auto* Component : Components)
         {
             if (ck::Is_NOT_Valid(Component))
@@ -646,39 +964,63 @@ namespace ck_optimization_debugger_fixes_impl
             if (Component->OverriddenLightMapRes <= Budget)
             { continue; }
 
-            WorstBefore = FMath::Max(WorstBefore, Component->OverriddenLightMapRes);
+            OverBudget.Add(Component);
 
-            Component->Modify();
-
-            // Clamped to the budget rather than the override cleared: clearing falls back to the mesh's own default,
-            // which is a DIFFERENT number nobody chose and may be higher than the budget too. Clamping states exactly
-            // what the reader asked for.
-            Component->OverriddenLightMapRes = Budget;
-
-            Component->PostEditChange();
-            ++ChangedCount;
+            Add_Change(Plan, Component, TEXT("Overridden Light Map Res"),
+                FString::FromInt(Component->OverriddenLightMapRes), FString::FromInt(Budget));
         }
 
-        if (ChangedCount == 0)
+        if (OverBudget.IsEmpty())
         {
-            return Make_Failure(ck::Format_UE(
+            return Make_RefusedPlan(InFinding, ck::Format_UE(
                 TEXT("{}: no component on this actor is over the {} lightmap-resolution budget any more — re-scan."),
                 InFinding.Target.DisplayName, Budget));
         }
 
-        Actor->MarkPackageDirty();
+        Plan.Execute = [Actor, OverBudget, Budget](const FCkOptimizationDebugger_FixPlan& InPlan)
+            -> FCkOptimizationDebugger_FixResult
+        {
+            const auto DisplayName = InPlan.Finding.Target.DisplayName;
 
-        return Make_Success(ck::Format_UE(
-            TEXT("{}: lightmap resolution clamped to {} on {} component(s) (worst was {})."),
-            InFinding.Target.DisplayName, Budget, ChangedCount, WorstBefore), true);
+            auto ChangedCount = 0;
+            auto WorstBefore = 0;
+
+            for (auto* Component : OverBudget)
+            {
+                if (NOT Is_Ticked(InPlan, Component, TEXT("Overridden Light Map Res")))
+                { continue; }
+
+                WorstBefore = FMath::Max(WorstBefore, Component->OverriddenLightMapRes);
+
+                Component->Modify();
+
+                // Clamped to the budget rather than the override cleared: clearing falls back to the mesh's own
+                // default, which is a DIFFERENT number nobody chose and may be higher than the budget too.
+                Component->OverriddenLightMapRes = Budget;
+
+                Component->PostEditChange();
+                ++ChangedCount;
+            }
+
+            if (ChangedCount == 0)
+            { return Make_Failure(ck::Format_UE(TEXT("{}: every component left unticked — nothing written."), DisplayName)); }
+
+            Actor->MarkPackageDirty();
+
+            return Make_Success(ck::Format_UE(
+                TEXT("{}: lightmap resolution clamped to {} on {} component(s) (worst was {})."),
+                DisplayName, Budget, ChangedCount, WorstBefore), true);
+        };
+
+        return Plan;
     }
 
     // ----------------------------------------------------------------------------------------------------------------
 
     auto
-        Apply_DisableBlueprintStartWithTick(
+        Plan_DisableBlueprintStartWithTick(
             const FCkOptimizationDebugger_FindingRow& InFinding)
-        -> FCkOptimizationDebugger_FixResult
+        -> FCkOptimizationDebugger_FixPlan
     {
         auto* Asset = TryLoad_Asset(InFinding.Target.Path);
 
@@ -694,7 +1036,7 @@ namespace ck_optimization_debugger_fixes_impl
 
         if (GeneratedClass == nullptr)
         {
-            return Make_Failure(ck::Format_UE(TEXT("{}: the Blueprint class could not be loaded."),
+            return Make_RefusedPlan(InFinding, ck::Format_UE(TEXT("{}: the Blueprint class could not be loaded."),
                 InFinding.Target.DisplayName));
         }
 
@@ -702,56 +1044,72 @@ namespace ck_optimization_debugger_fixes_impl
 
         if (ck::Is_NOT_Valid(Cdo))
         {
-            return Make_Failure(ck::Format_UE(TEXT("{}: this Blueprint is not an Actor, so it has no tick to turn off."),
+            return Make_RefusedPlan(InFinding, ck::Format_UE(TEXT("{}: this Blueprint is not an Actor, so it has no tick to turn off."),
                 InFinding.Target.DisplayName));
         }
 
-        auto& Tick = Cdo->PrimaryActorTick;
+        const auto& Tick = Cdo->PrimaryActorTick;
 
         // The check's WHOLE condition — `bCanEverTick && bStartWithTickEnabled` — re-asked. A class that can no
         // longer tick at all is already where the fix would take it, and reporting a change there would be a success
         // message for nothing.
         if (NOT Tick.bCanEverTick)
         {
-            return Make_Failure(ck::Format_UE(
+            return Make_RefusedPlan(InFinding, ck::Format_UE(
                 TEXT("{}: this class can no longer tick at all — nothing to turn off. Re-scan."),
                 InFinding.Target.DisplayName));
         }
 
         if (NOT Tick.bStartWithTickEnabled)
         {
-            return Make_Failure(ck::Format_UE(TEXT("{}: it already starts with tick disabled — re-scan."),
+            return Make_RefusedPlan(InFinding, ck::Format_UE(TEXT("{}: it already starts with tick disabled — re-scan."),
                 InFinding.Target.DisplayName));
         }
 
-        Cdo->Modify();
+        auto Plan = Make_Plan(InFinding);
 
-        // `bStartWithTickEnabled`, never `bCanEverTick`. The class keeps the ABILITY to tick, so anything that
-        // enables it deliberately at runtime still works — this only stops it ticking from frame zero. Clearing
-        // `bCanEverTick` instead would break `SetActorTickEnabled` and turn a cost fix into a broken actor.
-        Tick.bStartWithTickEnabled = false;
+        Add_Change(Plan, Cdo, TEXT("Start With Tick Enabled"), Format_OnOff(true), Format_OnOff(false));
+        Add_Effect(Plan, TEXT("Changes BEHAVIOUR: instances stop ticking from spawn. Can Ever Tick is left alone, so anything that enables tick deliberately still works"), true);
 
-        Cdo->PostEditChange();
-        GeneratedClass->MarkPackageDirty();
+        Plan.Execute = [Cdo, GeneratedClass](const FCkOptimizationDebugger_FixPlan& InPlan)
+            -> FCkOptimizationDebugger_FixResult
+        {
+            const auto DisplayName = InPlan.Finding.Target.DisplayName;
 
-        return Make_Success(ck::Format_UE(
-            TEXT("{}: Start With Tick Enabled turned off. The class can still be ticked deliberately — test anything ")
-            TEXT("that relied on it ticking from spawn."),
-            InFinding.Target.DisplayName), true);
+            if (NOT Is_Ticked(InPlan, Cdo, TEXT("Start With Tick Enabled")))
+            { return Make_Failure(ck::Format_UE(TEXT("{}: left unticked — nothing written."), DisplayName)); }
+
+            Cdo->Modify();
+
+            // `bStartWithTickEnabled`, never `bCanEverTick`. The class keeps the ABILITY to tick, so anything that
+            // enables it deliberately at runtime still works — this only stops it ticking from frame zero.
+            // Clearing `bCanEverTick` instead would break `SetActorTickEnabled` and turn a cost fix into a broken actor.
+            Cdo->PrimaryActorTick.bStartWithTickEnabled = false;
+
+            Cdo->PostEditChange();
+            GeneratedClass->MarkPackageDirty();
+
+            return Make_Success(ck::Format_UE(
+                TEXT("{}: Start With Tick Enabled turned off. The class can still be ticked deliberately — test anything ")
+                TEXT("that relied on it ticking from spawn."),
+                DisplayName), true);
+        };
+
+        return Plan;
     }
 
     // ----------------------------------------------------------------------------------------------------------------
 
     auto
-        Apply_DeleteEmptyStaticMeshActor(
+        Plan_DeleteEmptyStaticMeshActor(
             const FCkOptimizationDebugger_FindingRow& InFinding)
-        -> FCkOptimizationDebugger_FixResult
+        -> FCkOptimizationDebugger_FixPlan
     {
         auto* Actor = TryResolve_Actor(InFinding.Target.Path);
 
         if (ck::Is_NOT_Valid(Actor))
         {
-            return Make_Failure(ck::Format_UE(TEXT("{}: the actor is no longer in a loaded level — re-scan."),
+            return Make_RefusedPlan(InFinding, ck::Format_UE(TEXT("{}: the actor is no longer in a loaded level — re-scan."),
                 InFinding.Target.DisplayName));
         }
 
@@ -759,7 +1117,7 @@ namespace ck_optimization_debugger_fixes_impl
 
         if (ck::Is_NOT_Valid(MeshActor))
         {
-            return Make_Failure(ck::Format_UE(TEXT("{}: this is no longer a Static Mesh Actor — nothing deleted."),
+            return Make_RefusedPlan(InFinding, ck::Format_UE(TEXT("{}: this is no longer a Static Mesh Actor — nothing deleted."),
                 InFinding.Target.DisplayName));
         }
 
@@ -769,7 +1127,7 @@ namespace ck_optimization_debugger_fixes_impl
 
         if (Component != nullptr && Component->GetStaticMesh().Get() != nullptr)
         {
-            return Make_Failure(ck::Format_UE(TEXT("{}: a mesh has been assigned since the scan — nothing deleted."),
+            return Make_RefusedPlan(InFinding, ck::Format_UE(TEXT("{}: a mesh has been assigned since the scan — nothing deleted."),
                 InFinding.Target.DisplayName));
         }
 
@@ -777,31 +1135,59 @@ namespace ck_optimization_debugger_fixes_impl
 
         if (ck::Is_NOT_Valid(World))
         {
-            return Make_Failure(ck::Format_UE(TEXT("{}: the actor's world is gone — re-scan."),
+            return Make_RefusedPlan(InFinding, ck::Format_UE(TEXT("{}: the actor's world is gone — re-scan."),
                 InFinding.Target.DisplayName));
         }
 
         if (Is_ActorLevelLocked(Actor))
         {
-            return Make_Failure(ck::Format_UE(TEXT("{}: its level is locked — unlock it first. Nothing deleted."),
+            return Make_RefusedPlan(InFinding, ck::Format_UE(TEXT("{}: its level is locked — unlock it first. Nothing deleted."),
                 InFinding.Target.DisplayName));
         }
 
-        Actor->Modify();
+        auto Plan = Make_Plan(InFinding);
 
-        Deselect_ActorBeforeDestroy(Actor);
+        Add_Effect(Plan, ck::Format_UE(TEXT("Deletes the actor {}"), Actor->GetActorNameOrLabel()), true);
 
-        if (NOT World->EditorDestroyActor(Actor, true))
+        // Named in the PREVIEW, not only afterwards: a level designer whose Group is about to lose a member should
+        // be told before it happens, not in a status line after.
+        if (const auto* GroupActor = Cast<AGroupActor>(Actor->GroupActor))
         {
-            return Make_Failure(ck::Format_UE(TEXT("{}: the editor refused to delete the actor."),
-                InFinding.Target.DisplayName));
+            Add_Effect(Plan, ck::Format_UE(TEXT("Removes it from the Group [{}] first"),
+                GroupActor->GetActorNameOrLabel()), true);
         }
 
-        if (GEditor != nullptr)
-        { GEditor->NoteSelectionChange(); }
+        Plan.Execute = [Actor, World](const FCkOptimizationDebugger_FixPlan& InPlan)
+            -> FCkOptimizationDebugger_FixResult
+        {
+            const auto DisplayName = InPlan.Finding.Target.DisplayName;
 
-        return Make_Success(ck::Format_UE(TEXT("{}: empty Static Mesh Actor deleted."),
-            InFinding.Target.DisplayName), true);
+            Actor->Modify();
+
+            // Removed from its editor Group BEFORE it is destroyed, exactly as `UEditorEngine::edactDeleteSelected`
+            // does (`EditorActor.cpp`, `GetParentForActor` then `Remove`). `EditorDestroyActor` performs no such
+            // removal, so without this the surviving group keeps a reference to a destroyed member — the same class
+            // of omission as the level-lock check, and for the same reason: this path deletes a NAMED actor rather
+            // than the selection, so every guarantee the engine's path was making has to be made here instead.
+            const auto DetachedFromGroup = ck_optimization_debugger_preflight::Detach_FromEditorGroup(Actor);
+
+            Deselect_ActorBeforeDestroy(Actor);
+
+            if (NOT World->EditorDestroyActor(Actor, true))
+            {
+                return Make_Failure(ck::Format_UE(TEXT("{}: the editor refused to delete the actor."), DisplayName));
+            }
+
+            if (GEditor != nullptr)
+            { GEditor->NoteSelectionChange(); }
+
+            return Make_Success(DetachedFromGroup.IsEmpty()
+                ? ck::Format_UE(TEXT("{}: empty Static Mesh Actor deleted."), DisplayName)
+                : ck::Format_UE(TEXT("{}: empty Static Mesh Actor deleted, and removed from the Group [{}] first."),
+                    DisplayName, DetachedFromGroup), true);
+        };
+
+        return Plan;
     }
 
     // ----------------------------------------------------------------------------------------------------------------
@@ -831,13 +1217,16 @@ namespace ck_optimization_debugger_fixes_impl
 
     // ----------------------------------------------------------------------------------------------------------------
 
-    /** Whether this placement can become an instance without changing what the level DOES. Every clause is a thing
-     *  an instanced renderer cannot carry: a subclass may run logic, a non-static component may move, an attachment
-     *  in either direction is a relationship an instance has no way to express, and an extra scene component is
-     *  behaviour the conversion would silently drop. */
+    /** The CANDIDATE set — every plain placement of this mesh, and deliberately nothing more.
+     *
+     *  This used to be the whole gate, answering yes or no over five clauses, and every placement it turned down
+     *  vanished from the reader's view without a word. Worse, the five clauses were all about the SHAPE of a
+     *  placement and none about what it CARRIES, so a placement with gameplay tags, an editor Group, a Data Layer or
+     *  per-placement material state was converted and its state discarded in silence. Judging is now
+     *  `Audit_Placement`'s job, which answers with reasons; this decides only who gets asked. */
     auto
-        Is_ConvertibleToInstance(
-            AStaticMeshActor* InActor,
+        Is_ConversionCandidate(
+            const AStaticMeshActor* InActor,
             const UStaticMesh* InMesh)
         -> bool
     {
@@ -849,38 +1238,20 @@ namespace ck_optimization_debugger_fixes_impl
 
         const auto* Component = InActor->GetStaticMeshComponent();
 
-        if (Component == nullptr || Component->GetStaticMesh().Get() != InMesh)
-        { return false; }
-
-        if (Component->GetMobility() != EComponentMobility::Static)
-        { return false; }
-
-        if (Component->GetAttachParent() != nullptr)
-        { return false; }
-
-        auto Attached = TArray<AActor*>{};
-        InActor->GetAttachedActors(Attached);
-
-        if (NOT Attached.IsEmpty())
-        { return false; }
-
-        auto SceneComponents = TInlineComponentArray<USceneComponent*>{};
-        InActor->GetComponents(SceneComponents);
-
-        return SceneComponents.Num() == 1;
+        return Component != nullptr && Component->GetStaticMesh().Get() == InMesh;
     }
 
     // ----------------------------------------------------------------------------------------------------------------
 
     auto
-        Apply_ConvertToInstances(
+        Plan_ConvertToInstances(
             const FCkOptimizationDebugger_FindingRow& InFinding,
             UWorld* InEditorWorld)
-        -> FCkOptimizationDebugger_FixResult
+        -> FCkOptimizationDebugger_FixPlan
     {
         if (ck::Is_NOT_Valid(InEditorWorld))
         {
-            return Make_Failure(ck::Format_UE(TEXT("{}: no editor world to convert placements in."),
+            return Make_RefusedPlan(InFinding, ck::Format_UE(TEXT("{}: no editor world to convert placements in."),
                 InFinding.Target.DisplayName));
         }
 
@@ -888,7 +1259,7 @@ namespace ck_optimization_debugger_fixes_impl
 
         if (ck::Is_NOT_Valid(Mesh))
         {
-            return Make_Failure(ck::Format_UE(TEXT("{}: the static mesh could not be loaded."),
+            return Make_RefusedPlan(InFinding, ck::Format_UE(TEXT("{}: the static mesh could not be loaded."),
                 InFinding.Target.DisplayName));
         }
 
@@ -916,7 +1287,7 @@ namespace ck_optimization_debugger_fixes_impl
             {
                 auto* MeshActor = Cast<AStaticMeshActor>(Actor);
 
-                if (NOT Is_ConvertibleToInstance(MeshActor, Mesh))
+                if (NOT Is_ConversionCandidate(MeshActor, Mesh))
                 { continue; }
 
                 const auto Key = ck::Format_UE(TEXT("{}|{}"),
@@ -938,102 +1309,188 @@ namespace ck_optimization_debugger_fixes_impl
             }
         }
 
-        // Biggest group wins, with the key as the tie-break so two equal groups are not decided by whichever
-        // sub-level happened to load first.
-        Groups.Sort([](const FConversionGroup& InLhs, const FConversionGroup& InRhs)
+        if (Groups.IsEmpty())
         {
-            if (InLhs.Actors.Num() != InRhs.Actors.Num())
-            { return InLhs.Actors.Num() > InRhs.Actors.Num(); }
-
-            return InLhs.Key.Compare(InRhs.Key, ESearchCase::CaseSensitive) < 0;
-        });
-
-        if (Groups.IsEmpty() || Groups[0].Actors.Num() < 2)
-        {
-            return Make_Failure(ck::Format_UE(TEXT("{}: fewer than two convertible placements remain — re-scan."),
+            return Make_RefusedPlan(InFinding, ck::Format_UE(TEXT("{}: no placement of this mesh remains — re-scan."),
                 InFinding.Target.DisplayName));
         }
 
-        auto& Group = Groups[0];
+        // ---- The audit, in two passes, over every group ----
+        //
+        // Pass 1 asks each candidate the ABSOLUTE questions — the ones whose answer does not depend on any other
+        // placement (tags, Group membership, Data Layers, HLOD, a dynamic material instance, an inbound reference,
+        // a locked level). A placement that fails one is out whatever the rest look like, and the template has to
+        // clear the same bar before it can BE one. Pass 2 then compares every survivor against that template,
+        // property by property through reflection, so a placement differing in custom primitive data, a stencil
+        // value, a shadow flag or a draw distance is REFUSED and named rather than silently rewritten to the
+        // template's value — which is what the old five-clause gate did, without saying so.
+        //
+        // The level lock is one of those refusal reasons rather than a separate pre-check: a group whose level is
+        // locked yields no convertible placements, so it cannot win below, and the reason reaches the reader in the
+        // same sentence as every other one instead of pre-empting them.
+        const auto ReferenceContext = ck_optimization_debugger_preflight::Build_ReferenceContext(InEditorWorld);
 
-        // Checked once for the group's level, before anything is spawned. `SpawnActor` with an `OverrideLevel` and
-        // `EditorDestroyActor` both bypass the lock that `UEditorEngine::AddActor` and `edactDeleteSelected` respect,
-        // so without this a locked sub-level would be rewritten anyway — and this fix spawns BEFORE it deletes, so
-        // discovering the problem half way through would leave the level holding an instanced actor and its
-        // originals at the same time.
-        if (FLevelUtils::IsLevelLocked(Group.Level))
+        struct FAuditedGroup
         {
-            return Make_Failure(ck::Format_UE(TEXT("{}: {} is locked — unlock it first. Nothing was changed."),
-                InFinding.Target.DisplayName, Get_LevelShortName(Group.Level)));
+            const FConversionGroup* Source = nullptr;
+            TArray<AStaticMeshActor*> Convertible;
+            TArray<FCkOptimizationDebugger_PlacementAudit> Audits;
+        };
+
+        auto AuditedGroups = TArray<FAuditedGroup>{};
+        AuditedGroups.Reserve(Groups.Num());
+
+        for (auto& Candidate : Groups)
+        {
+            // Deterministic instance order: the transform list a reader compares between two runs must not depend
+            // on level iteration order. It also fixes WHICH placement becomes the template.
+            Candidate.Actors.Sort([](const AStaticMeshActor& InLhs, const AStaticMeshActor& InRhs)
+            {
+                return InLhs.GetPathName().Compare(InRhs.GetPathName(), ESearchCase::CaseSensitive) < 0;
+            });
+
+            auto Audited = FAuditedGroup{};
+            Audited.Source = &Candidate;
+
+            auto SelfCleared = TArray<AStaticMeshActor*>{};
+
+            for (auto* Placement : Candidate.Actors)
+            {
+                auto Audit = ck_optimization_debugger_preflight::Audit_Placement(
+                    Placement, Placement, Mesh, ReferenceContext);
+
+                if (Audit.Get_IsConvertible())
+                {
+                    SelfCleared.Add(Placement);
+                    continue;
+                }
+
+                Audited.Audits.Add(MoveTemp(Audit));
+            }
+
+            if (NOT SelfCleared.IsEmpty())
+            {
+                auto* TemplatePlacement = SelfCleared[0];
+
+                for (auto* Placement : SelfCleared)
+                {
+                    auto Audit = ck_optimization_debugger_preflight::Audit_Placement(
+                        Placement, TemplatePlacement, Mesh, ReferenceContext);
+
+                    if (Audit.Get_IsConvertible())
+                    { Audited.Convertible.Add(Placement); }
+
+                    Audited.Audits.Add(MoveTemp(Audit));
+                }
+            }
+
+            AuditedGroups.Add(MoveTemp(Audited));
         }
 
-        // Deterministic instance order: the transform list a reader compares between two runs must not depend on
-        // level iteration order.
-        Group.Actors.Sort([](const AStaticMeshActor& InLhs, const AStaticMeshActor& InRhs)
+        // Ranked by what is actually CONVERTIBLE, not by how many candidates a group started with: a group of forty
+        // where thirty-eight carry tags is worth less than a clean group of ten, and candidate count would have
+        // picked the first and then converted two placements.
+        AuditedGroups.Sort([](const FAuditedGroup& InLhs, const FAuditedGroup& InRhs)
         {
-            return InLhs.GetPathName().Compare(InRhs.GetPathName(), ESearchCase::CaseSensitive) < 0;
+            if (InLhs.Convertible.Num() != InRhs.Convertible.Num())
+            { return InLhs.Convertible.Num() > InRhs.Convertible.Num(); }
+
+            return InLhs.Source->Key.Compare(InRhs.Source->Key, ESearchCase::CaseSensitive) < 0;
         });
 
-        const auto* TemplateComponent = Group.Actors[0]->GetStaticMeshComponent();
+        const auto& Winner = AuditedGroups[0];
+        const auto RefusalSummary = ck_optimization_debugger_preflight::Build_RefusalSummary(Winner.Audits);
 
-        auto SpawnParams = FActorSpawnParameters{};
-        SpawnParams.OverrideLevel = Group.Level;
-        SpawnParams.ObjectFlags = RF_Transactional;
-
-        auto* InstanceActor = InEditorWorld->SpawnActor<AActor>(
-            AActor::StaticClass(), FTransform::Identity, SpawnParams);
-
-        if (ck::Is_NOT_Valid(InstanceActor))
+        if (Winner.Convertible.Num() < 2)
         {
-            return Make_Failure(ck::Format_UE(TEXT("{}: the instanced-mesh actor could not be spawned — nothing was deleted."),
-                InFinding.Target.DisplayName));
+            return Make_RefusedPlan(InFinding, ck::Format_UE(TEXT("{}: nothing was converted. {}"),
+                InFinding.Target.DisplayName, RefusalSummary));
         }
 
-        auto* InstancedMesh = NewObject<UHierarchicalInstancedStaticMeshComponent>(
-            InstanceActor, NAME_None, RF_Transactional);
+        auto ConvertibleActors = Winner.Convertible;
+        auto* GroupLevel = Winner.Source->Level;
+        const auto LevelName = Get_LevelShortName(GroupLevel);
 
-        InstanceActor->SetRootComponent(InstancedMesh);
-        InstanceActor->AddInstanceComponent(InstancedMesh);
-        InstancedMesh->OnComponentCreated();
-        InstancedMesh->RegisterComponent();
+        auto Plan = Make_Plan(InFinding);
 
-        InstancedMesh->SetStaticMesh(Mesh);
+        Add_Effect(Plan, ck::Format_UE(TEXT("Converts {} placement(s) in {} into one hierarchical instanced component"),
+            ConvertibleActors.Num(), LevelName), false);
+        Add_Effect(Plan, ck::Format_UE(TEXT("Deletes the {} original actor(s)"), ConvertibleActors.Num()), true);
 
-        if (TemplateComponent != nullptr)
+        // What is being LEFT ALONE is part of the preview, not an afterthought in the result message. A reader who
+        // expected forty and is being offered twenty-eight needs the reason before they press, not after.
+        if (NOT RefusalSummary.IsEmpty())
+        { Add_Effect(Plan, RefusalSummary, false); }
+
+        Plan.Execute = [Mesh, InEditorWorld, GroupLevel, LevelName, ConvertibleActors, RefusalSummary]
+            (const FCkOptimizationDebugger_FixPlan& InPlan) -> FCkOptimizationDebugger_FixResult
         {
-            const auto MaterialCount = TemplateComponent->GetNumMaterials();
+            const auto DisplayName = InPlan.Finding.Target.DisplayName;
+            const auto* TemplateComponent = ConvertibleActors[0]->GetStaticMeshComponent();
 
-            for (auto Index = 0; Index < MaterialCount; ++Index)
-            { InstancedMesh->SetMaterial(Index, TemplateComponent->GetMaterial(Index)); }
-        }
+            auto SpawnParams = FActorSpawnParameters{};
+            SpawnParams.OverrideLevel = GroupLevel;
+            SpawnParams.ObjectFlags = RF_Transactional;
 
-        for (const auto* Converted : Group.Actors)
-        { InstancedMesh->AddInstance(Converted->GetActorTransform(), true); }
+            auto* InstanceActor = InEditorWorld->SpawnActor<AActor>(
+                AActor::StaticClass(), FTransform::Identity, SpawnParams);
 
-        InstanceActor->SetActorLabel(ck::Format_UE(TEXT("HISM_{}"), Mesh->GetName()));
+            if (ck::Is_NOT_Valid(InstanceActor))
+            {
+                return Make_Failure(ck::Format_UE(TEXT("{}: the instanced-mesh actor could not be spawned — nothing was deleted."),
+                    DisplayName));
+            }
 
-        auto DeletedCount = 0;
+            auto* InstancedMesh = NewObject<UHierarchicalInstancedStaticMeshComponent>(
+                InstanceActor, NAME_None, RF_Transactional);
 
-        for (auto* Converted : Group.Actors)
-        {
-            Converted->Modify();
+            InstanceActor->SetRootComponent(InstancedMesh);
+            InstanceActor->AddInstanceComponent(InstancedMesh);
+            InstancedMesh->OnComponentCreated();
+            InstancedMesh->RegisterComponent();
 
-            // Dropped from the editor selection first — `EditorDestroyActor` leaves `USelection` holding whatever it
-            // destroyed, and this loop can remove dozens of actors at once.
-            Deselect_ActorBeforeDestroy(Converted);
+            InstancedMesh->SetStaticMesh(Mesh);
 
-            if (InEditorWorld->EditorDestroyActor(Converted, true))
-            { ++DeletedCount; }
-        }
+            if (TemplateComponent != nullptr)
+            {
+                const auto MaterialCount = TemplateComponent->GetNumMaterials();
 
-        if (GEditor != nullptr)
-        { GEditor->NoteSelectionChange(); }
+                for (auto Index = 0; Index < MaterialCount; ++Index)
+                { InstancedMesh->SetMaterial(Index, TemplateComponent->GetMaterial(Index)); }
+            }
 
-        return Make_Success(ck::Format_UE(TEXT("{}: {} placement(s) in {} converted into one hierarchical instanced component ({} original actor(s) deleted)."),
-            InFinding.Target.DisplayName,
-            Group.Actors.Num(),
-            Get_LevelShortName(Group.Level),
-            DeletedCount), true);
+            for (const auto* Converted : ConvertibleActors)
+            { InstancedMesh->AddInstance(Converted->GetActorTransform(), true); }
+
+            InstanceActor->SetActorLabel(ck::Format_UE(TEXT("HISM_{}"), Mesh->GetName()));
+
+            auto DeletedCount = 0;
+
+            for (auto* Converted : ConvertibleActors)
+            {
+                Converted->Modify();
+
+                // Dropped from the editor selection first — `EditorDestroyActor` leaves `USelection` holding
+                // whatever it destroyed, and this loop can remove dozens of actors at once.
+                Deselect_ActorBeforeDestroy(Converted);
+
+                if (InEditorWorld->EditorDestroyActor(Converted, true))
+                { ++DeletedCount; }
+            }
+
+            if (GEditor != nullptr)
+            { GEditor->NoteSelectionChange(); }
+
+            // The refusal summary rides the SUCCESS message, not just the failure one. "40 candidates, 28
+            // converted" is the sentence a reader needs in order to trust the twelve that were left alone.
+            return Make_Success(RefusalSummary.IsEmpty()
+                ? ck::Format_UE(TEXT("{}: {} placement(s) in {} converted into one hierarchical instanced component ({} original actor(s) deleted)."),
+                    DisplayName, ConvertibleActors.Num(), LevelName, DeletedCount)
+                : ck::Format_UE(TEXT("{}: {} placement(s) in {} converted into one hierarchical instanced component ({} original actor(s) deleted). {}"),
+                    DisplayName, ConvertibleActors.Num(), LevelName, DeletedCount, RefusalSummary), true);
+        };
+
+        return Plan;
     }
 
     // ----------------------------------------------------------------------------------------------------------------
@@ -1041,14 +1498,14 @@ namespace ck_optimization_debugger_fixes_impl
     // ----------------------------------------------------------------------------------------------------------------
 
     auto
-        Apply_ReviewMovableLights(
+        Plan_ReviewMovableLights(
             const FCkOptimizationDebugger_FindingRow& InFinding,
             UWorld* InEditorWorld)
-        -> FCkOptimizationDebugger_FixResult
+        -> FCkOptimizationDebugger_FixPlan
     {
         if (GEditor == nullptr || ck::Is_NOT_Valid(InEditorWorld))
         {
-            return Make_Failure(ck::Format_UE(TEXT("{}: no editor world to select lights in."),
+            return Make_RefusedPlan(InFinding, ck::Format_UE(TEXT("{}: no editor world to select lights in."),
                 InFinding.Target.DisplayName));
         }
 
@@ -1082,7 +1539,7 @@ namespace ck_optimization_debugger_fixes_impl
 
         if (Matched.IsEmpty())
         {
-            return Make_Failure(ck::Format_UE(TEXT("{}: no movable-light actor found in that level — re-scan."),
+            return Make_RefusedPlan(InFinding, ck::Format_UE(TEXT("{}: no movable-light actor found in that level — re-scan."),
                 InFinding.Target.DisplayName));
         }
 
@@ -1091,18 +1548,29 @@ namespace ck_optimization_debugger_fixes_impl
             return InLhs.GetPathName().Compare(InRhs.GetPathName(), ESearchCase::CaseSensitive) < 0;
         });
 
-        // Deliberately NOT a mobility change. A light that genuinely moves must stay Movable, and no offline rule
-        // can tell which ones those are — so the fix hands the reader the exact set to judge instead of guessing
-        // for them.
-        GEditor->SelectNone(false, true);
+        auto Plan = Make_Plan(InFinding);
 
-        for (auto* Actor : Matched)
-        { GEditor->SelectActor(Actor, true, false); }
+        Add_Effect(Plan, ck::Format_UE(TEXT("Selects {} movable-light actor(s) for review. Writes nothing"),
+            Matched.Num()), false);
 
-        GEditor->NoteSelectionChange();
+        Plan.Execute = [Matched](const FCkOptimizationDebugger_FixPlan& InPlan)
+            -> FCkOptimizationDebugger_FixResult
+        {
+            // Deliberately NOT a mobility change. A light that genuinely moves must stay Movable, and no offline
+            // rule can tell which ones those are — so the fix hands the reader the exact set to judge instead of
+            // guessing for them.
+            GEditor->SelectNone(false, true);
 
-        return Make_Success(ck::Format_UE(TEXT("{}: selected {} movable-light actor(s) for review — set the ones that never move to Stationary or Static."),
-            InFinding.Target.DisplayName, Matched.Num()), false);
+            for (auto* Actor : Matched)
+            { GEditor->SelectActor(Actor, true, false); }
+
+            GEditor->NoteSelectionChange();
+
+            return Make_Success(ck::Format_UE(TEXT("{}: selected {} movable-light actor(s) for review — set the ones that never move to Stationary or Static."),
+                InPlan.Finding.Target.DisplayName, Matched.Num()), false);
+        };
+
+        return Plan;
     }
 
     // ----------------------------------------------------------------------------------------------------------------
@@ -1110,70 +1578,72 @@ namespace ck_optimization_debugger_fixes_impl
     // ----------------------------------------------------------------------------------------------------------------
 
     auto
-        Apply_EnableTextureStreaming(
+        Plan_EnableTextureStreaming(
             const FCkOptimizationDebugger_FindingRow& InFinding)
-        -> FCkOptimizationDebugger_FixResult
+        -> FCkOptimizationDebugger_FixPlan
     {
         auto* Settings = GetMutableDefault<URendererSettings>();
 
         if (ck::Is_NOT_Valid(Settings))
-        { return Make_Failure(TEXT("The renderer settings object could not be reached.")); }
+        { return Make_RefusedPlan(InFinding, TEXT("The renderer settings object could not be reached.")); }
 
         if (Settings->bTextureStreaming != 0)
-        { return Make_Failure(TEXT("Texture streaming is already enabled — re-scan.")); }
+        { return Make_RefusedPlan(InFinding, TEXT("Texture streaming is already enabled — re-scan.")); }
 
-        auto* Property = URendererSettings::StaticClass()->FindPropertyByName(
-            GET_MEMBER_NAME_CHECKED(URendererSettings, bTextureStreaming));
+        auto Plan = Make_Plan(InFinding);
 
-        if (Property == nullptr)
+        Add_Change(Plan, Settings, TEXT("Texture Streaming"), Format_OnOff(false), Format_OnOff(true));
+        Add_Effect(Plan, ck::Format_UE(TEXT("Writes {} — Undo cannot reverse a config write"),
+            Settings->GetDefaultConfigFilename()), true);
+
+        Plan.Execute = [Settings](const FCkOptimizationDebugger_FixPlan& InPlan)
+            -> FCkOptimizationDebugger_FixResult
         {
-            return Make_Failure(TEXT("The Texture Streaming property could not be found on the renderer settings."));
-        }
+            if (NOT Is_Ticked(InPlan, Settings, TEXT("Texture Streaming")))
+            { return Make_Failure(TEXT("Texture Streaming left unticked — nothing written.")); }
 
-        const auto PreviousValue = Settings->bTextureStreaming;
+            const auto PreviousValue = Settings->bTextureStreaming;
 
-        Settings->bTextureStreaming = 1;
+            Settings->bTextureStreaming = 1;
 
-        // `TryUpdateDefaultConfigFile`, never `UpdateSinglePropertyInConfigFile`: the latter returns `void` and
-        // checks nothing, so a `DefaultEngine.ini` that is read-only under source control absorbed the call and this
-        // fix reported success over a file it never touched. The CDO would then disagree with the ini until the next
-        // editor restart silently reverted it — the worst shape a "fix" can have.
-        //
-        // The whole-object variant is what carries a result; the property is still passed so the write stays
-        // scoped to the one line rather than re-serializing every renderer setting.
-        if (NOT Settings->TryUpdateDefaultConfigFile())
-        {
-            // Rolled back so the running editor and the file on disk keep agreeing. A CDO left saying "enabled" over
-            // an ini that says "disabled" is a state nothing in the session would ever correct.
-            Settings->bTextureStreaming = PreviousValue;
+            // `TryUpdateDefaultConfigFile`, never `UpdateSinglePropertyInConfigFile`: the latter returns `void` and
+            // checks nothing, so a `DefaultEngine.ini` that is read-only under source control absorbed the call and
+            // this fix reported success over a file it never touched. The CDO would then disagree with the ini until
+            // the next editor restart silently reverted it — the worst shape a "fix" can have.
+            if (NOT Settings->TryUpdateDefaultConfigFile())
+            {
+                // Rolled back so the running editor and the file on disk keep agreeing. A CDO left saying "enabled"
+                // over an ini that says "disabled" is a state nothing in the session would ever correct.
+                Settings->bTextureStreaming = PreviousValue;
 
-            return Make_Failure(ck::Format_UE(
-                TEXT("{} could not be written — check it out of source control (or clear its read-only flag) and try again. Nothing was changed."),
-                Settings->GetDefaultConfigFilename()));
-        }
+                return Make_Failure(ck::Format_UE(
+                    TEXT("{} could not be written — check it out of source control (or clear its read-only flag) and try again. Nothing was changed."),
+                    Settings->GetDefaultConfigFilename()));
+            }
 
-        // The settings editor's own apply path also pushes the value at the console variable the property is bound
-        // to. Without this the ini would say one thing and the running editor another until a restart.
-        //
-        // Read back rather than assumed: `Set` at `ECVF_SetByProjectSetting` is REFUSED when the variable was last
-        // set at a higher priority — which is exactly what has happened if the reader typed `r.TextureStreaming 0`
-        // at the console, the most likely way to arrive at this finding in the first place.
-        auto CvarApplied = true;
+            // The settings editor's own apply path also pushes the value at the console variable the property is
+            // bound to. Without this the ini would say one thing and the running editor another until a restart.
+            //
+            // Read back rather than assumed: `Set` at `ECVF_SetByProjectSetting` is REFUSED when the variable was
+            // last set at a higher priority — which is exactly what has happened if the reader typed
+            // `r.TextureStreaming 0` at the console, the most likely way to arrive at this finding in the first place.
+            auto CvarApplied = true;
 
-        if (auto* ConsoleVariable = IConsoleManager::Get().FindConsoleVariable(TEXT("r.TextureStreaming")))
-        {
-            ConsoleVariable->Set(1, ECVF_SetByProjectSetting);
-            CvarApplied = ConsoleVariable->GetInt() != 0;
-        }
+            if (auto* ConsoleVariable = IConsoleManager::Get().FindConsoleVariable(TEXT("r.TextureStreaming")))
+            {
+                ConsoleVariable->Set(1, ECVF_SetByProjectSetting);
+                CvarApplied = ConsoleVariable->GetInt() != 0;
+            }
 
-        (void)InFinding;
+            return Make_Success(CvarApplied
+                ? ck::Format_UE(TEXT("Texture Streaming enabled and written to {} — this one is a config write, so Undo cannot reverse it."),
+                    Settings->GetDefaultConfigFilename())
+                : ck::Format_UE(TEXT("Texture Streaming written to {} — but r.TextureStreaming was last set at a higher priority (a console command overrides a project setting), so this session still has it off. Undo cannot reverse the config write."),
+                    Settings->GetDefaultConfigFilename()),
+                true);
+        };
 
-        return Make_Success(CvarApplied
-            ? ck::Format_UE(TEXT("Texture Streaming enabled and written to {} — this one is a config write, so Undo cannot reverse it."),
-                Settings->GetDefaultConfigFilename())
-            : ck::Format_UE(TEXT("Texture Streaming written to {} — but r.TextureStreaming was last set at a higher priority (a console command overrides a project setting), so this session still has it off. Undo cannot reverse the config write."),
-                Settings->GetDefaultConfigFilename()),
-            true);
+        return Plan;
     }
 #endif
 
@@ -1182,65 +1652,83 @@ namespace ck_optimization_debugger_fixes_impl
     /** The dispatch. No transaction of its own — the single-fix and batch entry points each own the record they
      *  want, and a fix that opened its own inside a batch would split one undo into many. */
     auto
-        DoApply_Fix(
+        DoPlan_Fix(
             const FCkOptimizationDebugger_FindingRow& InFinding,
             UWorld* InEditorWorld)
-        -> FCkOptimizationDebugger_FixResult
+        -> FCkOptimizationDebugger_FixPlan
     {
 #if WITH_EDITOR
         const auto CheckId = InFinding.CheckId;
 
         if (CheckId == k_MeshNaniteCandidate)
-        { return Apply_NaniteEnabled(InFinding, true); }
+        { return Plan_NaniteEnabled(InFinding, true); }
 
         if (CheckId == k_MeshNaniteOnLowPoly)
-        { return Apply_NaniteEnabled(InFinding, false); }
+        { return Plan_NaniteEnabled(InFinding, false); }
 
         if (CheckId == k_MeshMissingLods)
-        { return Apply_GenerateLods(InFinding); }
+        { return Plan_GenerateLods(InFinding); }
 
         if (CheckId == k_MeshComplexCollision)
-        { return Apply_SimpleCollision(InFinding); }
+        { return Plan_SimpleCollision(InFinding); }
 
         if (CheckId == k_TextureNormalMap)
-        { return Apply_NormalMapCompression(InFinding); }
+        { return Plan_NormalMapCompression(InFinding); }
 
         if (CheckId == k_TextureDataSrgb)
-        { return Apply_DisableSrgb(InFinding); }
+        { return Plan_DisableSrgb(InFinding); }
 
         if (CheckId == k_TextureMissingMipmaps)
-        { return Apply_RestoreMipmaps(InFinding); }
+        { return Plan_RestoreMipmaps(InFinding); }
 
         if (CheckId == k_MeshNaniteMaterial)
-        { return Apply_NaniteMaterialUsage(InFinding); }
+        { return Plan_NaniteMaterialUsage(InFinding); }
 
         if (CheckId == k_LightingLightmapRes)
-        { return Apply_ClampLightmapResolution(InFinding); }
+        { return Plan_ClampLightmapResolution(InFinding); }
 
         if (CheckId == k_BlueprintTickEnabled)
-        { return Apply_DisableBlueprintStartWithTick(InFinding); }
+        { return Plan_DisableBlueprintStartWithTick(InFinding); }
 
         if (CheckId == k_ActorEmptyStaticMesh)
-        { return Apply_DeleteEmptyStaticMeshActor(InFinding); }
+        { return Plan_DeleteEmptyStaticMeshActor(InFinding); }
 
         if (CheckId == k_ActorInstancingCandidate)
-        { return Apply_ConvertToInstances(InFinding, InEditorWorld); }
+        { return Plan_ConvertToInstances(InFinding, InEditorWorld); }
 
         if (CheckId == k_LightingMovableCount)
-        { return Apply_ReviewMovableLights(InFinding, InEditorWorld); }
+        { return Plan_ReviewMovableLights(InFinding, InEditorWorld); }
 
         if (CheckId == k_SettingsTextureStreaming)
-        { return Apply_EnableTextureStreaming(InFinding); }
+        { return Plan_EnableTextureStreaming(InFinding); }
 
-        return Make_Failure(ck::Format_UE(TEXT("{} has no automatic fix."), CheckId));
+        return Make_RefusedPlan(InFinding, ck::Format_UE(TEXT("{} has no automatic fix."), CheckId));
 #else
         // The module ships in packaged Development/DebugGame targets, where there is no transaction buffer, no
         // asset to edit and no editor world. Saying so beats a silent no-op that reads as a successful fix.
         (void)InEditorWorld;
 
-        return Make_Failure(ck::Format_UE(TEXT("{}: applying a fix needs an editor session."),
+        return Make_RefusedPlan(InFinding, ck::Format_UE(TEXT("{}: applying a fix needs an editor session."),
             InFinding.Target.DisplayName));
 #endif
+    }
+
+    // ----------------------------------------------------------------------------------------------------------------
+
+    /** Plans and immediately runs. The plan is the only validator, so a refusal here IS the plan's refusal — there
+     *  is no second opinion that could disagree with what a preview showed. */
+    auto
+        DoApply_Fix(
+            const FCkOptimizationDebugger_FindingRow& InFinding,
+            UWorld* InEditorWorld)
+        -> FCkOptimizationDebugger_FixResult
+    {
+        const auto Plan = DoPlan_Fix(InFinding, InEditorWorld);
+
+        if (NOT Plan.CanApply || NOT Plan.Execute)
+        { return Make_Failure(Plan.RefusalReason); }
+
+        return Plan.Execute(Plan);
     }
 
     // ----------------------------------------------------------------------------------------------------------------
@@ -1642,6 +2130,212 @@ namespace ck_optimization_debugger_fixes
         // over the top of it. Last means the set it hands the reader is the set still highlighted when it finishes.
         for (const auto& Finding : Partition.Review)
         { Accumulate(Batch, DoApply_Fix(Finding, InEditorWorld)); }
+
+        return Batch;
+    }
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+// The PLANNING half of the fix engine. Its pure projections live in `CkOptimizationDebugger_FixPlan.cpp`; the
+// planners themselves live here, beside the fix code they describe, because a planner that sat in another file
+// would be a second place to look for what a fix does.
+namespace ck_optimization_debugger_fixplan
+{
+    auto
+        Plan_Fix(
+            const FCkOptimizationDebugger_FindingRow& InFinding,
+            UWorld* InEditorWorld)
+        -> FCkOptimizationDebugger_FixPlan
+    {
+        using namespace ck_optimization_debugger_fixes;
+        using namespace ck_optimization_debugger_fixes_impl;
+
+        // Both halves, the same two the button needs — a finding whose check never claimed a fix must not plan one
+        // because the registry grew an entry.
+        if (NOT Can_ApplyFix(InFinding))
+        {
+            return Make_RefusedPlan(InFinding, ck::Format_UE(TEXT("{} has no automatic fix."), InFinding.CheckId));
+        }
+
+        return DoPlan_Fix(InFinding, InEditorWorld);
+    }
+
+    // ----------------------------------------------------------------------------------------------------------------
+
+    auto
+        Plan_Fixes(
+            const TArray<FCkOptimizationDebugger_FindingRow>& InFindings,
+            UWorld* InEditorWorld)
+        -> TArray<FCkOptimizationDebugger_FixPlan>
+    {
+        auto Plans = TArray<FCkOptimizationDebugger_FixPlan>{};
+        Plans.Reserve(InFindings.Num());
+
+        for (const auto& Finding : InFindings)
+        { Plans.Add(Plan_Fix(Finding, InEditorWorld)); }
+
+        return Plans;
+    }
+
+    // ----------------------------------------------------------------------------------------------------------------
+
+    auto
+        Apply_PreviewedPlan(
+            const FCkOptimizationDebugger_FixPlan& InPreviewedPlan,
+            UWorld* InEditorWorld)
+        -> FCkOptimizationDebugger_FixResult
+    {
+        using namespace ck_optimization_debugger_fixes;
+        using namespace ck_optimization_debugger_fixes_impl;
+
+        if (NOT Get_CanApplyFixes())
+        { return Make_Failure(Get_FixesUnavailableReason()); }
+
+        // Re-planned, never re-used. The previewed plan captured objects at preview time and its `Execute` closes
+        // over them; between the preview and the press an import can finish, an undo can land, or another tool can
+        // write. What runs is always THIS moment's plan.
+        auto Fresh = DoPlan_Fix(InPreviewedPlan.Finding, InEditorWorld);
+
+        if (NOT Fresh.CanApply || NOT Fresh.Execute)
+        { return Make_Failure(Fresh.RefusalReason); }
+
+        if (Get_HasDrifted(InPreviewedPlan, Fresh))
+        {
+            return Make_Failure(ck::Format_UE(
+                TEXT("{}: it changed since you previewed it — nothing was written. Preview it again to see what it looks like now."),
+                InPreviewedPlan.Finding.Target.DisplayName));
+        }
+
+        // The reader's ticks are carried over by (object, property), never by index: an index is only meaningful
+        // against the list it was taken from, and the whole point of the drift check above is that the two lists
+        // could have been different.
+        for (auto& Change : Fresh.Changes)
+        { Change.Included = Get_IsChangeIncluded(InPreviewedPlan, Change.ObjectPath, Change.PropertyLabel); }
+
+        if (NOT Get_HasIncludedWork(Fresh))
+        {
+            return Make_Failure(ck::Format_UE(TEXT("{}: nothing was ticked, so nothing was written."),
+                InPreviewedPlan.Finding.Target.DisplayName));
+        }
+
+        return Fresh.Execute(Fresh);
+    }
+
+    // ----------------------------------------------------------------------------------------------------------------
+
+    /** One log entry per attempted plan, built from the PREVIEWED plan: the drift check inside
+     *  `Apply_PreviewedPlan` has already established that the fresh plan has the same shape and the same ticks, so
+     *  the two agree about what was written. */
+    auto
+        Make_LogEntry(
+            const FCkOptimizationDebugger_FixPlan& InPlan,
+            const FCkOptimizationDebugger_FixResult& InResult)
+        -> FCkOptimizationDebugger_FixLogEntry
+    {
+        auto Entry = FCkOptimizationDebugger_FixLogEntry{};
+        Entry.CheckId = InPlan.Finding.CheckId;
+        Entry.FixVerb = InPlan.FixVerb;
+        Entry.TargetLabel = InPlan.Finding.Target.DisplayName;
+        Entry.Message = InResult.Message;
+        Entry.Succeeded = InResult.Succeeded;
+
+        for (const auto& Change : Get_IncludedChanges(InPlan))
+        {
+            if (NOT Change.ObjectPath.IsNull())
+            { Entry.WrittenObjectPaths.AddUnique(Change.ObjectPath); }
+        }
+
+        // A fix with no property rows still wrote something — it deleted an actor, converted placements, or
+        // changed a setting. The finding's own target is the closest thing to the package that went dirty, and
+        // naming nothing at all would drop those fixes out of the modified list entirely.
+        if (Entry.WrittenObjectPaths.IsEmpty() && NOT InPlan.Finding.Target.Path.IsNull())
+        { Entry.WrittenObjectPaths.Add(InPlan.Finding.Target.Path); }
+
+        return Entry;
+    }
+
+    // ----------------------------------------------------------------------------------------------------------------
+
+    auto
+        Apply_PreviewedPlans(
+            const TArray<FCkOptimizationDebugger_FixPlan>& InPreviewedPlans,
+            UWorld* InEditorWorld,
+            TArray<FCkOptimizationDebugger_FixLogEntry>& OutLogEntries)
+        -> FCkOptimizationDebugger_BatchFixResult
+    {
+        using namespace ck_optimization_debugger_fixes;
+        using namespace ck_optimization_debugger_fixes_impl;
+
+        auto Batch = FCkOptimizationDebugger_BatchFixResult{};
+
+        if (NOT Get_CanApplyFixes())
+        {
+            Accumulate(Batch, Make_Failure(Get_FixesUnavailableReason()));
+            return Batch;
+        }
+
+        // The SAME three-way split `Apply_Fixes` makes, over plans rather than findings: one transaction for the
+        // transactional part, config writes after it and outside it, review actions last so the selection one of
+        // them leaves is the selection the reader ends up looking at.
+        auto Transactional = TArray<const FCkOptimizationDebugger_FixPlan*>{};
+        auto ConfigWrites = TArray<const FCkOptimizationDebugger_FixPlan*>{};
+        auto Reviews = TArray<const FCkOptimizationDebugger_FixPlan*>{};
+
+        for (const auto& Plan : InPreviewedPlans)
+        {
+            if (NOT Plan.CanApply)
+            { continue; }
+
+            const auto* Info = TryGet_FixInfo(Plan.Finding.CheckId);
+
+            if (Info == nullptr)
+            { continue; }
+
+            switch (Info->Execution)
+            {
+                case ECkOptimizationDebugger_FixExecution::ConfigWrite: ConfigWrites.Add(&Plan); break;
+                case ECkOptimizationDebugger_FixExecution::Review:      Reviews.Add(&Plan);      break;
+                default:                                               Transactional.Add(&Plan); break;
+            }
+        }
+
+        const auto RunOne = [&](const FCkOptimizationDebugger_FixPlan& InPlan) -> void
+        {
+            const auto Result = Apply_PreviewedPlan(InPlan, InEditorWorld);
+
+            Accumulate(Batch, Result);
+            OutLogEntries.Add(Make_LogEntry(InPlan, Result));
+        };
+
+        if (NOT Transactional.IsEmpty())
+        {
+#if WITH_EDITOR
+            // ONE record for the whole transactional part: a reader who applied six fixes with one click expects
+            // one Ctrl+Z to put the level back, not six.
+            //
+            // A part of exactly one keeps the fix's OWN verb as the undo label — "Enable Nanite (SM_Foo)" rather
+            // than "Apply 1 optimization fix(es)", which is what the separate single-fix entry point used to exist
+            // for. Naming it here means one apply path instead of two that can disagree.
+            const auto Label = Transactional.Num() == 1
+                ? ck::Format_UE(TEXT("{} ({})"), Transactional[0]->FixVerb, Transactional[0]->Finding.Target.DisplayName)
+                : ck::Format_UE(TEXT("Apply {} optimization fix(es)"), Transactional.Num());
+
+            const auto Transaction = FScopedTransaction{FText::FromString(Label)};
+
+            for (const auto* Plan : Transactional)
+            { RunOne(*Plan); }
+#else
+            for (const auto* Plan : Transactional)
+            { RunOne(*Plan); }
+#endif
+        }
+
+        for (const auto* Plan : ConfigWrites)
+        { RunOne(*Plan); }
+
+        for (const auto* Plan : Reviews)
+        { RunOne(*Plan); }
 
         return Batch;
     }

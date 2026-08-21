@@ -294,20 +294,176 @@ still reverses it — what the flag buys is the prompt.
 
 | CheckId | What the fix actually does | Undo | Destructive |
 |---|---|---|---|
-| `Mesh.NaniteCandidate` | `SetNaniteSettings` with `bEnabled = true`, then `NotifyNaniteSettingsChanged()` — the same `PostEditChangeProperty` the mesh editor's own checkbox raises, which is what builds the Nanite data | yes | no |
+| `Mesh.NaniteCandidate` | `SetNaniteSettings` with `bEnabled = true`, then `NotifyNaniteSettingsChanged()` — the same `PostEditChangeProperty` the mesh editor's own checkbox raises, which is what builds the Nanite data. **Refuses a mesh whose materials animate vertices** — see the World Position Offset precondition below | yes | no |
 | `Mesh.NaniteOnLowPoly` | the same, with `bEnabled = false` | yes | no |
 | `Mesh.MissingLods` | `UStaticMesh::SetLODGroup` with the first available of `LargeProp` / `SmallProp` / `Deco`, else the first non-`None` configured group. The engine's own path applies the group's default LOD count and per-LOD reduction settings and rebuilds | yes | no |
 | `Mesh.ComplexCollision` | flips `UBodySetup::CollisionTraceFlag` to `CTF_UseSimpleAndComplex`, and when the body setup has NO simple primitives adds one `FKBoxElem` sized from the mesh bounds, then `InvalidatePhysicsData` + `CreatePhysicsMeshes` + `PostEditChange` | yes | no |
 | `Texture.NormalMapCompression` | `CompressionSettings = TC_Normalmap` **and** `SRGB = 0`, then `PostEditChange()` | yes | no |
 | `Texture.DataTextureSrgb` | `SRGB = 0`, then `PostEditChange()` | yes | no |
 | `Texture.MissingMipmaps` | `MipGenSettings = TMGS_FromTextureGroup`, then `PostEditChange()`. `FromTextureGroup` rather than a specific setting: the group is where a project states its mip policy, so this hands the decision back to that policy instead of inventing one per texture. Re-validates BOTH halves — a texture moved into `TEXTUREGROUP_UI` since the scan is legitimately mipless and is refused | yes | no |
-| `Mesh.NaniteMaterialIncompatible` | `bUsedWithNanite = 1` on each offending BASE material, then `PostEditChange()`. Re-asks the check's own exported `Is_NaniteIncompatible` per slot, and refuses outright if Nanite has been turned off on the mesh since the scan. Fixing the base material means a mesh using several instances of one parent is fixed once. **Queues a shader compile**, which the result message says because nothing else on screen would | yes | no |
+| `Mesh.NaniteMaterialIncompatible` | `bUsedWithNanite = 1` on each offending BASE material, then `PostEditChange()`. Re-asks the check's own exported `Is_NaniteIncompatible` per slot, and refuses outright if Nanite has been turned off on the mesh since the scan. Fixing the base material means a mesh using several instances of one parent is fixed once. **Queues a shader compile**, which the result message says because nothing else on screen would — and names each material's BLAST RADIUS (`Get_ReferencingPackageCount`), because the reader clicked one mesh and every other package using that parent inherits the edit | yes | no |
 | `Lighting.LightmapResolution` | clamps `OverriddenLightMapRes` to the CURRENT budget on **every** over-budget component of the actor — not the first, because the check aggregates per actor precisely because one actor can carry several. Clamps rather than clearing the override: clearing falls back to the mesh's own default, a different number nobody chose that may also be over budget. Reads the threshold fresh, and checks `FLevelUtils::IsLevelLocked` before touching anything | yes | no |
 | `Blueprint.TickEnabled` | `bStartWithTickEnabled = false` on the generated class's CDO, then `PostEditChange()`. **`bCanEverTick` is deliberately left alone** — the class keeps the ability to tick, so anything that enables it at runtime still works; clearing it would break `SetActorTickEnabled` and turn a cost fix into a broken actor. Re-validates both halves of the check | yes | no, but **`ChangesBehavior`** |
-| `Actor.EmptyStaticMesh` | re-validates that the actor is still a plain `AStaticMeshActor` with no mesh, then `UWorld::EditorDestroyActor` | yes | **yes** |
-| `Actor.InstancingCandidate` | re-derives the convertible group from the live world, spawns one actor with a `UHierarchicalInstancedStaticMeshComponent`, copies the template's materials and every matching actor's world transform as an instance, then deletes the originals | yes | **yes** |
+| `Actor.EmptyStaticMesh` | re-validates that the actor is still a plain `AStaticMeshActor` with no mesh, removes it from its editor Group (`Detach_FromEditorGroup`) exactly as `edactDeleteSelected` does, then `UWorld::EditorDestroyActor`. The result message NAMES the group it left | yes | **yes** |
+| `Actor.InstancingCandidate` | re-derives the candidate groups from the live world, **audits every placement** (see below), converts only the ones nothing refuses — spawning one actor with a `UHierarchicalInstancedStaticMeshComponent`, copying the template's materials and each converted actor's world transform as an instance — then deletes those originals and REPORTS what it left alone | yes | **yes** |
 | `Lighting.MovableLightCount` | **selects** every movable-light actor in that level for review. Not a mobility change — see below. Its verb is **"Select Lights For Review"**, because "Review Light Mobility" read as though it changed mobility | n/a (changes nothing) | no |
 | `ProjectSettings.TextureStreamingDisabled` | sets `URendererSettings::bTextureStreaming`, writes it with **`TryUpdateDefaultConfigFile`** (checked), pushes `r.TextureStreaming` at the console variable and **reads it back** | **no — config write** | no |
+
+### The placement audit — what an instance cannot carry
+
+`Fixes/CkOptimizationDebugger_FixPreflight.{h,cpp}`. The instancing conversion used to ask a five-clause
+`Is_ConvertibleToInstance` gate: plain `AStaticMeshActor`, mesh matches, static mobility, no attachment, one scene
+component. Every clause was about the SHAPE of a placement and none about what it CARRIES, and the gate answered
+yes or no — so a placement it turned down vanished with no word, and a placement it accepted had its tags, its
+editor Group, its Data Layer and its per-placement material state discarded in silence. All three of the defects
+reported against the Fix button in 2026-08 were that one omission.
+
+The gate is now a candidate test (`Is_ConversionCandidate` — plain placement of this mesh, nothing more) plus an
+**audit** that answers with REASONS.
+
+| Refusal | Why an instance cannot carry it |
+|---|---|
+| `CarriesActorTags` / `CarriesComponentTags` | An instance is a transform inside a component. There is nowhere for a tag to go, so every tag-gated query naming the placement silently returns one fewer result — nothing warns and the level still renders |
+| `InEditorGroup` | Converting one member rewrites a relationship the designer authored, and the surviving `AGroupActor` would hold a reference to a destroyed actor |
+| `InDataLayer` / `HasHlodLayer` | Both are per-actor assignments that decide whether and how the placement loads |
+| `DynamicMaterialInstance` | An MID is created against THAT component; one shared instanced component cannot be the target of a per-placement drive |
+| `ExternallyReferenced` | Another actor or the Level Blueprint names it. Detected through `FBlueprintEditorUtils::GetActorReferenceMap` (built ONCE per world) plus `FindReferencesToActorFromLevelScript` |
+| `DiffersFromTemplate` | Any reflected, editable, non-transient property that differs from the template placement — custom primitive data, custom-depth stencil, shadow flags, draw distance, collision profile, `MinLOD`, lightmap override. Names the property |
+| `NonStaticMobility` / `Attached` / `ExtraSceneComponents` / `NotPlainStaticMeshActor` / `MeshChanged` | The original five clauses, kept — now with a reason attached |
+| `LevelLocked` | Was a separate pre-check; it is a refusal reason now, so a locked group simply yields nothing convertible and says why in the same sentence as everything else |
+
+**The template comparison is reflection-driven, and that is the point.** A hand-written property list is a second
+place to forget a property, and forgetting properties is the defect. `Compare_ReflectedProperties` walks
+`TFieldIterator<FProperty>` over the class, keeps `CPF_Edit` and drops `CPF_Transient | CPF_EditConst |
+CPF_Deprecated`, and asks `Identical_InContainer` — so a property added to `UStaticMeshComponent` by a future engine
+version is compared the day it appears, with no edit here. The ONLY exclusions are in
+`Get_ExcludedComparisonProperties()`, each one a decision with a reason beside it, and
+`Ck.OptimizationDebugger.Preflight.ComparisonExclusions` asserts both that the transform and tags ARE excluded and
+that custom primitive data, the stencil value and `CastShadow` are NOT.
+
+**Two passes, and the order matters.** Pass 1 asks the absolute questions of each candidate against ITSELF —
+answers that do not depend on any other placement. Pass 2 takes the first survivor in path order as the template and
+compares the rest to it. A template that carries tags is refused in pass 1 and never becomes one, which is why the
+two passes cannot be folded together.
+
+**Groups are ranked by CONVERTIBLE count, not candidate count.** A group of forty where thirty-eight carry tags is
+worth less than a clean group of ten, and ranking by candidates would pick the first and then convert two.
+
+**What was refused is reported, on success as well as failure.** `Build_RefusalSummary` counts reasons in enum
+order (deterministic; a reason counts once per placement however many times it fires) and rides both the failure
+message and the success one: "28 placement(s) converted … 12 of 40 placement(s) left alone: 8 carries actor tags,
+4 differs from the template". Silence about what was excluded is indistinguishable from having nothing to exclude —
+the same rule `SkippedUnloadedLevelNames` follows.
+
+**The World Position Offset precondition.** `Mesh.NaniteCandidate` refuses a mesh whose slot materials animate
+vertices, naming them. Read off `UMaterialInterface::GetCachedExpressionData().IsPropertyConnected(MP_WorldPositionOffset)`
+— serialized data, a load and never a shader compile, the same fence every other material read here holds to. It has
+a THIRD answer: `GetCachedExpressionData()` returns a shared EMPTY record when a material has no cache, and that
+record answers "no" to everything, so `Unknown` is distinguished and also refuses. Refused rather than warned,
+because a warning inside a batch confirmation is one the reader learns to dismiss and nobody connects "the wind
+stopped working" back to a checkbox ticked last week. Asked only when ENABLING Nanite; turning it off restores the
+path the material was authored against.
+
+**Deleting an actor removes it from its Group first.** `UWorld::EditorDestroyActor` performs no group removal — the
+engine's own path does it explicitly (`EditorActor.cpp`, `GetParentForActor` then `Remove`) — so this module, which
+deliberately bypasses `edactDeleteSelected` to act on a named actor rather than the selection, has to make that
+guarantee itself. Same reasoning as the level-lock check beside it. `AGroupActor::GetParentForActor` is NOT exported
+from `UnrealEd`; the direct parent is read off the public `AActor::GroupActor` member instead, and
+`AGroupActor::Remove` (which IS exported) does the `Modify` on both sides and the `PostRemove` collapse.
+
+---
+
+### Plan, then apply — nothing is written before the reader has seen it
+
+`Fixes/CkOptimizationDebugger_FixPlan.{h,cpp}` plus one `Plan_*` per fix in `CkOptimizationDebugger_Fixes.cpp`.
+
+Every fix used to be an `Apply_*` that re-validated its check's condition and then wrote in the same breath, which
+made two things impossible: showing the reader what a fix would do, and asserting a fix's effect in a spec without
+mutating somebody's branch. It is now a **planner** that returns an `FCkOptimizationDebugger_FixPlan`.
+
+| Piece | What it is |
+|---|---|
+| `Changes` | One row per property: the object, the property's display name, the value NOW and the value AFTER, and `Included` — the reader's tick |
+| `Effects` | Everything a fix does that is not a property write: deletes 28 actors, queues a shader compile, writes `DefaultEngine.ini`, leaves 12 placements alone. `IsRisk` marks the ones that used to raise a confirmation dialog |
+| `CanApply` / `RefusalReason` | The re-validation's answer. The planner is the ONLY place it lives now, so the sentence a preview shows and the sentence a refusal prints cannot disagree |
+| `Execute` | The deferred write, a `TFunction` the planner sets and the apply invokes. It captures the objects the planner resolved and reads its own plan's ticks |
+
+**`Execute` is what makes the promise structural.** A property the planner did not list has no row, so
+`Get_IsChangeIncluded` answers false for it, so the write is skipped — "the apply cannot write what the preview did
+not show" is enforced by construction rather than by review. It is also why an apply never re-resolves and never
+re-validates: there is exactly one description of what a fix does, and both the picture and the write read it.
+
+**The apply re-plans and refuses on drift.** `Apply_PreviewedPlan` builds a FRESH plan, compares it to the one the
+reader was shown on (object, property, BEFORE value), and refuses the whole thing if any of them moved — an import
+finishing, an undo landing, another tool writing. The reader's ticks are then carried onto the fresh plan by
+(object, property), never by index, because an index is only meaningful against the list it came from.
+`Ck.OptimizationDebugger.FixPlan.Drift` pins all of it, including that a cleared tick is NOT drift.
+
+**One apply path, not two.** `Apply_PreviewedPlans` makes the same three-way partition `Apply_Fixes` does
+(transactional inside one record, config writes after and outside it, review actions last) and labels a
+single-plan transaction with that fix's own verb — which is what the separate single-fix entry point existed for.
+
+**The preview replaced the confirmation dialog; it did not stack on it.** `Build_BatchConfirmation` is still there
+and still pure (the context menus read it for their tooltips), but the window no longer opens a second modal after
+the preview. The old dialog could only say "this batch deletes actors"; the preview names which actors, which
+properties and which values, and lets the reader untick any of it. Two modals in a row is one the reader learns to
+dismiss unread.
+
+**Nothing is saved.** No fix has ever called `SavePackage` — they `MarkPackageDirty` and stop — but nothing said so
+and nothing listed what went dirty, which is indistinguishable from a tool that saves behind your back. The preview
+says it in one line, and the **Applied this session** panel lists every fix in the words the apply reported plus
+every package still dirty, with a Save button that goes through `FEditorFileUtils::PromptForCheckoutAndSave` — the
+editor's own dialog, with its source-control step. The dirty list is RE-ASKED on every rebuild rather than recorded,
+so it cannot claim an unsaved change the reader has since saved. Right-click the panel to copy the whole session as
+a commit message (`Build_CommitMessage`, grouped by verb).
+
+---
+
+### Suppressions — the exception, and who inherits it
+
+`Model/CkOptimizationDebugger_Suppression.{h,cpp}`, two stores, one matcher.
+
+A suppression is a **ruling**, and the old per-user mute could not express one: it was keyed by a single stable key,
+carried no reason, and lived in `GameUserSettings` where no teammate would ever see it. Four scopes now:
+
+| Scope | Covers | Keyed on |
+|---|---|---|
+| `Finding` | one row | `StableKey` — so it survives a re-scan that reproduces the same problem, and a NEW problem on the same asset arrives visible |
+| `Asset` | one asset, optionally narrowed to one check | target path |
+| `Folder` | everything under a content path, optionally narrowed to one check | path prefix |
+| `Check` | a whole check, project-wide | check id |
+
+**Two tiers, and the tier is the store.** `Project` writes to `Config/DefaultCkOptimizationDebugger.ini` through
+`UCkOptimizationDebuggerSuppressions` — committed, so the team inherits it. `Personal` writes to the same per-user
+`GameUserSettings` the thresholds use. This does NOT reopen the per-user thresholds decision: a threshold is one
+person's calibration of what they want flagged, a suppression is the team's ruling that a flagged thing is
+intentional. The two were never the same kind of statement.
+
+**`MutedStableKeys` is gone**, migrated on load into `Personal`+`Finding` records (reason: "Muted before suppressions
+existed") and the old key list cleared in the same breath. Two mechanisms answering "don't show me this" is one too
+many — the same rule that killed `RequiresRescanOfAssets` and the `IsTransactional` bool.
+
+**A reason is required.** The prompt's Suppress button is disabled until one is typed, and `Build_Label` prints
+"no reason given" if a hand-edited record arrives without one. A suppression whose reason cannot be read is
+indistinguishable from a bug six months later, and the person deciding whether it still applies is usually not the
+person who made it — which is why `Author` and `Date` are on the record too.
+
+**Nothing is hidden silently.** The count of suppressed findings IN THE CURRENT SCAN prints beside the toggle, a
+revealed row carries a `SUPPRESSED` chip, and the reason is one toggle away. Decision #34 in full, widened.
+
+**A malformed line is dropped and COUNTED, never half-applied.** A record whose scope cannot be read would hide
+findings nobody chose to hide; `Parse_All` reports how many it dropped and the window says so. For the same reason
+`Matches` refuses to match on an empty pattern: an empty pattern is the shape a truncated config line takes, and
+matching it would hide the whole list on the strength of a corrupt file.
+`Ck.OptimizationDebugger.Suppression.{ScopeMatching, ConfigRoundTrip, BuildForFinding}` pin every scope's
+semantics, the round trip (including a reason containing the field separator — which is why `Reason` is serialized
+LAST), and the sorted output a committed file needs.
+
+**The project write is CHECKED.** `TryUpdateDefaultConfigFile`'s result decides whether the suppression is reported
+as saved or as session-only, and a failure rolls the object back — the same rule the texture-streaming fix follows,
+and it matters more here because that file is routinely read-only under source control.
+
+---
 
 ### Rules the fix engine holds to
 
@@ -380,6 +536,75 @@ still reverses it — what the flag buys is the prompt.
   and tells the reader to replace it. A mesh left with the flag flipped and no primitives at all would collide with
   nothing — a silent behaviour change far worse than the cost the finding was about — so the box is the floor, not
   the goal.
+
+---
+
+## The project scan
+
+`Analysis/CkOptimizationDebugger_ProjectScan.{h,cpp}`. The level scan answers "what do the open levels cost". This
+answers a different question — "what is in this project" — and an asset nobody placed was invisible to the first
+one while still costing memory in the build.
+
+**Two passes, and the split is what makes it affordable.**
+
+| Pass | Reads | Opens | Answers |
+|---|---|---|---|
+| Registry | `GetAssetsByPath("/Game", recursive, onDiskOnly)` + `FAssetData` tags | **nothing** | `Mesh.{TriangleBudget, MissingLods, NaniteCandidate, NaniteOnLowPoly, CollisionPrimitiveCount, ComplexCollision}`, `Material.SlotCount`, `Texture.{MaxSize, NonPowerOfTwo}` |
+| Deep | the objects the registry pass flagged | only those | `Texture.{MissingMipmaps, DataTextureSrgb}`, `Mesh.NaniteMaterialIncompatible`, and the whole `Audio` family |
+
+**`-1` means the registry did not say, and it is never a value.** Every numeric fact is `-1` until a tag supplies
+it, `Get_IsKnown` is the single rule for reading that, and no check fires on an unknown. A registry built by an
+older editor, an asset saved before a tag existed and a class that writes no tags are all ordinary — and a check
+that read a missing triangle count as zero would report every one of them as clean.
+`Ck.OptimizationDebugger.ProjectScan.UnknownIsNotZero` pins it.
+
+**Which checks may live in the registry pass is a bounded decision, not a convenience.** A registry check is a
+SECOND phrasing of a rule the level scan already owns, so only checks whose WHOLE condition is a number or a flag
+the registry carries are allowed one. Anything needing a predicate — *is this a data texture*, *is this material
+Nanite-incompatible* — sets `NeedsDeepPass` and is answered by the check's own exported predicate instead, which is
+the same rule that stops a FIX from re-implementing its check.
+
+**It is incremental and NOT modal.** `Advance(state, budget)` does at most N assets and returns whether work
+remains; the window drives it from a repeating `RegisterActiveTimer`. `FScopedSlowTask` was rejected outright: it
+is modal, and a whole-project pass behind a modal cannot cancel in about a second. The window still overrides no
+`Tick` — this is the same timer idiom the deferred threshold rebuild uses, repeating rather than one-shot. A
+cancelled scan KEEPS what it gathered and says so, exactly as the level scan does.
+
+**One findings list, two sources.** `DoMerge_Findings` unions the last level scan with the last project scan,
+de-duplicated by stable key with the level scan winning ties (its explanation names the levels an asset is used
+in). Either scan can be re-run without discarding the other's answer. A second list would have needed a second copy
+of every filter, sort and count — and a project finding IS a finding.
+
+**Every project finding says where it came from.** Without that sentence a project row is indistinguishable from a
+level row whose level went missing, which is a different and much more alarming thing.
+
+**Audio is deep-pass ONLY**, because `USoundWave` writes no cost-bearing registry tags at all. Said out loud in the
+facts struct so nobody watching the fast half finish concludes their audio is clean. `Audio.MissingSoundClass`
+fires on `SoundClassObject == nullptr` — a sound outside the project's mix entirely, which plays perfectly and is
+therefore never reported by anything else. `Audio.LongSoundNotStreaming` compares `GetDuration()` against
+`MinSoundDurationForStreaming` and skips `INDEFINITELY_LOOPING_DURATION`, which is not a length.
+
+---
+
+## The findings export
+
+`Model/CkOptimizationDebugger_FindingsReport.{h,cpp}` — the module's long-standing known gap, landing WITH its
+determinism spec as the doctrine required.
+
+- **HTML and Markdown are built from ONE sorted projection** (`Get_ReportOrder`), so a claim in one is a claim in
+  the other. The order is worst severity → furthest over budget → check id → stable key, and that last key makes it
+  TOTAL: `TArray::Sort` is unstable, so without it two exports of one scan could differ for no visible reason.
+- **The timestamp is handed IN.** That is what keeps both builders pure and what lets
+  `Ck.OptimizationDebugger.Report.Determinism` export the same model twice and compare the bytes — including from a
+  re-ordered input array, which must produce an identical document.
+- **The VISIBLE findings, not the whole scan.** A reader exports the list they are looking at. The suppressed count
+  rides in the header so the omission is stated rather than silent, and a report with no project scan behind it
+  says so instead of implying it covered everything.
+- **Self-contained**: no external stylesheet, no script, no images — it survives being attached to a ticket. HTML
+  is escaped ampersand-first; the Markdown escape covers the pipe, which is the one character that can break a
+  table's structure.
+- No `Json` dependency was needed after all: the document is plain strings, and `DesktopPlatform` was already in
+  the main block for the snapshot save dialog.
 
 ---
 
@@ -1269,6 +1494,58 @@ reuse a row by.
 **Never make a real project asset an automated fixture.** Scans over real content belong to manual
 `[EDITOR-VERIFY]` passes only — a spec whose result depends on what is in `/Game` is a spec that fails on someone
 else's branch.
+
+---
+
+## [EDITOR-VERIFY] — the 2026-08-21 campaign (P14–P18)
+
+Nothing below is provable by a spec, because every item either mutates a real asset, draws a real widget, or needs
+a project with real content in it. They are listed so the gap between "the gate is green" and "this works" stays
+visible.
+
+**P14 — the placement audit**
+1. Put two copies of one mesh in a level, give ONE of them an actor tag, and run Convert To Instances. Expect: one
+   placement converted is refused as too few, with the message naming *1 carries actor tags*.
+2. Repeat with four copies, one tagged. Expect: three converted, and the success message ends with
+   *1 of 4 placement(s) left alone: 1 carries actor tags*.
+3. Group two of the copies in the editor (Ctrl+G) and re-run. Expect: the grouped ones refused as *belongs to an
+   editor Group*, and the Group intact afterwards.
+4. Give one copy a different Custom Depth Stencil Value. Expect: refused as *differs from the template
+   (CustomDepth Stencil Value)*. **This is the one most likely to over-fire** — if a property that should be
+   irrelevant shows up here, it belongs in `Get_ExcludedComparisonProperties()` with a reason.
+5. Delete an empty Static Mesh Actor that is in a Group. Expect: the message says it was removed from the Group
+   first, and the Group survives with its remaining members.
+6. Enable Nanite on a mesh whose material animates vertices (any wind/foliage material). Expect: refused, naming
+   the material.
+
+**P15 — the preview**
+7. Select several findings, press Fix, and read the dialog: one row per property with the real before and after.
+8. Untick one row of a two-property fix (a normal-map texture has two) and apply. Expect: only the ticked property
+   changes on the asset.
+9. Apply a batch, then press Ctrl+Z ONCE. Expect: every asset in the batch reverts — this is the single-transaction
+   claim, and no spec can make it.
+10. After applying, check the **Applied this session** panel lists the fixes and the still-dirty packages, and that
+    the Save button opens the editor's own checkout-and-save dialog rather than saving silently.
+11. Right-click that panel → Copy Text. Expect a commit-message-shaped summary on the clipboard.
+
+**P16 — suppressions**
+12. Right-click a finding → Suppress → This Asset (project). Expect the reason prompt to REFUSE an empty reason.
+13. Confirm `Config/DefaultCkOptimizationDebugger.ini` now exists and holds the record, and that the row is hidden
+    with the suppressed count visible beside the toggle.
+14. Turn on *Show suppressed*. Expect the row back, carrying a `SUPPRESSED` chip.
+15. Make that ini read-only and suppress something else. Expect a Warn-toned status saying the write failed and the
+    suppression is session-only.
+
+**P17 — the project scan**
+16. Press Scan Project on a project with content. Expect a progress percentage that moves, a window that stays
+    responsive, and a second press cancelling within about a second while keeping partial results.
+17. Confirm a mesh that no open level places appears in the findings, with the *Found by the project scan* sentence.
+
+**P18 — audio, export, ranking**
+18. A sound with no Sound Class should appear under the new Audio category.
+19. Export to HTML and to Markdown; open both. Export twice in a row with no scan between and diff the files — the
+    only difference should be the timestamp line.
+20. The dashboard's **Heaviest meshes** section should populate after a project scan and say what to press before one.
 
 ---
 

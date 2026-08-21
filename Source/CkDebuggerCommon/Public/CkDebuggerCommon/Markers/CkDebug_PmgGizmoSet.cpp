@@ -1,5 +1,6 @@
 #include "CkDebug_PmgGizmoSet.h"
 
+#include "CkCore/Debug/CkDebugDraw_Utils.h"
 #include "CkCore/Validation/CkIsValid.h"
 
 #include "CkEcs/EntityLifetime/CkEntityLifetime_Utils.h"
@@ -59,6 +60,12 @@ auto
         const FCk_Handle& InKey,
         const FTransform& InTransform) -> void
 {
+    if (ck::debug_draw::Is_SuppressedForStreamerMode())
+    {
+        Reset();
+        return;
+    }
+
     using namespace ck_debug_pmggizmoset;
 
     if (auto* Existing = _Gizmos.Find(InKey))

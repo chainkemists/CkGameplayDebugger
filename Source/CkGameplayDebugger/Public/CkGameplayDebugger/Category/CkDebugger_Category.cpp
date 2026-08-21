@@ -1,6 +1,7 @@
 #include "CkDebugger_Category.h"
 
 #include "CkCore/Algorithms/CkAlgorithms.inl.h"
+#include "CkCore/Debug/CkDebugDraw_Utils.h"
 #include "CkCore/World/CkWorld_Utils.h"
 
 #include "CkGameplayDebugger/Engine/CkDebugger_GameplayDebuggerCategoryReplicator.h"
@@ -73,6 +74,9 @@ auto
         FGameplayDebuggerCanvasContext& InCanvasContext)
     -> void
 {
+    if (ck::debug_draw::Is_SuppressedForStreamerMode())
+    { return; }
+
     _Worlds = ck::algo::Transform<decltype(_Worlds)>(UCk_Utils_World_UE::Get_AllAvailableGameWorlds(), [](UWorld* InWorld)
     {
         return InWorld;

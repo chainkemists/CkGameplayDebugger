@@ -1,5 +1,6 @@
 #include "CkInputHudOverlay/Widgets/SCkInputHud_Root.h"
 
+#include "CkCore/Debug/CkDebugDraw_Utils.h"
 #include "CkCore/Format/CkFormat.h"
 #include "CkCore/Macros/CkMacros.h"
 #include "CkEditorTools/Style/CkStyle.h"
@@ -178,7 +179,12 @@ auto
         ]
     ];
 
-    SetVisibility(EVisibility::HitTestInvisible);
+    SetVisibility(TAttribute<EVisibility>::CreateLambda([]() -> EVisibility
+    {
+        return ck::debug_draw::Is_SuppressedForStreamerMode()
+            ? EVisibility::Collapsed
+            : EVisibility::HitTestInvisible;
+    }));
 }
 
 // --------------------------------------------------------------------------------------------------------------------

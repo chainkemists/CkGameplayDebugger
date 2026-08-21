@@ -8,6 +8,8 @@
 #include "CkEntityDebugOverlay/Style/CkDebugOverlay_RenderStyle.h"
 #include "CkEntityDebugOverlay/History/CkDebugOverlay_History.h"
 
+#include "CkCore/Debug/CkDebugDraw_Utils.h"
+
 #include "CkDebuggerCommon/Settings/CkDebuggerStyleSettings.h"
 #include "CkDebuggerCommon/Styles/CkDebuggerAxes.h"
 
@@ -96,7 +98,12 @@ auto
     Construct(const FArguments& /*InArgs*/)
     -> void
 {
-    SetVisibility(EVisibility::HitTestInvisible);
+    SetVisibility(TAttribute<EVisibility>::CreateLambda([]() -> EVisibility
+    {
+        return ck::debug_draw::Is_SuppressedForStreamerMode()
+            ? EVisibility::Collapsed
+            : EVisibility::HitTestInvisible;
+    }));
 
     SAssignNew(_FocusCard, SCkDebugOverlay_FocusCard);
     SAssignNew(_TagCanvas, SConstraintCanvas);

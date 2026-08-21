@@ -334,9 +334,9 @@ auto
             TAttribute<double>::CreateLambda([]() { return static_cast<double>(UCk_InputHud_UserSettings::Get_KeyCornerRadius()); }), 0.0, 12.0, 1,
             FOnCkDebug_NumericCommitted::CreateLambda([this](double InValue) { UCk_InputHud_UserSettings::Get_Mutable()->Set_KeyCornerRadius(static_cast<float>(InValue)); NotifyChanged(); }))]
         + SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, CkStyle::SpaceXS)
-        [MakeNumeric(TEXT("Overall key opacity"), TEXT("Multiplicative opacity for every key layer: cap, border, text, pulse, metadata, and unrouted marker."),
-            TAttribute<double>::CreateLambda([]() { return static_cast<double>(UCk_InputHud_UserSettings::Get_KeyOpacity()); }), 0.0, 1.0, 2,
-            FOnCkDebug_NumericCommitted::CreateLambda([this](double InValue) { UCk_InputHud_UserSettings::Get_Mutable()->Set_KeyOpacity(static_cast<float>(InValue)); NotifyChanged(); }))]
+        [MakeNumeric(TEXT("Overall opacity"), TEXT("Opacity of the whole Signal Strip against the game - panel, keys, and readouts fade together. Multiplies with ck.InputOverlay.Opacity. The preview below composites against the debugger surface, not gameplay."),
+            TAttribute<double>::CreateLambda([]() { return static_cast<double>(UCk_InputHud_UserSettings::Get_OverallOpacity()); }), 0.0, 1.0, 2,
+            FOnCkDebug_NumericCommitted::CreateLambda([this](double InValue) { UCk_InputHud_UserSettings::Get_Mutable()->Set_OverallOpacity(static_cast<float>(InValue)); NotifyChanged(); }))]
         + SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, CkStyle::SpaceXS)
         [MakeNumeric(TEXT("Key border px"), TEXT("Width of every key outline; modifiers keep the same width with a dashed pattern."),
             TAttribute<double>::CreateLambda([]() { return static_cast<double>(UCk_InputHud_UserSettings::Get_KeyBorderWidth()); }), 0.0, 2.0, 1,

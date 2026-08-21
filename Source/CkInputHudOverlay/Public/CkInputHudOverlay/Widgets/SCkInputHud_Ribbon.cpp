@@ -7,6 +7,7 @@
 #include "CkCore/Macros/CkMacros.h"
 #include "CkEditorTools/Style/CkStyle.h"
 
+#include "Brushes/SlateRoundedBoxBrush.h"
 #include "Fonts/FontMeasure.h"
 #include "Framework/Application/SlateApplication.h"
 #include "Misc/App.h"
@@ -227,9 +228,11 @@ auto
             ? Make_FrameText(Event, UCk_InputHud_UserSettings::Get_FrameNotation())
             : FString{};
         Chip.Kind         = Kind;
-        Chip.Opacity      = ck::input_hud::Get_ComposedKeyOpacity(
-            FCk_InputHud_Model::Get_FadeOpacity(Event, Now, FadeLifetime),
-            RenderStyle.KeyOpacity);
+        // History fade ONLY. Overall overlay opacity is not a per-key tint — it rides the panel's RenderOpacity and
+        // arrives here through InWidgetStyle, so that the panel fill fades with the keys instead of showing through
+        // them. See Get_ComposedOverlayOpacity.
+        Chip.Opacity      = FMath::Clamp(
+            FCk_InputHud_Model::Get_FadeOpacity(Event, Now, FadeLifetime), 0.0f, 1.0f);
         Chip.Resolved     = Event.Resolved;
         Chip.Modifier     = Event.Modifier;
         Chip.Held         = Held;
@@ -356,6 +359,11 @@ auto
     if (Layout.Held.IsEmpty() && Layout.Released.IsEmpty())
     { return InLayerId; }
 
+    // Slate delivers an ancestor's RenderOpacity through the widget style (SWidget::Paint blends it in) and expects
+    // every widget to fold it into its own draw tints. A custom-painted leaf that ignores InWidgetStyle silently
+    // opts out of the whole-overlay opacity, the idle fade-out, and ck.InputOverlay.Opacity.
+    const auto InheritedAlpha = InWidgetStyle.GetColorAndOpacityTint().A;
+
     const auto* FillBrush    = CkStyle::GetFilledBrush();
     const auto* ChipBrush = ck::input_hud::Resolve_KeyBrush(
         RenderStyle.KeyCornerRadius, ECk_InputHud_KeyBrushTreatment::Fill);
@@ -402,7 +410,8 @@ auto
         const auto HistoryFillColor = DimHistoryColor(RenderStyle.Palette.HistoryFill);
         const auto FillColor = FMath::Lerp(HistoryFillColor, RenderStyle.Palette.Active, Animation.ActiveBlend);
         const auto FillOpacity = FMath::Lerp(1.0f, RenderStyle.ActiveFillOpacity, Animation.ActiveBlend);
-        const auto BorderOpacity = InChip.Opacity * RenderStyle.KeyBorderOpacity;
+        const auto ChipAlpha     = InChip.Opacity * InheritedAlpha;
+        const auto BorderOpacity = ChipAlpha * RenderStyle.KeyBorderOpacity;
         const auto ChipSize = FVector2f{InChip.Width, Layout.TotalHeight};
 
         if (Animation.ActiveBlend > 0.0f && RenderStyle.ActiveGlowOpacity > 0.0f)
@@ -412,40 +421,65 @@ auto
             Draw_Box(OutDrawElements, FillLayer, ChipGeometry, ChipBrush,
                 FVector2f{-2.0f, -2.0f}, ChipSize + FVector2f{4.0f, 4.0f},
                 Get_Tinted(RenderStyle.Palette.Active,
-                    InChip.Opacity * RenderStyle.ActiveGlowOpacity * Animation.ActiveBlend));
+                    ChipAlpha * RenderStyle.ActiveGlowOpacity * Animation.ActiveBlend));
         }
+
+        const auto BorderWidth = FMath::Clamp(
+            RenderStyle.KeyBorderWidth, 0.0f, FMath::Min(ChipSize.X, ChipSize.Y) * 0.5f);
 
         if (InChip.Modifier)
         {
+            // The modifier fill stays full-size. Its dashes only cover a hairline of it, and insetting the fill to
+            // avoid that would shrink the chip silhouette relative to every non-modifier key beside it.
             Draw_Box(OutDrawElements, FillLayer, ChipGeometry, ChipBrush,
-                FVector2f::ZeroVector, ChipSize, Get_Tinted(FillColor, InChip.Opacity * FillOpacity));
+                FVector2f::ZeroVector, ChipSize, Get_Tinted(FillColor, ChipAlpha * FillOpacity));
 
             const auto CornerInset = FMath::Min(RenderStyle.KeyCornerRadius, 2.5f);
             Draw_DashedBorder(OutDrawElements, GlyphLayer, ChipGeometry, FillBrush,
                 FVector2f::ZeroVector, ChipSize,
-                RenderStyle.KeyBorderWidth,
+                BorderWidth,
                 CornerInset,
                 Get_Tinted(BorderColor, BorderOpacity));
         }
         else
         {
-            const auto BorderWidth = FMath::Clamp(
-                RenderStyle.KeyBorderWidth, 0.0f, FMath::Min(ChipSize.X, ChipSize.Y) * 0.5f);
+            // Border and fill must never overlap. A full-size border box with the cap drawn on top of it looks right
+            // at full opacity, but the moment either alpha drops — which the history fade does to every released key
+            // every frame, and Overall opacity now does globally — the translucent cap composites over the border
+            // underneath and takes on its colour. Insetting the cap and drawing the border as a real ring around it
+            // keeps every pixel a single blend.
+            //
+            // The ring is built per chip rather than pulled from the static LUT because Slate takes a rounded box's
+            // outline colour from the BRUSH, not the draw tint (DrawElementTypes.cpp: SetOutline reads
+            // OutlineSettings.Color verbatim while bUseBrushTransparency is false), so a shared white-authored ring
+            // would render white whatever tint we passed. Rounded-box outlines are inset from the edge
+            // (SlateShaderCommon.ush), so the ring lands exactly on the band the cap was inset out of, and being a
+            // rounded brush it keeps the corner radius that four straight edge strips would square off.
+            // Stack allocation is deliberate and safe: draw elements copy what they need and never retain the brush.
+            const auto FillInset = FVector2f{BorderWidth, BorderWidth};
 
-            if (BorderWidth > 0.0f)
-            {
-                Draw_Box(OutDrawElements, FillLayer, ChipGeometry, ChipBrush,
-                    FVector2f::ZeroVector, ChipSize, Get_Tinted(BorderColor, BorderOpacity));
+            Draw_Box(OutDrawElements, FillLayer, ChipGeometry, ChipBrush,
+                FillInset, ChipSize - FillInset * 2.0f, Get_Tinted(FillColor, ChipAlpha * FillOpacity));
 
-                const auto InnerSize = ChipSize - FVector2f{BorderWidth * 2.0f, BorderWidth * 2.0f};
-                Draw_Box(OutDrawElements, FillLayer, ChipGeometry, ChipBrush,
-                    FVector2f{BorderWidth, BorderWidth}, InnerSize,
-                    Get_Tinted(FillColor, InChip.Opacity * FillOpacity));
-            }
-            else
+            // The ring carries its alpha in the brush, not the tint, so Slate's fully-transparent early-out cannot
+            // see it. Skip it here instead of emitting an invisible element per chip per frame at zero opacity.
+            if (BorderWidth > 0.0f && BorderOpacity > 0.0f)
             {
-                Draw_Box(OutDrawElements, FillLayer, ChipGeometry, ChipBrush,
-                    FVector2f::ZeroVector, ChipSize, Get_Tinted(FillColor, InChip.Opacity * FillOpacity));
+                const auto RingBrush = FSlateRoundedBoxBrush
+                {
+                    FLinearColor::Transparent,
+                    RenderStyle.KeyCornerRadius,
+                    Get_Tinted(BorderColor, BorderOpacity),
+                    BorderWidth
+                };
+
+                // Transparent tint, NOT white. For a raw MakeBox the tint IS the rounded box's fill colour — the
+                // brush's own fill is never applied (ElementBatcher.cpp: Tint = PackVertexColor(GetTint())), so a
+                // white tint paints an opaque white cap over the key. The ring's colour and alpha live entirely in
+                // the brush outline above. This still survives the fully-transparent cull, which only drops an
+                // element when the OUTLINE is also clear (DrawElementTypes.cpp: bIsFullyTransparent).
+                Draw_Box(OutDrawElements, FillLayer, ChipGeometry, &RingBrush,
+                    FVector2f::ZeroVector, ChipSize, FLinearColor::Transparent);
             }
         }
 
@@ -468,7 +502,7 @@ auto
                 InChip.LabelText,
                 LabelFont,
                 ESlateDrawEffect::None,
-                Get_Tinted(LabelTint, InChip.Opacity));
+                Get_Tinted(LabelTint, ChipAlpha));
         }
 
         // ---- Deck 2: the pulse ----
@@ -478,7 +512,7 @@ auto
             const auto HistoryGlyphColor = Tone;
             const auto GlyphColor = FMath::Lerp(
                 HistoryGlyphColor, RenderStyle.Palette.Panel, Animation.ActiveBlend);
-            const auto GlyphTint = Get_Tinted(GlyphColor, InChip.Opacity);
+            const auto GlyphTint = Get_Tinted(GlyphColor, ChipAlpha);
 
             switch (InChip.Kind)
             {
@@ -548,7 +582,7 @@ auto
                 InChip.FrameText,
                 FrameFont,
                 ESlateDrawEffect::None,
-                Get_Tinted(FrameColor, InChip.Opacity * (InChip.Resolved ? CkStyle::AlphaSoft() : 1.0f)));
+                Get_Tinted(FrameColor, ChipAlpha * (InChip.Resolved ? CkStyle::AlphaSoft() : 1.0f)));
         }
 
         CursorX += InChip.Width + RenderStyle.ChipGap;
@@ -564,7 +598,7 @@ auto
         Draw_Box(OutDrawElements, GlyphLayer, InAllottedGeometry, FillBrush,
             FVector2f{CursorX, 0.0f},
             FVector2f{DividerWidthPx, Layout.TotalHeight},
-            Get_Tinted(CkStyle::Border(), CkStyle::AlphaSoft()));
+            Get_Tinted(CkStyle::Border(), CkStyle::AlphaSoft() * InheritedAlpha));
 
         CursorX += DividerWidthPx + DividerGapPx;
     }

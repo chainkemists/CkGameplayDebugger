@@ -202,9 +202,9 @@ auto UCk_InputHud_UserSettings::Get_KeyCornerRadius() -> float
     return FMath::Clamp(Get()->KeyCornerRadius, 0.0f, 12.0f);
 }
 
-auto UCk_InputHud_UserSettings::Get_KeyOpacity() -> float
+auto UCk_InputHud_UserSettings::Get_OverallOpacity() -> float
 {
-    return FMath::Clamp(Get()->KeyOpacity, 0.0f, 1.0f);
+    return FMath::Clamp(Get()->OverallOpacity, 0.0f, 1.0f);
 }
 
 auto UCk_InputHud_UserSettings::Get_KeyBorderWidth() -> float
@@ -324,11 +324,11 @@ auto UCk_InputHud_UserSettings::Set_KeyCornerRadius(float InValue) -> void
     Commit_IfChanged(Changed);
 }
 
-auto UCk_InputHud_UserSettings::Set_KeyOpacity(float InValue) -> void
+auto UCk_InputHud_UserSettings::Set_OverallOpacity(float InValue) -> void
 {
     const auto Sanitized = FMath::Clamp(InValue, 0.0f, 1.0f);
-    const auto Changed = NOT FMath::IsNearlyEqual(KeyOpacity, Sanitized);
-    KeyOpacity = Sanitized;
+    const auto Changed = NOT FMath::IsNearlyEqual(OverallOpacity, Sanitized);
+    OverallOpacity = Sanitized;
     Commit_IfChanged(Changed);
 }
 
@@ -451,7 +451,7 @@ auto UCk_InputHud_UserSettings::Reset_VisualTuning() -> void
         NOT FMath::IsNearlyEqual(KeyPaddingX, ck_input_hud_user_settings::DefaultKeyPaddingX) ||
         NOT FMath::IsNearlyEqual(KeyPaddingY, ck_input_hud_user_settings::DefaultKeyPaddingY) ||
         NOT FMath::IsNearlyEqual(KeyCornerRadius, 3.0f) ||
-        NOT FMath::IsNearlyEqual(KeyOpacity, 1.0f) ||
+        NOT FMath::IsNearlyEqual(OverallOpacity, 1.0f) ||
         NOT FMath::IsNearlyEqual(KeyBorderWidth, 1.0f) ||
         NOT FMath::IsNearlyEqual(KeyBorderOpacity, ck_input_hud_user_settings::DefaultKeyBorderOpacity) ||
         NOT FMath::IsNearlyEqual(ActiveFillOpacity, ck_input_hud_user_settings::DefaultActiveFillOpacity) ||
@@ -470,7 +470,7 @@ auto UCk_InputHud_UserSettings::Reset_VisualTuning() -> void
     KeyPaddingX       = ck_input_hud_user_settings::DefaultKeyPaddingX;
     KeyPaddingY       = ck_input_hud_user_settings::DefaultKeyPaddingY;
     KeyCornerRadius   = 3.0f;
-    KeyOpacity        = 1.0f;
+    OverallOpacity    = 1.0f;
     KeyBorderWidth    = 1.0f;
     KeyBorderOpacity  = ck_input_hud_user_settings::DefaultKeyBorderOpacity;
     ActiveFillOpacity = ck_input_hud_user_settings::DefaultActiveFillOpacity;

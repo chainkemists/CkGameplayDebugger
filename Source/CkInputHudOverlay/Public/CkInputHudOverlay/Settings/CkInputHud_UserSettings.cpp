@@ -38,6 +38,12 @@ namespace ck_input_hud_user_settings
 
     constexpr auto DefaultPulseScale = 1.0f;
 
+    // The overlay must stay on screen to be readable and reportable, so the inset is bounded rather than free.
+    constexpr auto MaxAnchorOffset = 512.0f;
+
+    constexpr auto DefaultAnchorOffsetX = 6.0f;
+    constexpr auto DefaultAnchorOffsetY = 4.0f;
+
     auto Sanitize(ECk_InputHud_CornerStyle InValue) -> ECk_InputHud_CornerStyle;
 
     auto Sanitize_NonNegative(float InValue, float InFallback) -> float
@@ -187,6 +193,21 @@ auto UCk_InputHud_UserSettings::Get_CornerStyle() -> ECk_InputHud_CornerStyle
     return ck_input_hud_user_settings::Sanitize(Get()->CornerStyle);
 }
 
+auto UCk_InputHud_UserSettings::Get_AnchorCorner() -> ECk_InputHud_AnchorCorner
+{
+    return Get()->AnchorCorner;
+}
+
+auto UCk_InputHud_UserSettings::Get_AnchorOffsetX() -> float
+{
+    return FMath::Clamp(Get()->AnchorOffsetX, 0.0f, ck_input_hud_user_settings::MaxAnchorOffset);
+}
+
+auto UCk_InputHud_UserSettings::Get_AnchorOffsetY() -> float
+{
+    return FMath::Clamp(Get()->AnchorOffsetY, 0.0f, ck_input_hud_user_settings::MaxAnchorOffset);
+}
+
 auto UCk_InputHud_UserSettings::Get_KeyPaddingX() -> float
 {
     return FMath::Clamp(Get()->KeyPaddingX, 0.0f, 12.0f);
@@ -297,6 +318,29 @@ auto UCk_InputHud_UserSettings::Set_CornerStyle(ECk_InputHud_CornerStyle InValue
     const auto Changed = CornerStyle != Sanitized || NOT FMath::IsNearlyEqual(KeyCornerRadius, CornerRadius);
     CornerStyle = Sanitized;
     KeyCornerRadius = CornerRadius;
+    Commit_IfChanged(Changed);
+}
+
+auto UCk_InputHud_UserSettings::Set_AnchorCorner(ECk_InputHud_AnchorCorner InValue) -> void
+{
+    const auto Changed = AnchorCorner != InValue;
+    AnchorCorner = InValue;
+    Commit_IfChanged(Changed);
+}
+
+auto UCk_InputHud_UserSettings::Set_AnchorOffsetX(float InValue) -> void
+{
+    const auto Sanitized = FMath::Clamp(InValue, 0.0f, ck_input_hud_user_settings::MaxAnchorOffset);
+    const auto Changed = NOT FMath::IsNearlyEqual(AnchorOffsetX, Sanitized);
+    AnchorOffsetX = Sanitized;
+    Commit_IfChanged(Changed);
+}
+
+auto UCk_InputHud_UserSettings::Set_AnchorOffsetY(float InValue) -> void
+{
+    const auto Sanitized = FMath::Clamp(InValue, 0.0f, ck_input_hud_user_settings::MaxAnchorOffset);
+    const auto Changed = NOT FMath::IsNearlyEqual(AnchorOffsetY, Sanitized);
+    AnchorOffsetY = Sanitized;
     Commit_IfChanged(Changed);
 }
 
@@ -451,6 +495,9 @@ auto UCk_InputHud_UserSettings::Reset_VisualTuning() -> void
         NOT FMath::IsNearlyEqual(KeyPaddingX, ck_input_hud_user_settings::DefaultKeyPaddingX) ||
         NOT FMath::IsNearlyEqual(KeyPaddingY, ck_input_hud_user_settings::DefaultKeyPaddingY) ||
         NOT FMath::IsNearlyEqual(KeyCornerRadius, 3.0f) ||
+        AnchorCorner != ECk_InputHud_AnchorCorner::TopRight ||
+        NOT FMath::IsNearlyEqual(AnchorOffsetX, ck_input_hud_user_settings::DefaultAnchorOffsetX) ||
+        NOT FMath::IsNearlyEqual(AnchorOffsetY, ck_input_hud_user_settings::DefaultAnchorOffsetY) ||
         NOT FMath::IsNearlyEqual(OverallOpacity, 1.0f) ||
         NOT FMath::IsNearlyEqual(KeyBorderWidth, 1.0f) ||
         NOT FMath::IsNearlyEqual(KeyBorderOpacity, ck_input_hud_user_settings::DefaultKeyBorderOpacity) ||
@@ -470,6 +517,9 @@ auto UCk_InputHud_UserSettings::Reset_VisualTuning() -> void
     KeyPaddingX       = ck_input_hud_user_settings::DefaultKeyPaddingX;
     KeyPaddingY       = ck_input_hud_user_settings::DefaultKeyPaddingY;
     KeyCornerRadius   = 3.0f;
+    AnchorCorner      = ECk_InputHud_AnchorCorner::TopRight;
+    AnchorOffsetX     = ck_input_hud_user_settings::DefaultAnchorOffsetX;
+    AnchorOffsetY     = ck_input_hud_user_settings::DefaultAnchorOffsetY;
     OverallOpacity    = 1.0f;
     KeyBorderWidth    = 1.0f;
     KeyBorderOpacity  = ck_input_hud_user_settings::DefaultKeyBorderOpacity;

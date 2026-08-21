@@ -140,6 +140,18 @@ namespace ck_style_lab_input_hud_controls
         }
     }
 
+    auto Get_AnchorLabel(ECk_InputHud_AnchorCorner InValue) -> FText
+    {
+        switch (InValue)
+        {
+            case ECk_InputHud_AnchorCorner::TopLeft:     return FText::FromString(TEXT("Top left"));
+            case ECk_InputHud_AnchorCorner::BottomLeft:  return FText::FromString(TEXT("Bottom left"));
+            case ECk_InputHud_AnchorCorner::BottomRight: return FText::FromString(TEXT("Bottom right"));
+            case ECk_InputHud_AnchorCorner::TopRight:
+            default:                                     return FText::FromString(TEXT("Top right"));
+        }
+    }
+
     auto Get_FrameLabel(ECk_InputHud_FrameNotation InValue) -> FText
     {
         switch (InValue)
@@ -192,6 +204,11 @@ auto
                 + SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, CkStyle::SpaceXS)
                 [
                     Build_CornerRow()
+                ]
+
+                + SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, CkStyle::SpaceXS)
+                [
+                    Build_AnchorRow()
                 ]
 
                 + SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, CkStyle::SpaceXS)
@@ -268,6 +285,22 @@ auto
 
 auto
     SCkStyleLab_InputHudControls::
+    Build_AnchorRow()
+    -> TSharedRef<SWidget>
+{
+    // Deliberately "Screen anchor", not "Corner" -- the row directly above is "Key corners", which is the key cap's
+    // corner RADIUS. Two rows both called some flavour of "corner" are indistinguishable at a glance.
+    return ck_style_lab_input_hud_controls::Make_Row(
+        FText::FromString(TEXT("Screen anchor")),
+        FText::FromString(TEXT("Viewport corner the overlay is pinned to. Persists across runs, including packaged builds. Also exposed in Intent Debugger and as ck.InputOverlay.Corner.")),
+        ck_style_lab_input_hud_controls::Make_CycleValue(
+            TAttribute<FText>::CreateLambda([]() { return ck_style_lab_input_hud_controls::Get_AnchorLabel(UCk_InputHud_UserSettings::Get_AnchorCorner()); }),
+            FOnClicked::CreateSP(this, &SCkStyleLab_InputHudControls::OnCycleAnchor, -1),
+            FOnClicked::CreateSP(this, &SCkStyleLab_InputHudControls::OnCycleAnchor, 1)));
+}
+
+auto
+    SCkStyleLab_InputHudControls::
     Build_MetadataRow()
     -> TSharedRef<SWidget>
 {
@@ -337,6 +370,14 @@ auto
         [MakeNumeric(TEXT("Overall opacity"), TEXT("Opacity of the whole Signal Strip against the game - panel, keys, and readouts fade together. Multiplies with ck.InputOverlay.Opacity. The preview below composites against the debugger surface, not gameplay."),
             TAttribute<double>::CreateLambda([]() { return static_cast<double>(UCk_InputHud_UserSettings::Get_OverallOpacity()); }), 0.0, 1.0, 2,
             FOnCkDebug_NumericCommitted::CreateLambda([this](double InValue) { UCk_InputHud_UserSettings::Get_Mutable()->Set_OverallOpacity(static_cast<float>(InValue)); NotifyChanged(); }))]
+        + SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, CkStyle::SpaceXS)
+        [MakeNumeric(TEXT("Anchor offset X"), TEXT("Distance inward from the anchored corner. Always positive: it pushes the overlay away from whichever corner it is pinned to, so changing corners mirrors the placement instead of throwing it off screen."),
+            TAttribute<double>::CreateLambda([]() { return static_cast<double>(UCk_InputHud_UserSettings::Get_AnchorOffsetX()); }), 0.0, 512.0, 0,
+            FOnCkDebug_NumericCommitted::CreateLambda([this](double InValue) { UCk_InputHud_UserSettings::Get_Mutable()->Set_AnchorOffsetX(static_cast<float>(InValue)); NotifyChanged(); }))]
+        + SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, CkStyle::SpaceXS)
+        [MakeNumeric(TEXT("Anchor offset Y"), TEXT("Distance inward from the anchored corner, vertically. See Anchor offset X."),
+            TAttribute<double>::CreateLambda([]() { return static_cast<double>(UCk_InputHud_UserSettings::Get_AnchorOffsetY()); }), 0.0, 512.0, 0,
+            FOnCkDebug_NumericCommitted::CreateLambda([this](double InValue) { UCk_InputHud_UserSettings::Get_Mutable()->Set_AnchorOffsetY(static_cast<float>(InValue)); NotifyChanged(); }))]
         + SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, CkStyle::SpaceXS)
         [MakeNumeric(TEXT("Key border px"), TEXT("Width of every key outline; modifiers keep the same width with a dashed pattern."),
             TAttribute<double>::CreateLambda([]() { return static_cast<double>(UCk_InputHud_UserSettings::Get_KeyBorderWidth()); }), 0.0, 2.0, 1,
@@ -473,6 +514,19 @@ auto
     constexpr auto Count = 3;
     auto* Settings = UCk_InputHud_UserSettings::Get_Mutable();
     Settings->Set_MetadataMode(ck_style_lab_input_hud_controls::Cycle(Settings->MetadataMode, InDirection, Count));
+    NotifyChanged();
+    return FReply::Handled();
+}
+
+auto
+    SCkStyleLab_InputHudControls::
+    OnCycleAnchor(
+        int32 InDirection)
+    -> FReply
+{
+    constexpr auto Count = 4;
+    auto* Settings = UCk_InputHud_UserSettings::Get_Mutable();
+    Settings->Set_AnchorCorner(ck_style_lab_input_hud_controls::Cycle(Settings->AnchorCorner, InDirection, Count));
     NotifyChanged();
     return FReply::Handled();
 }

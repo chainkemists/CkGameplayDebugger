@@ -47,6 +47,20 @@ enum class ECk_InputHud_CornerStyle : uint8
     Rounded,
 };
 
+// Which viewport corner the overlay is pinned to. NOT to be confused with ECk_InputHud_CornerStyle, which is the
+// key cap's corner RADIUS preset — this one is where the strip sits on screen.
+//
+// The values deliberately match the ck.InputOverlay.Corner cvar's existing 0-3 encoding, so the console, the QA
+// panel's segmented control, and this setting all speak the same numbers.
+UENUM(BlueprintType)
+enum class ECk_InputHud_AnchorCorner : uint8
+{
+    TopLeft     = 0,
+    TopRight    = 1,
+    BottomLeft  = 2,
+    BottomRight = 3,
+};
+
 UENUM(BlueprintType)
 enum class ECk_InputHud_ColorRole : uint8
 {
@@ -121,6 +135,20 @@ public:
 
     UPROPERTY(Config, EditAnywhere, Category="Appearance")
     ECk_InputHud_CornerStyle CornerStyle = ECk_InputHud_CornerStyle::Rounded;
+
+    /** Viewport corner the overlay is pinned to. Persisted, so a QA choice survives relaunch. */
+    UPROPERTY(Config, EditAnywhere, Category="Layout")
+    ECk_InputHud_AnchorCorner AnchorCorner = ECk_InputHud_AnchorCorner::TopRight;
+
+    /** Distance INWARD from the anchored corner, in Slate units. Always positive: on a left anchor it pushes the
+     * overlay right, on a right anchor it pushes it left. Switching corners therefore mirrors the overlay rather
+     * than flinging it off screen. Negatives are refused - an overlay off the edge cannot be read or reported. */
+    UPROPERTY(Config, EditAnywhere, Category="Layout", meta=(ClampMin="0.0", ClampMax="512.0"))
+    float AnchorOffsetX = 6.0f;
+
+    /** Distance INWARD from the anchored corner, in Slate units. See AnchorOffsetX. */
+    UPROPERTY(Config, EditAnywhere, Category="Layout", meta=(ClampMin="0.0", ClampMax="512.0"))
+    float AnchorOffsetY = 4.0f;
 
     UPROPERTY(Config, EditAnywhere, Category="Geometry", meta=(ClampMin="0.0", ClampMax="12.0"))
     float KeyPaddingX = 5.0f;
@@ -219,6 +247,15 @@ public:
     Get_CornerStyle() -> ECk_InputHud_CornerStyle;
 
     static auto
+    Get_AnchorCorner() -> ECk_InputHud_AnchorCorner;
+
+    static auto
+    Get_AnchorOffsetX() -> float;
+
+    static auto
+    Get_AnchorOffsetY() -> float;
+
+    static auto
     Get_KeyPaddingX() -> float;
 
     static auto
@@ -274,6 +311,15 @@ public:
 
     auto
     Set_CornerStyle(ECk_InputHud_CornerStyle InValue) -> void;
+
+    auto
+    Set_AnchorCorner(ECk_InputHud_AnchorCorner InValue) -> void;
+
+    auto
+    Set_AnchorOffsetX(float InValue) -> void;
+
+    auto
+    Set_AnchorOffsetY(float InValue) -> void;
 
     auto
     Set_KeyPaddingX(float InValue) -> void;

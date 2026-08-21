@@ -42,6 +42,9 @@ namespace ck_input_hud_spec
         float KeyPaddingY;
         float KeyCornerRadius;
         float OverallOpacity;
+        ECk_InputHud_AnchorCorner AnchorCorner;
+        float AnchorOffsetX;
+        float AnchorOffsetY;
         bool UseCustomColors;
         FLinearColor CustomKeyBorder;
         FLinearColor CustomContainerOutline;
@@ -70,6 +73,9 @@ namespace ck_input_hud_spec
             , KeyPaddingY(Settings->KeyPaddingY)
             , KeyCornerRadius(Settings->KeyCornerRadius)
             , OverallOpacity(Settings->OverallOpacity)
+            , AnchorCorner(Settings->AnchorCorner)
+            , AnchorOffsetX(Settings->AnchorOffsetX)
+            , AnchorOffsetY(Settings->AnchorOffsetY)
             , UseCustomColors(Settings->UseCustomColors)
             , CustomKeyBorder(Settings->CustomKeyBorder)
             , CustomContainerOutline(Settings->CustomContainerOutline)
@@ -99,6 +105,9 @@ namespace ck_input_hud_spec
             Settings->KeyPaddingY = KeyPaddingY;
             Settings->KeyCornerRadius = KeyCornerRadius;
             Settings->OverallOpacity = OverallOpacity;
+            Settings->AnchorCorner = AnchorCorner;
+            Settings->AnchorOffsetX = AnchorOffsetX;
+            Settings->AnchorOffsetY = AnchorOffsetY;
             Settings->UseCustomColors = UseCustomColors;
             Settings->CustomKeyBorder = CustomKeyBorder;
             Settings->CustomContainerOutline = CustomContainerOutline;
@@ -335,6 +344,45 @@ bool FCkInputHud_RenderStyle_Test::RunTest(const FString&)
     // ghost of the strip on screen with no way to clear it.
     TestEqual(TEXT("an explicit overall opacity of zero is fully transparent"),
         Get_ComposedOverlayOpacity(1.0f, 1.0f, 0.0f), 0.0f, 0.001f);
+
+    // ---- Placement ----
+
+    // The enum's numeric values ARE the ck.InputOverlay.Corner encoding. The console, the QA panel's segmented
+    // control and the widget all round-trip through these ints, so a reordering of the enum would silently move
+    // every QA machine's overlay to a different corner.
+    TestEqual(TEXT("anchor corner encoding matches the cvar contract"),
+        static_cast<int32>(ECk_InputHud_AnchorCorner::TopLeft), 0);
+    TestEqual(TEXT("anchor corner encoding matches the cvar contract"),
+        static_cast<int32>(ECk_InputHud_AnchorCorner::TopRight), 1);
+    TestEqual(TEXT("anchor corner encoding matches the cvar contract"),
+        static_cast<int32>(ECk_InputHud_AnchorCorner::BottomLeft), 2);
+    TestEqual(TEXT("anchor corner encoding matches the cvar contract"),
+        static_cast<int32>(ECk_InputHud_AnchorCorner::BottomRight), 3);
+
+    Settings->Set_AnchorCorner(ECk_InputHud_AnchorCorner::BottomLeft);
+    TestEqual(TEXT("anchor corner round-trips through the persisted store"),
+        static_cast<int32>(UCk_InputHud_UserSettings::Get_AnchorCorner()), 2);
+
+    // Inset semantics: negative would put the overlay off the viewport edge, where it can be neither read nor
+    // reported, so it is refused rather than clamped to something arbitrary.
+    Settings->Set_AnchorOffsetX(-40.0f);
+    Settings->Set_AnchorOffsetY(9999.0f);
+    TestTrue(TEXT("a negative anchor offset is refused"), UCk_InputHud_UserSettings::Get_AnchorOffsetX() >= 0.0f);
+    TestTrue(TEXT("an anchor offset cannot leave the viewport"), UCk_InputHud_UserSettings::Get_AnchorOffsetY() <= 512.0f);
+
+    Settings->Set_AnchorOffsetX(48.0f);
+    Settings->Set_AnchorOffsetY(24.0f);
+    TestEqual(TEXT("the render style carries the authored placement"),
+        Get_ActiveRenderStyle().AnchorOffsetX, 48.0f, 0.001f);
+    TestEqual(TEXT("the render style carries the authored placement"),
+        Get_ActiveRenderStyle().AnchorOffsetY, 24.0f, 0.001f);
+    TestEqual(TEXT("the render style carries the authored anchor"),
+        static_cast<int32>(Get_ActiveRenderStyle().AnchorCorner), 2);
+
+    // Reset is the only escape hatch if placement is dialled somewhere useless, so it must cover placement too.
+    Settings->Reset_VisualTuning();
+    TestEqual(TEXT("resetting visuals restores the default anchor"),
+        static_cast<int32>(UCk_InputHud_UserSettings::Get_AnchorCorner()), 1);
 
     Settings->Reset_VisualTuning();
     const auto AnimationStyle = Get_ActiveRenderStyle();

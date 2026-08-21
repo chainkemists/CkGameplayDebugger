@@ -32,6 +32,7 @@ public:
         , _Scale(1.0f)
         , _Mode(1)
         , _Opacity(1.0f)
+        , _AnchorOffset(FVector2f::ZeroVector)
     {}
         // Co-owned with the subsystem. A null/expired model renders the HUD empty rather than crashing.
         SLATE_ARGUMENT(TWeakPtr<FCk_InputHud_Model>, Model)
@@ -44,6 +45,10 @@ public:
         SLATE_ATTRIBUTE(int32, Mode)
         // Base render opacity of the whole panel, multiplied UNDER the idle fade so the fade curve is unchanged.
         SLATE_ATTRIBUTE(float, Opacity)
+        // Distance INWARD from the anchored corner. An attribute rather than a settings read so that a preview
+        // host can pin its own placement: Style Lab shows the strip inside a small box and must not follow a
+        // 400px offset out of it.
+        SLATE_ATTRIBUTE(FVector2f, AnchorOffset)
     SLATE_END_ARGS()
 
     auto Construct(const FArguments& InArgs) -> void;
@@ -63,6 +68,7 @@ private:
     TAttribute<float> _Scale;
     TAttribute<int32> _Mode;
     TAttribute<float> _Opacity;
+    TAttribute<FVector2f> _AnchorOffset;
 
     TSharedPtr<SBox>    _AnchorBox;
     TSharedPtr<SBorder> _Panel;
@@ -72,6 +78,7 @@ private:
     // Cached so Tick only touches Slate when the value actually moved.
     int32 _AppliedCorner = INDEX_NONE;
     float _AppliedScale  = -1.0f;
+    FVector2f _AppliedAnchorOffset = FVector2f{-1.0f, -1.0f};
 
     // The idle-fade state, normalized 0..1 — the base opacity multiplies in only at apply time.
     float _PanelOpacity = 0.0f;

@@ -164,6 +164,9 @@ auto
     Result.ChipPaddingY    = UCk_InputHud_UserSettings::Get_KeyPaddingY();
     Result.KeyCornerRadius = UCk_InputHud_UserSettings::Get_KeyCornerRadius();
     Result.OverallOpacity  = UCk_InputHud_UserSettings::Get_OverallOpacity();
+    Result.AnchorCorner    = UCk_InputHud_UserSettings::Get_AnchorCorner();
+    Result.AnchorOffsetX   = UCk_InputHud_UserSettings::Get_AnchorOffsetX();
+    Result.AnchorOffsetY   = UCk_InputHud_UserSettings::Get_AnchorOffsetY();
     return Result;
 }
 

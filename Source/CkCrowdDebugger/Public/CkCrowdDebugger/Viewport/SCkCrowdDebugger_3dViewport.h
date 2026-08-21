@@ -57,6 +57,8 @@ public:
     Set_PathNetworkRibbons(
         const TArray<FCkCrowdDebugger_PathNetworkRibbonSnapshot>& InRibbons) -> void;
     auto
+    Set_QueueSnapshots(const TArray<FCkCrowdDebugger_QueueSnapshot>& InQueues) -> void;
+    auto
     Apply_CameraPreset(
         ECkCrowdDebugger_CameraPreset InPreset) -> void;
 

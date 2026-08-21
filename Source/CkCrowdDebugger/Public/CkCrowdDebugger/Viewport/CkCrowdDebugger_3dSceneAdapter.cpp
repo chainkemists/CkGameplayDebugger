@@ -11,6 +11,9 @@ constexpr auto PathNetworkSortPriority = 100;
 const auto PathChannel = FName{TEXT("CrowdSelectedPath")};
 const auto VelocityChannel = FName{TEXT("CrowdVelocity")};
 const auto RibbonOutlineChannel = FName{TEXT("CrowdPathNetworkOutlines")};
+const auto QueueOriginChannel = FName{TEXT("CrowdQueues.Origins")};
+const auto QueueFormationChannel = FName{TEXT("CrowdQueues.Formation")};
+const auto QueueMemberLinkChannel = FName{TEXT("CrowdQueues.MemberLinks")};
 
 auto
 IsFinite(const FVector& InValue) -> bool
@@ -255,6 +258,9 @@ auto
     auto Velocities = TArray<FCk_DebugScene_Vector>{};
     auto RibbonOutlines = TArray<FCk_DebugScene_Line>{};
     auto VoxelLines = TArray<FCk_DebugScene_Line>{};
+    auto QueueOriginLines = TArray<FCk_DebugScene_Line>{};
+    auto QueueFormationLines = TArray<FCk_DebugScene_Line>{};
+    auto QueueMemberLinks = TArray<FCk_DebugScene_Line>{};
     const auto AddBox = [&VoxelLines](const FBox& InBounds, const FLinearColor& InColor, float InThickness)
     {
         if (InBounds.IsValid == 0)
@@ -288,6 +294,33 @@ auto
                 Paths.Add({Previous, Point, FLinearColor{1.0f, 0.9f, 0.2f}, 3.0f});
                 Previous = Point;
             }
+        }
+    }
+    auto AgentLocations = TMap<uint64, FVector>{};
+    for (const auto& Agent : InSnapshot._Agents)
+    { AgentLocations.Add(Agent._Identity, Agent._Position); }
+    for (const auto& Queue : InSnapshot._Queues)
+    {
+        for (const auto& Origin : Queue._Origins)
+        {
+            const auto Color = FLinearColor{0.15f, 0.9f, 1.0f, 0.95f};
+            QueueOriginLines.Add({Origin._From, Origin._To, Color, 4.0f});
+            QueueOriginLines.Add({Origin._From - FVector{70.0f, 0.0f, 0.0f},
+                                  Origin._From + FVector{70.0f, 0.0f, 0.0f}, Color, 4.0f});
+            QueueOriginLines.Add({Origin._From - FVector{0.0f, 70.0f, 0.0f},
+                                  Origin._From + FVector{0.0f, 70.0f, 0.0f}, Color, 4.0f});
+            QueueOriginLines.Add({Origin._From, Origin._From + FVector{0.0f, 0.0f, 140.0f}, Color, 4.0f});
+        }
+        auto PreviousByOrigin = TMap<int32, FVector>{};
+        for (const auto& Member : Queue._Members)
+        {
+            if (NOT Member._HasReservation)
+            { continue; }
+            if (const auto* Previous = PreviousByOrigin.Find(Member._OriginIndex))
+            { QueueFormationLines.Add({*Previous, Member._ReservationLocation, FLinearColor{0.92f, 0.30f, 1.0f, 0.9f}, 3.0f}); }
+            PreviousByOrigin.Add(Member._OriginIndex, Member._ReservationLocation);
+            if (const auto* AgentLocation = AgentLocations.Find(Member._AgentIdentity))
+            { QueueMemberLinks.Add({*AgentLocation, Member._ReservationLocation, FLinearColor{0.2f, 0.95f, 1.0f, 0.75f}, 1.5f}); }
         }
     }
     for (const auto& Ribbon : InSnapshot._PathNetwork._Ribbons)
@@ -352,7 +385,10 @@ auto
            InTarget.Set_VectorChannel(ck_crowd_debugger_3d_scene_adapter::VelocityChannel, MoveTemp(Velocities)) &&
            InTarget.Set_LineChannel(ck_crowd_debugger_3d_scene_adapter::RibbonOutlineChannel,
                                     MoveTemp(RibbonOutlines)) &&
-           InTarget.Set_LineChannel(FName{TEXT("CkCrowd.Voxel")}, MoveTemp(VoxelLines));
+           InTarget.Set_LineChannel(FName{TEXT("CkCrowd.Voxel")}, MoveTemp(VoxelLines)) &&
+           InTarget.Set_LineChannel(ck_crowd_debugger_3d_scene_adapter::QueueOriginChannel, MoveTemp(QueueOriginLines)) &&
+           InTarget.Set_LineChannel(ck_crowd_debugger_3d_scene_adapter::QueueFormationChannel, MoveTemp(QueueFormationLines)) &&
+           InTarget.Set_LineChannel(ck_crowd_debugger_3d_scene_adapter::QueueMemberLinkChannel, MoveTemp(QueueMemberLinks));
 }
 
 auto
@@ -472,6 +508,54 @@ auto
         _RoleAppearances.Add(Role, Appearance);
         return true;
     };
+    // Queue geometry is source-owned and transactional just like navmesh and voxel snapshots.  Reservation slots
+    // use a small oriented box; origin boxes plus formation/member link channels make queue structure legible even
+    // when agents overlap during arrival.
+    for (const auto Role : {ECkCrowdDebugger_3dSceneRole::QueueOrigin, ECkCrowdDebugger_3dSceneRole::QueueReservation})
+    {
+        if (const auto* PreviousKeys = PreviousState._RoleItems.Find(Role))
+        {
+            for (const auto Key : *PreviousKeys)
+            { _StaticInstances.Remove(Key); }
+        }
+    }
+    for (const auto& Queue : InSnapshot._Queues)
+    {
+        const auto QueueValid = Queue._Identity != 0;
+        CK_ENSURE_IF_NOT(QueueValid, TEXT("Crowd debug-scene adapter rejected an invalid queue snapshot")) {}
+        if (NOT QueueValid)
+        { InTarget.Abort_Reconcile(); return RestoreAndFail(); }
+        const auto Hue = static_cast<float>(GetTypeHash(Queue._Category)) / static_cast<float>(MAX_uint32);
+        const auto Color = FLinearColor::MakeFromHSV8(static_cast<uint8>(Hue * 255.0f), 170, 255);
+        for (auto OriginIndex = 0; OriginIndex < Queue._Origins.Num(); ++OriginIndex)
+        {
+            const auto& Origin = Queue._Origins[OriginIndex];
+            if (NOT ck_crowd_debugger_3d_scene_adapter::IsFinite(Origin._From))
+            { InTarget.Abort_Reconcile(); return RestoreAndFail(); }
+            if (NOT SubmitStatic(ECkCrowdDebugger_3dSceneRole::QueueOrigin,
+                     HashCombineFast(GetTypeHash(Queue._Identity), GetTypeHash(OriginIndex)), GetOrCreateBoxMesh(), Color,
+                     ck_crowd_debugger_3d_scene_adapter::IsTransparent,
+                     FTransform{FQuat::Identity, Origin._From, FVector{70.0f, 70.0f, 140.0f}}))
+            { InTarget.Abort_Reconcile(); return RestoreAndFail(); }
+        }
+        for (const auto& Member : Queue._Members)
+        {
+            if (NOT Member._HasReservation)
+            { continue; }
+            const auto ValidReservation = Member._SlotIdentity != 0 &&
+                ck_crowd_debugger_3d_scene_adapter::IsFinite(Member._ReservationLocation);
+            CK_ENSURE_IF_NOT(ValidReservation, TEXT("Crowd debug-scene adapter rejected an invalid queue reservation")) {}
+            if (NOT ValidReservation)
+            { InTarget.Abort_Reconcile(); return RestoreAndFail(); }
+            const auto Rotation = Member._ReservationForward.IsNearlyZero()
+                ? FQuat::Identity : FRotationMatrix::MakeFromX(Member._ReservationForward.GetSafeNormal()).ToQuat();
+            if (NOT SubmitStatic(ECkCrowdDebugger_3dSceneRole::QueueReservation, Member._SlotIdentity,
+                    GetOrCreateBoxMesh(), FLinearColor{Color.R, Color.G, Color.B, 0.55f},
+                    ck_crowd_debugger_3d_scene_adapter::IsTransparent,
+                    FTransform{Rotation, Member._ReservationLocation, FVector{60.0f, 32.0f, 12.0f}}))
+            { InTarget.Abort_Reconcile(); return RestoreAndFail(); }
+        }
+    }
     if (InSnapshot._Recast._Revision != _RecastRevision)
     {
         auto Triangles = TArray<FCk_DebugScene_Triangle>{};

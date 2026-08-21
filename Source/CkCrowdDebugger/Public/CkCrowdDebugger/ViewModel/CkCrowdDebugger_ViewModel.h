@@ -65,6 +65,8 @@ public:
 	{ return _DataCollector.Get_NavGeometryRevision(); }
 	auto Get_PathNetworkRibbons() const -> const TArray<FCkCrowdDebugger_PathNetworkRibbonSnapshot>&
 	{ return _DataCollector.Get_PathNetworkRibbons(); }
+	auto Get_Queues() const -> const TArray<FCkCrowdDebugger_QueueSnapshot>&
+	{ return _DataCollector.Get_Queues(); }
 
 	// Viewport camera orientation
 	auto Get_ViewYawDegrees() const -> float { return _DataCollector.Get_ViewYawDegrees(); }

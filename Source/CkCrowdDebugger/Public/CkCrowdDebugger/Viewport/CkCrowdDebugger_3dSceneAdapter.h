@@ -15,7 +15,9 @@ enum class ECkCrowdDebugger_3dSceneRole : uint8
     VoxelRawFree,
     VoxelChunk,
     VoxelPortal,
-    VoxelRepair
+    VoxelRepair,
+    QueueOrigin,
+    QueueReservation
 };
 
 enum class ECkCrowdDebugger_3dVoxelLayer : uint8
@@ -93,6 +95,26 @@ struct FCkCrowdDebugger_3dPathNetworkSnapshot
     float _Opacity = 1.0f;
     TArray<FCkCrowdDebugger_3dRibbonSnapshot> _Ribbons;
 };
+struct FCkCrowdDebugger_3dQueueMemberSnapshot
+{
+    uint64 _AgentIdentity = 0;
+    uint64 _SlotIdentity = 0;
+    int32 _OriginIndex = INDEX_NONE;
+    int32 _Rank = INDEX_NONE;
+    FVector _ReservationLocation = FVector::ZeroVector;
+    FVector _ReservationForward = FVector::ForwardVector;
+    bool _HasReservation = false;
+};
+struct FCkCrowdDebugger_3dQueueSnapshot
+{
+    uint64 _Identity = 0;
+    uint64 _Revision = 0;
+    FString _DebugName;
+    FString _Category;
+    FString _State;
+    TArray<FCkCrowdDebugger_3dSegmentSnapshot> _Origins;
+    TArray<FCkCrowdDebugger_3dQueueMemberSnapshot> _Members;
+};
 struct FCkCrowdDebugger_3dSceneSnapshot
 {
     uint64 _WorldEpoch = 0;
@@ -101,6 +123,7 @@ struct FCkCrowdDebugger_3dSceneSnapshot
     FCkCrowdDebugger_3dVoxelSnapshot _Voxel;
     FCkCrowdDebugger_3dRecastSnapshot _Recast;
     FCkCrowdDebugger_3dPathNetworkSnapshot _PathNetwork;
+    TArray<FCkCrowdDebugger_3dQueueSnapshot> _Queues;
 };
 
 struct FCkCrowdDebugger_3dPickResolution

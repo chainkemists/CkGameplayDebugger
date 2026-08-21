@@ -32,6 +32,7 @@ public:
 	auto Get_NavGeometryRevision() const -> uint64 { return _NavGeometryRevision; }
 	auto Get_PathNetworkRibbons() const -> const TArray<FCkCrowdDebugger_PathNetworkRibbonSnapshot>&
 	{ return _PathNetworkRibbons; }
+	auto Get_Queues() const -> const TArray<FCkCrowdDebugger_QueueSnapshot>& { return _Queues; }
 
 	// Current local-player view yaw (degrees) + validity — used to orient the viewport to the camera.
 	auto Get_ViewYawDegrees() const -> float { return _ViewYawDegrees; }
@@ -57,6 +58,7 @@ private:
 
 	TArray<FVector> _NavTriVerts;
 	TArray<FCkCrowdDebugger_PathNetworkRibbonSnapshot> _PathNetworkRibbons;
+	TArray<FCkCrowdDebugger_QueueSnapshot> _Queues;
 	double _NavGeomLastPullTime = -1.0;
 	uint64 _NavGeometryRevision = 0;
 

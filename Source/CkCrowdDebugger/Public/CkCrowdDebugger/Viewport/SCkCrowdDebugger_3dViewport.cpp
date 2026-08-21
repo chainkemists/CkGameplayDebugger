@@ -315,6 +315,38 @@ auto
 
 auto
     SCkCrowdDebugger_3dViewport::
+    Set_QueueSnapshots(const TArray<FCkCrowdDebugger_QueueSnapshot>& InQueues)
+    -> void
+{
+    auto Queues = TArray<FCkCrowdDebugger_3dQueueSnapshot>{};
+    Queues.Reserve(InQueues.Num());
+    for (const auto& Queue : InQueues)
+    {
+        auto Copy = FCkCrowdDebugger_3dQueueSnapshot{};
+        Copy._Identity = Queue.Identity;
+        Copy._Revision = Queue.Revision;
+        Copy._DebugName = Queue.DebugName;
+        Copy._Category = Queue.Category;
+        Copy._State = Queue.State;
+        for (const auto& Origin : Queue.Origins)
+        {
+            Copy._Origins.Add({Origin.Location, Origin.Location + Origin.Forward.GetSafeNormal() * 100.0f});
+        }
+        for (const auto& Member : Queue.Members)
+        {
+            const auto SlotWithinQueue = HashCombineFast(GetTypeHash(Member.OriginIndex), GetTypeHash(Member.Rank));
+            Copy._Members.Add({Member.AgentIdentity,
+                HashCombineFast(GetTypeHash(Queue.Identity), SlotWithinQueue), Member.OriginIndex, Member.Rank,
+                Member.ReservationLocation, Member.ReservationForward, Member.HasReservation});
+        }
+        Queues.Add(MoveTemp(Copy));
+    }
+    _Snapshot._Queues = MoveTemp(Queues);
+    _SnapshotDirty = true;
+}
+
+auto
+    SCkCrowdDebugger_3dViewport::
     Apply_CameraPreset(ECkCrowdDebugger_CameraPreset InPreset)
     -> void
 {

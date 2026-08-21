@@ -257,6 +257,7 @@ auto SCkCrowdDebuggerWindow::Tick(const FGeometry& AllottedGeometry, double InCu
 			_ViewModel->Get_AllAgents(),
 			_ViewModel->Get_SelectedHandle());
 		_ViewportPanel->Set_PathNetworkRibbons(_ViewModel->Get_PathNetworkRibbons());
+		_ViewportPanel->Set_QueueSnapshots(_ShowQueues ? _ViewModel->Get_Queues() : TArray<FCkCrowdDebugger_QueueSnapshot>{});
 	}
 
 	if (_VoxelRefreshRequested || InCurrentTime >= _NextVoxelRefreshTime)
@@ -720,6 +721,11 @@ auto SCkCrowdDebuggerWindow::BuildCommandGroups() -> TArray<FCkDebug_CommandGrou
 		{TEXT("ck.Crowd.DrawPlannedPaths"), TEXT("Planned Paths"), TEXT("Draw planned path waypoints for crowd agents.")},
 		{TEXT("ck.Crowd.Debug.AgentBody"), TEXT("Agent Body"), TEXT("Draw each crowd agent body capsule and forward cone.")}
 	});
+	const auto QueueMenu = SNew(SCkDebug_ToggleSurface)
+		.ToolTipText(FText::FromString(TEXT("Show queue origins, reservation slots, formation order, and agent-to-slot links in the Crowd Debugger viewport.")))
+		.IsOn_Lambda([this]() { return _ShowQueues; })
+		.OnStateChanged_Lambda([this](bool InIsOn) { _ShowQueues = InIsOn; })
+		[ SNew(STextBlock).Text(FText::FromString(TEXT("Queue Reservations"))) ];
 
 	const auto DiagnosticsMenu = SNew(SVerticalBox)
 		+ SVerticalBox::Slot().AutoHeight()
@@ -767,7 +773,9 @@ auto SCkCrowdDebuggerWindow::BuildCommandGroups() -> TArray<FCkDebug_CommandGrou
 		+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(4, 0)
 		[ SNew(SComboButton).ToolTipText(FText::FromString(TEXT("Navigation display settings."))).ButtonContent()[SNew(STextBlock).Text(FText::FromString(TEXT("Navigation")))].MenuContent()[NavigationMenu] ]
 		+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(4, 0)
-		[ SNew(SComboButton).ToolTipText(FText::FromString(TEXT("Crowd display settings."))).ButtonContent()[SNew(STextBlock).Text(FText::FromString(TEXT("Crowd")))].MenuContent()[CrowdMenu] ];
+		[ SNew(SComboButton).ToolTipText(FText::FromString(TEXT("Crowd display settings."))).ButtonContent()[SNew(STextBlock).Text(FText::FromString(TEXT("Crowd")))].MenuContent()[CrowdMenu] ]
+		+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(4, 0)
+		[ SNew(SComboButton).ToolTipText(FText::FromString(TEXT("Queue reservation and formation display settings."))).ButtonContent()[SNew(STextBlock).Text(FText::FromString(TEXT("Queues")))].MenuContent()[QueueMenu] ];
 	const auto Telemetry = SNew(SHorizontalBox)
 		+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0, 0, 8, 0)[ SNew(STextBlock).Text_Lambda([this]() { return FText::FromString(_VoxelSourceStatus); }).ColorAndOpacity(FSlateColor(CkStyle::Info())) ]
 		+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)[ SNew(STextBlock).Text_Lambda([this]() -> FText { return _ViewModel.IsValid() ? FText::FromString(FString::Printf(TEXT("Agents: %d"), _ViewModel->Get_AgentCount())) : FText::FromString(TEXT("(no view-model)")); }) ];

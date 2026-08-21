@@ -146,6 +146,16 @@ auto SCkCrowdDebugger_AgentDetailPanel::Construct(const FArguments& InArgs) -> v
 				+ SVerticalBox::Slot().AutoHeight()[ Kv(TEXT("Tag count"),   [this]{ return FString::FromInt(_Snapshot.Tags.Num()); }, NumColor) ]
 				+ SVerticalBox::Slot().AutoHeight()[ Kv(TEXT("Radius"),      [this]{ return FString::Printf(TEXT("%.1f cm"), _Snapshot.Radius); }, NumColor) ]
 				+ SVerticalBox::Slot().AutoHeight()[ Kv(TEXT("Height"),      [this]{ return FString::Printf(TEXT("%.1f cm"), _Snapshot.Height); }, NumColor) ]
+				+ SVerticalBox::Slot().AutoHeight().Padding(SectionPad)
+				[ SNew(SCkDebug_SectionHeader).Label(FText::FromString(TEXT("Queue Reservation"))) ]
+				+ SVerticalBox::Slot().AutoHeight()[ Kv(TEXT("Queue"), [this]
+				{ return _Snapshot.QueueDebugName.IsEmpty() ? FString(TEXT("—")) : _Snapshot.QueueDebugName; }, TagColor) ]
+				+ SVerticalBox::Slot().AutoHeight()[ Kv(TEXT("Category"), [this]
+				{ return _Snapshot.QueueCategory.IsEmpty() ? FString(TEXT("—")) : _Snapshot.QueueCategory; }, TagColor) ]
+				+ SVerticalBox::Slot().AutoHeight()[ Kv(TEXT("Rank"), [this]
+				{ return _Snapshot.QueueRank == INDEX_NONE ? FString(TEXT("—")) : FString::FromInt(_Snapshot.QueueRank); }, NumColor) ]
+				+ SVerticalBox::Slot().AutoHeight()[ Kv(TEXT("Queue state"), [this]
+				{ return _Snapshot.QueueState.IsEmpty() ? FString(TEXT("—")) : _Snapshot.QueueState; }, TagColor) ]
 
 				// ---- Path Trouble ---------------------------------------------------------------
 				+ SVerticalBox::Slot().AutoHeight().Padding(SectionPad)

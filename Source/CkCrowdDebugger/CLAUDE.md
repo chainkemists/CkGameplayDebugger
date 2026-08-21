@@ -4,7 +4,7 @@
 
 - `SCkCrowdDebugger_3dViewport` is a thin feature facade over Common's `SCkDebug_3dPreviewViewport`. Do not add a
   Crowd-owned `FPreviewScene`, viewport client, camera implementation, or input router.
-- The window/view model may collect live Crowd, Recast, VoxelNav, and PathNetwork state, but the viewport boundary
+- The window/view model may collect live Crowd, Queue, Recast, VoxelNav, and PathNetwork state, but the viewport boundary
   copies it into `FCkCrowdDebugger_3dSceneSnapshot`. Scene/preview adapters retain values and opaque `uint64`
   identities only; never store a gameplay `UWorld`, actor, ECS handle/registry, navmesh, or VoxelNav producer.
 - `FCkCrowdDebugger_3dSceneAdapter` owns Crowd-specific translation: capsule/status appearance, velocity and selected
@@ -17,6 +17,9 @@
 - Preserve the `ck.CrowdDebugger.PathNetworkTrace` compatibility token and all specialized source/CVar/detail-panel
   controls when changing the adapter. Common controls are capability-driven and must not be recreated in the Crowd
   window.
+- Queue data comes only from CkQueue's detached `Get_DebugSnapshots` surface. Keep queue origins, reservations,
+  per-origin formation links, member-to-slot links, and queued-agent rank/category as copied values; the Crowd
+  debugger must never retain a queue or member handle.
 
 ## Verification
 

@@ -103,6 +103,12 @@ struct FCkCrowdDebugger_AgentSnapshot
 	FVector                  SeparationForce  = FVector::ZeroVector;
 	float                    SeparationRadius = 0.0f;
 	float                    SeparationWeight = 0.0f;
+
+	// Copied queue membership, if this crowd mover is currently assigned to a queue reservation.
+	FString                  QueueDebugName;
+	FString                  QueueCategory;
+	FString                  QueueState;
+	int32                    QueueRank = INDEX_NONE;
 };
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -144,8 +150,6 @@ struct FCkCrowdDebugger_PathNetworkRibbonSnapshot
 
 // --------------------------------------------------------------------------------------------------------------------
 
-// --------------------------------------------------------------------------------------------------------------------
-
 // Every provider parks the SAME nav-path slot, so a pending label that hard-codes CkNavigation
 // reports a stalled sidewalk or volumetric route as an Unreal-navmesh problem. One definition,
 // shared by the overlay-facing summary and both panels, so they cannot drift into disagreeing.
@@ -158,5 +162,38 @@ inline auto CkCrowdDebugger_MakePendingLabel(ECk_CrowdAgent_PathProvider InProvi
 		default:                                      return TEXT("UNREAL NAV: Pending");
 	}
 }
+
+// --------------------------------------------------------------------------------------------------------------------
+
+// Value-only queue snapshot.  Queue collection is deliberately separate from the
+// crowd-agent rows: a queue is a first-class spatial structure with its own
+// identity, category and reservation geometry.  Nothing in this type retains an
+// ECS handle, registry or producer-owned array.
+struct FCkCrowdDebugger_QueueOriginSnapshot
+{
+	FVector Location = FVector::ZeroVector;
+	FVector Forward = FVector::ForwardVector;
+};
+
+struct FCkCrowdDebugger_QueueMemberSnapshot
+{
+	uint64 AgentIdentity = 0;
+	int32 OriginIndex = INDEX_NONE;
+	int32 Rank = INDEX_NONE;
+	FVector ReservationLocation = FVector::ZeroVector;
+	FVector ReservationForward = FVector::ForwardVector;
+	bool HasReservation = false;
+};
+
+struct FCkCrowdDebugger_QueueSnapshot
+{
+	uint64 Identity = 0;
+	uint64 Revision = 0;
+	FString DebugName;
+	FString Category;
+	FString State;
+	TArray<FCkCrowdDebugger_QueueOriginSnapshot> Origins;
+	TArray<FCkCrowdDebugger_QueueMemberSnapshot> Members;
+};
 
 // --------------------------------------------------------------------------------------------------------------------

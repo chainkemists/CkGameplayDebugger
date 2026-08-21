@@ -43,6 +43,9 @@ struct CKOPTIMIZATIONDEBUGGER_API FCkOptimizationDebugger_Thresholds
 
     int32 MaxBlueprintDependencies = 50;
     int32 MinTexturesForStreamingWarning = 50;
+
+    // Seconds. A wave longer than this that is not set to stream is decoded whole into memory at load.
+    int32 MinSoundDurationForStreaming = 10;
 };
 
 // --------------------------------------------------------------------------------------------------------------------

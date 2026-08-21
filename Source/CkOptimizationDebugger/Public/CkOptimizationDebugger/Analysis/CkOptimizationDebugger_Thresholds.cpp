@@ -45,6 +45,7 @@ namespace ck_optimization_debugger_thresholds
 
         Thresholds.MaxBlueprintDependencies = InSettings->MaxBlueprintDependencies;
         Thresholds.MinTexturesForStreamingWarning = InSettings->MinTexturesForStreamingWarning;
+        Thresholds.MinSoundDurationForStreaming = InSettings->MinSoundDurationForStreaming;
 
         return Thresholds;
     }

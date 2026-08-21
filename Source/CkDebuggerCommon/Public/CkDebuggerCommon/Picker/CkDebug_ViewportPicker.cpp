@@ -1,5 +1,6 @@
 #include "CkDebug_ViewportPicker.h"
 
+#include "CkCore/Debug/CkDebugDraw_Utils.h"
 #include "CkCore/Validation/CkIsValid.h"
 
 #include "CkEcs/OwningActor/CkOwningActor_Utils.h"
@@ -355,7 +356,11 @@ auto
     // the one-frame dashed parent→child links. Billboard rendering is driven by the
     // UDebugDrawService callback (DoDrawBillboards) off this snapshot.
     DoRefreshMarkers(World);
-    _Markers.DrawLinks(World);
+    const auto bSuppressVisuals = ck::debug_draw::Is_SuppressedForStreamerMode();
+    if (NOT bSuppressVisuals)
+    {
+        _Markers.DrawLinks(World);
+    }
 
     // Refresh the focus under the last known cursor ray. STICKY: only update when the ray
     // actually hits an entity, so _FocusEntity (card + emphasized diamond) holds the last
@@ -371,10 +376,10 @@ auto
 
     // Hovered geometry-backed entity: outline its resolved bounds (the "you are
     // about to pick THIS mesh" affordance). One-frame box re-issued from this
-    // UNGATED tick — immediate-mode is right for transient hover; persistent
+    // per-frame tick — immediate-mode is right for transient hover; persistent
     // selection uses the retained PMG gizmo instead. Meshless entities keep the
     // emphasized diamond as their only hover emphasis.
-    if (ck::IsValid(_FocusEntity) && DoIsMeshResolvable(_FocusEntity))
+    if (NOT bSuppressVisuals && ck::IsValid(_FocusEntity) && DoIsMeshResolvable(_FocusEntity))
     {
         if (const auto Bounds = ck::DebugFocus::Get_EntityWorldBounds(_FocusEntity))
         {
@@ -897,6 +902,9 @@ auto
     using namespace ck_debug_viewport_picker;
 
     if (NOT _IsActive)
+    { return; }
+
+    if (ck::debug_draw::Is_SuppressedForStreamerMode())
     { return; }
 
     if (InCanvas == nullptr)

@@ -265,10 +265,17 @@ bool FCkOptimizationDebugger_Queue_PruneOnRescan::RunTest(const FString& Paramet
     Model.Set_Findings({Reproduced, Gone, Untouched});
 
     Model.Set_QueuedForKeys({Reproduced.StableKey, Gone.StableKey}, true);
-    Model.Set_Muted(Gone.StableKey, true);
+
+    auto GoneSuppression = FCkOptimizationDebugger_Suppression{};
+    GoneSuppression.Scope = ECkOptimizationDebugger_SuppressionScope::Finding;
+    GoneSuppression.Tier = ECkOptimizationDebugger_SuppressionTier::Personal;
+    GoneSuppression.Pattern = Gone.StableKey;
+    GoneSuppression.Reason = TEXT("Spec reason");
+
+    Model.Add_Suppression(GoneSuppression);
 
     TestEqual(TEXT("Two findings are staged before the re-scan"), Model.Get_QueuedFindingCount(), 2);
-    TestEqual(TEXT("...and one of them is muted"), Model.Get_MutedFindingCount(), 1);
+    TestEqual(TEXT("...and one of them is suppressed"), Model.Get_SuppressedFindingCount(), 1);
 
     // A queue entry naming a finding the project no longer has is a fix the reader cannot inspect and the window
     // cannot apply, so the scan that fails to reproduce it drops it.
@@ -278,15 +285,15 @@ bool FCkOptimizationDebugger_Queue_PruneOnRescan::RunTest(const FString& Paramet
     TestFalse(TEXT("...and reads as unqueued"), Model.Get_IsQueued(Gone.StableKey));
     TestTrue(TEXT("The reproduced one stays queued"), Model.Get_IsQueued(Reproduced.StableKey));
 
-    // ---- The MUTED set is NOT pruned, and the asymmetry is the thing being protected ----
-    // A mute is a standing judgement about a PROBLEM and must survive a scan of another level or another branch that
-    // happens not to reproduce it; a queue entry is work staged against a ROW the reader can see. Pruning the mute
-    // set here would silently un-mute every finding in a level nobody opened this session.
-    TestTrue(TEXT("A mute survives a scan that does not reproduce it"),
-        Model.Get_MutedStableKeys().Contains(Gone.StableKey));
-    TestEqual(TEXT("...keeping the persisted set's size"), Model.Get_MutedStableKeys().Num(), 1);
-    TestEqual(TEXT("...while the count of CURRENT muted findings honestly drops to none"),
-        Model.Get_MutedFindingCount(), 0);
+    // ---- The SUPPRESSION list is NOT pruned, and the asymmetry is the thing being protected ----
+    // A suppression is a standing judgement about a PROBLEM and must survive a scan of another level or another
+    // branch that happens not to reproduce it; a queue entry is work staged against a ROW the reader can see.
+    // Pruning suppressions here would silently un-suppress every exception in a level nobody opened this session.
+    TestEqual(TEXT("A suppression survives a scan that does not reproduce it"),
+        Model.Get_Suppressions().Num(), 1);
+    TestEqual(TEXT("...naming the same finding"), Model.Get_Suppressions()[0].Pattern, Gone.StableKey);
+    TestEqual(TEXT("...while the count of CURRENT suppressed findings honestly drops to none"),
+        Model.Get_SuppressedFindingCount(), 0);
 
     // ---- Reset drops the work and keeps the arrangement ----
     // A PIE boundary invalidates the answers, never the way the reader had arranged them or what they had judged.
@@ -297,8 +304,8 @@ bool FCkOptimizationDebugger_Queue_PruneOnRescan::RunTest(const FString& Paramet
     TestEqual(TEXT("Reset empties the queue"), Model.Get_QueuedFindingCount(), 0);
     TestEqual(TEXT("Reset KEEPS the collapsed set"), Model.Get_CollapsedCheckIds().Num(), 1);
     TestTrue(TEXT("...naming the same check"), Model.Get_IsCheckCollapsed(FName{TEXT("Mesh.Spec")}));
-    TestEqual(TEXT("Reset KEEPS the muted set"), Model.Get_MutedStableKeys().Num(), 1);
-    TestTrue(TEXT("...naming the same finding"), Model.Get_MutedStableKeys().Contains(Gone.StableKey));
+    TestEqual(TEXT("Reset KEEPS the suppressions"), Model.Get_Suppressions().Num(), 1);
+    TestEqual(TEXT("...naming the same finding"), Model.Get_Suppressions()[0].Pattern, Gone.StableKey);
 
     return true;
 }

@@ -110,11 +110,11 @@ bool FCkOptimizationDebugger_Filters_PathScope::RunTest(const FString& Parameter
 // --------------------------------------------------------------------------------------------------------------------
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
-    FCkOptimizationDebugger_Filters_SuggestedFixAndMute,
-    "Ck.OptimizationDebugger.Filters.SuggestedFixAndMute",
+    FCkOptimizationDebugger_Filters_SuggestedFixAndSuppression,
+    "Ck.OptimizationDebugger.Filters.SuggestedFixAndSuppression",
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
-bool FCkOptimizationDebugger_Filters_SuggestedFixAndMute::RunTest(const FString& Parameters)
+bool FCkOptimizationDebugger_Filters_SuggestedFixAndSuppression::RunTest(const FString& Parameters)
 {
     using namespace ck_optimization_debugger_filters_spec;
     using namespace ck_optimization_debugger_model;
@@ -139,35 +139,42 @@ bool FCkOptimizationDebugger_Filters_SuggestedFixAndMute::RunTest(const FString&
 
     Filter.ShowOnlyWithSuggestedFix = false;
 
-    // ---- Muting hides by STABLE KEY ----
-    Filter.MutedStableKeys.Add(Fixable.StableKey);
+    // ---- A Finding-scoped suppression hides by STABLE KEY ----
+    auto Suppression = FCkOptimizationDebugger_Suppression{};
+    Suppression.Scope = ECkOptimizationDebugger_SuppressionScope::Finding;
+    Suppression.Pattern = Fixable.StableKey;
+    Suppression.Reason = TEXT("Spec reason");
 
-    TestFalse(TEXT("A muted finding is hidden"), Matches_Filter(Fixable, Filter));
+    Filter.Suppressions.Add(Suppression);
+
+    TestFalse(TEXT("A suppressed finding is hidden"), Matches_Filter(Fixable, Filter));
     TestTrue(TEXT("...and its neighbour is not"), Matches_Filter(Unfixable, Filter));
 
-    // The escape hatch. Without it, muting could permanently hide findings with no way to audit what was hidden,
-    // which would make the tool quietly lie about the project.
-    Filter.ShowMuted = true;
+    // The escape hatch. Without it, suppression could permanently hide findings with no way to audit what was
+    // hidden, which would make the tool quietly lie about the project — and let a teammate inherit an exception
+    // they can never see.
+    Filter.ShowSuppressed = true;
 
-    TestTrue(TEXT("Show-muted brings a muted finding back"), Matches_Filter(Fixable, Filter));
+    TestTrue(TEXT("Show-suppressed brings a suppressed finding back"), Matches_Filter(Fixable, Filter));
 
-    Filter.ShowMuted = false;
+    Filter.ShowSuppressed = false;
 
-    // ---- Mute keys are keyed by identity, not by asset ----
-    // A DIFFERENT check on the same asset is a different finding and must not inherit the mute. This is the property
-    // that makes muting safe across re-scans: the same problem stays muted, a new problem does not arrive pre-hidden.
+    // ---- A Finding scope is keyed by identity, not by asset ----
+    // A DIFFERENT check on the same asset is a different finding and must not inherit the suppression. This is the
+    // property that makes it safe across re-scans: the same problem stays hidden, a new problem does not arrive
+    // pre-hidden. The ASSET scope is how a reader says the wider thing on purpose.
     auto OtherCheckSameAsset = MakeAssetFinding(TEXT("Texture.Spec"), TEXT("/Game/A/SM_A.SM_A"), false);
 
     TestNotEqual(TEXT("Two checks on one asset have different stable keys"),
         OtherCheckSameAsset.StableKey, Fixable.StableKey);
 
-    TestTrue(TEXT("Muting one check does not mute another on the same asset"),
+    TestTrue(TEXT("Suppressing one check does not suppress another on the same asset"),
         Matches_Filter(OtherCheckSameAsset, Filter));
 
     // ---- The axes compose ----
     // Each narrowing is independent, so a reader who set two of them gets the intersection rather than whichever the
     // predicate happened to check last.
-    Filter.MutedStableKeys.Reset();
+    Filter.Suppressions.Reset();
     Filter.ShowOnlyWithSuggestedFix = true;
     Filter.PathScope = TEXT("/Game/B");
 

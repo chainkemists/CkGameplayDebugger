@@ -157,12 +157,12 @@ auto
     _HasScanned = true;
 
     // The queue is pruned to what the new scan still has. A staged fix names a finding the reader looked at and
-    // decided about; once that finding is gone — fixed, muted into irrelevance, or in a level this scan excluded —
+    // decided about; once that finding is gone — fixed, suppressed, or in a level this scan excluded —
     // the entry would sit in the tray naming a row nothing on screen matches and offering to apply a fix against it.
     //
-    // Deliberately NOT what happens to the muted set, which survives a scan that fails to reproduce it: a mute is a
-    // standing judgement about a PROBLEM, a queue entry is work staged against a ROW. Pruning the mute set here
-    // would silently un-mute every finding in a level nobody opened this session.
+    // Deliberately NOT what happens to the suppression list, which survives a scan that fails to reproduce a
+    // finding: a suppression is a standing judgement about a PROBLEM, a queue entry is work staged against a ROW.
+    // Pruning suppressions here would silently un-suppress every exception in a level nobody opened this session.
     _QueuedStableKeys = ck_optimization_debugger_model::Prune_KeysToFindings(_QueuedStableKeys, _Findings);
 }
 
@@ -497,71 +497,110 @@ auto
 
 auto
     FCkOptimizationDebugger_Model::
-    Get_IsMuted(
-        const FString& InStableKey) const
+    Get_IsSuppressed(
+        const FCkOptimizationDebugger_FindingRow& InFinding) const
     -> bool
 {
-    return _Filter.MutedStableKeys.Contains(InStableKey);
+    return ck_optimization_debugger_suppression::Is_Suppressed(_Filter.Suppressions, InFinding);
 }
 
 // --------------------------------------------------------------------------------------------------------------------
 
 auto
     FCkOptimizationDebugger_Model::
-    Set_Muted(
-        const FString& InStableKey,
-        bool InMuted)
+    TryGet_Suppression(
+        const FCkOptimizationDebugger_FindingRow& InFinding) const
+    -> const FCkOptimizationDebugger_Suppression*
+{
+    return ck_optimization_debugger_suppression::TryGet_Match(_Filter.Suppressions, InFinding);
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    FCkOptimizationDebugger_Model::
+    Add_Suppression(
+        const FCkOptimizationDebugger_Suppression& InSuppression)
     -> void
 {
-    // An empty key would mute nothing and, worse, would sit in the persisted set forever matching a finding that can
-    // never be built — `Build_StableKey` always produces a check id followed by a separator.
-    if (InStableKey.IsEmpty())
+    // Identity is the RULE, not the reason: adding the same scope over the same pattern twice with two different
+    // wordings would hide the row once and list it twice.
+    const auto AlreadyPresent = _Filter.Suppressions.ContainsByPredicate(
+        [&InSuppression](const FCkOptimizationDebugger_Suppression& InExisting) -> bool
+        {
+            return InExisting.Scope == InSuppression.Scope
+                && InExisting.Tier == InSuppression.Tier
+                && InExisting.CheckId == InSuppression.CheckId
+                && InExisting.Pattern == InSuppression.Pattern;
+        });
+
+    if (AlreadyPresent)
     { return; }
 
-    if (InMuted)
-    {
-        _Filter.MutedStableKeys.Add(InStableKey);
-        return;
-    }
-
-    _Filter.MutedStableKeys.Remove(InStableKey);
+    _Filter.Suppressions.Add(InSuppression);
 }
 
 // --------------------------------------------------------------------------------------------------------------------
 
 auto
     FCkOptimizationDebugger_Model::
-    Get_ShowMuted() const
-    -> bool
+    Remove_SuppressionsCovering(
+        const FCkOptimizationDebugger_FindingRow& InFinding)
+    -> int32
 {
-    return _Filter.ShowMuted;
+    return _Filter.Suppressions.RemoveAll([&InFinding](const FCkOptimizationDebugger_Suppression& InSuppression) -> bool
+    {
+        return ck_optimization_debugger_suppression::Matches(InSuppression, InFinding);
+    });
 }
 
 // --------------------------------------------------------------------------------------------------------------------
 
 auto
     FCkOptimizationDebugger_Model::
-    Set_ShowMuted(
-        bool InShowMuted)
+    Remove_SuppressionAt(
+        int32 InIndex)
     -> void
 {
-    _Filter.ShowMuted = InShowMuted;
+    if (NOT _Filter.Suppressions.IsValidIndex(InIndex))
+    { return; }
+
+    _Filter.Suppressions.RemoveAt(InIndex);
 }
 
 // --------------------------------------------------------------------------------------------------------------------
 
 auto
     FCkOptimizationDebugger_Model::
-    Get_MutedFindingCount() const
+    Get_ShowSuppressed() const
+    -> bool
+{
+    return _Filter.ShowSuppressed;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    FCkOptimizationDebugger_Model::
+    Set_ShowSuppressed(
+        bool InShowSuppressed)
+    -> void
+{
+    _Filter.ShowSuppressed = InShowSuppressed;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    FCkOptimizationDebugger_Model::
+    Get_SuppressedFindingCount() const
     -> int32
 {
     auto Count = 0;
 
-    // Over the CURRENT findings, not over the muted set. The set accumulates keys from other scans and other
-    // branches; printing its size would claim this level hides findings it does not have.
     for (const auto& Finding : _Findings)
     {
-        if (_Filter.MutedStableKeys.Contains(Finding.StableKey))
+        if (ck_optimization_debugger_suppression::Is_Suppressed(_Filter.Suppressions, Finding))
         { ++Count; }
     }
 
@@ -572,21 +611,36 @@ auto
 
 auto
     FCkOptimizationDebugger_Model::
-    Set_MutedStableKeys(
-        TSet<FString> InStableKeys)
+    Set_Suppressions(
+        TArray<FCkOptimizationDebugger_Suppression> InSuppressions)
     -> void
 {
-    _Filter.MutedStableKeys = MoveTemp(InStableKeys);
+    _Filter.Suppressions = MoveTemp(InSuppressions);
 }
 
 // --------------------------------------------------------------------------------------------------------------------
 
 auto
     FCkOptimizationDebugger_Model::
-    Get_MutedStableKeys() const
-    -> const TSet<FString>&
+    Get_Suppressions() const
+    -> const TArray<FCkOptimizationDebugger_Suppression>&
 {
-    return _Filter.MutedStableKeys;
+    return _Filter.Suppressions;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    FCkOptimizationDebugger_Model::
+    Get_SuppressionsForTier(
+        ECkOptimizationDebugger_SuppressionTier InTier) const
+    -> TArray<FCkOptimizationDebugger_Suppression>
+{
+    return _Filter.Suppressions.FilterByPredicate(
+        [InTier](const FCkOptimizationDebugger_Suppression& InSuppression) -> bool
+        {
+            return InSuppression.Tier == InTier;
+        });
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -726,7 +780,7 @@ auto
         bool InQueued)
     -> void
 {
-    // Same guard as the muted set, and for the same reason: an empty key matches no finding that can ever be built,
+    // Same guard the suppression list needs, and for the same reason: an empty key matches no finding that can ever be built,
     // so it would sit in the queue forever contributing to a count nothing on screen explains.
     if (InStableKey.IsEmpty())
     { return; }
@@ -806,6 +860,55 @@ auto
     -> const TSet<FString>&
 {
     return _QueuedStableKeys;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    FCkOptimizationDebugger_Model::
+    Get_FixLog() const
+    -> const TArray<FCkOptimizationDebugger_FixLogEntry>&
+{
+    return _FixLog;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    FCkOptimizationDebugger_Model::
+    Add_FixLogEntries(
+        const TArray<FCkOptimizationDebugger_FixLogEntry>& InEntries)
+    -> void
+{
+    _FixLog.Append(InEntries);
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    FCkOptimizationDebugger_Model::
+    Clear_FixLog()
+    -> void
+{
+    _FixLog.Reset();
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    FCkOptimizationDebugger_Model::
+    Get_AppliedFixCount() const
+    -> int32
+{
+    auto Count = 0;
+
+    for (const auto& Entry : _FixLog)
+    {
+        if (Entry.Succeeded)
+        { ++Count; }
+    }
+
+    return Count;
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -1055,6 +1158,7 @@ namespace ck_optimization_debugger_model
             ECkOptimizationDebugger_Category::Actor,
             ECkOptimizationDebugger_Category::Blueprint,
             ECkOptimizationDebugger_Category::ProjectSettings,
+            ECkOptimizationDebugger_Category::Audio,
         };
     }
 
@@ -1174,6 +1278,7 @@ namespace ck_optimization_debugger_model
             case ECkOptimizationDebugger_Category::Actor:           return TEXT("Actor");
             case ECkOptimizationDebugger_Category::Blueprint:       return TEXT("Blueprint");
             case ECkOptimizationDebugger_Category::ProjectSettings: return TEXT("Project settings");
+            case ECkOptimizationDebugger_Category::Audio: return TEXT("Audio");
             default:                                                return TEXT("Mesh");
         }
     }
@@ -1282,10 +1387,11 @@ namespace ck_optimization_debugger_model
         if (InFilter.MinBudgetRatio > 0.0f && InFinding.BudgetRatio < InFilter.MinBudgetRatio)
         { return false; }
 
-        // Muting is a hide, not a delete: `ShowMuted` brings them back marked rather than un-muting them, so the
+        // Suppression is a hide, not a delete: `ShowSuppressed` brings them back marked rather than clearing them, so the
         // reader can always audit what they told the tool to stop showing. Checked before the path and text work
         // because it is a set lookup and they are string scans.
-        if (NOT InFilter.ShowMuted && InFilter.MutedStableKeys.Contains(InFinding.StableKey))
+        if (NOT InFilter.ShowSuppressed
+            && ck_optimization_debugger_suppression::Is_Suppressed(InFilter.Suppressions, InFinding))
         { return false; }
 
         if (NOT Matches_PathScope(InFinding, InFilter.PathScope))

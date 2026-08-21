@@ -26,6 +26,7 @@ private:
     auto Build_PaletteRow() -> TSharedRef<SWidget>;
     auto Build_DensityRow() -> TSharedRef<SWidget>;
     auto Build_CornerRow() -> TSharedRef<SWidget>;
+    auto Build_AnchorRow() -> TSharedRef<SWidget>;
     auto Build_MetadataRow() -> TSharedRef<SWidget>;
     auto Build_FrameNotationRow() -> TSharedRef<SWidget>;
     auto Build_NumericRows() -> TSharedRef<SWidget>;
@@ -39,6 +40,7 @@ private:
     auto OnCyclePalette(int32 InDirection)       -> FReply;
     auto OnCycleDensity(int32 InDirection)       -> FReply;
     auto OnCycleCorner(int32 InDirection)        -> FReply;
+    auto OnCycleAnchor(int32 InDirection)        -> FReply;
     auto OnCycleMetadata(int32 InDirection)      -> FReply;
     auto OnCycleFrameNotation(int32 InDirection) -> FReply;
     auto OnResetVisuals()                        -> FReply;

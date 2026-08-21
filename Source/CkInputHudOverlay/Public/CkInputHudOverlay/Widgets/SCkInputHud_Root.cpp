@@ -57,6 +57,7 @@ auto
     _Scale  = InArgs._Scale;
     _Mode   = InArgs._Mode;
     _Opacity = InArgs._Opacity;
+    _AnchorOffset = InArgs._AnchorOffset;
 
     const auto RenderStyle = ck::input_hud::Get_ActiveRenderStyle();
 
@@ -171,7 +172,7 @@ auto
         SAssignNew(_AnchorBox, SBox)
         .HAlign(HAlign_Right)
         .VAlign(VAlign_Top)
-        .Padding(FMargin{RenderStyle.PanelPaddingX, RenderStyle.PanelPaddingY})
+        .Padding(FMargin{_AnchorOffset.Get().X, _AnchorOffset.Get().Y})
         [
             Panel
         ]
@@ -211,6 +212,16 @@ auto
         _AppliedCorner = Corner;
     }
 
+    // Inset from the anchored corner. SBox padding on an aligned child already means "distance from the aligned
+    // edge", so one FMargin covers all four corners and switching corners MIRRORS the overlay instead of throwing
+    // it off screen -- which is why the setting is a positive inset rather than a signed screen-space delta.
+    const auto AnchorOffset = _AnchorOffset.Get();
+    if (NOT AnchorOffset.Equals(_AppliedAnchorOffset) && _AnchorBox.IsValid())
+    {
+        _AnchorBox->SetPadding(FMargin{AnchorOffset.X, AnchorOffset.Y});
+        _AppliedAnchorOffset = AnchorOffset;
+    }
+
     if (NOT FMath::IsNearlyEqual(Scale, _AppliedScale) && _Panel.IsValid())
     {
         _Panel->SetRenderTransform(TOptional<FSlateRenderTransform>{FSlateRenderTransform{Scale}});
@@ -233,8 +244,6 @@ auto
         _PanelFill->SetBorderImage(ck::input_hud::Resolve_Brush(RenderStyle.PanelBrushShape));
         _PanelFill->SetBorderBackgroundColor(PanelFillTint);
         _PanelFill->SetPadding(FMargin{RenderStyle.PanelPaddingX, RenderStyle.PanelPaddingY});
-        if (_AnchorBox.IsValid())
-        { _AnchorBox->SetPadding(FMargin{RenderStyle.PanelPaddingX, RenderStyle.PanelPaddingY}); }
         _AppliedPanelBrushShape = RenderStyle.PanelBrushShape;
         _AppliedPanelFillTint   = PanelFillTint;
         _AppliedPanelOutlineTint = PanelOutlineTint;

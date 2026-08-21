@@ -5,6 +5,7 @@
 #include "CkInputHudOverlay/CkInputHudOverlay_Log.h"
 #include "CkInputHudOverlay/Model/CkInputHud_Model.h"
 #include "CkInputHudOverlay/Producer/CkInputHud_Collector.h"
+#include "CkInputHudOverlay/Settings/CkInputHud_UserSettings.h"
 #include "CkInputHudOverlay/Widgets/SCkInputHud_Root.h"
 
 #include "CkDebuggerCommon/Devices/CkDebug_KeyActivityObserver.h"
@@ -75,10 +76,26 @@ auto
         TEXT("Base render opacity of the Ck input overlay panel (clamped to [0.15, 1])."),
         ECVF_Default);
 
+    // Placement is PERSISTED state, so these console variables are a front-end onto the user settings rather than
+    // a second copy of the truth: each one writes through on change and is seeded from the setting at activation.
+    static TAutoConsoleVariable<float> CVar_OffsetX(
+        TEXT("ck.InputOverlay.OffsetX"),
+        0.0f,
+        TEXT("Horizontal inset of the Ck input overlay from its anchored corner, in Slate units (clamped to [0, 512]). Persists."),
+        ECVF_Default);
+
+    static TAutoConsoleVariable<float> CVar_OffsetY(
+        TEXT("ck.InputOverlay.OffsetY"),
+        0.0f,
+        TEXT("Vertical inset of the Ck input overlay from its anchored corner, in Slate units (clamped to [0, 512]). Persists."),
+        ECVF_Default);
+
     _CVar_Master  = &CVar_Master;
     _CVar_Scale   = &CVar_Scale;
     _CVar_Corner  = &CVar_Corner;
     _CVar_Opacity = &CVar_Opacity;
+    _CVar_OffsetX = &CVar_OffsetX;
+    _CVar_OffsetY = &CVar_OffsetY;
 
     // One owner per session (multi-player PIE creates one subsystem per local player); the weak pointer hands
     // ownership to the next session's first instance once the previous owner deinitializes.
@@ -90,6 +107,18 @@ auto
 
         _CVar_Master->AsVariable()->SetOnChangedCallback(
             FConsoleVariableDelegate::CreateUObject(this, &UCk_InputHud_Subsystem::OnCVar_MasterChanged));
+
+        // Seed BEFORE registering, and seed FROM the setting: the cvar defaults (corner 1, offsets 0) would
+        // otherwise stomp a persisted placement the first time anything read them.
+        _CVar_Corner->AsVariable()->Set(static_cast<int32>(UCk_InputHud_UserSettings::Get_AnchorCorner()), ECVF_SetByCode);
+        _CVar_OffsetX->AsVariable()->Set(UCk_InputHud_UserSettings::Get_AnchorOffsetX(), ECVF_SetByCode);
+        _CVar_OffsetY->AsVariable()->Set(UCk_InputHud_UserSettings::Get_AnchorOffsetY(), ECVF_SetByCode);
+
+        const auto PlacementChanged = FConsoleVariableDelegate::CreateUObject(
+            this, &UCk_InputHud_Subsystem::OnCVar_PlacementChanged);
+        _CVar_Corner->AsVariable()->SetOnChangedCallback(PlacementChanged);
+        _CVar_OffsetX->AsVariable()->SetOnChangedCallback(PlacementChanged);
+        _CVar_OffsetY->AsVariable()->SetOnChangedCallback(PlacementChanged);
     }
     else
     {
@@ -109,6 +138,9 @@ auto
     if (_CVar_Master != nullptr && _bIsPrimaryConsoleOwner)
     {
         _CVar_Master->AsVariable()->SetOnChangedCallback(FConsoleVariableDelegate{});
+        _CVar_Corner->AsVariable()->SetOnChangedCallback(FConsoleVariableDelegate{});
+        _CVar_OffsetX->AsVariable()->SetOnChangedCallback(FConsoleVariableDelegate{});
+        _CVar_OffsetY->AsVariable()->SetOnChangedCallback(FConsoleVariableDelegate{});
     }
 
     if (_bIsPrimaryConsoleOwner)
@@ -118,6 +150,8 @@ auto
     _CVar_Scale   = nullptr;
     _CVar_Corner  = nullptr;
     _CVar_Opacity = nullptr;
+    _CVar_OffsetX = nullptr;
+    _CVar_OffsetY = nullptr;
 
     ck::input_hud::Log(TEXT("UCk_InputHud_Subsystem deinitialized"));
 
@@ -176,16 +210,22 @@ auto
     // The cvars are function-local statics that outlive every subsystem instance, so the widget captures THEM
     // rather than `this` — a widget the viewport somehow outlives the subsystem with still reads a live value
     // instead of a dangling UObject.
-    auto* CVarCorner  = _CVar_Corner;
     auto* CVarOpacity = _CVar_Opacity;
     auto* CVarScale  = _CVar_Scale;
     auto* CVarMaster = _CVar_Master;
 
     _RootWidget = SNew(SCkInputHud_Root)
         .Model(_Model)
-        .Corner_Lambda([CVarCorner]() -> int32
+        // Placement comes from the persisted settings, NOT the cvar -- the cvar writes into them.
+        .Corner_Lambda([]() -> int32
         {
-            return CVarCorner != nullptr ? CVarCorner->GetValueOnGameThread() : 1;
+            return static_cast<int32>(UCk_InputHud_UserSettings::Get_AnchorCorner());
+        })
+        .AnchorOffset_Lambda([]() -> FVector2f
+        {
+            return FVector2f{
+                UCk_InputHud_UserSettings::Get_AnchorOffsetX(),
+                UCk_InputHud_UserSettings::Get_AnchorOffsetY()};
         })
         .Opacity_Lambda([CVarOpacity]() -> float
         {
@@ -317,6 +357,40 @@ auto
 // ====================================================================================================================
 // CVar / device callbacks
 // ====================================================================================================================
+
+auto
+    UCk_InputHud_Subsystem::
+    OnCVar_PlacementChanged(
+        IConsoleVariable* InVar)
+    -> void
+{
+    if (InVar == nullptr)
+    { return; }
+
+    // Write through to the persisted store. Every setter is guarded by an equality check, so seeding the cvars from
+    // the settings at activation cannot bounce back and re-save what it just read.
+    auto* Settings = UCk_InputHud_UserSettings::Get_Mutable();
+    if (ck::Is_NOT_Valid(Settings))
+    { return; }
+
+    if (_CVar_Corner != nullptr && InVar == _CVar_Corner->AsVariable())
+    {
+        Settings->Set_AnchorCorner(static_cast<ECk_InputHud_AnchorCorner>(
+            FMath::Clamp(InVar->GetInt(), 0, 3)));
+        return;
+    }
+
+    if (_CVar_OffsetX != nullptr && InVar == _CVar_OffsetX->AsVariable())
+    {
+        Settings->Set_AnchorOffsetX(InVar->GetFloat());
+        return;
+    }
+
+    if (_CVar_OffsetY != nullptr && InVar == _CVar_OffsetY->AsVariable())
+    {
+        Settings->Set_AnchorOffsetY(InVar->GetFloat());
+    }
+}
 
 auto
     UCk_InputHud_Subsystem::

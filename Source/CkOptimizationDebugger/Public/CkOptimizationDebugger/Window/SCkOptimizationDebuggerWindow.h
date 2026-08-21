@@ -2,7 +2,10 @@
 
 #include "CkDebuggerCommon/Window/SCkDebugger_WindowBase.h"
 
+#include "CkOptimizationDebugger/Analysis/CkOptimizationDebugger_ProjectScan.h"
+#include "CkOptimizationDebugger/Model/CkOptimizationDebugger_FindingsReport.h"
 #include "CkOptimizationDebugger/Commands/CkOptimizationDebugger_CleanupCommands.h"
+#include "CkOptimizationDebugger/Fixes/CkOptimizationDebugger_FixPlan.h"
 #include "CkOptimizationDebugger/Commands/CkOptimizationDebugger_ProfileCommands.h"
 #include "CkOptimizationDebugger/Model/CkOptimizationDebugger_Model.h"
 #include "CkOptimizationDebugger/Window/SCkOptimizationSnapshotViewer.h"
@@ -239,7 +242,67 @@ private:
     /** Mutes or unmutes every non-header row in the selection, persists the set, and rebuilds. The direction is
      *  decided by the CALLER from what the selection already is, so the menu's verb and the effect cannot
      *  disagree on a mixed selection. */
-    auto DoToggle_MuteOnSelected(bool InMute) -> void;
+    /** Suppresses the selection at the given scope and tier, asking for a reason first.
+     *
+     *  A reason is REQUIRED, not encouraged: a suppression without one is indistinguishable from a bug six months
+     *  later, and the person deciding whether it still applies is usually not the person who made it. */
+    auto DoSuppress_Selected(
+        ECkOptimizationDebugger_SuppressionScope InScope,
+        ECkOptimizationDebugger_SuppressionTier InTier) -> void;
+
+    /** Drops every suppression covering the selection, whatever scope or tier hid it. */
+    auto DoUnsuppress_Selected() -> void;
+
+    /** Asks for the reason. Returns false when the reader cancels — and refuses to return an empty one. */
+    auto DoPrompt_SuppressionReason(const FString& InWhatIsBeingExcused, FString& OutReason) -> bool;
+
+    /** Writes both tiers back to their own stores. The project tier can FAIL (a read-only committed ini under
+     *  source control), which is reported rather than swallowed. */
+    auto DoSave_Suppressions() -> void;
+
+    /** Says ONCE that some suppression records could not be read. A record that will not parse is an exception
+     *  somebody wrote down and nothing is honouring, so the findings it covered are visible again — which the
+     *  reader has to be told rather than left to notice. */
+    auto DoReport_SuppressionLoadProblems() -> void;
+
+    // ---- Project scan ----
+
+    /** Starts a scan of every static mesh and texture under `/Game`, whether or not any open level places it.
+     *
+     *  Incremental and NOT modal: a project pass cannot sit inside an `FScopedSlowTask` and still cancel in about a
+     *  second. It advances on a repeating active timer — which is not a Tick and does not make this window override
+     *  one; it is the same one-shot-timer idiom the deferred threshold rebuild uses, repeating until the work runs
+     *  out or the reader cancels. */
+    auto DoStart_ProjectScan() -> void;
+
+    auto DoCancel_ProjectScan() -> void;
+
+    /** One slice of the scan. Returns whether to keep firing. */
+    auto DoTick_ProjectScan(double InCurrentTime, float InDeltaTime) -> EActiveTimerReturnType;
+
+    /** Hands the model the union of the last level scan and the last project scan, de-duplicated by stable key.
+     *
+     *  ONE list, because a project finding IS a finding — a second list would need a second copy of every filter,
+     *  every sort and every count. The two scans answer different questions ("what does this level cost" and "what
+     *  is in this project"), so either can be re-run without discarding the other's answer, and a mesh both of them
+     *  name produces one row: the stable key is the same string in both. */
+    auto DoMerge_Findings() -> void;
+
+    // ---- Findings export ----
+
+    /** Writes the VISIBLE findings to an HTML or Markdown file the reader picks.
+     *
+     *  The visible set, not the whole scan: what a reader exports is the list they are looking at, and a file that
+     *  quietly contained rows their filters had excluded would be a file they cannot reconcile with their screen.
+     *  The count of suppressed findings rides along in the header so the omission is stated rather than silent. */
+    auto DoExport_Findings(bool InAsMarkdown) -> void;
+
+    /** What the export says about its own scope. Built here because only the window knows which scans have run. */
+    auto Build_ReportContext() const -> FCkOptimizationDebugger_ReportContext;
+
+    /** The dashboard's project-wide mesh ranking. Rebuilt with the dashboard, because it reads the project scan's
+     *  results and those only change when that scan runs. */
+    auto DoCreate_HeaviestMeshesSection() -> TSharedRef<SWidget>;
 
     // ---- Collapse ----
 
@@ -274,6 +337,38 @@ private:
     auto DoRefresh_QueueCommands() -> void;
 
     auto DoCreate_FixQueuePanel() -> TSharedRef<SWidget>;
+
+    // ---- Fix preview ----
+
+    /** Shows the reader exactly what a selection would write, and returns whether they said yes.
+     *
+     *  Modal on purpose: it is the last moment before an asset changes, and a non-modal preview is one the reader
+     *  can leave open while the world moves underneath it. The plans are passed by reference because the ticks the
+     *  reader clears in here ARE the answer — the apply runs the plans this dialog hands back, not the ones it
+     *  was given.
+     *
+     *  It REPLACES the old batch confirmation dialog rather than stacking on top of it: this one names every
+     *  destructive and config-writing effect in place, and a second dialog after it is a dialog the reader learns
+     *  to dismiss unread. */
+    auto DoShow_FixPreview(TArray<FCkOptimizationDebugger_FixPlan>& InOutPlans) -> bool;
+
+    /** One plan's block inside the preview: its verb, its refusal or its rows, and its effects. */
+    auto DoCreate_FixPreviewPlanBlock(TArray<FCkOptimizationDebugger_FixPlan>* InPlans, int32 InPlanIndex) -> TSharedRef<SWidget>;
+
+    // ---- Applied fixes ----
+
+    /** The session's fix log, and the packages it left dirty. Rebuilt in place by `DoRebuild_AppliedFixes`. */
+    auto DoCreate_AppliedFixesPanel() -> TSharedRef<SWidget>;
+
+    auto DoRebuild_AppliedFixes() -> void;
+
+    /** Hands the still-dirty packages to the editor's OWN checkout-and-save prompt. Never saves silently: the whole
+     *  point of listing them is that the reader decides what to commit. */
+    auto DoSave_ModifiedPackages() -> void;
+
+    /** The packages this session's fixes wrote to that are STILL dirty, sorted by name. Re-asked on every rebuild
+     *  rather than recorded, so an entry cannot claim an unsaved change the reader has since saved. */
+    auto Get_ModifiedPackages() const -> TArray<UPackage*>;
 
     // ---- Rebuild entry points (never called from Tick) ----
 
@@ -496,6 +591,22 @@ private:
 
     // The fix queue's own body, rebuilt in place by DoRebuild_FixQueue.
     TSharedPtr<SVerticalBox> _FixQueueBox;
+
+    // The applied-fixes body, rebuilt in place by DoRebuild_AppliedFixes.
+    TSharedPtr<SVerticalBox> _AppliedFixesBox;
+
+    // Suppression lines that would not parse at load. Reported once on the status strip rather than swallowed: a
+    // record that cannot be read is an exception somebody wrote down and nobody is honouring.
+    int32 _SuppressionLoadDroppedCount = 0;
+
+    // The two scans' answers, kept apart so re-running one does not discard the other. `DoMerge_Findings` is the
+    // only thing that puts either of them into the model.
+    TArray<FCkOptimizationDebugger_FindingRow> _LastLevelFindings;
+    TArray<FCkOptimizationDebugger_FindingRow> _LastProjectFindings;
+
+    FCkOptimizationDebugger_ProjectScanState _ProjectScanState;
+
+    TWeakPtr<FActiveTimerHandle> _ProjectScanTimer;
 
     TSharedPtr<SListView<FFindingItem>> _FindingList;
     TArray<FFindingItem> _FindingItems;

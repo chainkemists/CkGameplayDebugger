@@ -25,11 +25,12 @@ public class CkOptimizationDebugger : CkModuleRules
             "Slate",
             "SlateCore",
 
-            // No ApplicationCore / DesktopPlatform / Json here on purpose. All three were declared for a report
-            // export that is UNSCHEDULED (see PLAN.md) and never written, and clipboard copy goes through
-            // CkDebuggerCommon's `ck::DebugCopyMenu` rather than FPlatformApplicationMisc directly. A dependency
-            // whose comment describes a feature the module does not have is a dependency the next reader trusts.
-            // Add them back in the change that actually lands the export.
+            // Still no ApplicationCore and no Json, and the reasons survived the export landing. The findings
+            // report (P18) is plain HTML and Markdown strings, so it needs no JSON writer; DesktopPlatform is
+            // already declared above for the snapshot dialogs and the report's save dialog reuses it; and
+            // clipboard copy still goes through CkDebuggerCommon's `ck::DebugCopyMenu` rather than
+            // FPlatformApplicationMisc directly. A dependency whose comment describes a feature the module does
+            // not have is a dependency the next reader trusts.
 
             "CkCore",
             "CkEcs",  // CkCore's SharedPCH instantiates global ECS registrations — every CK module must link CkEcs

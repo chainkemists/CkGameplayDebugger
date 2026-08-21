@@ -39,6 +39,7 @@ public class CkCrowdDebugger : CkModuleRules
 			"CkVoxelNav",
 			"CkPathNetwork",
 			"CkCrowd",
+			"CkQueue",
 			"CkPmg",       // destination-ping ring in the in-world RMB command processor
 		});
 

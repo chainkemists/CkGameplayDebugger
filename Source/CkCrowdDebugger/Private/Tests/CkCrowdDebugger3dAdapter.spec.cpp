@@ -593,4 +593,32 @@ auto
     return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCkCrowdDebugger3dAdapter_QueueReservationsAreRetained,
+    "Ck.CrowdDebugger.Viewport3d.QueueReservationsAreRetained", ck_crowd_debugger_3d_adapter_spec::TestFlags)
+
+auto FCkCrowdDebugger3dAdapter_QueueReservationsAreRetained::RunTest(const FString&) -> bool
+{
+    using namespace ck_crowd_debugger_3d_adapter_spec;
+    auto Fixture = FScopedTarget{};
+    auto Snapshot = MakeSnapshot();
+    auto Queue = FCkCrowdDebugger_3dQueueSnapshot{};
+    Queue._Identity = 9001;
+    Queue._Revision = 1;
+    Queue._Origins.Add({FVector{100.0f, 0.0f, 0.0f}, FVector{200.0f, 0.0f, 0.0f}});
+    Queue._Members.Add({AgentA, 1, 0, 0, FVector{0.0f, 100.0f, 0.0f}, FVector::ForwardVector, true});
+    Queue._Members.Add({AgentB, 2, 0, 1, FVector{0.0f, 220.0f, 0.0f}, FVector::ForwardVector, true});
+    Queue._Members.Add({0, 3, 1, 0, FVector{120.0f, 100.0f, 0.0f}, FVector::RightVector, true});
+    Snapshot._Queues.Add(Queue);
+    auto Adapter = FCkCrowdDebugger_3dSceneAdapter{};
+    TestTrue(TEXT("queue reservations reconcile"), Adapter.Reconcile(Snapshot, *Fixture._Target));
+    TestTrue(TEXT("queue origins have a dedicated scene role"), Adapter.Has_Role(ECkCrowdDebugger_3dSceneRole::QueueOrigin));
+    TestEqual(TEXT("same-rank reservations on different origins retain distinct items"),
+        Adapter.Get_ItemCount(ECkCrowdDebugger_3dSceneRole::QueueReservation), 3);
+    Snapshot._Queues.Reset();
+    TestTrue(TEXT("empty queue snapshot removes retained queue geometry"), Adapter.Reconcile(Snapshot, *Fixture._Target));
+    TestFalse(TEXT("empty queue snapshot removes origins"), Adapter.Has_Role(ECkCrowdDebugger_3dSceneRole::QueueOrigin));
+    TestFalse(TEXT("empty queue snapshot removes reservations"), Adapter.Has_Role(ECkCrowdDebugger_3dSceneRole::QueueReservation));
+    return true;
+}
+
 #endif

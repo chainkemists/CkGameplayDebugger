@@ -25,6 +25,7 @@
 #include "CkPathNetwork/Actor/CkPathNetwork_Actor.h"
 #include "CkPathNetwork/Network/CkPathNetwork_Fragment.h"
 #include "CkPathNetwork/Network/CkPathNetwork_Utils.h"
+#include "CkQueue/Queue/CkQueue_Utils.h"
 
 #include "Engine/Engine.h"
 #include "EngineGlobals.h"
@@ -106,6 +107,7 @@ auto FCkCrowdDebugger_DataCollector::Reset_ForWorldChange() -> void
 	_NavTriVerts.Reset();
 	++_NavGeometryRevision;
 	_PathNetworkRibbons.Reset();
+	_Queues.Reset();
 	_NavGeomLastPullTime = -1.0;
 	_ViewYawValid = false;
 	_ViewCameraValid = false;
@@ -122,6 +124,7 @@ auto
 {
 	_Agents.Reset();
 	_PathNetworkRibbons.Reset();
+	_Queues.Reset();
 
 	// Reset only the per-tick-sampled fields. Health-check fields are sticky across
 	// ticks (set explicitly by Run_HealthCheckProbe; not derived from the live world).
@@ -384,6 +387,39 @@ auto
 			auto Handle = ck::MakeHandle(InEntity, TransientEntity);
 			SampleAgent(Handle);
 		});
+
+	// Queue is collected as a detached runtime DTO then projected into debugger-local values.  The
+	// resulting Crowd snapshot contains no queue fragment, handle or registry reference, and stays
+	// safe after PIE teardown exactly like existing path/network rows.
+	for (const auto& Queue : UCk_Utils_Queue_UE::Get_DebugSnapshots(TransientEntity))
+	{
+		auto QueueCopy = FCkCrowdDebugger_QueueSnapshot{};
+		QueueCopy.Identity = static_cast<uint64>(Queue.Get_QueueIdentity());
+		QueueCopy.Revision = static_cast<uint64>(Queue.Get_Revision());
+		QueueCopy.DebugName = Queue.Get_QueueDebugName().ToString();
+		QueueCopy.Category = Queue.Get_Category().ToString();
+		QueueCopy.State = StaticEnum<ECk_Queue_State>()->GetNameStringByValue(static_cast<int64>(Queue.Get_State()));
+		for (const auto& Origin : Queue.Get_OriginWorldTransforms())
+		{ QueueCopy.Origins.Add({Origin.GetLocation(), Origin.GetRotation().GetForwardVector()}); }
+		for (const auto& Member : Queue.Get_Members())
+		{
+			const auto AgentIdentity = static_cast<uint64>(Member.Get_MoverIdentity());
+			const auto HasReservation = Member.Get_Rank() != INDEX_NONE;
+			QueueCopy.Members.Add({AgentIdentity, Member.Get_OriginIndex(), Member.Get_Rank(), Member.Get_TargetWorldTransform().GetLocation(),
+				Member.Get_TargetWorldTransform().GetRotation().GetForwardVector(), HasReservation});
+			for (auto& Agent : _Agents)
+			{
+				if (static_cast<uint64>(Agent.Handle.Get_Entity().Get_ID()) != AgentIdentity)
+				{ continue; }
+				Agent.QueueDebugName = QueueCopy.DebugName;
+				Agent.QueueCategory = QueueCopy.Category;
+				Agent.QueueState = QueueCopy.State;
+				Agent.QueueRank = Member.Get_Rank();
+				break;
+			}
+		}
+		_Queues.Add(MoveTemp(QueueCopy));
+	}
 
 	// Note: per-tick Collect does NOT clear _HealthCheckRun fields — they're sticky
 	// across ticks until the user explicitly re-runs the probe. The early

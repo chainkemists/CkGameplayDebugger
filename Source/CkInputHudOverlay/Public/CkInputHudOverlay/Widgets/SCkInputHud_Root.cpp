@@ -270,7 +270,11 @@ auto
 
     _PanelOpacity = Target;
 
-    const auto Applied = Target * FMath::Clamp(_Opacity.Get(), 0.15f, 1.0f);
+    // One RenderOpacity for the whole strip. Slate blends it down into the panel fill, the readouts, AND the
+    // ribbon's draw elements, so lowering the user's Overall opacity reveals the game behind the overlay instead
+    // of blending the keys into a panel that stays put.
+    const auto Applied = ck::input_hud::Get_ComposedOverlayOpacity(
+        Target, _Opacity.Get(), RenderStyle.OverallOpacity);
     if (NOT FMath::IsNearlyEqual(Applied, _AppliedOpacityProduct) && _Panel.IsValid())
     {
         _AppliedOpacityProduct = Applied;

@@ -15,6 +15,7 @@
 #include "CkDebuggerCommon/Widgets/SCkDebug_Card.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_CategoryDot.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_Chip.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_CopyableContainer.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_CountBadge.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_Icon.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_IconToggle.h"
@@ -31,13 +32,16 @@
 
 #include "CkOptimizationDebugger/Analysis/CkOptimizationDebugger_CleanupScan.h"
 #include "CkOptimizationDebugger/Analysis/CkOptimizationDebugger_LevelScan.h"
+#include "CkOptimizationDebugger/Analysis/CkOptimizationDebugger_ProjectScan.h"
 #include "CkOptimizationDebugger/Commands/CkOptimizationDebugger_CleanupCommands.h"
 #include "CkOptimizationDebugger/Commands/CkOptimizationDebugger_ProfileCommands.h"
 #include "CkOptimizationDebugger/Analysis/CkOptimizationDebugger_MemoryScan.h"
 #include "CkOptimizationDebugger/Analysis/CkOptimizationDebugger_SnapshotCapture.h"
 #include "CkOptimizationDebugger/Model/CkOptimizationDebugger_SnapshotCodec.h"
+#include "CkOptimizationDebugger/Model/CkOptimizationDebugger_FindingsReport.h"
 #include "CkOptimizationDebugger/Model/CkOptimizationDebugger_SnapshotReport.h"
 #include "CkOptimizationDebugger/Analysis/CkOptimizationDebugger_Thresholds.h"
+#include "CkOptimizationDebugger/Fixes/CkOptimizationDebugger_FixPlan.h"
 #include "CkOptimizationDebugger/Fixes/CkOptimizationDebugger_Fixes.h"
 #include "CkOptimizationDebugger/Fixes/CkOptimizationDebugger_Navigation.h"
 #include "CkOptimizationDebugger/Settings/CkOptimizationDebuggerSettings.h"
@@ -53,9 +57,11 @@
 #include <ImageUtils.h>
 #include <Misc/FileHelper.h>
 #include <Misc/Paths.h>
+#include <Framework/Application/SlateApplication.h>
 #include <Misc/MessageDialog.h>
 #include <Styling/AppStyle.h>
 #include <UObject/Class.h>
+#include <UObject/Package.h>
 #include <UObject/UnrealType.h>
 #include <Widgets/Input/SButton.h>
 #include <Widgets/Input/SCheckBox.h>
@@ -68,9 +74,16 @@
 #include <Widgets/Layout/SWrapBox.h>
 #include <Widgets/SBoxPanel.h>
 #include <Widgets/SNullWidget.h>
+#include <Widgets/SWindow.h>
 #include <Widgets/Text/STextBlock.h>
 #include <Widgets/Views/SHeaderRow.h>
 #include <Widgets/Views/STableRow.h>
+
+#if WITH_EDITOR
+// `FEditorFileUtils::PromptForCheckoutAndSave` — the editor's OWN save dialog, which is the only way this module
+// ever writes a package to disk. Editor-only, exactly like every other UnrealEd symbol here.
+#include <FileHelpers.h>
+#endif
 
 // --------------------------------------------------------------------------------------------------------------------
 
@@ -173,6 +186,7 @@ namespace ck_optimization_debugger_window
             case ECkOptimizationDebugger_Category::Actor:           return ECk_Icon::Actor;
             case ECkOptimizationDebugger_Category::Blueprint:       return ECk_Icon::Fragment;
             case ECkOptimizationDebugger_Category::ProjectSettings: return ECk_Icon::Settings;
+            case ECkOptimizationDebugger_Category::Audio: return ECk_Icon::Audio;
             default:                                                return ECk_Icon::Entity;
         }
     }
@@ -990,7 +1004,20 @@ auto
 
     // Restored for the same reason: a finding the reader triaged away last week must not reappear on the first scan
     // of this session, or muting would be a per-session gesture nobody would bother making.
-    _Model.Set_MutedStableKeys(UCkOptimizationDebuggerSettings::Load_MutedStableKeys());
+    {
+        // BOTH tiers, project first so a team ruling is the one a row reports when the two overlap. Lines that will
+        // not parse are DROPPED and counted rather than half-applied: a suppression whose scope cannot be read
+        // would hide findings nobody chose to hide.
+        auto ProjectDropped = 0;
+        auto PersonalDropped = 0;
+
+        auto Suppressions = UCkOptimizationDebuggerSuppressions::Load(ProjectDropped);
+        Suppressions.Append(UCkOptimizationDebuggerSettings::Load_PersonalSuppressions(PersonalDropped));
+
+        _Model.Set_Suppressions(MoveTemp(Suppressions));
+
+        _SuppressionLoadDroppedCount = ProjectDropped + PersonalDropped;
+    }
 
     // And how they had the list folded. Unlike the two above this narrows nothing — it is purely how the reader
     // arranged twenty-eight checks' worth of groups, which is exactly the kind of arrangement nobody wants to redo
@@ -1119,10 +1146,71 @@ auto
         .Padding(0.0f, 0.0f, CkStyle::SpaceS, 0.0f)
         [
             Build_CommandButton(ECk_Icon::Target,
-                TEXT("Scan"),
+                TEXT("Scan Levels"),
                 TEXT("Analyze the persistent level and every loaded sub-level"),
                 FOnClicked::CreateSP(this, &SCkOptimizationDebuggerWindow::DoOnScanClicked),
                 TAttribute<bool>::CreateSP(this, &SCkOptimizationDebuggerWindow::Get_CanScan))
+        ]
+
+        + SHorizontalBox::Slot()
+        .AutoWidth()
+        .VAlign(VAlign_Center)
+        [
+            // The second question, and it is a DIFFERENT one: the level scan says what the open levels cost, this
+            // says what is in the project at all. An asset nobody placed is invisible to the first and is exactly
+            // the kind of thing that sits in a build costing memory nobody attributed to it.
+            Build_CommandButton(ECk_Icon::Catalog,
+                TEXT("Scan Project"),
+                TEXT("Read every static mesh and texture under /Game from the asset registry, opening nothing, then open only the ones with a question the registry cannot answer. Runs in the background; press again to cancel."),
+                FOnClicked::CreateLambda([this]() -> FReply
+                {
+                    if (_ProjectScanState.IsRunning)
+                    { DoCancel_ProjectScan(); }
+                    else
+                    { DoStart_ProjectScan(); }
+
+                    return FReply::Handled();
+                }),
+                TAttribute<bool>::CreateSP(this, &SCkOptimizationDebuggerWindow::Get_CanScan))
+        ]
+
+        + SHorizontalBox::Slot()
+        .AutoWidth()
+        .VAlign(VAlign_Center)
+        .Padding(CkStyle::SpaceS, 0.0f, 0.0f, 0.0f)
+        [
+            Build_CommandButton(ECk_Icon::Save,
+                TEXT("Export"),
+                TEXT("Write the findings you can currently see to an HTML or Markdown file. Same findings and same timestamp produce a byte-identical file, so two exports are diffable."),
+                FOnClicked::CreateLambda([this]() -> FReply
+                {
+                    DoExport_Findings(false);
+
+                    return FReply::Handled();
+                }),
+                TAttribute<bool>::CreateLambda([this]() -> bool
+                {
+                    return NOT _Model.Get_VisibleFindings().IsEmpty();
+                }))
+        ]
+
+        + SHorizontalBox::Slot()
+        .AutoWidth()
+        .VAlign(VAlign_Center)
+        [
+            Build_CommandButton(ECk_Icon::Edit,
+                TEXT("Export MD"),
+                TEXT("The same content as Markdown, for a pull request description or a wiki page."),
+                FOnClicked::CreateLambda([this]() -> FReply
+                {
+                    DoExport_Findings(true);
+
+                    return FReply::Handled();
+                }),
+                TAttribute<bool>::CreateLambda([this]() -> bool
+                {
+                    return NOT _Model.Get_VisibleFindings().IsEmpty();
+                }))
         ];
 }
 
@@ -1460,23 +1548,23 @@ auto
             // `Ghost` for things that are present but not shown. There is no eye glyph in the set, and inventing one
             // for a single toggle is not worth a new icon.
             .IconId(ECk_Icon::Orphaned)
-            .Label(FText::FromString(TEXT("Show muted")))
+            .Label(FText::FromString(TEXT("Show suppressed")))
             .ToolTip(FText::FromString(
-                TEXT("Show findings you muted, marked as muted. Muting hides a finding from the list until you ")
-                TEXT("unmute it — it never deletes, fixes, or excludes anything from the scan.")))
+                TEXT("Show findings marked as intentional, with the reason and who wrote it. Suppressing hides a ")
+                TEXT("finding from the list — it never deletes, fixes, or excludes anything from the scan.")))
             .IsOn_Lambda([this]() -> bool
             {
-                return _Model.Get_ShowMuted();
+                return _Model.Get_ShowSuppressed();
             })
             .IsEnabled_Lambda([this]() -> bool
             {
                 // Nothing muted means nothing to reveal. Disabled rather than hidden: a control that vanished would
                 // teach nobody the feature exists, and its tooltip still explains what it is for.
-                return _Model.Get_MutedFindingCount() > 0;
+                return _Model.Get_SuppressedFindingCount() > 0;
             })
             .OnStateChanged_Lambda([this](bool InNewState)
             {
-                _Model.Set_ShowMuted(InNewState);
+                _Model.Set_ShowSuppressed(InNewState);
                 DoRebuild_Findings();
             })
         ]
@@ -1543,7 +1631,7 @@ auto
 
                 return FText::FromString(ck::Format_UE(
                     TEXT("Apply every automatic fix in the {} finding(s) the current filters admit, inside one ")
-                    TEXT("transaction Undo can reverse. Muted and filtered-out findings are NOT touched. Anything ")
+                    TEXT("transaction Undo can reverse. Suppressed and filtered-out findings are NOT touched. Anything ")
                     TEXT("destructive or behaviour-changing asks first."),
                     _VisibleFixableCount));
             })
@@ -1570,12 +1658,12 @@ auto
             SNew(STextBlock)
             .Text_Lambda([this]() -> FText
             {
-                return FText::FromString(ck::Format_UE(TEXT("{} muted"), _Model.Get_MutedFindingCount()));
+                return FText::FromString(ck::Format_UE(TEXT("{} suppressed"), _Model.Get_SuppressedFindingCount()));
             })
             .ColorAndOpacity(FSlateColor{CkStyle::TextMute()})
             .Visibility_Lambda([this]() -> EVisibility
             {
-                return _Model.Get_MutedFindingCount() > 0
+                return _Model.Get_SuppressedFindingCount() > 0
                     ? EVisibility::HitTestInvisible
                     : EVisibility::Collapsed;
             })
@@ -1727,7 +1815,7 @@ auto
                 .Orientation(Orient_Vertical)
 
                 + SSplitter::Slot()
-                .Value(0.55f)
+                .Value(0.45f)
                 [
                     SNew(SScrollBox)
 
@@ -1739,9 +1827,20 @@ auto
                 ]
 
                 + SSplitter::Slot()
-                .Value(0.45f)
+                .Value(0.35f)
                 [
                     DoCreate_FixQueuePanel()
+                ]
+
+                + SSplitter::Slot()
+                .Value(0.20f)
+                [
+                    SNew(SScrollBox)
+
+                    + SScrollBox::Slot()
+                    [
+                        DoCreate_AppliedFixesPanel()
+                    ]
                 ]
             ]
         ];
@@ -4549,7 +4648,11 @@ auto
     // re-scan takes exactly this path.
     _Model.Set_Summary(Result.Summary);
 
-    _Model.Set_Findings(Result.Findings);
+    _LastLevelFindings = Result.Findings;
+
+    // Through the merge, so a project scan's answer is not discarded by a level re-scan (and the other way round).
+    DoMerge_Findings();
+
     _Model.Set_ScanInfo(Result.ScannedLevelNames, FDateTime::Now());
 
     DoRebuild_All();
@@ -4806,44 +4909,27 @@ auto
         return;
     }
 
-    // The confirmation gate. Only a batch that DESTROYS actors or writes a project config file asks — a property
-    // edit inside a transaction is one Ctrl+Z away and needs no ceremony. Without this, "Fix 12 Findings" could
-    // delete hundreds of actors and rewrite DefaultEngine.ini on a single click, and the registry has carried an
-    // `IsDestructive` flag for exactly this since P2 with nothing reading it.
-    const auto Confirmation = Build_BatchConfirmation(Fixable);
-
-    if (Confirmation.IsRequired)
-    {
-        const auto Prompt = FText::FromString(ck::Format_UE(TEXT("{}\n\n{}\n\nApply {} fix(es)?"),
-            Confirmation.Title, Confirmation.Body, Fixable.Num()));
-
-        if (FMessageDialog::Open(EAppMsgType::YesNo, Prompt) != EAppReturnType::Yes)
-        {
-            DoSet_Status(TEXT("Nothing was applied — you declined the confirmation."), ECk_Tone::Neutral);
-            return;
-        }
-    }
-
     auto* EditorWorld = ck_optimization_debugger_scan::TryGet_EditorWorld();
 
-    // ONE fix goes through the single-fix entry point, which labels the undo record with that fix's own verb —
-    // "Enable Nanite (SM_Foo)" rather than "Apply 1 optimization fix(es)". Routing everything through the batch made
-    // that label unreachable and the per-fix path dead code.
-    auto Batch = FCkOptimizationDebugger_BatchFixResult{};
+    // NOTHING is written until the reader has seen it. The plans are computed first — read-only, per property,
+    // before and after — and the preview is what asks for consent. It REPLACES the old yes/no confirmation dialog:
+    // that dialog could only say "this batch deletes actors", while this one names which actors, which properties
+    // and which values, and lets the reader untick any of it.
+    auto Plans = ck_optimization_debugger_fixplan::Plan_Fixes(Fixable, EditorWorld);
 
-    if (Fixable.Num() == 1)
+    if (NOT DoShow_FixPreview(Plans))
     {
-        const auto Result = Apply_Fix(Fixable[0], EditorWorld);
+        DoSet_Status(TEXT("Nothing was applied — you closed the preview."), ECk_Tone::Neutral);
+        return;
+    }
 
-        Batch.SucceededCount = Result.Succeeded ? 1 : 0;
-        Batch.FailedCount = Result.Succeeded ? 0 : 1;
-        Batch.ChangedState = Result.ChangedState;
-        Batch.Messages.Add(Result.Message);
-    }
-    else
-    {
-        Batch = Apply_Fixes(Fixable, EditorWorld);
-    }
+    auto LogEntries = TArray<FCkOptimizationDebugger_FixLogEntry>{};
+    auto Batch = ck_optimization_debugger_fixplan::Apply_PreviewedPlans(Plans, EditorWorld, LogEntries);
+
+    // Recorded before the re-scan, because the re-scan replaces the findings these entries name and the log is the
+    // only thing left that says what this session changed.
+    _Model.Add_FixLogEntries(LogEntries);
+    DoRebuild_AppliedFixes();
 
     const auto Tone = Batch.FailedCount == 0
         ? ECk_Tone::Ok
@@ -4866,6 +4952,862 @@ auto
 }
 
 // --------------------------------------------------------------------------------------------------------------------
+// The fix preview
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkOptimizationDebuggerWindow::
+    DoCreate_FixPreviewPlanBlock(
+        TArray<FCkOptimizationDebugger_FixPlan>* InPlans,
+        int32 InPlanIndex)
+    -> TSharedRef<SWidget>
+{
+    using namespace ck_optimization_debugger_window;
+
+    if (InPlans == nullptr || NOT InPlans->IsValidIndex(InPlanIndex))
+    { return SNullWidget::NullWidget; }
+
+    const auto& Plan = (*InPlans)[InPlanIndex];
+
+    auto Body = SNew(SVerticalBox);
+
+    // ---- Heading: the verb and what it is about ----
+    Body->AddSlot()
+    .AutoHeight()
+    .Padding(0.0f, CkStyle::SpaceS, 0.0f, CkStyle::SpaceXS)
+    [
+        SNew(SHorizontalBox)
+
+        + SHorizontalBox::Slot()
+        .AutoWidth()
+        .VAlign(VAlign_Center)
+        .Padding(0.0f, 0.0f, CkStyle::SpaceS, 0.0f)
+        [
+            SNew(STextBlock)
+            .Text(FText::FromString(Plan.FixVerb))
+            .Font(CkStyle::BoldFont(CkStyle::FontSizeBody()))
+            .ColorAndOpacity(Plan.CanApply ? CkStyle::Text() : CkStyle::TextMute())
+        ]
+
+        + SHorizontalBox::Slot()
+        .FillWidth(1.0f)
+        .VAlign(VAlign_Center)
+        [
+            SNew(STextBlock)
+            .Text(FText::FromString(Plan.Finding.Target.DisplayName))
+            .Font(CkStyle::RegularFont(CkStyle::FontSizeSmall()))
+            .ColorAndOpacity(CkStyle::TextDim())
+        ]
+    ];
+
+    // ---- A refused plan says why, and shows no rows ----
+    //
+    // Kept ON SCREEN rather than filtered out: a reader who selected twelve findings and is being offered nine
+    // needs to see which three dropped out and why, at the moment they are deciding.
+    if (NOT Plan.CanApply)
+    {
+        Body->AddSlot()
+        .AutoHeight()
+        .Padding(k_RowIndent, 0.0f, 0.0f, CkStyle::SpaceS)
+        [
+            SNew(STextBlock)
+            .Text(FText::FromString(Plan.RefusalReason))
+            .Font(CkStyle::RegularFont(CkStyle::FontSizeSmall()))
+            .ColorAndOpacity(CkStyle::GetToneColor(ECk_Tone::Warn))
+            .AutoWrapText(true)
+        ];
+
+        return Body;
+    }
+
+    // ---- One row per property: object, property, before, after, and its tick ----
+    for (auto ChangeIndex = 0; ChangeIndex < Plan.Changes.Num(); ++ChangeIndex)
+    {
+        const auto& Change = Plan.Changes[ChangeIndex];
+
+        Body->AddSlot()
+        .AutoHeight()
+        .Padding(k_RowIndent, 0.0f, 0.0f, CkStyle::SpaceXS)
+        [
+            SNew(SHorizontalBox)
+
+            + SHorizontalBox::Slot()
+            .AutoWidth()
+            .VAlign(VAlign_Center)
+            .Padding(0.0f, 0.0f, CkStyle::SpaceS, 0.0f)
+            [
+                SNew(SCheckBox)
+                .IsChecked_Lambda([InPlans, InPlanIndex, ChangeIndex]() -> ECheckBoxState
+                {
+                    if (InPlans == nullptr || NOT InPlans->IsValidIndex(InPlanIndex))
+                    { return ECheckBoxState::Unchecked; }
+
+                    const auto& Current = (*InPlans)[InPlanIndex];
+
+                    return Current.Changes.IsValidIndex(ChangeIndex) && Current.Changes[ChangeIndex].Included
+                        ? ECheckBoxState::Checked
+                        : ECheckBoxState::Unchecked;
+                })
+                .OnCheckStateChanged_Lambda([InPlans, InPlanIndex, ChangeIndex](ECheckBoxState InState) -> void
+                {
+                    if (InPlans == nullptr || NOT InPlans->IsValidIndex(InPlanIndex))
+                    { return; }
+
+                    ck_optimization_debugger_fixplan::Set_ChangeIncluded(
+                        (*InPlans)[InPlanIndex], ChangeIndex, InState == ECheckBoxState::Checked);
+                })
+            ]
+
+            + SHorizontalBox::Slot()
+            .FillWidth(0.45f)
+            .VAlign(VAlign_Center)
+            [
+                SNew(STextBlock)
+                .Text(FText::FromString(Change.ObjectLabel.IsEmpty()
+                    ? Change.PropertyLabel
+                    : ck::Format_UE(TEXT("{} \u2192 {}"), Change.ObjectLabel, Change.PropertyLabel)))
+                .Font(CkStyle::RegularFont(CkStyle::FontSizeSmall()))
+                .ColorAndOpacity(CkStyle::Text())
+            ]
+
+            + SHorizontalBox::Slot()
+            .FillWidth(0.55f)
+            .VAlign(VAlign_Center)
+            [
+                // The exact before and after, monospaced so two values line up and a one-character difference is
+                // visible. This IS the promise the preview makes.
+                SNew(STextBlock)
+                .Text(FText::FromString(ck::Format_UE(TEXT("{}  \u2192  {}"), Change.BeforeText, Change.AfterText)))
+                .Font(CkStyle::MonoFont(CkStyle::FontSizeSmall()))
+                .ColorAndOpacity(CkStyle::Accent())
+            ]
+        ];
+    }
+
+    // ---- Effects: everything a fix does that is not a property write ----
+    for (const auto& Effect : Plan.Effects)
+    {
+        Body->AddSlot()
+        .AutoHeight()
+        .Padding(k_RowIndent, 0.0f, 0.0f, CkStyle::SpaceXS)
+        [
+            SNew(STextBlock)
+            .Text(FText::FromString(ck::Format_UE(TEXT("\u2022 {}"), Effect.Description)))
+            .Font(CkStyle::RegularFont(CkStyle::FontSizeSmall()))
+            .ColorAndOpacity(Effect.IsRisk ? CkStyle::GetToneColor(ECk_Tone::Warn) : CkStyle::TextDim())
+            .AutoWrapText(true)
+        ];
+    }
+
+    return Body;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkOptimizationDebuggerWindow::
+    DoShow_FixPreview(
+        TArray<FCkOptimizationDebugger_FixPlan>& InOutPlans)
+    -> bool
+{
+    using namespace ck_optimization_debugger_window;
+    using namespace ck_optimization_debugger_fixplan;
+
+    if (InOutPlans.IsEmpty())
+    { return false; }
+
+    // Every plan refused is a preview with nothing to confirm. Reported on the strip by the caller rather than
+    // shown as an empty dialog the reader has to dismiss.
+    if (NOT InOutPlans.ContainsByPredicate([](const FCkOptimizationDebugger_FixPlan& InPlan) -> bool
+        { return InPlan.CanApply; }))
+    { return false; }
+
+    auto* Plans = &InOutPlans;
+    auto Confirmed = MakeShared<bool>(false);
+
+    auto Body = SNew(SVerticalBox);
+
+    for (auto PlanIndex = 0; PlanIndex < InOutPlans.Num(); ++PlanIndex)
+    {
+        Body->AddSlot()
+        .AutoHeight()
+        [
+            DoCreate_FixPreviewPlanBlock(Plans, PlanIndex)
+        ];
+    }
+
+    auto Window = SNew(SWindow)
+        .Title(FText::FromString(TEXT("Apply optimization fixes")))
+        .ClientSize(FVector2D{860.0f, 620.0f})
+        .SupportsMaximize(false)
+        .SupportsMinimize(false);
+
+    auto Content = SNew(SBorder)
+        .BorderImage(CkStyle::GetRoundedBrush_Large())
+        .BorderBackgroundColor(CkStyle::Bg2())
+        .Padding(CkStyle::SpaceM)
+        [
+            SNew(SVerticalBox)
+
+            + SVerticalBox::Slot()
+            .AutoHeight()
+            .Padding(0.0f, 0.0f, 0.0f, CkStyle::SpaceS)
+            [
+                SNew(STextBlock)
+                .Text_Lambda([Plans]() -> FText
+                {
+                    const auto Summary = Build_PlanSummary(*Plans);
+
+                    return FText::FromString(ck::Format_UE(
+                        TEXT("{} fix(es) will write {} change(s) across {} asset(s). {} refused, {} unticked."),
+                        Summary.ApplicableFixCount,
+                        Summary.IncludedChangeCount,
+                        Summary.AffectedObjectCount,
+                        Summary.RefusedFixCount,
+                        Summary.ExcludedChangeCount));
+                })
+                .Font(CkStyle::RegularFont(CkStyle::FontSizeBody()))
+                .ColorAndOpacity(CkStyle::Text())
+                .AutoWrapText(true)
+            ]
+
+            + SVerticalBox::Slot()
+            .AutoHeight()
+            .Padding(0.0f, 0.0f, 0.0f, CkStyle::SpaceS)
+            [
+                // Said once, up front, because it is the other half of what makes a fix safe to press: nothing is
+                // written to DISK here. The assets go dirty and the reader decides what to commit.
+                SNew(STextBlock)
+                .Text(FText::FromString(TEXT("Assets are marked dirty, never saved. One Ctrl+Z undoes the whole batch — except config writes, which are called out below.")))
+                .Font(CkStyle::RegularFont(CkStyle::FontSizeMicro()))
+                .ColorAndOpacity(CkStyle::TextMute())
+                .AutoWrapText(true)
+            ]
+
+            + SVerticalBox::Slot()
+            .FillHeight(1.0f)
+            [
+                SNew(SScrollBox)
+
+                + SScrollBox::Slot()
+                [
+                    Body
+                ]
+            ]
+
+            + SVerticalBox::Slot()
+            .AutoHeight()
+            .Padding(0.0f, CkStyle::SpaceM, 0.0f, 0.0f)
+            [
+                SNew(SHorizontalBox)
+
+                + SHorizontalBox::Slot()
+                .FillWidth(1.0f)
+                [
+                    SNullWidget::NullWidget
+                ]
+
+                + SHorizontalBox::Slot()
+                .AutoWidth()
+                .Padding(0.0f, 0.0f, CkStyle::SpaceS, 0.0f)
+                [
+                    SNew(SButton)
+                    .Text(FText::FromString(TEXT("Cancel")))
+                    .OnClicked_Lambda([Window]() -> FReply
+                    {
+                        Window->RequestDestroyWindow();
+                        return FReply::Handled();
+                    })
+                ]
+
+                + SHorizontalBox::Slot()
+                .AutoWidth()
+                [
+                    SNew(SButton)
+                    .Text_Lambda([Plans]() -> FText
+                    {
+                        const auto Summary = Build_PlanSummary(*Plans);
+
+                        return FText::FromString(ck::Format_UE(TEXT("Apply {} change(s)"), Summary.IncludedChangeCount));
+                    })
+                    // A preview whose every tick has been cleared has nothing to apply, and an enabled button that
+                    // writes nothing is a button that lies about what it did.
+                    .IsEnabled_Lambda([Plans]() -> bool
+                    {
+                        return Plans->ContainsByPredicate([](const FCkOptimizationDebugger_FixPlan& InPlan) -> bool
+                        {
+                            return Get_HasIncludedWork(InPlan);
+                        });
+                    })
+                    .OnClicked_Lambda([Window, Confirmed]() -> FReply
+                    {
+                        *Confirmed = true;
+                        Window->RequestDestroyWindow();
+
+                        return FReply::Handled();
+                    })
+                ]
+            ]
+        ];
+
+    Window->SetContent(Content);
+
+    // Modal: this is the last moment before an asset changes, and a preview the reader can leave open while the
+    // world moves underneath it is a preview that describes a world that no longer exists. `Apply_PreviewedPlan`
+    // re-plans anyway and refuses on drift, but a modal keeps that from being the common case.
+    FSlateApplication::Get().AddModalWindow(Window, FSlateApplication::Get().FindWidgetWindow(AsShared()));
+
+    return *Confirmed;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+// Applied fixes, and what they left dirty
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkOptimizationDebuggerWindow::
+    Get_ModifiedPackages() const
+    -> TArray<UPackage*>
+{
+    auto Packages = TArray<UPackage*>{};
+
+    for (const auto& Entry : _Model.Get_FixLog())
+    {
+        if (NOT Entry.Succeeded)
+        { continue; }
+
+        for (const auto& Path : Entry.WrittenObjectPaths)
+        {
+            // RESOLVE only, never load: a package that has been unloaded since the fix cannot still be holding an
+            // unsaved change, and dragging one back in to ask would be the opposite of what this list is for.
+            auto* Object = Path.ResolveObject();
+
+            if (Object == nullptr)
+            { continue; }
+
+            auto* Package = Object->GetOutermost();
+
+            // Re-asked every rebuild rather than recorded at apply time, so an entry cannot claim an unsaved change
+            // the reader has since saved.
+            if (Package == nullptr || NOT Package->IsDirty())
+            { continue; }
+
+            Packages.AddUnique(Package);
+        }
+    }
+
+    Packages.Sort([](const UPackage& InLhs, const UPackage& InRhs)
+    {
+        return InLhs.GetName().Compare(InRhs.GetName(), ESearchCase::CaseSensitive) < 0;
+    });
+
+    return Packages;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkOptimizationDebuggerWindow::
+    DoSave_ModifiedPackages()
+    -> void
+{
+#if WITH_EDITOR
+    const auto Packages = Get_ModifiedPackages();
+
+    if (Packages.IsEmpty())
+    {
+        DoSet_Status(TEXT("Nothing this session changed is still unsaved."), ECk_Tone::Neutral);
+        return;
+    }
+
+    // The editor's OWN checkout-and-save prompt, with its checklist and its source-control step. This module never
+    // writes a package to disk on its own: the reader decides what to commit, and they decide it in the dialog they
+    // already know.
+    constexpr auto CheckDirty = true;
+    constexpr auto PromptToSave = true;
+
+    FEditorFileUtils::PromptForCheckoutAndSave(Packages, CheckDirty, PromptToSave);
+
+    DoRebuild_AppliedFixes();
+
+    const auto Remaining = Get_ModifiedPackages().Num();
+
+    DoSet_Status(Remaining == 0
+        ? FString{TEXT("Every package this session changed has been saved.")}
+        : ck::Format_UE(TEXT("{} package(s) this session changed are still unsaved."), Remaining),
+        Remaining == 0 ? ECk_Tone::Ok : ECk_Tone::Neutral);
+#else
+    DoSet_Status(TEXT("Saving packages needs an editor session."), ECk_Tone::Neutral);
+#endif
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkOptimizationDebuggerWindow::
+    DoReport_SuppressionLoadProblems()
+    -> void
+{
+    if (_SuppressionLoadDroppedCount <= 0)
+    { return; }
+
+    const auto DroppedCount = _SuppressionLoadDroppedCount;
+
+    // Reported ONCE. Zeroed here rather than at load, so the message survives to the first rebuild that has a
+    // status strip to print it on, and does not then repeat on every later one.
+    _SuppressionLoadDroppedCount = 0;
+
+    DoSet_Status(ck::Format_UE(
+        TEXT("{} suppression record(s) could not be read and were ignored — check the project's suppression config. ")
+        TEXT("Findings they covered are visible again."),
+        DroppedCount),
+        ECk_Tone::Warn);
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkOptimizationDebuggerWindow::
+    DoRebuild_AppliedFixes()
+    -> void
+{
+    using namespace ck_optimization_debugger_window;
+
+    if (NOT _AppliedFixesBox.IsValid())
+    { return; }
+
+    _AppliedFixesBox->ClearChildren();
+
+    const auto& Log = _Model.Get_FixLog();
+
+    if (Log.IsEmpty())
+    {
+        _AppliedFixesBox->AddSlot()
+        .AutoHeight()
+        .Padding(CkStyle::SpaceM, CkStyle::SpaceXS)
+        [
+            SNew(STextBlock)
+            .Text(FText::FromString(TEXT("Nothing applied yet this session.")))
+            .Font(CkStyle::RegularFont(CkStyle::FontSizeSmall()))
+            .ColorAndOpacity(CkStyle::TextMute())
+        ];
+
+        return;
+    }
+
+    // One line per applied fix, in the words the apply itself reported. The status strip shows the last one; this
+    // is the only place the earlier ones survive.
+    auto Lines = SNew(SVerticalBox);
+
+    for (const auto& Entry : Log)
+    {
+        Lines->AddSlot()
+        .AutoHeight()
+        .Padding(CkStyle::SpaceM, 0.0f, CkStyle::SpaceM, CkStyle::SpaceXS)
+        [
+            SNew(STextBlock)
+            .Text(FText::FromString(Entry.Message))
+            .Font(CkStyle::RegularFont(CkStyle::FontSizeSmall()))
+            .ColorAndOpacity(Entry.Succeeded ? CkStyle::TextDim() : CkStyle::GetToneColor(ECk_Tone::Warn))
+            .AutoWrapText(true)
+        ];
+    }
+
+    // Right-click copies the whole log as a commit message. The clipboard goes through CkDebuggerCommon rather than
+    // `FPlatformApplicationMisc` directly, which is why this module still declares no `ApplicationCore`.
+    _AppliedFixesBox->AddSlot()
+    .AutoHeight()
+    [
+        SNew(SCkDebug_CopyableContainer)
+        .CopyText(ck_optimization_debugger_fixplan::Build_CommitMessage(Log))
+        [
+            Lines
+        ]
+    ];
+
+    const auto Packages = Get_ModifiedPackages();
+
+    if (Packages.IsEmpty())
+    { return; }
+
+    _AppliedFixesBox->AddSlot()
+    .AutoHeight()
+    .Padding(CkStyle::SpaceM, CkStyle::SpaceS, CkStyle::SpaceM, 0.0f)
+    [
+        SNew(SCkDebug_SectionHeader)
+        .Label(FText::FromString(ck::Format_UE(TEXT("Unsaved ({})"), Packages.Num())))
+        .ToolTip(FText::FromString(TEXT("Packages these fixes changed that are still dirty. Nothing here has been written to disk.")))
+        .Underline(false)
+        .RightContent()
+        [
+            SNew(SCkDebug_Chip)
+            .Text(FText::FromString(TEXT("Save\u2026")))
+            .Kind(ECkDebug_ChipKind::Neutral)
+            .ShowDot(false)
+            .OnClicked(FOnCkDebug_ChipClicked::CreateLambda([this]() -> void
+            {
+                DoSave_ModifiedPackages();
+            }))
+        ]
+    ];
+
+    for (const auto* Package : Packages)
+    {
+        _AppliedFixesBox->AddSlot()
+        .AutoHeight()
+        .Padding(CkStyle::SpaceM + k_RowIndent, 0.0f, CkStyle::SpaceM, CkStyle::SpaceXS)
+        [
+            SNew(STextBlock)
+            .Text(FText::FromString(Package->GetName()))
+            .Font(CkStyle::MonoFont(CkStyle::FontSizeMicro()))
+            .ColorAndOpacity(CkStyle::TextDim())
+        ];
+    }
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkOptimizationDebuggerWindow::
+    DoCreate_AppliedFixesPanel()
+    -> TSharedRef<SWidget>
+{
+    using namespace ck_optimization_debugger_window;
+
+    // The copy affordance is built by `DoRebuild_AppliedFixes`, not here: `SCkDebug_CopyableContainer` takes its
+    // text as an ARGUMENT rather than an attribute, so a container built once would put a stale commit message on
+    // the clipboard for the rest of the session.
+    return SNew(SVerticalBox)
+
+            + SVerticalBox::Slot()
+            .AutoHeight()
+            .Padding(CkStyle::SpaceM, CkStyle::SpaceS, CkStyle::SpaceM, 0.0f)
+            [
+                SNew(SCkDebug_SectionHeader)
+                .Label(FText::FromString(TEXT("Applied this session")))
+                .ToolTip(FText::FromString(TEXT("Every fix this session ran, in plain language. Right-click to copy it as a commit message.")))
+                .Underline(true)
+                .RightContent()
+                [
+                    SNew(SCkDebug_CountBadge)
+                    .ValueText_Lambda([this]() -> FText
+                    {
+                        return FText::FromString(ck::Format_UE(TEXT("{}"), _Model.Get_AppliedFixCount()));
+                    })
+                    .ValueColor(CkStyle::Text())
+                    .BackgroundColor(CkStyle::Bg2())
+                    .BorderColor(CkStyle::Border())
+                ]
+            ]
+
+            + SVerticalBox::Slot()
+            .AutoHeight()
+            [
+                SAssignNew(_AppliedFixesBox, SVerticalBox)
+            ];
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+// The project scan
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkOptimizationDebuggerWindow::
+    DoMerge_Findings()
+    -> void
+{
+    auto Merged = _LastLevelFindings;
+
+    // De-duplicated by stable key. A mesh that is both placed in an open level and walked by the project pass is
+    // ONE problem, and two rows the list cannot tell apart is the churn `Set_Findings` reuses rows to avoid. The
+    // level scan wins the tie because its explanation names the levels the asset is used in.
+    auto SeenKeys = TSet<FString>{};
+
+    for (const auto& Finding : Merged)
+    { SeenKeys.Add(Finding.StableKey); }
+
+    for (const auto& Finding : _LastProjectFindings)
+    {
+        if (SeenKeys.Contains(Finding.StableKey))
+        { continue; }
+
+        Merged.Add(Finding);
+    }
+
+    _Model.Set_Findings(MoveTemp(Merged));
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkOptimizationDebuggerWindow::
+    DoStart_ProjectScan()
+    -> void
+{
+#if WITH_EDITOR
+    if (_ProjectScanState.IsRunning)
+    {
+        DoSet_Status(TEXT("A project scan is already running."), ECk_Tone::Neutral);
+        return;
+    }
+
+    _ProjectScanState = FCkOptimizationDebugger_ProjectScanState{};
+    _ProjectScanState.Thresholds = ck_optimization_debugger_thresholds::Build_FromSettings();
+
+    // The registry query itself is one call and opens nothing, so it happens up front rather than being sliced —
+    // what gets sliced is the walk over its results, and the LOADS the deep pass does.
+    _ProjectScanState.Assets = ck_optimization_debugger_project_scan::Collect_ProjectAssets();
+
+    if (_ProjectScanState.Assets.IsEmpty())
+    {
+        DoSet_Status(TEXT("The asset registry listed no static meshes or textures under /Game — it may still be indexing."),
+            ECk_Tone::Warn);
+        return;
+    }
+
+    _ProjectScanState.IsRunning = true;
+
+    DoSet_Status(ck::Format_UE(TEXT("Scanning {} project asset(s)\u2026 press Cancel to stop."),
+        _ProjectScanState.Assets.Num()), ECk_Tone::Info);
+
+    // A REPEATING active timer, which is still not a Tick: it fires from a user action, and it stops itself the
+    // moment the work runs out or the reader cancels.
+    _ProjectScanTimer = RegisterActiveTimer(0.0f,
+        FWidgetActiveTimerDelegate::CreateSP(this, &SCkOptimizationDebuggerWindow::DoTick_ProjectScan));
+#else
+    DoSet_Status(TEXT("Scanning the project needs an editor session."), ECk_Tone::Neutral);
+#endif
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkOptimizationDebuggerWindow::
+    DoCancel_ProjectScan()
+    -> void
+{
+    if (NOT _ProjectScanState.IsRunning)
+    { return; }
+
+    _ProjectScanState.IsRunning = false;
+    _ProjectScanState.WasCancelled = true;
+
+    if (const auto Timer = _ProjectScanTimer.Pin())
+    { UnRegisterActiveTimer(Timer.ToSharedRef()); }
+
+    _ProjectScanTimer.Reset();
+
+    // A cancelled scan KEEPS what it gathered, exactly as the level scan does: a partial answer the reader was told
+    // about beats discarding work they waited for.
+    _LastProjectFindings = _ProjectScanState.Findings;
+
+    DoMerge_Findings();
+    DoRebuild_All(false);
+
+    DoSet_Status(ck::Format_UE(
+        TEXT("Project scan cancelled after {} of {} asset(s) — {} finding(s) from the part that ran."),
+        _ProjectScanState.Get_CompletedSteps(),
+        _ProjectScanState.Get_TotalSteps(),
+        _LastProjectFindings.Num()),
+        ECk_Tone::Warn);
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkOptimizationDebuggerWindow::
+    DoTick_ProjectScan(
+        double InCurrentTime,
+        float InDeltaTime)
+    -> EActiveTimerReturnType
+{
+#if WITH_EDITOR
+    if (NOT _ProjectScanState.IsRunning)
+    { return EActiveTimerReturnType::Stop; }
+
+    // A budget per slice rather than a time box: the registry half is uniform and the deep half is dominated by
+    // whatever a single package costs to load, which no elapsed-time check can predict from inside the loop.
+    constexpr auto AssetsPerSlice = 64;
+
+    const auto HasMore = ck_optimization_debugger_project_scan::Advance(_ProjectScanState, AssetsPerSlice);
+
+    if (HasMore)
+    {
+        DoSet_Status(ck::Format_UE(TEXT("Scanning the project\u2026 {}% ({} finding(s) so far)"),
+            FMath::RoundToInt(_ProjectScanState.Get_Progress() * 100.0f),
+            _ProjectScanState.Findings.Num()),
+            ECk_Tone::Info);
+
+        return EActiveTimerReturnType::Continue;
+    }
+
+    _ProjectScanState.IsRunning = false;
+    _ProjectScanTimer.Reset();
+
+    _LastProjectFindings = _ProjectScanState.Findings;
+
+    DoMerge_Findings();
+    DoRebuild_All(false);
+
+    DoSet_Status(ck::Format_UE(
+        TEXT("Project scan done — {} asset(s) read from the registry, {} of them opened, {} finding(s)."),
+        _ProjectScanState.Assets.Num(),
+        _ProjectScanState.DeepLoadedCount,
+        _LastProjectFindings.Num()),
+        ECk_Tone::Ok);
+
+    return EActiveTimerReturnType::Stop;
+#else
+    return EActiveTimerReturnType::Stop;
+#endif
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkOptimizationDebuggerWindow::
+    DoCreate_HeaviestMeshesSection()
+    -> TSharedRef<SWidget>
+{
+    using namespace ck_optimization_debugger_window;
+
+    constexpr auto TopCount = 10;
+
+    const auto Heaviest = ck_optimization_debugger_project_scan::Get_HeaviestMeshes(
+        _ProjectScanState.Assets, TopCount);
+
+    auto Body = SNew(SVerticalBox);
+
+    Body->AddSlot()
+    .AutoHeight()
+    .Padding(CkStyle::SpaceM, CkStyle::SpaceS, CkStyle::SpaceM, 0.0f)
+    [
+        SNew(SCkDebug_SectionHeader)
+        .Label(FText::FromString(TEXT("Heaviest meshes")))
+        .ToolTip(FText::FromString(TEXT("The densest static meshes the project scan read, whether or not any open level places them. A ranking, not a budget — nothing here is flagged as wrong.")))
+        .Underline(true)
+    ];
+
+    if (Heaviest.IsEmpty())
+    {
+        // The empty state names the ACTION rather than printing an empty table: "no project scan has run" and "the
+        // project has no meshes" are different statements and only the second one is about the project.
+        Body->AddSlot()
+        .AutoHeight()
+        .Padding(CkStyle::SpaceM, CkStyle::SpaceXS)
+        [
+            SNew(STextBlock)
+            .Text(FText::FromString(TEXT("Press Scan Project to rank the project's meshes by density.")))
+            .Font(CkStyle::RegularFont(CkStyle::FontSizeSmall()))
+            .ColorAndOpacity(CkStyle::TextMute())
+        ];
+
+        return Body;
+    }
+
+    for (const auto& Facts : Heaviest)
+    {
+        Body->AddSlot()
+        .AutoHeight()
+        .Padding(CkStyle::SpaceM, 0.0f, CkStyle::SpaceM, CkStyle::SpaceXS)
+        [
+            SNew(SCkDebug_KeyValueRow)
+            .KeyText(FText::FromString(Facts.DisplayName))
+            .ValueText(FText::FromString(ck::Format_UE(TEXT("{} tris"),
+                ck_optimization_debugger_model::Format_AbbreviatedCount(Facts.TriangleCount))))
+        ];
+    }
+
+    return Body;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+// The findings export
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkOptimizationDebuggerWindow::
+    Build_ReportContext() const
+    -> FCkOptimizationDebugger_ReportContext
+{
+    auto Context = FCkOptimizationDebugger_ReportContext{};
+    Context.ProjectName = FApp::GetProjectName();
+    Context.ScannedLevelNames = _Model.Get_ScannedLevelNames();
+    Context.ProjectAssetCount = _ProjectScanState.Assets.Num();
+    Context.ProjectDeepLoadedCount = _ProjectScanState.DeepLoadedCount;
+    Context.SuppressedCount = _Model.Get_SuppressedFindingCount();
+
+    return Context;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkOptimizationDebuggerWindow::
+    DoExport_Findings(
+        bool InAsMarkdown)
+    -> void
+{
+    using namespace ck_optimization_debugger_findings_report;
+
+    const auto Visible = _Model.Get_VisibleFindings();
+
+    if (Visible.IsEmpty())
+    {
+        DoSet_Status(TEXT("Nothing visible to export."), ECk_Tone::Neutral);
+        return;
+    }
+
+    auto* DesktopPlatform = FDesktopPlatformModule::Get();
+
+    if (DesktopPlatform == nullptr)
+    {
+        DoSet_Status(TEXT("No desktop platform, so no file dialog — nothing exported."), ECk_Tone::Warn);
+        return;
+    }
+
+    const auto Extension = InAsMarkdown ? FString{TEXT("md")} : FString{TEXT("html")};
+
+    const auto DefaultName = ck::Format_UE(TEXT("{}_OptimizationFindings.{}"),
+        FApp::GetProjectName(), Extension);
+
+    auto ChosenFiles = TArray<FString>{};
+
+    const auto DidPick = DesktopPlatform->SaveFileDialog(
+        FSlateApplication::Get().FindBestParentWindowHandleForDialogs(AsShared()),
+        TEXT("Export findings"),
+        FPaths::ProjectSavedDir(),
+        DefaultName,
+        ck::Format_UE(TEXT("{} file|*.{}"), InAsMarkdown ? TEXT("Markdown") : TEXT("HTML"), Extension),
+        EFileDialogFlags::None,
+        ChosenFiles);
+
+    if (NOT DidPick || ChosenFiles.IsEmpty())
+    {
+        DoSet_Status(TEXT("Export cancelled."), ECk_Tone::Neutral);
+        return;
+    }
+
+    const auto Context = Build_ReportContext();
+
+    // The clock is read HERE and handed in, which is what keeps the builders pure and what lets a spec export the
+    // same model twice and compare the bytes.
+    const auto GeneratedAt = FDateTime::Now();
+
+    const auto Document = InAsMarkdown
+        ? Build_FindingsReportMarkdown(Visible, Context, GeneratedAt)
+        : Build_FindingsReportHtml(Visible, Context, GeneratedAt);
+
+    if (NOT FFileHelper::SaveStringToFile(Document, *ChosenFiles[0]))
+    {
+        DoSet_Status(ck::Format_UE(TEXT("{} could not be written."), ChosenFiles[0]), ECk_Tone::Err);
+        return;
+    }
+
+    DoSet_Status(ck::Format_UE(TEXT("{} finding(s) exported to {}."), Visible.Num(), ChosenFiles[0]), ECk_Tone::Ok);
+}
+
+// --------------------------------------------------------------------------------------------------------------------
 // Rebuild entry points
 // --------------------------------------------------------------------------------------------------------------------
 
@@ -4877,6 +5819,15 @@ auto
 {
     DoRebuild_Dashboard();
     DoRebuild_Findings(InRefreshStatus);
+
+    // After the findings line, so it OVERRIDES it: a suppression file the tool could not fully read is something
+    // the reader has to know before they trust the count.
+    if (InRefreshStatus)
+    { DoReport_SuppressionLoadProblems(); }
+
+    // The session's own record of what it changed. Not touched by a scan, but a style revision has to re-create
+    // its rows and a fresh window has to fill it in for the first time.
+    DoRebuild_AppliedFixes();
 
     // The memory page is not touched by a level scan — but a style revision and a session invalidation both route
     // here, and both have to reach it. Over an empty census this is three cheap loops and no allocation.
@@ -4946,6 +5897,11 @@ auto
     AddSection(DoBuild_DashboardTiles(), CkStyle::SpaceL);
     AddSection(DoBuild_DashboardSeverityStrip(), CkStyle::SpaceL);
     AddSection(DoBuild_DashboardDiskSection(), CkStyle::SpaceL);
+
+    // The project-wide ranking, which answers a different question from every section above it: those describe the
+    // levels that are open, this describes what is IN the project.
+    AddSection(DoCreate_HeaviestMeshesSection(), CkStyle::SpaceL);
+
     AddSection(DoBuild_DashboardLevelsSection(), CkStyle::SpaceL);
     AddSection(DoBuild_DashboardThresholdsSection(), 0.0f);
 }
@@ -6506,7 +7462,7 @@ auto
             .Padding(0.0f, 0.0f, CkStyle::SpaceS, 0.0f)
             [
                 SNew(SCkDebug_Chip)
-                .Text(FText::FromString(TEXT("MUTED")))
+                .Text(FText::FromString(TEXT("SUPPRESSED")))
                 .Kind(ECkDebug_ChipKind::Neutral)
                 .ShowDot(false)
                 .Visibility_Lambda([this, WeakRow]() -> EVisibility
@@ -6516,7 +7472,7 @@ auto
                     if (NOT Row.IsValid())
                     { return EVisibility::Collapsed; }
 
-                    return _Model.Get_IsMuted(Row->Finding.StableKey)
+                    return _Model.Get_IsSuppressed(Row->Finding)
                         ? EVisibility::HitTestInvisible
                         : EVisibility::Collapsed;
                 })
@@ -6624,44 +7580,238 @@ auto
 
 auto
     SCkOptimizationDebuggerWindow::
-    DoToggle_MuteOnSelected(
-        bool InMute)
+    DoPrompt_SuppressionReason(
+        const FString& InWhatIsBeingExcused,
+        FString& OutReason)
+    -> bool
+{
+    using namespace ck_optimization_debugger_window;
+
+    auto Reason = MakeShared<FString>();
+    auto Confirmed = MakeShared<bool>(false);
+
+    auto Window = SNew(SWindow)
+        .Title(FText::FromString(TEXT("Why is this intentional?")))
+        .ClientSize(FVector2D{560.0f, 190.0f})
+        .SupportsMaximize(false)
+        .SupportsMinimize(false);
+
+    auto Content = SNew(SBorder)
+        .BorderImage(CkStyle::GetRoundedBrush_Large())
+        .BorderBackgroundColor(CkStyle::Bg2())
+        .Padding(CkStyle::SpaceM)
+        [
+            SNew(SVerticalBox)
+
+            + SVerticalBox::Slot()
+            .AutoHeight()
+            .Padding(0.0f, 0.0f, 0.0f, CkStyle::SpaceS)
+            [
+                SNew(STextBlock)
+                .Text(FText::FromString(ck::Format_UE(TEXT("You are about to suppress {}."), InWhatIsBeingExcused)))
+                .Font(CkStyle::RegularFont(CkStyle::FontSizeBody()))
+                .ColorAndOpacity(CkStyle::Text())
+                .AutoWrapText(true)
+            ]
+
+            + SVerticalBox::Slot()
+            .AutoHeight()
+            .Padding(0.0f, 0.0f, 0.0f, CkStyle::SpaceS)
+            [
+                // The reason is REQUIRED, and the wording says why rather than just demanding one.
+                SNew(STextBlock)
+                .Text(FText::FromString(TEXT("Say why. Whoever reads this in six months has to be able to tell an intentional exception from a bug nobody got round to.")))
+                .Font(CkStyle::RegularFont(CkStyle::FontSizeMicro()))
+                .ColorAndOpacity(CkStyle::TextMute())
+                .AutoWrapText(true)
+            ]
+
+            + SVerticalBox::Slot()
+            .AutoHeight()
+            [
+                SNew(SEditableTextBox)
+                .HintText(FText::FromString(TEXT("e.g. hero prop, seen at 2 m, 4096 is deliberate")))
+                .OnTextChanged_Lambda([Reason](const FText& InText) -> void
+                {
+                    *Reason = InText.ToString().TrimStartAndEnd();
+                })
+            ]
+
+            + SVerticalBox::Slot()
+            .FillHeight(1.0f)
+            [
+                SNullWidget::NullWidget
+            ]
+
+            + SVerticalBox::Slot()
+            .AutoHeight()
+            .Padding(0.0f, CkStyle::SpaceM, 0.0f, 0.0f)
+            [
+                SNew(SHorizontalBox)
+
+                + SHorizontalBox::Slot()
+                .FillWidth(1.0f)
+                [
+                    SNullWidget::NullWidget
+                ]
+
+                + SHorizontalBox::Slot()
+                .AutoWidth()
+                .Padding(0.0f, 0.0f, CkStyle::SpaceS, 0.0f)
+                [
+                    SNew(SButton)
+                    .Text(FText::FromString(TEXT("Cancel")))
+                    .OnClicked_Lambda([Window]() -> FReply
+                    {
+                        Window->RequestDestroyWindow();
+                        return FReply::Handled();
+                    })
+                ]
+
+                + SHorizontalBox::Slot()
+                .AutoWidth()
+                [
+                    SNew(SButton)
+                    .Text(FText::FromString(TEXT("Suppress")))
+                    .IsEnabled_Lambda([Reason]() -> bool
+                    {
+                        return NOT Reason->IsEmpty();
+                    })
+                    .OnClicked_Lambda([Window, Confirmed]() -> FReply
+                    {
+                        *Confirmed = true;
+                        Window->RequestDestroyWindow();
+
+                        return FReply::Handled();
+                    })
+                ]
+            ]
+        ];
+
+    Window->SetContent(Content);
+
+    FSlateApplication::Get().AddModalWindow(Window, FSlateApplication::Get().FindWidgetWindow(AsShared()));
+
+    if (NOT *Confirmed || Reason->IsEmpty())
+    { return false; }
+
+    OutReason = *Reason;
+
+    return true;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkOptimizationDebuggerWindow::
+    DoSave_Suppressions()
+    -> void
+{
+    // The personal store cannot fail in a way worth reporting — it is this user's own ini. The PROJECT one can:
+    // it is committed, so it is routinely read-only under source control, and a write that silently did nothing
+    // would leave the editor claiming an exception the file never received.
+    UCkOptimizationDebuggerSettings::Save_PersonalSuppressions(
+        _Model.Get_SuppressionsForTier(ECkOptimizationDebugger_SuppressionTier::Personal));
+
+    const auto ProjectSuppressions = _Model.Get_SuppressionsForTier(
+        ECkOptimizationDebugger_SuppressionTier::Project);
+
+    if (UCkOptimizationDebuggerSuppressions::TrySave(ProjectSuppressions))
+    { return; }
+
+    DoSet_Status(ck::Format_UE(
+        TEXT("{} could not be written — check it out of source control (or clear its read-only flag). The suppression is active in this session only."),
+        UCkOptimizationDebuggerSuppressions::Get_ConfigFilePath()),
+        ECk_Tone::Warn);
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkOptimizationDebuggerWindow::
+    DoSuppress_Selected(
+        ECkOptimizationDebugger_SuppressionScope InScope,
+        ECkOptimizationDebugger_SuppressionTier InTier)
     -> void
 {
     if (ck::Is_NOT_Valid(_FindingList))
     { return; }
 
-    auto ChangedCount = 0;
+    auto Findings = TArray<FCkOptimizationDebugger_FindingRow>{};
 
     for (const auto& Item : _FindingList->GetSelectedItems())
     {
-        // A group header names a check, not a finding, and has no stable key to mute by. Muting a whole check is a
-        // different feature with a different persistence shape; silently muting its rows here would make one click
-        // do something the label never said.
+        // A group header names a check, not a finding. Its own menu offers the check scope explicitly, so silently
+        // folding its rows in here would make one click do something the label never said.
         if (NOT Item.IsValid() || Item->IsGroupHeader)
         { continue; }
 
-        if (_Model.Get_IsMuted(Item->Finding.StableKey) == InMute)
-        { continue; }
-
-        _Model.Set_Muted(Item->Finding.StableKey, InMute);
-        ++ChangedCount;
+        Findings.Add(Item->Finding);
     }
 
-    if (ChangedCount == 0)
+    if (Findings.IsEmpty())
     { return; }
 
-    // Persisted immediately, exactly as a level-exclusion toggle is: a triage decision lost to a crash is one the
-    // reader has to make again, and they have no way to know they lost it.
-    UCkOptimizationDebuggerSettings::Save_MutedStableKeys(_Model.Get_MutedStableKeys());
+    auto Reason = FString{};
 
+    const auto What = Findings.Num() == 1
+        ? ck::Format_UE(TEXT("a finding about {}"), Findings[0].Target.DisplayName)
+        : ck::Format_UE(TEXT("{} findings"), Findings.Num());
+
+    if (NOT DoPrompt_SuppressionReason(What, Reason))
+    {
+        DoSet_Status(TEXT("Nothing was suppressed."), ECk_Tone::Neutral);
+        return;
+    }
+
+    const auto Author = FString{FPlatformProcess::UserName()};
+    const auto Date = FDateTime::UtcNow().ToIso8601();
+
+    for (const auto& Finding : Findings)
+    {
+        _Model.Add_Suppression(ck_optimization_debugger_suppression::Build_ForFinding(
+            Finding, InScope, InTier, Reason, Author, Date));
+    }
+
+    DoSave_Suppressions();
     DoRebuild_Findings();
 
-    DoSet_Status(ck::Format_UE(
-        TEXT("{} finding(s) {} — {} muted in this scan"),
-        ChangedCount,
-        InMute ? TEXT("muted") : TEXT("unmuted"),
-        _Model.Get_MutedFindingCount()),
+    DoSet_Status(ck::Format_UE(TEXT("Suppressed — {} of this scan's findings are now hidden. Turn on 'show suppressed' to read the reasons."),
+        _Model.Get_SuppressedFindingCount()),
+        ECk_Tone::Info);
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkOptimizationDebuggerWindow::
+    DoUnsuppress_Selected()
+    -> void
+{
+    if (ck::Is_NOT_Valid(_FindingList))
+    { return; }
+
+    auto RemovedCount = 0;
+
+    for (const auto& Item : _FindingList->GetSelectedItems())
+    {
+        if (NOT Item.IsValid() || Item->IsGroupHeader)
+        { continue; }
+
+        RemovedCount += _Model.Remove_SuppressionsCovering(Item->Finding);
+    }
+
+    if (RemovedCount == 0)
+    {
+        DoSet_Status(TEXT("Nothing in the selection was suppressed."), ECk_Tone::Neutral);
+        return;
+    }
+
+    DoSave_Suppressions();
+    DoRebuild_Findings();
+
+    DoSet_Status(ck::Format_UE(TEXT("{} suppression(s) removed — {} of this scan's findings are still hidden."),
+        RemovedCount, _Model.Get_SuppressedFindingCount()),
         ECk_Tone::Info);
 }
 
@@ -6895,32 +8045,76 @@ auto
                 &SCkOptimizationDebuggerWindow::DoToggle_QueueOnSelected, NOT UnstageInstead)});
     }
 
-    // Mute is offered as ONE entry over the whole selection, and its verb is decided by what the selection already
-    // is: all-muted unmutes, anything else mutes. A per-row toggle in a multi-select menu would leave a mixed
-    // selection in a state nobody could predict from the label they clicked.
+    // Suppression is offered as a SUBMENU over the whole selection, one entry per scope, because "this finding is
+    // intentional" and "this check does not apply to us" are different statements with different lifetimes. The
+    // un-suppress verb appears only when something in the selection is actually hidden, so the menu never offers to
+    // undo a decision nobody made.
     {
-        auto MutedCount = 0;
+        auto AnySuppressed = false;
 
         for (const auto& Finding : Findings)
         {
-            if (_Model.Get_IsMuted(Finding.StableKey))
-            { ++MutedCount; }
+            if (_Model.Get_IsSuppressed(Finding))
+            {
+                AnySuppressed = true;
+                break;
+            }
         }
 
-        const auto UnmuteInstead = MutedCount == Findings.Num();
+        MenuBuilder.AddSubMenu(
+            FText::FromString(ck::Format_UE(TEXT("Suppress ({})"), Findings.Num())),
+            FText::FromString(TEXT("Mark these findings as intentional. Suppressed findings are never deleted and never fixed — they move behind the 'show suppressed' toggle, which always says how many this scan is hiding.")),
+            FNewMenuDelegate::CreateLambda([this](FMenuBuilder& InSubMenu) -> void
+            {
+                using EScope = ECkOptimizationDebugger_SuppressionScope;
+                using ETier = ECkOptimizationDebugger_SuppressionTier;
 
-        MenuBuilder.AddMenuEntry(
-            FText::FromString(UnmuteInstead
-                ? ck::Format_UE(TEXT("Unmute ({})"), Findings.Num())
-                : ck::Format_UE(TEXT("Mute ({})"), Findings.Num())),
-            FText::FromString(UnmuteInstead
-                ? FString{TEXT("Show these findings in the list again.")}
-                : FString{TEXT("Hide these findings from the list until you unmute them. They stay muted across ")
-                    TEXT("re-scans and editor restarts, and the 'Show muted' toggle above the list always says how ")
-                    TEXT("many this scan is hiding — nothing is deleted and nothing is fixed.")}),
-            FSlateIcon{},
-            FUIAction{FExecuteAction::CreateSP(this,
-                &SCkOptimizationDebuggerWindow::DoToggle_MuteOnSelected, NOT UnmuteInstead)});
+                InSubMenu.AddMenuEntry(
+                    FText::FromString(TEXT("This Finding (project)")),
+                    FText::FromString(TEXT("Just these rows, for the whole team. Committed to the project's config so nobody re-litigates it.")),
+                    FSlateIcon{},
+                    FUIAction{FExecuteAction::CreateSP(this, &SCkOptimizationDebuggerWindow::DoSuppress_Selected,
+                        EScope::Finding, ETier::Project)});
+
+                InSubMenu.AddMenuEntry(
+                    FText::FromString(TEXT("This Asset (project)")),
+                    FText::FromString(TEXT("Every finding this check makes about these assets.")),
+                    FSlateIcon{},
+                    FUIAction{FExecuteAction::CreateSP(this, &SCkOptimizationDebuggerWindow::DoSuppress_Selected,
+                        EScope::Asset, ETier::Project)});
+
+                InSubMenu.AddMenuEntry(
+                    FText::FromString(TEXT("This Folder (project)")),
+                    FText::FromString(TEXT("Every finding this check makes anywhere under these assets' folders.")),
+                    FSlateIcon{},
+                    FUIAction{FExecuteAction::CreateSP(this, &SCkOptimizationDebuggerWindow::DoSuppress_Selected,
+                        EScope::Folder, ETier::Project)});
+
+                InSubMenu.AddMenuEntry(
+                    FText::FromString(TEXT("This Check, everywhere (project)")),
+                    FText::FromString(TEXT("The whole check, project-wide. The broadest scope there is — and the one that most deserves a reason.")),
+                    FSlateIcon{},
+                    FUIAction{FExecuteAction::CreateSP(this, &SCkOptimizationDebuggerWindow::DoSuppress_Selected,
+                        EScope::Check, ETier::Project)});
+
+                InSubMenu.AddMenuSeparator();
+
+                InSubMenu.AddMenuEntry(
+                    FText::FromString(TEXT("Just For Me")),
+                    FText::FromString(TEXT("Hide these rows on this machine only. Nothing is committed and no teammate inherits it — the replacement for what used to be called Mute.")),
+                    FSlateIcon{},
+                    FUIAction{FExecuteAction::CreateSP(this, &SCkOptimizationDebuggerWindow::DoSuppress_Selected,
+                        EScope::Finding, ETier::Personal)});
+            }));
+
+        if (AnySuppressed)
+        {
+            MenuBuilder.AddMenuEntry(
+                FText::FromString(ck::Format_UE(TEXT("Stop Suppressing ({})"), Findings.Num())),
+                FText::FromString(TEXT("Drops every suppression covering these rows, whichever scope or tier hid them.")),
+                FSlateIcon{},
+                FUIAction{FExecuteAction::CreateSP(this, &SCkOptimizationDebuggerWindow::DoUnsuppress_Selected)});
+        }
     }
 
     MenuBuilder.AddMenuSeparator();
@@ -7060,33 +8254,47 @@ auto
     MenuBuilder.AddMenuSeparator();
 
     {
-        auto MutedCount = 0;
-
-        for (const auto& Key : Keys)
-        {
-            if (_Model.Get_IsMuted(Key))
-            { ++MutedCount; }
-        }
-
-        const auto UnmuteInstead = MutedCount == Keys.Num();
-
+        // A group header names a CHECK, so the scope it offers is the check — not N finding-scoped records that
+        // would say the same thing a hundred times and go stale the moment an asset is renamed.
         MenuBuilder.AddMenuEntry(
-            FText::FromString(UnmuteInstead
-                ? ck::Format_UE(TEXT("Unmute Group ({})"), Keys.Num())
-                : ck::Format_UE(TEXT("Mute Group ({})"), Keys.Num())),
-            FText::FromString(UnmuteInstead
-                ? FString{TEXT("Show this check's findings in the list again.")}
-                : FString{TEXT("Hide this check's findings until you unmute them. They stay muted across re-scans and editor restarts, and the 'Show muted' toggle always says how many this scan is hiding.")}),
+            FText::FromString(TEXT("Suppress This Check (project)")),
+            FText::FromString(TEXT("Mark this whole check as not applying to this project, for the whole team. Committed to the project's config, with your reason attached.")),
             FSlateIcon{},
-            FUIAction{FExecuteAction::CreateLambda([this, Keys, UnmuteInstead]() -> void
+            FUIAction{FExecuteAction::CreateLambda([this, Findings]() -> void
             {
-                for (const auto& Key : Keys)
+                // The DISTINCT checks under the selected headers. A right-click can span more than one group, and
+                // suppressing "this check" then has to mean each of them exactly once.
+                auto CheckIds = TArray<FName>{};
+
+                for (const auto& Finding : Findings)
+                { CheckIds.AddUnique(Finding.CheckId); }
+
+                if (CheckIds.IsEmpty())
+                { return; }
+
+                auto Reason = FString{};
+
+                const auto What = CheckIds.Num() == 1
+                    ? ck::Format_UE(TEXT("every {} finding"), CheckIds[0])
+                    : ck::Format_UE(TEXT("every finding from {} checks"), CheckIds.Num());
+
+                if (NOT DoPrompt_SuppressionReason(What, Reason))
+                { return; }
+
+                for (const auto& CheckId : CheckIds)
                 {
-                    _Model.Set_Muted(Key, NOT UnmuteInstead);
+                    auto Suppression = FCkOptimizationDebugger_Suppression{};
+                    Suppression.Scope = ECkOptimizationDebugger_SuppressionScope::Check;
+                    Suppression.Tier = ECkOptimizationDebugger_SuppressionTier::Project;
+                    Suppression.CheckId = CheckId;
+                    Suppression.Reason = Reason;
+                    Suppression.Author = FPlatformProcess::UserName();
+                    Suppression.Date = FDateTime::UtcNow().ToIso8601();
+
+                    _Model.Add_Suppression(Suppression);
                 }
 
-                UCkOptimizationDebuggerSettings::Save_MutedStableKeys(_Model.Get_MutedStableKeys());
-
+                DoSave_Suppressions();
                 DoRebuild_Findings();
             })});
     }

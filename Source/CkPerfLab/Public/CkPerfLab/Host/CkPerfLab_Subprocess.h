@@ -19,6 +19,10 @@ namespace ck::perf_lab
     /** Why a run stopped, from the host's point of view. */
     enum class ECk_ChildOutcome : uint8
     {
+        // Distinct from Running, so a child that was never launched cannot be polled as though it were: Poll
+        // early-returns only when the outcome is NOT Running, and IsProcRunning asserts on an unset handle.
+        NotStarted,
+
         Running,
         ExitedCleanly,
         ExitedWithError,
@@ -84,7 +88,7 @@ namespace ck::perf_lab
         FString _CommandLine;
         FString _FailureReason;
 
-        ECk_ChildOutcome _Outcome = ECk_ChildOutcome::Running;
+        ECk_ChildOutcome _Outcome = ECk_ChildOutcome::NotStarted;
 
         float _ElapsedSec       = 0.0f;
         float _CancelGraceSec   = -1.0f;

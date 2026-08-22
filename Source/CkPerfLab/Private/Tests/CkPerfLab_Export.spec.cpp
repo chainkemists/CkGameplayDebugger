@@ -241,9 +241,9 @@ bool FCkPerfLab_Export_NeverPrintsAnUnmeasuredMetricAsZero::RunTest(const FStrin
     TestTrue(TEXT("The HTML says a GPU metric was not measured"), Html.Contains(TEXT("not measured")));
     TestTrue(TEXT("The CSV says the same"),                       Csv.Contains(TEXT("not measured")));
 
-    // The derived columns too, not just the averages. A review found worst / p99 / 1%-low bypassing
-    // the availability gate and printing 0.000: sort that spreadsheet ascending on frameP99Ms and
-    // every unmeasured position rises to the top as the fastest place in the level.
+    // The derived columns are held to the same rule as the averages. A worst / p99 / 1%-low printed
+    // as 0.000 is worse than useless in a spreadsheet: sort ascending on frameP99Ms and every
+    // unmeasured position rises to the top as the fastest place in the level.
     const auto Absent = ck::perf_lab::Make_UnavailableStats(
         ECk_Stats_MetricAvailability::Unavailable_NotYetSampled, TEXT("never sampled"));
 

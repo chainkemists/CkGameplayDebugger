@@ -8,9 +8,9 @@
 // --------------------------------------------------------------------------------------------------------------------
 // Comparing two sessions of the same map.
 //
-// Positions are matched BY POSITION ID, never by index or by proximity. Phase 3's ids are a hash of
-// the location quantised to 50 cm, so an unchanged map plans the same ids every run and a matched
-// pair genuinely describes the same spot. An index match would silently pair unrelated positions the
+// Positions are matched BY POSITION ID, never by index or by proximity. An id is a hash of the
+// location quantised to 50 cm, so an unchanged map plans the same ids every run and a matched pair
+// genuinely describes the same spot. An index match would silently pair unrelated positions the
 // moment the plan gained or lost one, and report the difference between two places as a regression
 // in time.
 //
@@ -233,9 +233,9 @@ public:
      *
      * Both scores are computed against the SINGLE budget handed to `Compare_Sessions`, never against
      * the budget each session happened to request, so they are on one scale by construction — even
-     * when the two runs targeted different budgets. An earlier version withheld the delta whenever
-     * the requested budgets differed; that suppressed exactly the number a CI job exists to produce,
-     * on a condition that never applied.
+     * when the two runs targeted different budgets. A differing requested budget is therefore worth
+     * a banner but never a withheld delta: suppressing it would hide the number a CI job exists to
+     * produce, on a condition that does not affect comparability.
      */
     auto Get_ScoreDelta() const -> TOptional<float>;
 

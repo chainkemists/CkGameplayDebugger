@@ -21,6 +21,8 @@ namespace ck_perf_lab_heatmap
 
 namespace ck::perf_lab::heatmap
 {
+    const FName k_EdModeId = TEXT("Ck.PerfLab.Heatmap");
+
     auto
         Publish(
             const FCk_Snapshot& InSnapshot)
@@ -80,6 +82,8 @@ namespace ck::perf_lab::heatmap
 
         const auto BudgetMs = InAnalysis.Get_BudgetMs();
 
+        // A position whose frame time was never measured is not drawn at all. Drawing it in the "fast" colour would
+        // claim a reading that does not exist, so this predicate gates the ramp and the markers alike.
         const auto Is_Measured = [](const FCk_PerfLab_PositionResult& InPosition)
         { return InPosition.Get_Aggregate().Get_ByMetric(ECk_PerfLab_Metric::Frame).Get_IsAvailable(); };
 
@@ -94,38 +98,30 @@ namespace ck::perf_lab::heatmap
 
         const auto WorstMs = ck::algo::Percentile(MeasuredAverages, 1.0).Get(0.0);
 
-        for (const auto& Position : InSession.Get_Positions())
-        {
-            const auto& Frame = Position.Get_Aggregate().Get_ByMetric(ECk_PerfLab_Metric::Frame);
-
-            // A position whose frame time was never measured is not drawn at all. Drawing it in the "fast" colour
-            // would claim a reading that does not exist.
-            if (NOT Frame.Get_IsAvailable())
+        Snapshot._Markers = ck::algo::TransformIf<TArray<FCk_Marker>>(InSession.Get_Positions(), Is_Measured,
+            [&](const FCk_PerfLab_PositionResult& InPosition)
             {
-                continue;
-            }
+                const auto AvgMs = Get_AvgMs(InPosition);
 
-            const auto AvgMs = Frame.Get_AvgMs();
+                auto Marker = FCk_Marker{};
+                Marker._Location   = InPosition.Get_Location();
+                Marker._PositionId = InPosition.Get_PositionId();
+                Marker._AvgMs      = static_cast<float>(AvgMs);
+                Marker._Normalised = WorstMs > 0.0
+                    ? static_cast<float>(FMath::Clamp(AvgMs / WorstMs, 0.0, 1.0))
+                    : 0.0f;
+                Marker._OverBudgetRatio = BudgetMs > 0.0f ? static_cast<float>(AvgMs) / BudgetMs : 1.0f;
 
-            auto Marker = FCk_Marker{};
-            Marker._Location   = Position.Get_Location();
-            Marker._PositionId = Position.Get_PositionId();
-            Marker._AvgMs      = AvgMs;
-            Marker._Normalised = WorstMs > 0.0
-                ? static_cast<float>(FMath::Clamp(AvgMs / WorstMs, 0.0, 1.0))
-                : 0.0f;
-            Marker._OverBudgetRatio = BudgetMs > 0.0f ? AvgMs / BudgetMs : 1.0f;
+                // Severity comes from the findings actually published at this position, not from a second threshold
+                // invented here — two places deciding "how bad" is two places for them to disagree.
+                const auto Worst_Finding = ck::algo::FindIf(InAnalysis.Get_Findings(),
+                    [&](const FCk_PerfLab_Finding& InFinding)
+                    { return InFinding.Get_PositionId() == Marker._PositionId; });
 
-            // Severity comes from the findings actually published at this position, not from a second threshold
-            // invented here — two places deciding "how bad" is two places for them to disagree.
-            const auto Worst_Finding = ck::algo::FindIf(InAnalysis.Get_Findings(),
-                [&](const FCk_PerfLab_Finding& InFinding)
-                { return InFinding.Get_PositionId() == Marker._PositionId; });
+                Marker._Severity = Worst_Finding.IsSet() ? Worst_Finding->Get_Severity() : ECk_PerfLab_Severity::Minor;
 
-            Marker._Severity = Worst_Finding.IsSet() ? Worst_Finding->Get_Severity() : ECk_PerfLab_Severity::Minor;
-
-            Snapshot._Markers.Add(Marker);
-        }
+                return Marker;
+            });
 
         return Snapshot;
     }

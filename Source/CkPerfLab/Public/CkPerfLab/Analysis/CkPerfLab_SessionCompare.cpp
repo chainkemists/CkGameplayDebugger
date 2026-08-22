@@ -339,12 +339,8 @@ namespace ck::perf_lab
     {
         using namespace ck_perf_lab_compare;
 
-        auto BaselineById = TMap<FString, FCk_PerfLab_PositionResult>{};
-
-        for (const auto& Position : InBaseline.Get_Positions())
-        {
-            BaselineById.Add(Position.Get_PositionId(), Position);
-        }
+        const auto BaselineById = ck::algo::IndexBy(InBaseline.Get_Positions(),
+            [](const FCk_PerfLab_PositionResult& InPosition) { return InPosition.Get_PositionId(); });
 
         auto Deltas       = TArray<FCk_PerfLab_PositionDelta>{};
         auto OnlyInCurrent = TArray<FString>{};
@@ -383,15 +379,11 @@ namespace ck::perf_lab
                 .Set_Verdict(Reduce_Verdicts(Verdicts)));
         }
 
-        auto OnlyInBaseline = TArray<FString>{};
-
-        for (const auto& Position : InBaseline.Get_Positions())
-        {
-            if (NOT MatchedIds.Contains(Position.Get_PositionId()))
-            {
-                OnlyInBaseline.Add(Position.Get_PositionId());
-            }
-        }
+        auto OnlyInBaseline = ck::algo::TransformIf<TArray<FString>>(InBaseline.Get_Positions(),
+            [&MatchedIds](const FCk_PerfLab_PositionResult& InPosition)
+            { return NOT MatchedIds.Contains(InPosition.Get_PositionId()); },
+            [](const FCk_PerfLab_PositionResult& InPosition)
+            { return InPosition.Get_PositionId(); });
 
         // Worst first, then by id. The id tie-break is what makes the table byte-stable: without it
         // two positions with the same verdict would order by whatever the session file happened to

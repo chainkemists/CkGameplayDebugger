@@ -103,7 +103,10 @@ UCkPerfLabReportCommandlet::UCkPerfLabReportCommandlet()
 
 // --------------------------------------------------------------------------------------------------------------------
 
-int32 UCkPerfLabReportCommandlet::Main(const FString& Params)
+int32
+    UCkPerfLabReportCommandlet::
+    Main(
+        const FString& Params)
 {
     using namespace ck_perf_lab_report_commandlet;
 
@@ -204,8 +207,7 @@ int32 UCkPerfLabReportCommandlet::Main(const FString& Params)
     const auto Score = Analysis.Get_Score().Get_Value();
 
     // Display, not Log. A commandlet's Log-verbosity output goes to the log file and never reaches
-    // the console, so the one line a CI job actually shows its reader would be invisible — verified
-    // by running this commandlet and finding only the Error lines in captured stdout.
+    // the console, so the one line a CI job actually shows its reader would otherwise be invisible.
     ck::perf_lab::Display(TEXT("Score {} / 100 against a {} ms budget, {} finding(s)"),
         Score, BudgetMs, Analysis.Get_Findings().Num());
 

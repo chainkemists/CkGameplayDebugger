@@ -255,6 +255,16 @@ namespace ck_perf_lab_export
         return ck::Format_UE(TEXT("{:.3f}"), InValue);
     }
 
+    /** An angle. Same precision as the others, but a separate name — a milliseconds formatter applied to degrees
+     *  makes the call site read as a lie even when the digits come out right. */
+    auto
+        Format_Degrees(
+            float InValue)
+        -> FString
+    {
+        return ck::Format_UE(TEXT("{:.3f}"), InValue);
+    }
+
     // ----------------------------------------------------------------------------------------------------------------
 
     /** Positions in report order: worst average frame time first, then position id as the final tie-break. */
@@ -674,8 +684,8 @@ namespace ck::perf_lab::exporter
                     {
                         Lines.Add(Build_CsvRow({
                             Position.Get_PositionId(),
-                            Format_Ms(Direction.Get_YawDegrees()),
-                            Format_Ms(Direction.Get_PitchDegrees()),
+                            Format_Degrees(Direction.Get_YawDegrees()),
+                            Format_Degrees(Direction.Get_PitchDegrees()),
                             Format_Metric(Direction.Get_Metrics().Get_ByMetric(ECk_PerfLab_Metric::Frame)),
                             Format_Metric(Direction.Get_Metrics().Get_ByMetric(ECk_PerfLab_Metric::GameThread)),
                             Format_Metric(Direction.Get_Metrics().Get_ByMetric(ECk_PerfLab_Metric::RenderThread)),
@@ -785,14 +795,13 @@ namespace ck::perf_lab::exporter
             const FCk_PerfLab_Analysis& InAnalysis)
         -> FString
     {
-        auto Sections = TArray<FString>{};
-
-        for (const auto Table : Get_AllCsvTables())
-        {
-            Sections.Add(ck::Format_UE(TEXT("# {}\n{}"),
-                Get_CsvTableName(Table),
-                Build_SessionCsv(InSession, InAnalysis, Table)));
-        }
+        const auto Sections = ck::algo::Transform<TArray<FString>>(Get_AllCsvTables(),
+            [&](ECk_CsvTable InTable)
+            {
+                return ck::Format_UE(TEXT("# {}\n{}"),
+                    Get_CsvTableName(InTable),
+                    Build_SessionCsv(InSession, InAnalysis, InTable));
+            });
 
         return FString::Join(Sections, TEXT("\n"));
     }
@@ -815,13 +824,16 @@ namespace ck::perf_lab::exporter
         auto SessionObject = TSharedPtr<FJsonObject>{};
         auto Reader        = TJsonReaderFactory<>::Create(SessionJson);
 
-        if (NOT FJsonSerializer::Deserialize(Reader, SessionObject) || ck::Is_NOT_Valid(SessionObject))
-        {
-            // The codec just produced this string, so failing to read it back is a defect in the
-            // codec rather than bad input. Hand back the session alone instead of a broken document.
-            CK_TRIGGER_ENSURE(TEXT("Could not re-read the session JSON the codec just wrote"));
-            return SessionJson;
-        }
+        // Hoisted so the deserialise runs exactly once — the ensure macro is an inverted `if` and its
+        // body IS the failure path.
+        const auto SessionJsonWasReadable =
+            FJsonSerializer::Deserialize(Reader, SessionObject) && ck::IsValid(SessionObject);
+
+        // The codec just produced this string, so failing to read it back is a defect in the codec
+        // rather than bad input. Hand back the session alone instead of a broken document.
+        CK_ENSURE_IF_NOT(SessionJsonWasReadable,
+            TEXT("Could not re-read the session JSON the codec just wrote"))
+        { return SessionJson; }
 
         auto AnalysisObject = MakeShared<FJsonObject>();
 
@@ -833,20 +845,19 @@ namespace ck::perf_lab::exporter
         const auto& Score = InAnalysis.Get_Score();
 
         auto ScoreObject     = MakeShared<FJsonObject>();
-        auto ComponentValues = TArray<TSharedPtr<FJsonValue>>{};
+        const auto ComponentValues = ck::algo::Transform<TArray<TSharedPtr<FJsonValue>>>(Score.Get_Components(),
+            [](const FCk_PerfLab_ScoreComponentResult& InComponent) -> TSharedPtr<FJsonValue>
+            {
+                auto ComponentObject = MakeShared<FJsonObject>();
 
-        for (const auto& Component : Score.Get_Components())
-        {
-            auto ComponentObject = MakeShared<FJsonObject>();
+                ComponentObject->SetStringField(TEXT("key"),      Get_JsonKey(Get_ComponentWord(InComponent.Get_Component())));
+                ComponentObject->SetNumberField(TEXT("weight"),   InComponent.Get_Weight());
+                ComponentObject->SetNumberField(TEXT("value"),    InComponent.Get_Value());
+                ComponentObject->SetBoolField  (TEXT("included"), InComponent.Get_Included());
+                ComponentObject->SetStringField(TEXT("reason"),   InComponent.Get_ExcludedReason());
 
-            ComponentObject->SetStringField(TEXT("key"),      Get_JsonKey(Get_ComponentWord(Component.Get_Component())));
-            ComponentObject->SetNumberField(TEXT("weight"),   Component.Get_Weight());
-            ComponentObject->SetNumberField(TEXT("value"),    Component.Get_Value());
-            ComponentObject->SetBoolField  (TEXT("included"), Component.Get_Included());
-            ComponentObject->SetStringField(TEXT("reason"),   Component.Get_ExcludedReason());
-
-            ComponentValues.Add(MakeShared<FJsonValueObject>(ComponentObject));
-        }
+                return MakeShared<FJsonValueObject>(ComponentObject);
+            });
 
         ScoreObject->SetNumberField(TEXT("value"), Score.Get_Value());
         ScoreObject->SetNumberField(TEXT("componentsUsed"),
@@ -882,38 +893,40 @@ namespace ck::perf_lab::exporter
 
             FindingObject->SetObjectField(TEXT("evidence"), EvidenceObject);
 
-            auto ContributorValues = TArray<TSharedPtr<FJsonValue>>{};
+            const auto ContributorValues = ck::algo::Transform<TArray<TSharedPtr<FJsonValue>>>(
+                Finding.Get_Contributors(),
+                [](const FCk_PerfLab_Contributor& InContributor) -> TSharedPtr<FJsonValue>
+                {
+                    auto ContributorObject = MakeShared<FJsonObject>();
 
-            for (const auto& Contributor : Finding.Get_Contributors())
-            {
-                auto ContributorObject = MakeShared<FJsonObject>();
+                    ContributorObject->SetNumberField(TEXT("rank"),       InContributor.Get_Rank());
+                    ContributorObject->SetStringField(TEXT("objectPath"), InContributor.Get_ObjectPath());
+                    ContributorObject->SetStringField(TEXT("className"),  InContributor.Get_ClassName());
+                    ContributorObject->SetNumberField(TEXT("distanceCm"), InContributor.Get_DistanceCm());
 
-                ContributorObject->SetNumberField(TEXT("rank"),       Contributor.Get_Rank());
-                ContributorObject->SetStringField(TEXT("objectPath"), Contributor.Get_ObjectPath());
-                ContributorObject->SetStringField(TEXT("className"),  Contributor.Get_ClassName());
-                // The note IS the disclaimer — the analysis authors it that way so no consumer can
-                // read a contributor without it, and a separate field would be one a reader drops.
-                ContributorObject->SetNumberField(TEXT("distanceCm"), Contributor.Get_DistanceCm());
-                ContributorObject->SetStringField(TEXT("note"),       Contributor.Get_Note());
+                    // The note IS the disclaimer — the analysis authors it that way so no consumer
+                    // can read a contributor without it, and a separate field would be one a reader
+                    // can drop.
+                    ContributorObject->SetStringField(TEXT("note"),       InContributor.Get_Note());
 
-                ContributorValues.Add(MakeShared<FJsonValueObject>(ContributorObject));
-            }
+                    return MakeShared<FJsonValueObject>(ContributorObject);
+                });
 
             FindingObject->SetArrayField(TEXT("contributors"), ContributorValues);
 
-            auto RecommendationValues = TArray<TSharedPtr<FJsonValue>>{};
+            const auto RecommendationValues = ck::algo::Transform<TArray<TSharedPtr<FJsonValue>>>(
+                Finding.Get_Recommendations(),
+                [](const FCk_PerfLab_Recommendation& InRecommendation) -> TSharedPtr<FJsonValue>
+                {
+                    auto RecommendationObject = MakeShared<FJsonObject>();
 
-            for (const auto& Recommendation : Finding.Get_Recommendations())
-            {
-                auto RecommendationObject = MakeShared<FJsonObject>();
+                    RecommendationObject->SetNumberField(TEXT("order"),      InRecommendation.Get_Order());
+                    RecommendationObject->SetStringField(TEXT("gainBand"),   Get_JsonKey(Get_BandWord(InRecommendation.Get_GainBand())));
+                    RecommendationObject->SetStringField(TEXT("effortBand"), Get_JsonKey(Get_BandWord(InRecommendation.Get_EffortBand())));
+                    RecommendationObject->SetStringField(TEXT("text"),       InRecommendation.Get_Text());
 
-                RecommendationObject->SetNumberField(TEXT("order"),      Recommendation.Get_Order());
-                RecommendationObject->SetStringField(TEXT("gainBand"),   Get_JsonKey(Get_BandWord(Recommendation.Get_GainBand())));
-                RecommendationObject->SetStringField(TEXT("effortBand"), Get_JsonKey(Get_BandWord(Recommendation.Get_EffortBand())));
-                RecommendationObject->SetStringField(TEXT("text"),       Recommendation.Get_Text());
-
-                RecommendationValues.Add(MakeShared<FJsonValueObject>(RecommendationObject));
-            }
+                    return MakeShared<FJsonValueObject>(RecommendationObject);
+                });
 
             FindingObject->SetArrayField(TEXT("recommendations"), RecommendationValues);
 

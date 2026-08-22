@@ -114,31 +114,21 @@ namespace ck_perf_lab_survey
             const AActor* InActor)
         -> int64
     {
-        auto Triangles = int64{0};
-
-        for (const auto* Component : TInlineComponentArray<UStaticMeshComponent*>{InActor})
-        {
-            if (ck::Is_NOT_Valid(Component))
+        return static_cast<int64>(ck::algo::SumBy(TInlineComponentArray<UStaticMeshComponent*>{InActor},
+            [](const UStaticMeshComponent* InComponent) -> int64
             {
-                continue;
-            }
+                if (ck::Is_NOT_Valid(InComponent))
+                { return 0; }
 
-            const UStaticMesh* Mesh = Component->GetStaticMesh();
+                const UStaticMesh* Mesh = InComponent->GetStaticMesh();
 
-            if (ck::Is_NOT_Valid(Mesh))
-            {
-                continue;
-            }
+                if (ck::Is_NOT_Valid(Mesh) || Mesh->GetNumLODs() <= 0)
+                { return 0; }
 
-            // LOD 0 is the worst case, which is the one worth ranking by: it is what a camera close
-            // enough to care will actually draw.
-            if (Mesh->GetNumLODs() > 0)
-            {
-                Triangles += static_cast<int64>(Mesh->GetNumTriangles(0));
-            }
-        }
-
-        return Triangles;
+                // LOD 0 is the worst case, which is the one worth ranking by: it is what a camera
+                // close enough to care will actually draw.
+                return static_cast<int64>(Mesh->GetNumTriangles(0));
+            }));
     }
 
     auto

@@ -28,6 +28,10 @@ public:
 
     auto Construct(const FArguments& InArgs) -> void;
 
+    /** Clears the published snapshot and deactivates the EdMode: the overlay must not outlive the page that owns
+     *  its only off switch. */
+    virtual ~SCkPerfLabPage() override;
+
 public:
     /** Sessions on disk, so the tab badge can show a count without this page being the one asked. */
     auto Get_SessionCount() const -> int32 { return _SessionRows.Num(); }
@@ -53,6 +57,10 @@ private:
     auto DoToggle_Heatmap() -> void;
     auto DoPublish_Heatmap() -> void;
 
+    /** Activates or deactivates the EdMode on the level editor. Publishing a snapshot alone draws nothing — the
+     *  mode is registered by its module but never activated until something asks. */
+    auto DoSet_HeatmapModeActive(bool InEnabled) -> void;
+
     auto Get_StatusText() const -> FText;
     auto Get_StatusTone() const -> ECk_Tone;
     auto Get_IsRunning() const -> bool;
@@ -62,6 +70,9 @@ private:
     // something neither of them describes.
     TUniquePtr<ck::perf_lab::FCk_MeasurementChild> _Child;
 
+    // SListView holds the ADDRESS of _SessionRows as its item source, and the widget is kept alive by the base
+    // class's ChildSlot — which destroys after every member here, whichever order they are declared in. The
+    // destructor detaches the source explicitly; declaration order cannot fix this on its own.
     TArray<TSharedPtr<FCk_PerfLab_SessionRow>> _SessionRows;
     TSharedPtr<SListView<TSharedPtr<FCk_PerfLab_SessionRow>>> _SessionListView;
 

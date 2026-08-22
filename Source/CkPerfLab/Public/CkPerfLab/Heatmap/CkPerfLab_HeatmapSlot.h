@@ -15,6 +15,17 @@
 
 namespace ck::perf_lab::heatmap
 {
+    /**
+     * The EdMode's id, declared HERE rather than in the mode's own translation unit.
+     *
+     * Publishing a snapshot is not enough to make anything draw — the mode must also be ACTIVATED on the level
+     * editor, and the page that owns the toggle cannot include the Editor module's header. The id is the one thing
+     * both sides need, so it lives on the same seam the snapshot does.
+     */
+    CKPERFLAB_API extern const FName k_EdModeId;
+
+    // ----------------------------------------------------------------------------------------------------------------
+
     /** One measured position, reduced to what it takes to draw and identify it. */
     struct CKPERFLAB_API FCk_Marker
     {

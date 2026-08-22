@@ -269,6 +269,69 @@ differ) and no longer suppresses anything.
 checked individually); no divide-by-zero in the compare path; delta signs and `Reduce_Verdicts`
 correct; HTML and CSV escaping ordered correctly.
 
+### D-009 — Style / algo-reuse / lifetime review of Phases 7-9 (2026-08-22)
+
+The Phase 9 review had been scoped to CORRECTNESS only; style, doctrine, algo reuse and lifetime
+were never reviewed for the page, the heatmap, or the exports. Three further reviewers were run to
+close that gap. **The most serious defect in the entire campaign came out of it.**
+
+**The heatmap feature was inert — it could never have drawn anything.** `UCk_PerfLab_HeatmapEdMode`
+was registered (the module's `StaticClass()` reference makes the CDO discoverable) but nothing ever
+called `GLevelEditorModeTools().ActivateMode(...)`, so `Render` was never invoked. Pressing
+"Heatmap: on" published a snapshot and started a 4 Hz poll for viewport clicks that could not
+arrive. The plugin's own precedent — `CkSaveDebugger_Visualizer.cpp`'s `Set_VisualizerEnabled` —
+does this correctly and I did not copy that half of it.
+
+**Phase 8's gate was green throughout, and that is the lesson.** The four heatmap specs exercise
+`Build_Snapshot` and the slot round-trip; none instantiates the mode. A green suite said nothing
+about a path it never entered, and the one criterion that would have caught it — VALIDATION.md's
+"heatmap draws over the level viewport" — is `[EDITOR-VERIFY]` and had not been run. Fixed:
+`DoSet_HeatmapModeActive` mirrors the precedent, `CkOptimizationDebugger` gained `LevelEditor`, and
+the mode id moved onto the shared slot header so the page can name it without linking the Editor
+module.
+
+**Other lifetime / stale-state defects fixed:**
+- The published snapshot outlived the page. Closing the tab left the overlay drawing with no UI in
+  existence to turn it off, and a reopened page showed "Heatmap: off" over live markers. The page
+  now has a destructor that clears the slot and deactivates the mode.
+- `_MapPath` was captured once at construction. Opening a different level and pressing Run measured
+  the **old** map. Now re-read in `DoStart_Run`, and the label reads live so it can never name a
+  level the user has closed.
+- Changing the frame budget updated nothing — the score, findings and compare table kept describing
+  the previous budget while the spinner beside them read the new one. Now re-analyses on commit.
+- `_ClickedPositionId` was never cleared on session change, so the page could name a position
+  belonging to a session the reader had navigated away from.
+- The hit proxy was allocated on every draw pass, not just the hit-testing pass — two global
+  critical-section acquisitions and an `FString` copy per marker per viewport per frame, discarded.
+- Closing the tab mid-run killed the child with no cancel flag, leaving a permanently unreadable
+  session directory. Now writes the flag and allows a one-second grace.
+- A child exiting during the cancel grace window reported `ExitedWithError`: the user pressed Cancel
+  and was shown an error.
+- `ECk_ChildOutcome` gained `NotStarted`; the default was `Running`, so polling an unlaunched child
+  would have reached `IsProcRunning` with an unset handle.
+
+**Algo reuse — six hand-rolled loops replaced, and the library grown once.** `Get_TriangleCount`
+hand-rolled an accumulator twenty lines above a `SumBy` doing the identical thing; `Build_Snapshot`
+defined an `Is_Measured` predicate, used it with `TransformIf`, then re-inlined the same condition
+as a raw `continue`. Both are now single spellings. **`ck::algo::IndexBy` was added to CkCore** —
+building a keyed lookup was the one common shape with no algo behind it (`Transform` cannot target a
+`TMap`), and it was being spelled three different ways across the plugin tree.
+
+**Deliberately NOT fixed, recorded as debt:**
+- **`FCk_Time` domain type.** Every duration in CkPerfLab is a bare `float` ms — `_BudgetMs`,
+  `_AvgMs`, `_DeltaMs`, and so on. Doctrine wants a domain type, and `_XMs` is exactly the tell that
+  the type is wrong. This is module-wide and inherited from Phase 1, not introduced by Phases 7-9;
+  fixing it is a sweep of its own, and doing it piecemeal would leave the module with two
+  conventions. Ruling wanted.
+- **`FString::Printf` in the Slate page** (22 sites). The house formatter is `ck::Format_UE`, but
+  the "never `%s`" rule is textually scoped to logging and sibling debugger widgets split both ways.
+  The genuinely indefensible cases — a `Printf` whose `%s` argument was itself a `ck::Format_UE`
+  call — were fixed; plain UI formatting was left alone pending a ruling on whether the rule extends
+  to Slate.
+- **`FCk_Marker` / `FCk_Snapshot` encapsulation.** Both carry `_`-prefixed members that are public
+  with no accessors — the prefix announces private storage and then publishes it. The fix is real
+  but touches the EdMode and three specs; deferred rather than rushed alongside the activation fix.
+
 ### D-004 — Plan-vs-code corrections found in Phase 0 (no ruling needed, recorded for audit)
 
 - `PHASE_2.md` claimed CkGameplayDebugger modules use plain `ModuleRules`. **False** —

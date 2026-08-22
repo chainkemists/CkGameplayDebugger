@@ -21,6 +21,17 @@ Because discovery is CDO-based and nothing references the class, the module's `S
 deliberate `(void)UCk_PerfLab_HeatmapEdMode::StaticClass();`. It is not dead code — without it the
 linker is free to strip the reflected class and the mode silently stops existing.
 
+**Registration is NOT activation, and assuming otherwise shipped this feature dead once.** Discovery
+only makes the mode *available*. Until something calls `GLevelEditorModeTools().ActivateMode(...)`,
+`Render` is never invoked and the overlay is a feature that exists and cannot be seen. That call
+lives in `SCkPerfLabPage::DoSet_HeatmapModeActive` — which is why `CkOptimizationDebugger` links
+`LevelEditor`, and why the mode's id is declared on `CkPerfLab/Heatmap/CkPerfLab_HeatmapSlot.h`
+rather than here: the page has to name the mode without linking this module.
+
+No spec can catch a regression of this. They exercise `Build_Snapshot` and the slot, neither of which
+instantiates the mode. **Only the `[EDITOR-VERIFY]` row in VALIDATION.md proves the heatmap draws** —
+treat a green suite as saying nothing whatever about whether anything appeared on screen.
+
 ---
 
 ## What's here

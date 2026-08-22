@@ -11,14 +11,18 @@
 
 #include <Editor.h>
 #include <Engine/World.h>
+#include <EditorModeManager.h>
+#include <LevelEditor.h>
 #include <Misc/FileHelper.h>
 #include <Misc/Paths.h>
 #include <Widgets/Input/SButton.h>
 #include <Widgets/Input/SSpinBox.h>
 #include <Widgets/Layout/SBorder.h>
+#include <Widgets/Layout/SBox.h>
 #include <Widgets/Layout/SScrollBox.h>
-#include <Widgets/Layout/SSeparator.h>
+#include <Widgets/SBoxPanel.h>
 #include <Widgets/Text/STextBlock.h>
+#include <Widgets/Views/STableRow.h>
 
 #define LOCTEXT_NAMESPACE "SCkPerfLabPage"
 
@@ -29,6 +33,10 @@ namespace ck_perf_lab_page
     // The measurement is a separate process writing files; polling them a few times a second is plenty and keeps this
     // page off the per-frame path entirely, which is what the window's no-Tick rule requires.
     constexpr auto k_PollIntervalSec = 0.25f;
+
+    // Fixed rather than drawn from a clock: the seed feeds position planning, so holding it constant is what makes
+    // two runs of one map produce the same positions and therefore compare at all.
+    constexpr auto k_PlannerSeed = 1337;
 
     auto
         Get_ModeLabel(
@@ -156,6 +164,27 @@ auto
     DoBuild_Results();
 }
 
+SCkPerfLabPage::~SCkPerfLabPage()
+{
+    // The slot is a process-global and the EdMode is owned by the level editor, so neither dies with this page. Left
+    // published, the overlay would keep drawing over the viewport with no UI in existence to turn it off — and a
+    // reopened page would come back with its toggle reading "off" while markers were still on screen.
+    ck::perf_lab::heatmap::Clear();
+    ck::perf_lab::heatmap::Set_SelectedPositionId(FString{});
+
+    DoSet_HeatmapModeActive(false);
+
+    // Detach the item source before _SessionRows is destroyed. This body runs BEFORE any member does, whereas the
+    // list widget itself is released by the base class's ChildSlot AFTER all of them — so without this the widget
+    // briefly holds the address of a freed array. Declaration order cannot close that window, because the base
+    // class always outlives the derived members. Nothing dereferences it on today's teardown path, which is a
+    // property of that path rather than a guarantee.
+    if (ck::IsValid(_SessionListView))
+    {
+        _SessionListView->SetItemsSource(nullptr);
+    }
+}
+
 // --------------------------------------------------------------------------------------------------------------------
 
 auto
@@ -163,7 +192,7 @@ auto
     Get_IsRunning() const
     -> bool
 {
-    return _Child.IsValid() && _Child->Get_Outcome() == ck::perf_lab::ECk_ChildOutcome::Running;
+    return ck::IsValid(_Child) && _Child->Get_Outcome() == ck::perf_lab::ECk_ChildOutcome::Running;
 }
 
 auto
@@ -242,11 +271,15 @@ auto
             .AutoHeight()
             [
                 SNew(STextBlock)
-                .Text_Lambda([this]() -> FText
+                .Text_Lambda([]() -> FText
                 {
-                    return FText::FromString(_MapPath.IsEmpty()
+                    // Read live rather than from the cached path: this label is the user's only confirmation of what
+                    // Run will measure, so it must never name a level they have since closed.
+                    const auto MapPath = ck_perf_lab_page::Get_CurrentMapPath();
+
+                    return FText::FromString(MapPath.IsEmpty()
                         ? TEXT("No level open — open one to measure it.")
-                        : FString::Printf(TEXT("Level:  %s"), *_MapPath));
+                        : FString::Printf(TEXT("Level:  %s"), *MapPath));
                 })
             ]
 
@@ -274,6 +307,16 @@ auto
                     .Value_Lambda([this]() -> float { return _BudgetMs; })
                     .IsEnabled_Lambda([this]() -> bool { return NOT Get_IsRunning(); })
                     .OnValueChanged_Lambda([this](float InValue) { _BudgetMs = InValue; })
+
+                    // Committed, not per-tick: analysis is the budget's only consumer, and re-running it on every
+                    // frame of a drag would burn work nobody sees. Without this the score, the findings and the
+                    // whole compare table keep describing the OLD budget while the spinner beside them reads the new
+                    // one.
+                    .OnValueCommitted_Lambda([this](float InValue, ETextCommit::Type)
+                    {
+                        _BudgetMs = InValue;
+                        DoSelect_Session(_SelectedSessionId);
+                    })
                     .ToolTipText(FText::FromString(TEXT(
                         "Every score component and every finding is measured against this. 16.67 is 60fps, 33.3 is 30.")))
                 ]
@@ -370,7 +413,7 @@ auto
             .SelectionMode(ESelectionMode::Single)
             .OnSelectionChanged_Lambda([this](TSharedPtr<FCk_PerfLab_SessionRow> InRow, ESelectInfo::Type)
             {
-                if (InRow.IsValid())
+                if (ck::IsValid(InRow))
                 {
                     DoSelect_Session(InRow->Get_SessionId());
                 }
@@ -488,10 +531,10 @@ auto
     DoBuild_Results()
     -> TSharedRef<SWidget>
 {
-    if (NOT _ResultsBox.IsValid())
-    {
-        return SNullWidget::NullWidget;
-    }
+    // Assigned in Construct's ChildSlot before the first call, so a null box is a broken invariant rather than a
+    // state this page ever legitimately reaches.
+    CK_ENSURE_IF_NOT(ck::IsValid(_ResultsBox), TEXT("The PerfLab page's results box was never built"))
+    { return SNullWidget::NullWidget; }
 
     _ResultsBox->ClearChildren();
 
@@ -722,7 +765,7 @@ auto
             .Tone(Position.Get_Verdict() == ECk_PerfLab_CompareVerdict::Regressed
                 ? ECk_Tone::Err
                 : ECk_Tone::Ok)
-            .Text(FText::FromString(Frame.IsSet()
+            .Text(FText::FromString(ck::IsValid(Frame)
                 ? FString::Printf(TEXT("%s   %s   %.2f → %.2f ms  (%+.2f, band ±%.2f)"),
                       *Position.Get_PositionId(),
                       *ck::Format_UE(TEXT("{}"), Position.Get_Verdict()),
@@ -763,14 +806,13 @@ auto
     DoRefresh_Sessions()
     -> void
 {
-    _SessionRows.Reset();
+    // Assigned rather than cleared-and-filled: SListView holds the ADDRESS of this member, which
+    // assignment does not change.
+    _SessionRows = ck::algo::Transform<TArray<TSharedPtr<FCk_PerfLab_SessionRow>>>(
+        ck::perf_lab::Get_SessionRows(),
+        [](const FCk_PerfLab_SessionRow& InRow) { return MakeShared<FCk_PerfLab_SessionRow>(InRow); });
 
-    for (const auto& Row : ck::perf_lab::Get_SessionRows())
-    {
-        _SessionRows.Add(MakeShared<FCk_PerfLab_SessionRow>(Row));
-    }
-
-    if (_SessionListView.IsValid())
+    if (ck::IsValid(_SessionListView))
     {
         _SessionListView->RequestListRefresh();
     }
@@ -785,6 +827,10 @@ auto
     _SelectedSessionId = InSessionId;
     _SelectedSession   = FCk_PerfLab_Session{};
     _SelectedAnalysis  = FCk_PerfLab_Analysis{};
+
+    // The page's own mirror of the viewport selection, cleared alongside the slot's. Left set, it would keep naming
+    // a position id belonging to the session the reader just navigated away from.
+    _ClickedPositionId.Reset();
 
     if (ck::perf_lab::TryLoad_Session(InSessionId, _SelectedSession))
     {
@@ -896,22 +942,51 @@ auto
 
 auto
     SCkPerfLabPage::
+    DoSet_HeatmapModeActive(
+        bool InEnabled)
+    -> void
+{
+    // Publishing a snapshot makes nothing appear on its own. The module's StaticClass reference only makes the mode
+    // DISCOVERABLE; until something activates it on the level editor, Render is never called and the overlay is a
+    // feature that exists and cannot be seen.
+    if (ck::Is_NOT_Valid(GEditor) || ck::IsValid(GEditor->PlayWorld))
+    {
+        return;
+    }
+
+    auto& ModeTools = GLevelEditorModeTools();
+
+    if (InEnabled)
+    {
+        ModeTools.ActivateMode(ck::perf_lab::heatmap::k_EdModeId);
+    }
+    else
+    {
+        ModeTools.DeactivateMode(ck::perf_lab::heatmap::k_EdModeId);
+    }
+
+    GEditor->RedrawLevelEditingViewports();
+}
+
+auto
+    SCkPerfLabPage::
     DoToggle_Heatmap()
     -> void
 {
     _HeatmapEnabled = NOT _HeatmapEnabled;
 
     DoPublish_Heatmap();
+    DoSet_HeatmapModeActive(_HeatmapEnabled);
 
     if (_HeatmapEnabled)
     {
-        if (NOT _HeatmapTimer.IsValid())
+        if (ck::Is_NOT_Valid(_HeatmapTimer))
         {
             _HeatmapTimer = RegisterActiveTimer(ck_perf_lab_page::k_PollIntervalSec,
                 FWidgetActiveTimerDelegate::CreateSP(this, &SCkPerfLabPage::DoPoll_Heatmap));
         }
     }
-    else if (_HeatmapTimer.IsValid())
+    else if (ck::IsValid(_HeatmapTimer))
     {
         UnRegisterActiveTimer(_HeatmapTimer.ToSharedRef());
         _HeatmapTimer.Reset();
@@ -951,6 +1026,11 @@ auto
     DoStart_Run()
     -> void
 {
+    // Re-read the open level HERE, not once at construction. The page outlives any number of File > Open Level, and a
+    // stale path would launch the child against a map the user is no longer looking at — producing a session whose
+    // heatmap then correctly refuses to draw, which reads to them as the tool being broken.
+    _MapPath = ck_perf_lab_page::Get_CurrentMapPath();
+
     if (Get_IsRunning() || _MapPath.IsEmpty())
     {
         return;
@@ -964,7 +1044,7 @@ auto
         .Set_SessionId(ck_perf_lab_page::Make_SessionId(_MapPath))
         .Set_MapPath(_MapPath)
         .Set_BudgetMs(_BudgetMs)
-        .Set_Seed(1337)
+        .Set_Seed(ck_perf_lab_page::k_PlannerSeed)
         .Set_RequestingHostPid(static_cast<int32>(FPlatformProcess::GetCurrentProcessId()))
         .Set_CreatedUtc(FDateTime::UtcNow().ToIso8601())
         .Set_Mode(_Mode)
@@ -981,7 +1061,7 @@ auto
 
     // Polling starts only once a child exists, and stops itself when one does not — this page costs nothing at all
     // while it is merely open.
-    if (NOT _PollTimer.IsValid())
+    if (ck::Is_NOT_Valid(_PollTimer))
     {
         _PollTimer = RegisterActiveTimer(ck_perf_lab_page::k_PollIntervalSec,
             FWidgetActiveTimerDelegate::CreateSP(this, &SCkPerfLabPage::DoPoll));
@@ -993,7 +1073,7 @@ auto
     DoCancel_Run()
     -> void
 {
-    if (_Child.IsValid())
+    if (ck::IsValid(_Child))
     {
         _Child->Request_Cancel();
     }
@@ -1006,7 +1086,7 @@ auto
         float InDeltaTime)
     -> EActiveTimerReturnType
 {
-    if (NOT _Child.IsValid())
+    if (ck::Is_NOT_Valid(_Child))
     {
         _PollTimer.Reset();
         return EActiveTimerReturnType::Stop;

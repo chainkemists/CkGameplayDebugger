@@ -204,12 +204,20 @@ decodes), then **augmented host-side** with the `analysis` block by Phase 6. The
     }
   ],
 
-  // null until Phase 6 analysis runs host-side. Never written by the child.
-  "analysis": null
+  // Absent in session.json — see §3.1. Never written by the child.
 }
 ```
 
-### 3.1 `analysis` block (written host-side by Phase 6)
+### 3.1 `analysis` block (computed by Phase 6, attached by Phase 9's export)
+
+> **Where this block actually lives — clarified 2026-08-22 during Phase 9.** `session.json`, the file
+> the child writes, carries **no** analysis. Analysis is a pure function of a session plus a budget,
+> and baking one result into the measurement file would freeze a single budget's answer into a file
+> whose whole value is being re-readable at any budget later. The block below is what
+> `Build_SessionJson` **adds** on export, producing `report.json`: the session verbatim from the
+> codec, plus `analysis`. That export still decodes through `TryRead_SessionFromJson` — pinned by
+> `Ck.PerfLab.Export.JsonRemainsTheSessionSchemaPlusAnalysis` — which is what keeps this one schema
+> with one writer rather than two that drift.
 
 ```jsonc
 "analysis": {

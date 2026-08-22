@@ -1,6 +1,6 @@
 # Phase 9 — Compare, exports, CI entry, docs & close-out
 
-> **Status:** ⏳ Pending
+> **Status:** ✅ Done (2026-08-22)
 > **Depends on:** Phases 7 ✅ and 8 ✅
 > **Estimate:** 1–2 sessions
 > **Change class:** 3 (touches window + PerfLab; final full gate)

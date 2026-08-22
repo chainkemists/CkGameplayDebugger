@@ -820,62 +820,118 @@ auto
             _SelectedAnalysis.Get_Findings().Num())))
     ];
 
-    for (const auto& Finding : _SelectedAnalysis.Get_Findings())
+    // Grouped by rule, not listed per position. One rule firing at twelve positions is one thing wrong with the
+    // level; twelve near-identical blocks make the reader diff them by eye to discover they say the same thing.
+    for (const auto& Group : ck::perf_lab::Group_Findings(_SelectedAnalysis))
     {
-        const auto& Evidence = Finding.Get_Evidence();
+        const auto& Evidence  = Group.Get_WorstEvidence();
+        const auto  Positions = Group.Get_PositionIds().Num();
 
-        auto FindingBox = SNew(SVerticalBox);
+        auto GroupBox = SNew(SVerticalBox);
 
-        FindingBox->AddSlot()
+        GroupBox->AddSlot()
         .AutoHeight()
         [
-            SNew(SCkDebug_StatusPill)
-            .ShowDot(true)
-            .Tone(ck_perf_lab_page::Get_SeverityTone(Finding.Get_Severity()))
-            .Text(FText::FromString(FString::Printf(TEXT("%s   at %s"),
-                *Finding.Get_CheckId(), *Finding.Get_PositionId())))
+            SNew(SHorizontalBox)
+
+            + SHorizontalBox::Slot()
+            .AutoWidth()
+            [
+                SNew(SCkDebug_StatusPill)
+                .ShowDot(true)
+                .Tone(ck_perf_lab_page::Get_SeverityTone(Group.Get_Severity()))
+                .Text(FText::FromString(Group.Get_CheckId()))
+            ]
+
+            + SHorizontalBox::Slot()
+            .AutoWidth()
+            .VAlign(VAlign_Center)
+            .Padding(CkStyle::SpaceS, 0.0f, 0.0f, 0.0f)
+            [
+                SNew(STextBlock)
+                .Text(FText::FromString(Positions == 1
+                    ? ck::Format_UE(TEXT("at 1 position"))
+                    : ck::Format_UE(TEXT("at {} positions"), Positions)))
+            ]
         ];
 
         // The measurement that justified the finding, shown with it. A finding that cannot say what it measured is
-        // exactly what this tool exists not to produce, so the evidence is never a hover or a detail pane.
-        FindingBox->AddSlot()
-        .AutoHeight()
-        [
-            SNew(STextBlock)
-            .Text(FText::FromString(FString::Printf(TEXT("   %s measured %.2f ms against a %.2f ms budget (%.2fx) — %s = %.0f"),
-                *ck::Format_UE(TEXT("{}"), Evidence.Get_Metric()),
-                Evidence.Get_MeasuredMs(),
-                Evidence.Get_BudgetMs(),
-                Evidence.Get_OverBudgetRatio(),
-                *Evidence.Get_Signal(),
-                Evidence.Get_SignalValue())))
-        ];
-
-        for (const auto& Contributor : Finding.Get_Contributors())
+        // exactly what this tool exists not to produce, so the evidence is never a hover or a detail pane. The WORST
+        // position leads, because that is the one worth walking to.
+        if (Evidence.Get_MeasuredMs() > 0.0f)
         {
-            FindingBox->AddSlot()
+            GroupBox->AddSlot()
             .AutoHeight()
-            [
-                SNew(STextBlock)
-                .Text(FText::FromString(FString::Printf(TEXT("      %d. %s  (%.0f cm) — %s"),
-                    Contributor.Get_Rank(),
-                    *FPaths::GetCleanFilename(Contributor.Get_ObjectPath()),
-                    Contributor.Get_DistanceCm(),
-                    *Contributor.Get_Note())))
-            ];
-        }
-
-        for (const auto& Recommendation : Finding.Get_Recommendations())
-        {
-            FindingBox->AddSlot()
-            .AutoHeight()
+            .Padding(CkStyle::SpaceM, 0.0f, 0.0f, 0.0f)
             [
                 SNew(STextBlock)
                 .AutoWrapText(true)
-                .Text(FText::FromString(FString::Printf(TEXT("      gain %s / effort %s — %s"),
-                    *ck::Format_UE(TEXT("{}"), Recommendation.Get_GainBand()),
-                    *ck::Format_UE(TEXT("{}"), Recommendation.Get_EffortBand()),
-                    *Recommendation.Get_Text())))
+                .Text(FText::FromString(ck::Format_UE(
+                    TEXT("Worst at {}: {} measured {:.2f} ms against {:.2f} ms ({:.2f}x)"),
+                    Group.Get_WorstPositionId(),
+                    ck::Format_UE(TEXT("{}"), Evidence.Get_Metric()),
+                    Evidence.Get_MeasuredMs(),
+                    Evidence.Get_BudgetMs(),
+                    Evidence.Get_OverBudgetRatio())))
+            ];
+        }
+
+        // A signal of "none" is the fallback rule saying it matched nothing — printing it as a measurement would
+        // dress an absence up as evidence.
+        if (Evidence.Get_Signal() != TEXT("none"))
+        {
+            GroupBox->AddSlot()
+            .AutoHeight()
+            .Padding(CkStyle::SpaceM, 0.0f, 0.0f, 0.0f)
+            [
+                SNew(STextBlock)
+                .Text(FText::FromString(ck::Format_UE(TEXT("Signal: {} = {:.0f}"),
+                    Evidence.Get_Signal(), Evidence.Get_SignalValue())))
+            ];
+        }
+
+        for (const auto& Contributor : Group.Get_Contributors())
+        {
+            GroupBox->AddSlot()
+            .AutoHeight()
+            .Padding(CkStyle::SpaceL, 0.0f, 0.0f, 0.0f)
+            [
+                SNew(STextBlock)
+                .ToolTipText(FText::FromString(Contributor.Get_ObjectPath()))
+                .Text(FText::FromString(ck::Format_UE(TEXT("{}. {}  ({:.0f} cm)  — {}"),
+                    Contributor.Get_Rank(),
+                    FPaths::GetCleanFilename(Contributor.Get_ObjectPath()),
+                    Contributor.Get_DistanceCm(),
+                    Contributor.Get_Note())))
+            ];
+        }
+
+        for (const auto& Recommendation : Group.Get_Recommendations())
+        {
+            GroupBox->AddSlot()
+            .AutoHeight()
+            .Padding(CkStyle::SpaceL, 0.0f, 0.0f, 0.0f)
+            [
+                SNew(STextBlock)
+                .AutoWrapText(true)
+                .Text(FText::FromString(ck::Format_UE(TEXT("gain {} / effort {} — {}"),
+                    Recommendation.Get_GainBand(),
+                    Recommendation.Get_EffortBand(),
+                    Recommendation.Get_Text())))
+            ];
+        }
+
+        // Every position the rule fired at, so the group never hides which places it is talking about.
+        if (Positions > 1)
+        {
+            GroupBox->AddSlot()
+            .AutoHeight()
+            .Padding(CkStyle::SpaceM, 0.0f, 0.0f, 0.0f)
+            [
+                SNew(STextBlock)
+                .AutoWrapText(true)
+                .Text(FText::FromString(ck::Format_UE(TEXT("Positions: {}"),
+                    FString::Join(Group.Get_PositionIds(), TEXT(", ")))))
             ];
         }
 
@@ -883,7 +939,7 @@ auto
         .AutoHeight()
         .Padding(0.0f, CkStyle::SpaceM, 0.0f, 0.0f)
         [
-            FindingBox
+            GroupBox
         ];
     }
 

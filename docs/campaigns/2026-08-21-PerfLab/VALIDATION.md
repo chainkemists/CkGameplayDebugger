@@ -23,9 +23,14 @@
 
 ## B. `[EDITOR-VERIFY]` — Adam's checklist (grows during the campaign; phases append here)
 
-Phase 1:
-- [ ] BP: place `[Ck] Get Thread Timings` — five floats + availability pin present.
-- [ ] AS: after editor boot, `utils_stats::Get_ThreadTimings()` resolves in a script.
+Phase 1 (shipped 2026-08-21 — these two are the phase's only unverified claims):
+- [ ] BP: place `[Ck] Get Thread Timings` — the node exposes Frame / GameThread / RenderThread /
+      RhiThread / Gpu times plus a `GpuAvailability` pin.
+- [ ] AS: after an editor boot, `utils_stats::Get_ThreadTimings()` resolves in a script and the
+      returned struct's getters are callable.
+- [ ] With a real RHI (i.e. a normal editor session, not the `-nullrhi` test harness), confirm
+      `GpuAvailability` reads `Available` and the GPU time is non-zero. Every automated run so far
+      was headless, so the *available* branch has only ever been exercised vacuously.
 
 Phase 7:
 - [ ] Performance page: pick test map + 60 fps budget + Standard → Run; editor remains responsive

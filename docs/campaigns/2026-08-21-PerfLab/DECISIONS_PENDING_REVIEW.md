@@ -119,6 +119,29 @@ Row format: **What was asked** · **Options weighed** · **Decision + why** · *
 - **Reverse:** the editor-child alternative is fully written up in this session's advisor exchange
   and re-rejected in PROMPT.md's rejected-approaches table with its reasoning intact.
 
+### D-006 — Phase 1 judgment calls (self, no ruling needed; recorded for audit)
+
+- **A struct, not scalar getters.** `CkStats_Utils.h` is otherwise all scalar getters, so
+  `FCk_Stats_ThreadTimings` is a departure from the file's local shape. Two reasons it wins: the four
+  numbers are only comparable when read from the same frame, and a scalar `Get_GpuTimeMs()` could not
+  express "unavailable" without a sentinel — which is exactly the zero-as-data trap D5 forbids.
+  *Reverse:* split into scalar getters and drop the availability enum (also drops the D5 guarantee).
+- **Named namespace in the new test, where its sibling uses an anonymous one.**
+  `Test_Profile_ScopedStat.cpp` declares its flags constant in `namespace { }`. Doctrine bans
+  anonymous namespaces because unity builds merge translation units, and my file would have declared
+  an identically-shaped constant. Used `ck_test_profile_thread_timings` instead. The sibling is left
+  alone — not my file to churn. *Reverse:* rename to an anonymous namespace and accept the risk.
+- **Added `CK_DEFINE_CUSTOM_FORMATTER_ENUM` although neither existing enum in this file has one.**
+  Doctrine requires it on every UENUM, and PerfLab logs the availability reason through
+  `ck::Format_UE` `{}`, which does not compile without it. The two pre-existing enums are left alone.
+- **Left the existing `Get_FrameTimeMs()` untouched** even though it uses `FApp::GetDeltaTime()`
+  while the new snapshot uses stat unit's `GetCurrentTime() - GetLastTime()`. Changing it would be a
+  behaviour change to an established API (change class 3) for no benefit to this campaign. The two
+  now differ by design; the module doc says why.
+- **No `UMETA(DisplayName=...)` on the new enum.** UE humanises the identifiers for display, and the
+  session JSON maps enum→string explicitly rather than through display text, so display names would
+  add a second place for the same name to drift.
+
 ### D-004 — Plan-vs-code corrections found in Phase 0 (no ruling needed, recorded for audit)
 
 - `PHASE_2.md` claimed CkGameplayDebugger modules use plain `ModuleRules`. **False** —

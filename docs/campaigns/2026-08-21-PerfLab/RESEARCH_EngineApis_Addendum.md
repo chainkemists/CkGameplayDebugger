@@ -156,6 +156,33 @@ needs synchronous stdout capture, whereas PerfLab supervises a multi-minute chil
 be able to kill. Phase 5 wraps `FMonitoredProcess` in a `ck`-flavoured type and still files
 adjudication **A-PerfLab-1** for where that type ultimately lives.
 
+## 6.1 Child-hygiene flags — CONFIRMED
+
+| Concern | Symbol / flag | Location | Note |
+|---|---|---|---|
+| Idle/background throttling | `t.IdleWhenNotForeground` | `Core/Private/HAL/ConsoleManager.cpp:4159-4160`; consumed by `FEngineLoop::ShouldUseIdleMode()` `LaunchEngineLoop.cpp:5263-5271`, applied `:5755` | **Engine default is 0** (no throttle). Safe by default, but assert it — a consumer ini can set 1 and silently corrupt every number. |
+| Source control in the child | `-SCCProvider=None` | parsed at `Developer/SourceControl/Private/SourceControlSettings.cpp:58-60` | Real switch. This project ships GitSourceControl. |
+| Child log isolation | `-abslog=<session dir>\child.log` | used successfully in the Phase 0 smoke | Keeps the child out of `Saved/Logs/`, which preserves the editor-running lock probe the repo's hooks depend on. |
+
+## 6.2 The child binary — the Phase 0 root-cause finding
+
+**CONFIRMED, and it invalidated an assumption the plan carried:** this project sets
+`BuildEnvironment = TargetBuildEnvironment.Unique` (`Source/CkPluginsEditor.Target.cs:18`). It
+therefore builds **its own** editor executable and module set:
+`Binaries/Win64/CkPluginsEditor-Cmd.exe` plus 747 `CkPluginsEditor-*.dll`. The engine's stock
+`Engine/Binaries/Win64/UnrealEditor-Cmd.exe` **cannot resolve those modules** and dies at
+`PostConfigInit` with `Plugin 'CkFoundation' failed to load because module 'CkIskmRendererVF' could
+not be found` — with or without `-game` (both reproduced).
+
+Consequence for Phase 5: the launcher must **resolve** the child binary at runtime, never hardcode
+either name, and must handle a consumer project that is NOT Unique (which would use the engine's
+`UnrealEditor-Cmd.exe`). Resolution approach and the guard for the shared-environment case are an
+OPEN item below.
+
+**Also confirmed by the same smoke:** `-game` needs **no** Game-target artifacts. It ran on editor
+binaries while `Binaries/Win64/CkPlugins.target` was 15 days stale and zero `CkPlugins-*.dll`
+existed.
+
 ## 7. Still OPEN — must be verified by the phase that consumes it
 
 | Item | Needed by | Note |
@@ -165,3 +192,5 @@ adjudication **A-PerfLab-1** for where that type ultimately lives.
 | Whether `FApp::UseFixedTimeStep()` is false by default in `-game` | Phase 4 | §1.1 finding 3 makes this load-bearing |
 | Shader-compile / DDC activity readable from game code | Phase 4 | for the confidence rating's pollution component |
 | Subprocess launch from a commandlet context | Phase 9 | the documented split-branch trigger |
+| **Child-binary resolution for consumer projects** | Phase 5 | This project is `TargetBuildEnvironment.Unique` (own `CkPluginsEditor-Cmd.exe`); a consumer may be shared-environment (engine's `UnrealEditor-Cmd.exe`). Resolve at runtime from the running process — `FPlatformProcess::ExecutablePath()` is the strongest candidate, since the child should simply be the same editor binary the host is already running, with `-Cmd` substituted where a console variant exists. **Guard: never assume the `-Cmd` twin exists** — fall back to the host's own executable path and verify the file exists before launching, failing with a typed reason rather than spawning something that dies at `PostConfigInit`. |
+| `FRHIGPUMask::All()` / multi-GPU | Phase 1 | v1 reads index 0 only; recorded simplification |

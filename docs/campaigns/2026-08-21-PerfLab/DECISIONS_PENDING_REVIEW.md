@@ -189,13 +189,32 @@ returns per the 18-of-20 house precedent; two same-line `if` bodies split; an al
 `ck::IsValid`; the nullptr policy is only for raw pointers that are not UObjects. Swept — the only
 remaining policy use is `IConsoleVariable*`, which is correctly not a UObject.
 
+**~~Plan determinism on navmesh maps~~ — FIXED 2026-08-22, opening Phase 9.**
+Navmesh seeding called `GetRandomReachablePointInRadius` 512 times, which draws from the engine's
+global RNG rather than from the request seed, so candidate points — and therefore position ids —
+varied run to run on any map with real navigation data. Sorting the samples afterwards made their
+*order* stable but not the *set*, which is the part compare depends on.
+
+Replaced with `Project_LatticeOntoNavmesh`: a fixed 24×24 lattice over the level's XY footprint,
+each cell centre projected onto the navmesh via `UNavigationSystemV1::ProjectPointToNavigation`,
+deduplicated on the same 50 cm quantisation the position ids use. **No RNG call remains anywhere in
+the module** (swept and confirmed). This is also strictly better sampling: random points clump and
+leave holes, a lattice does not.
+
+**Not proven by any automated gate.** Every spec here runs on a fixture or a map with no navigation
+data, so the branch that was broken is still the branch no test exercises. Promoted to a
+VALIDATION.md `[EDITOR-VERIFY]` item: run one real navmesh map twice and diff the position ids. If
+they differ, this reopens.
+
 **Known-open, NOT fixed (recorded rather than silently carried):**
-- **Plan determinism on navmesh maps.** Navmesh seeding uses the global RNG, not the request seed, so
-  candidate points — and therefore position ids — vary run to run on maps with real navigation data.
-  `Generate_Plan` IS deterministic given a survey (spec-pinned), but the pipeline that produces the
-  survey is not. The only map measured so far takes the grid path, which has no randomness, so the
-  fixture and every capture here are unaffected. **This breaks session-to-session compare on real
-  maps and must be fixed before Phase 9's compare view ships.**
+- **`session.json` writes enums PascalCase; SCHEMA.md §3.2 says camelCase.** A real captured session
+  carries `"availability": "Available"`, not `"available"`. Found in Phase 9 by reading an actual
+  session file rather than a fixture-shaped assumption. The **export**'s analysis block conforms to
+  §3.2 (spec-pinned, case-sensitively); the session half does not. Not fixed here because changing
+  the codec now invalidates the checked-in fixture and every session already captured, and the
+  decode path is identifier-based rather than case-sensitive so nothing is currently broken. Ruling
+  wanted: conform the codec and regenerate the fixture, or amend §3.2 to state the session file uses
+  C++ identifiers.
 - Child failure exit codes are swallowed: `RequestExitWithStatus(false, N)` yields process exit 0, so
   the host reads a failed run as a clean one.
 - Skeletal meshes contribute zero triangles to the survey, and instanced static meshes are counted
@@ -205,6 +224,50 @@ remaining policy use is `IConsoleVariable*`, which is correctly not a UObject.
 - The runner never verifies the loaded map matches the request.
 - `_InViewYaws` is written by the codec and populated by nothing, so the evidence gate's static half
   is 360°-unfiltered — triangles behind the camera count toward the signal.
+
+### D-008 — Phase 9 adversarial review (2026-08-22): six defects, all fixed
+
+A fresh reviewer went over the compare module, the three export builders, the commandlet and the new
+lattice sampler. Every finding was verified against the code before acting; none were refuted, and
+one I had already found and fixed independently.
+
+**The one that mattered most — the score delta was suppressed on a condition that never applied.**
+`_ScoreComparable` was set false whenever the two sessions' *requested* budgets differed, on the
+reasoning that scores against different targets are not on one scale. That reasoning is wrong here:
+`Compute_Score` reads the budget **only** from its parameter (verified — `Get_BudgetMs()` appears
+nowhere in `CkPerfLab_Analysis.cpp`), and `Compare_Sessions` passes the SAME budget to both sides.
+The scores were always on one scale, and the suppression hid exactly the number a CI job exists to
+produce: a run whose mode changed between captures would print `Score 72.0 → 61.0 (not comparable)`
+while an 11-point regression went unreported. `_ScoreComparable` is gone; the `DifferentBudget`
+warning survives with honest wording (the runs were *requested* differently, so conditions may
+differ) and no longer suppresses anything.
+
+**Other confirmed defects fixed:**
+- The positions CSV printed `0.000` for `frameWorstMs` / `frameP99Ms` / `frameOnePercentLowMs` when
+  the frame metric was unavailable — the three columns bypassed the availability gate the other five
+  went through. Sorting that sheet ascending on p99 floats every unmeasured position to the top as
+  the fastest place in the level, the exact inversion `Get_PositionOrder` avoids in the HTML. Now
+  routed through `Format_MetricValue`, and pinned by an extended spec.
+- **Strict-weak-ordering violation in two sort comparators** (found independently by me and by the
+  reviewer). `FMath::IsNearlyEqual` is not transitive, so a≈b and b≈c does not give a≈c, and the
+  comparator admitted a cycle among closely spaced frame times — which is what a set of frame times
+  is. UE's introsort is bounds-guarded so this could not corrupt memory, but the emitted order became
+  a function of input permutation, breaking the byte-identical contract. Both now compare exactly;
+  true equality still falls to the deterministic id tie-break.
+- The navmesh lattice took its bounds from a box over actor **pivots**. A level built as one
+  landscape proxy with its pivot at the origin yields a box centimetres across over a kilometre of
+  navigable space — all 576 samples land in one quantisation cell and the whole map plans a single
+  position. Now uses `UNavigationSystemV1::GetWorldBounds()`, with actor bounds as fallback.
+- `-budget=nan` passed the `<= 0.0f` guard (every comparison against NaN is false) and reached
+  `SetNumberField`, emitting a bare `nan` token — **report.json was not parseable JSON**. Now gated
+  on `FMath::IsFinite` first. Verified: exits 1 with a readable reason.
+- CSV location columns were `static_cast<float>` of a double `FVector`, losing centimetre precision
+  at large-world coordinates, and were formatted by a function named `Format_Ms`. Now `Format_Cm`,
+  double throughout.
+
+**Reviewer confirmed clean:** no map or set iteration order reaches any output (each container
+checked individually); no divide-by-zero in the compare path; delta signs and `Reduce_Verdicts`
+correct; HTML and CSV escaping ordered correctly.
 
 ### D-004 — Plan-vs-code corrections found in Phase 0 (no ruling needed, recorded for audit)
 

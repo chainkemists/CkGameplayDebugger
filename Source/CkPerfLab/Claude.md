@@ -27,10 +27,29 @@ this module's, but linking it would drag `TraceServices` into a process whose jo
 ```
 CkPerfLab/
 ├── Session/
-│   ├── CkPerfLab_Session.h/.cpp       – the on-disk model: request, environment, positions, metrics
-│   └── CkPerfLab_SessionCodec.h/.cpp  – JSON for request / heartbeat / session
-└── Stats/
-    └── CkPerfLab_SampleStats.h/.cpp   – dwell samples -> metric summary, and the confidence rating
+│   ├── CkPerfLab_Session.h/.cpp          – the on-disk model: request, environment, positions, metrics
+│   └── CkPerfLab_SessionCodec.h/.cpp     – JSON for request / heartbeat / session
+├── Stats/
+│   └── CkPerfLab_SampleStats.h/.cpp      – dwell samples -> metric summary, and the confidence rating
+├── Planner/
+│   └── CkPerfLab_Planner.h/.cpp          – where to stand, from a world survey (pure)
+├── Runner/
+│   ├── CkPerfLab_WorldSurvey_Builder.*   – what the level contains, and where it is navigable
+│   ├── CkPerfLab_SettleDetector.h/.cpp   – when a dwell has stopped moving and may be sampled
+│   └── CkPerfLab_Runner_Subsystem.*      – the in-child measurement loop
+├── Host/
+│   ├── CkPerfLab_Subprocess.h/.cpp       – launching and watching the -game child
+│   └── CkPerfLab_SessionStore.h/.cpp     – sessions on disk
+├── Analysis/
+│   ├── CkPerfLab_Analysis.h/.cpp         – the score and its eight disclosed components (pure)
+│   ├── CkPerfLab_Rules.cpp               – the evidence-gated finding rules
+│   └── CkPerfLab_SessionCompare.h/.cpp   – two sessions, matched by position id (pure)
+├── Export/
+│   └── CkPerfLab_Export.h/.cpp           – HTML / CSV / JSON builders (pure, deterministic)
+├── Heatmap/
+│   └── CkPerfLab_HeatmapSlot.h/.cpp      – the published snapshot the EdMode draws from
+└── Commandlet/
+    └── CkPerfLab_ReportCommandlet.*      – -run=CkPerfLabReport, the headless CI entry
 ```
 
 The field set and meanings are specified in the campaign's `SCHEMA.md`. That document is the

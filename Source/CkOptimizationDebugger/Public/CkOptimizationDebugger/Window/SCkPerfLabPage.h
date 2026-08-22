@@ -3,6 +3,8 @@
 #include "CkEditorTools/Style/CkStyle.h"
 
 #include "CkPerfLab/Analysis/CkPerfLab_Analysis.h"
+#include "CkPerfLab/Analysis/CkPerfLab_SessionCompare.h"
+#include "CkPerfLab/Export/CkPerfLab_Export.h"
 #include "CkPerfLab/Heatmap/CkPerfLab_HeatmapSlot.h"
 #include "CkPerfLab/Host/CkPerfLab_SessionStore.h"
 #include "CkPerfLab/Host/CkPerfLab_Subprocess.h"
@@ -35,11 +37,15 @@ private:
     auto DoBuild_SessionList() -> TSharedRef<SWidget>;
     auto DoBuild_Results() -> TSharedRef<SWidget>;
     auto DoBuild_ScoreCard() -> TSharedRef<SWidget>;
+    auto DoBuild_Compare() -> TSharedRef<SWidget>;
 
     auto DoRefresh_Sessions() -> void;
     auto DoSelect_Session(const FString& InSessionId) -> void;
+    auto DoSelect_Baseline(const FString& InSessionId) -> void;
+    auto DoRecompute_Compare() -> void;
     auto DoStart_Run() -> void;
     auto DoCancel_Run() -> void;
+    auto DoExport_Session() -> void;
 
     auto DoPoll(double InCurrentTime, float InDeltaTime) -> EActiveTimerReturnType;
     auto DoPoll_Heatmap(double InCurrentTime, float InDeltaTime) -> EActiveTimerReturnType;
@@ -62,11 +68,18 @@ private:
     FCk_PerfLab_Session  _SelectedSession;
     FCk_PerfLab_Analysis _SelectedAnalysis;
 
+    // The A side of a comparison. Empty until the user picks one, because a compare view that
+    // guessed its own baseline would present a claim nobody made.
+    FCk_PerfLab_Session _BaselineSession;
+    FCk_PerfLab_Compare _Compare;
+
     TSharedPtr<SVerticalBox> _ResultsBox;
 
+    FString _BaselineSessionId;
     FString _SelectedSessionId;
     FString _MapPath;
     FString _LastFailure;
+    FString _ExportMessage;
     FString _ClickedPositionId;
 
     float _BudgetMs = 16.67f;

@@ -38,10 +38,14 @@ public:
 
 private:
     auto DoBuild_RunControls() -> TSharedRef<SWidget>;
+    auto DoBuild_TargetPresets() -> TSharedRef<SWidget>;
     auto DoBuild_SessionList() -> TSharedRef<SWidget>;
     auto DoBuild_Results() -> TSharedRef<SWidget>;
     auto DoBuild_ScoreCard() -> TSharedRef<SWidget>;
     auto DoBuild_Compare() -> TSharedRef<SWidget>;
+
+    /** The editor opened a different level. Everything on this page is scoped to one map, so all of it has to move. */
+    auto DoHandle_MapOpened(const FString& InFilename, bool InAsTemplate) -> void;
 
     auto DoRefresh_Sessions() -> void;
     auto DoSelect_Session(const FString& InSessionId) -> void;
@@ -57,9 +61,14 @@ private:
     auto DoToggle_Heatmap() -> void;
     auto DoPublish_Heatmap() -> void;
 
-    /** Activates or deactivates the EdMode on the level editor. Publishing a snapshot alone draws nothing — the
-     *  mode is registered by its module but never activated until something asks. */
-    auto DoSet_HeatmapModeActive(bool InEnabled) -> void;
+    /**
+     * Activates or deactivates the EdMode on the level editor, and reports whether it took.
+     *
+     * Publishing a snapshot alone draws nothing — the mode is registered by its module but never activated until
+     * something asks. The return value is load-bearing: if activation fails the page must SAY so, because a toggle
+     * reading "on" over an unchanged viewport is indistinguishable from a broken heatmap.
+     */
+    auto DoSet_HeatmapModeActive(bool InEnabled) -> bool;
 
     auto Get_StatusText() const -> FText;
     auto Get_StatusTone() const -> ECk_Tone;
@@ -96,6 +105,9 @@ private:
     float _BudgetMs = 16.67f;
 
     ECk_PerfLab_Mode _Mode = ECk_PerfLab_Mode::Quick;
+
+    /** Unsubscribed in the destructor: FEditorDelegates outlives every window bound to it. */
+    FDelegateHandle _MapOpenedHandle;
 
     TSharedPtr<FActiveTimerHandle> _PollTimer;
 

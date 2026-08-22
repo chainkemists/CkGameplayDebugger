@@ -4,7 +4,11 @@
 **As of 2026-08-22.** Phases 0-6 DONE. Phases 7 (Performance page UI), 8 (heatmap EdMode) and
 9 (compare / exports / CI entry / close-out) NOT STARTED.
 
-**Gate of record:** `--test-pattern PerfLab` → **44/44 green, exit 0** (2026-08-22, final binary).
+**Gate of record:** `--test-pattern PerfLab` → **45/45 green, exit 0** (2026-08-22, final binary).
+**Full suite after the review pass:** **1254 / 1251 / 3** — the deterministic pair unchanged, plus
+one known unstable red. No regressions. (+10 vs the 1244 baseline = the new CkCore statistics specs;
+PerfLab's 45 are `Ck.*`-rooted and never appear in a no-pattern run.)
+**Live child launch re-verified after the launcher fix:** armed, planned, measured, exit 0.
 **Full-suite baseline to diff against:** total ~1250, with this shape:
 - **Deterministic reds, never allowed to grow:**
   `Ck_AutoTest_PathNetworkFollower_DesiredNavmeshClearanceMovesInward`,

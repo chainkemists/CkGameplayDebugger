@@ -12,6 +12,8 @@
 #include "CkDebuggerCommon/Search/SCkDebug_SearchBar.h"
 #include "CkDebuggerCommon/Utils/CkDebug_CopyMenu_Utils.h"
 #include "CkDebuggerCommon/Utils/CkDebug_InspectorEditGuard.h"
+#include "CkOptimizationDebugger/Window/SCkPerfLabPage.h"
+
 #include "CkDebuggerCommon/Widgets/SCkDebug_Card.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_CategoryDot.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_Chip.h"
@@ -1308,6 +1310,16 @@ auto
                 return Count > 0 ? FText::AsNumber(Count) : FText::GetEmpty();
             });
         }
+        else if (Page == ECkOptimizationDebugger_Page::Performance)
+        {
+            // Measurement sessions on disk. No warn dot: a session is a reading the reader asked for, and the
+            // judgement about what it says lives on the page rather than on its tab.
+            Tab.CountText = TAttribute<FText>::CreateLambda([this]() -> FText
+            {
+                const auto Count = _PerfLabPage.IsValid() ? _PerfLabPage->Get_SessionCount() : 0;
+                return Count > 0 ? FText::AsNumber(Count) : FText::GetEmpty();
+            });
+        }
         else if (Page == ECkOptimizationDebugger_Page::Snapshots)
         {
             // How many captures are stored. No warn dot: a snapshot is a picture the reader asked for, and there is
@@ -1389,7 +1401,24 @@ auto
             [
                 DoCreate_SnapshotsPage()
             ]
+
+            + SWidgetSwitcher::Slot()
+            [
+                DoCreate_PerformancePage()
+            ]
         ];
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkOptimizationDebuggerWindow::
+    DoCreate_PerformancePage()
+    -> TSharedRef<SWidget>
+{
+    // The page owns its own state and its own polling. Everything it needs lives in CkPerfLab, so this window is
+    // only the thing that hosts it.
+    return SAssignNew(_PerfLabPage, SCkPerfLabPage);
 }
 
 // --------------------------------------------------------------------------------------------------------------------

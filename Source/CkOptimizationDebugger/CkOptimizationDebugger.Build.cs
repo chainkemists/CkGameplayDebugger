@@ -36,6 +36,10 @@ public class CkOptimizationDebugger : CkModuleRules
             "CkEcs",  // CkCore's SharedPCH instantiates global ECS registrations — every CK module must link CkEcs
 
             "CkDebuggerCommon",
+
+            // The Performance page hosts CkPerfLab's session store, child launcher and analysis. The arrow points
+            // this way on purpose: CkPerfLab is UI-free and must never depend back on the debugger.
+            "CkPerfLab",
             "CkUsf",  // ck::usf::Get_GeneratedMasterObjectPath — where the StencilId look's generated master lives
             "CkEditorTools",  // shared CkStyle:: tokens used directly by the window
         });

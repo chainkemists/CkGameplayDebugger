@@ -1126,6 +1126,7 @@ namespace ck_optimization_debugger_model
             ECkOptimizationDebugger_Page::Profiling,
             ECkOptimizationDebugger_Page::Cleanup,
             ECkOptimizationDebugger_Page::Snapshots,
+            ECkOptimizationDebugger_Page::Performance,
         };
     }
 
@@ -1177,6 +1178,7 @@ namespace ck_optimization_debugger_model
             case ECkOptimizationDebugger_Page::Profiling: return FName{TEXT("Profiling")};
             case ECkOptimizationDebugger_Page::Cleanup:   return FName{TEXT("Cleanup")};
             case ECkOptimizationDebugger_Page::Snapshots: return FName{TEXT("Snapshots")};
+            case ECkOptimizationDebugger_Page::Performance: return FName{TEXT("Performance")};
             default:                                     return FName{TEXT("Dashboard")};
         }
     }
@@ -1196,6 +1198,7 @@ namespace ck_optimization_debugger_model
             case ECkOptimizationDebugger_Page::Profiling: return TEXT("Profiling");
             case ECkOptimizationDebugger_Page::Cleanup:   return TEXT("Cleanup");
             case ECkOptimizationDebugger_Page::Snapshots: return TEXT("Snapshots");
+            case ECkOptimizationDebugger_Page::Performance: return TEXT("Performance");
             default:                                     return TEXT("Dashboard");
         }
     }

@@ -175,11 +175,17 @@ private:
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, meta = (AllowPrivateAccess = true))
     float _DistanceCm = 0.0f;
 
+    // Carried on every contributor rather than written once in the UI, so the qualification travels
+    // with the claim into exports, logs and anything else that reads a finding.
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, meta = (AllowPrivateAccess = true))
+    FString _Note;
+
 public:
     CK_PROPERTY(_Rank);
     CK_PROPERTY(_ObjectPath);
     CK_PROPERTY(_ClassName);
     CK_PROPERTY(_DistanceCm);
+    CK_PROPERTY(_Note);
 };
 
 // --------------------------------------------------------------------------------------------------------------------

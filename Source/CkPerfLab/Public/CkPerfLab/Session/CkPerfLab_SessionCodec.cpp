@@ -2,6 +2,8 @@
 
 #include "CkPerfLab_Log.h"
 
+#include "CkCore/Validation/CkIsValid.h"
+
 #include <Dom/JsonObject.h>
 #include <Serialization/JsonReader.h>
 #include <Serialization/JsonSerializer.h>
@@ -62,7 +64,7 @@ namespace ck_perf_lab_codec
     {
         const auto Reader = TJsonReaderFactory<TCHAR>::Create(InJson);
 
-        if (NOT FJsonSerializer::Deserialize(Reader, OutObject) || NOT OutObject.IsValid())
+        if (NOT FJsonSerializer::Deserialize(Reader, OutObject) || ck::Is_NOT_Valid(OutObject))
         {
             return false;
         }
@@ -106,7 +108,7 @@ namespace ck_perf_lab_codec
             FCk_PerfLab_MetricStats& OutStats)
         -> bool
     {
-        if (NOT InObject.IsValid())
+        if (ck::Is_NOT_Valid(InObject))
         {
             return false;
         }
@@ -152,14 +154,14 @@ namespace ck_perf_lab_codec
             FCk_PerfLab_MetricSet& OutSet)
         -> bool
     {
-        if (NOT InObject.IsValid())
+        if (ck::Is_NOT_Valid(InObject))
         {
             return false;
         }
 
         auto Frame = FCk_PerfLab_MetricStats{};
         auto Game  = FCk_PerfLab_MetricStats{};
-        auto Render= FCk_PerfLab_MetricStats{};
+        auto Render = FCk_PerfLab_MetricStats{};
         auto Rhi   = FCk_PerfLab_MetricStats{};
         auto Gpu   = FCk_PerfLab_MetricStats{};
 
@@ -232,7 +234,7 @@ namespace ck_perf_lab_codec
             FCk_PerfLab_Request& OutRequest)
         -> bool
     {
-        if (NOT InObject.IsValid())
+        if (ck::Is_NOT_Valid(InObject))
         {
             return false;
         }
@@ -244,35 +246,42 @@ namespace ck_perf_lab_codec
             return false;
         }
 
-        const auto& ModeParamsObject = InObject->GetObjectField(TEXT("modeParams"));
-        const auto& SettleObject     = InObject->GetObjectField(TEXT("settle"));
+        // TryGetObjectField rather than GetObjectField: the latter hands back a static EMPTY but
+        // VALID object for a missing field, so every `IsValid()` guard written against it can never
+        // fire and a request with no modeParams would decode to a plan of zero positions.
+        const TSharedPtr<FJsonObject>* ModeParamsObject = nullptr;
+        const TSharedPtr<FJsonObject>* SettleObject     = nullptr;
 
-        if (NOT ModeParamsObject.IsValid() || NOT SettleObject.IsValid())
+        if (NOT InObject->TryGetObjectField(TEXT("modeParams"), ModeParamsObject) ||
+            NOT InObject->TryGetObjectField(TEXT("settle"), SettleObject))
         {
             return false;
         }
 
         auto ModeParams = FCk_PerfLab_ModeParams{};
-        ModeParams.Set_PositionBudget(ModeParamsObject->GetIntegerField(TEXT("positionBudget")))
-                  .Set_DirectionsPerPosition(ModeParamsObject->GetIntegerField(TEXT("directionsPerPosition")))
-                  .Set_Repeats(ModeParamsObject->GetIntegerField(TEXT("repeats")))
-                  .Set_MinPositionSpacingCm(ModeParamsObject->GetNumberField(TEXT("minPositionSpacingCm")))
-                  .Set_EyeHeightCm(ModeParamsObject->GetNumberField(TEXT("eyeHeightCm")))
-                  .Set_CensusRadiusCm(ModeParamsObject->GetNumberField(TEXT("censusRadiusCm")))
-                  .Set_WarmSweep(ModeParamsObject->GetBoolField(TEXT("warmSweep")))
-                  .Set_AdaptiveRevisit(ModeParamsObject->GetBoolField(TEXT("adaptiveRevisit")))
-                  .Set_RetainRawSamples(ModeParamsObject->GetBoolField(TEXT("retainRawSamples")));
+        ModeParams.Set_PositionBudget((*ModeParamsObject)->GetIntegerField(TEXT("positionBudget")))
+                  .Set_DirectionsPerPosition((*ModeParamsObject)->GetIntegerField(TEXT("directionsPerPosition")))
+                  .Set_Repeats((*ModeParamsObject)->GetIntegerField(TEXT("repeats")))
+                  .Set_MinPositionSpacingCm((*ModeParamsObject)->GetNumberField(TEXT("minPositionSpacingCm")))
+                  .Set_EyeHeightCm((*ModeParamsObject)->GetNumberField(TEXT("eyeHeightCm")))
+                  .Set_CensusRadiusCm((*ModeParamsObject)->GetNumberField(TEXT("censusRadiusCm")))
+                  .Set_WarmSweep((*ModeParamsObject)->GetBoolField(TEXT("warmSweep")))
+                  .Set_AdaptiveRevisit((*ModeParamsObject)->GetBoolField(TEXT("adaptiveRevisit")))
+                  .Set_RetainRawSamples((*ModeParamsObject)->GetBoolField(TEXT("retainRawSamples")));
 
         auto Settle = FCk_PerfLab_SettleParams{};
-        Settle.Set_WarmupFrames(SettleObject->GetIntegerField(TEXT("warmupFrames")))
-              .Set_StabilityCv(SettleObject->GetNumberField(TEXT("stabilityCv")))
-              .Set_StabilityFrames(SettleObject->GetIntegerField(TEXT("stabilityFrames")))
-              .Set_StreamingQuietFrames(SettleObject->GetIntegerField(TEXT("streamingQuietFrames")))
-              .Set_SettleTimeoutSec(SettleObject->GetNumberField(TEXT("settleTimeoutSec")))
-              .Set_TargetSampleCount(SettleObject->GetIntegerField(TEXT("targetSampleCount")));
+        Settle.Set_WarmupFrames((*SettleObject)->GetIntegerField(TEXT("warmupFrames")))
+              .Set_StabilityCv((*SettleObject)->GetNumberField(TEXT("stabilityCv")))
+              .Set_StabilityFrames((*SettleObject)->GetIntegerField(TEXT("stabilityFrames")))
+              .Set_StreamingQuietFrames((*SettleObject)->GetIntegerField(TEXT("streamingQuietFrames")))
+              .Set_SettleTimeoutSec((*SettleObject)->GetNumberField(TEXT("settleTimeoutSec")))
+              .Set_TargetSampleCount((*SettleObject)->GetIntegerField(TEXT("targetSampleCount")));
 
-        const auto& OutlierObject  = InObject->GetObjectField(TEXT("outlier"));
-        const auto& WatchdogObject = InObject->GetObjectField(TEXT("watchdog"));
+        const TSharedPtr<FJsonObject>* OutlierObject  = nullptr;
+        const TSharedPtr<FJsonObject>* WatchdogObject = nullptr;
+
+        const auto HasOutlier  = InObject->TryGetObjectField(TEXT("outlier"), OutlierObject);
+        const auto HasWatchdog = InObject->TryGetObjectField(TEXT("watchdog"), WatchdogObject);
 
         OutRequest.Set_SessionId(InObject->GetStringField(TEXT("sessionId")))
                   .Set_MapPath(InObject->GetStringField(TEXT("mapPath")))
@@ -283,9 +292,9 @@ namespace ck_perf_lab_codec
                   .Set_Mode(Mode)
                   .Set_ModeParams(ModeParams)
                   .Set_Settle(Settle)
-                  .Set_OutlierMadK(OutlierObject.IsValid() ? OutlierObject->GetNumberField(TEXT("madK")) : 3.5)
+                  .Set_OutlierMadK(HasOutlier ? (*OutlierObject)->GetNumberField(TEXT("madK")) : 3.5)
                   .Set_ChildWallClockBudgetSec(
-                      WatchdogObject.IsValid() ? WatchdogObject->GetIntegerField(TEXT("childWallClockBudgetSec")) : 1800);
+                      HasWatchdog ? (*WatchdogObject)->GetIntegerField(TEXT("childWallClockBudgetSec")) : 1800);
 
         return true;
     }
@@ -295,6 +304,42 @@ namespace ck_perf_lab_codec
 
 namespace ck::perf_lab
 {
+    auto
+        Get_SessionsRoot()
+        -> FString
+    {
+        // Always fully resolved. The child runs as a separate process and cannot be assumed to share
+        // the host's working directory, so a relative spelling here would have the two agreeing on a
+        // session directory only by coincidence.
+        return FPaths::ConvertRelativePathToFull(
+            FPaths::Combine(FPaths::ProjectSavedDir(), TEXT("CkPerfLab"), TEXT("Sessions")));
+    }
+
+    auto
+        Get_SessionDirFor(
+            const FString& InSessionId)
+        -> FString
+    {
+        return FPaths::Combine(Get_SessionsRoot(), InSessionId);
+    }
+
+    auto Get_SessionFilePath(const FString& InSessionDir) -> FString
+    { return FPaths::Combine(InSessionDir, TEXT("session.json")); }
+
+    auto Get_HeartbeatFilePath(const FString& InSessionDir) -> FString
+    { return FPaths::Combine(InSessionDir, TEXT("heartbeat.json")); }
+
+    auto Get_RequestFilePath(const FString& InSessionDir) -> FString
+    { return FPaths::Combine(InSessionDir, TEXT("request.json")); }
+
+    auto Get_CancelFlagFilePath(const FString& InSessionDir) -> FString
+    { return FPaths::Combine(InSessionDir, TEXT("cancel.flag")); }
+
+    auto Get_ChildLogFilePath(const FString& InSessionDir) -> FString
+    { return FPaths::Combine(InSessionDir, TEXT("child.log")); }
+
+    // ----------------------------------------------------------------------------------------------------------------
+
     auto
         Write_RequestToJson(
             const FCk_PerfLab_Request& InRequest)
@@ -554,7 +599,7 @@ namespace ck::perf_lab
         // list, and a session whose header is readable should still be listable.
         const auto& RequestObject = Root->GetObjectField(TEXT("request"));
 
-        if (RequestObject.IsValid())
+        if (ck::IsValid(RequestObject))
         {
             Request.Set_MapPath(RequestObject->GetStringField(TEXT("mapPath")));
         }
@@ -596,12 +641,14 @@ namespace ck::perf_lab
             return false;
         }
 
-        const auto& EnvironmentObject = Root->GetObjectField(TEXT("environment"));
+        const TSharedPtr<FJsonObject>* EnvironmentObjectPtr = nullptr;
 
-        if (NOT EnvironmentObject.IsValid())
+        if (NOT Root->TryGetObjectField(TEXT("environment"), EnvironmentObjectPtr))
         {
             return false;
         }
+
+        const auto& EnvironmentObject = *EnvironmentObjectPtr;
 
         auto Environment = FCk_PerfLab_Environment{};
         Environment.Set_BuildConfiguration(EnvironmentObject->GetStringField(TEXT("buildConfiguration")))
@@ -619,7 +666,7 @@ namespace ck::perf_lab
 
         const auto& ViewportObject = EnvironmentObject->GetObjectField(TEXT("viewportSizeActual"));
 
-        if (ViewportObject.IsValid())
+        if (ck::IsValid(ViewportObject))
         {
             Environment.Set_ViewportSizeActual(FIntPoint
             {
@@ -630,7 +677,7 @@ namespace ck::perf_lab
 
         const auto& CvarObject = EnvironmentObject->GetObjectField(TEXT("forcedCvars"));
 
-        if (CvarObject.IsValid())
+        if (ck::IsValid(CvarObject))
         {
             auto Cvars = TMap<FString, FString>{};
 
@@ -652,7 +699,7 @@ namespace ck::perf_lab
             {
                 const auto& PositionObject = PositionValue->AsObject();
 
-                if (NOT PositionObject.IsValid())
+                if (ck::Is_NOT_Valid(PositionObject))
                 {
                     return false;
                 }
@@ -662,12 +709,17 @@ namespace ck::perf_lab
                         .Set_EyeHeightCm(PositionObject->GetNumberField(TEXT("eyeHeightCm")))
                         .Set_Revisited(PositionObject->GetBoolField(TEXT("revisited")));
 
-                const auto& LocationObject = PositionObject->GetObjectField(TEXT("location"));
+                // A position with no location block must FAIL rather than decode to the world
+                // origin: a measurement silently relocated to (0,0,0) is indistinguishable from a
+                // real one, and would be compared against real ones.
+                const TSharedPtr<FJsonObject>* LocationObjectPtr = nullptr;
 
-                if (NOT LocationObject.IsValid())
+                if (NOT PositionObject->TryGetObjectField(TEXT("location"), LocationObjectPtr))
                 {
                     return false;
                 }
+
+                const auto& LocationObject = *LocationObjectPtr;
 
                 Position.Set_Location(FVector
                 {
@@ -686,7 +738,7 @@ namespace ck::perf_lab
                     {
                         const auto& DirectionObject = DirectionValue->AsObject();
 
-                        if (NOT DirectionObject.IsValid())
+                        if (ck::Is_NOT_Valid(DirectionObject))
                         {
                             return false;
                         }
@@ -718,7 +770,7 @@ namespace ck::perf_lab
 
                 const auto& ConfidenceObject = PositionObject->GetObjectField(TEXT("confidence"));
 
-                if (NOT ConfidenceObject.IsValid())
+                if (ck::Is_NOT_Valid(ConfidenceObject))
                 {
                     return false;
                 }
@@ -761,7 +813,7 @@ namespace ck::perf_lab
                     {
                         const auto& RowObject = CensusValue->AsObject();
 
-                        if (NOT RowObject.IsValid())
+                        if (ck::Is_NOT_Valid(RowObject))
                         {
                             return false;
                         }
@@ -787,7 +839,7 @@ namespace ck::perf_lab
 
                         const auto& ProxyObject = RowObject->GetObjectField(TEXT("costProxies"));
 
-                        if (ProxyObject.IsValid())
+                        if (ck::IsValid(ProxyObject))
                         {
                             Row.Set_TriangleCount(static_cast<int64>(ProxyObject->GetNumberField(TEXT("triangleCount"))))
                                .Set_MaterialSlotCount(ProxyObject->GetIntegerField(TEXT("materialSlotCount")))

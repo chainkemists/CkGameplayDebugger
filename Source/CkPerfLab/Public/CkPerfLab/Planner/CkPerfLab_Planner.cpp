@@ -58,19 +58,18 @@ namespace ck_perf_lab_planner
             int32 InSeed)
         -> TArray<float>
     {
+        // At least one direction, always. A position measured from no directions is not a cheaper
+        // measurement, it is no measurement — and every consumer of a plan indexes the first yaw, so
+        // an empty list here would be a crash in the runner rather than a degraded result.
+        const auto Count = FMath::Max(1, InCount);
+
         auto Yaws = TArray<float>{};
+        Yaws.Reserve(Count);
 
-        if (InCount <= 0)
-        {
-            return Yaws;
-        }
+        const auto Step     = 360.0f / static_cast<float>(Count);
+        const auto FirstYaw = static_cast<float>(FMath::Abs(InSeed) % 360);
 
-        const auto Step      = 360.0f / static_cast<float>(InCount);
-        const auto FirstYaw  = static_cast<float>(FMath::Abs(InSeed) % 360);
-
-        Yaws.Reserve(InCount);
-
-        for (auto Index = 0; Index < InCount; ++Index)
+        for (auto Index = 0; Index < Count; ++Index)
         {
             Yaws.Add(FMath::Fmod(FirstYaw + (Step * static_cast<float>(Index)), 360.0f));
         }
@@ -268,18 +267,16 @@ namespace ck::perf_lab
 
         const auto Yaws = Get_Yaws(ModeParams.Get_DirectionsPerPosition(), InRequest.Get_Seed());
 
-        auto Positions = TArray<FCk_PerfLab_PlannedPosition>{};
-        Positions.Reserve(Accepted.Num());
-
-        for (const auto& Candidate : Accepted)
-        {
-            Positions.Add(FCk_PerfLab_PlannedPosition{}
-                .Set_PositionId(Candidate._PositionId)
-                .Set_Location(Candidate._Location)
-                .Set_EyeHeightCm(ModeParams.Get_EyeHeightCm())
-                .Set_Yaws(Yaws)
-                .Set_CostWeight(Candidate._CostWeight));
-        }
+        const auto Positions = ck::algo::Transform<TArray<FCk_PerfLab_PlannedPosition>>(Accepted,
+            [&](const FCk_Candidate& InCandidate)
+            {
+                return FCk_PerfLab_PlannedPosition{}
+                    .Set_PositionId(InCandidate._PositionId)
+                    .Set_Location(InCandidate._Location)
+                    .Set_EyeHeightCm(ModeParams.Get_EyeHeightCm())
+                    .Set_Yaws(Yaws)
+                    .Set_CostWeight(InCandidate._CostWeight);
+            });
 
         return Plan.Set_Positions(Positions)
                    .Set_Outcome(Positions.IsEmpty()

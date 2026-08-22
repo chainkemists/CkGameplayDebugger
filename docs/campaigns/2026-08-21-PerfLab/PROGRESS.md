@@ -1,25 +1,27 @@
 # PerfLab — PROGRESS.md (living log)
 
 ## Current state  <!-- supersedes everything below; update at EVERY gate and session end -->
-**As of 2026-08-21 (executor session 1, CkGameplayDebugger `feature/perf-lab` @ `c1afdc4` + uncommitted Phase 0 docs):**
-Phase 0 work items 0.1 / 0.2 / 0.3 COMPLETE and verified. Phase 0 not yet committed.
-**Baseline being diffed against (captured 2026-08-21, freshly built Editor binary):**
-- **Full suite (no pattern):** Total **1235**, Passed **1232**, Failed **3**, Skipped 0, Contaminated 0, 6m06s. Exit 1 (the toolbox's normal way of reporting test failures).
-- **Failing names (pre-existing — this session changed zero source files):**
-  1. `Angelscript.CppTests.AngelscriptCodeCoverage.IntegrationTest`
-  2. `Project.Functional Tests.CkTests.AutoTests.AutoTests_CkTests_Level.Ck_AutoTest_PathNetworkFollower_ProjectsRibbonWaypointWithinNavQueryExtent`
-  3. `Project.Functional Tests.CkTests.AutoTests.AutoTests_CkTests_Level.Ck_AutoTest_PathNetworkFollower_DesiredNavmeshClearanceMovesInward`
-  (The two PathNetworkFollower reds match a known-flaky area recorded in prior session notes. Not investigated — out of scope, per Phase 0 fences.)
-- **`Ck.OptimizationDebugger` (targeted run):** **76/76 green, exit 0, 49s.** The campaign's claimed module baseline is CONFIRMED by direct run, not inherited from PLAN.md.
-**Phase 0 gate: CLOSED.** D2 challenged and reinstated on evidence (DECISIONS_PENDING_REVIEW D-005).
-**Phase 1 gate: CLOSED.** `Get_ThreadTimings()` shipped; targeted gate 2/2 → 7/7 green.
-**⚠ Use the CORRECTED baseline for all later diffs: 1244 total / 1241 passed / 3 failed** (the Phase 0
-figure of 1235/1232/3 was captured with AngelScript partially regenerated — see the Phase 1 entry).
-**Branches (local only, never pushed):** CkGameplayDebugger `feature/perf-lab`, CkFoundation
-`feature/perf-lab`, CkTests `feature/perf-lab`.
-**Next action:** Phase 2 per [PHASE_2.md](PHASE_2.md) — scaffold the `CkPerfLab` module (session
-model, statistics, codec). Note PHASE_2's Build.cs section was corrected in Phase 0: modules here
-inherit `CkModuleRules` and must link `CkEcs`.
+**As of 2026-08-22.** Phases 0-6 DONE. Phases 7 (Performance page UI), 8 (heatmap EdMode) and
+9 (compare / exports / CI entry / close-out) NOT STARTED.
+
+**Gate of record:** `--test-pattern PerfLab` → **44/44 green, exit 0** (2026-08-22, final binary).
+**Full-suite baseline to diff against:** total ~1250, with this shape:
+- **Deterministic reds, never allowed to grow:**
+  `Ck_AutoTest_PathNetworkFollower_DesiredNavmeshClearanceMovesInward`,
+  `Ck_AutoTest_PathNetworkFollower_ProjectsRibbonWaypointWithinNavQueryExtent`.
+- **Unstable reds, pre-existing and selection-dependent:**
+  `Angelscript.CppTests.AngelscriptCodeCoverage.IntegrationTest`,
+  `Ck_AutoTest_ScriptProcessor_PumpStopsAfterMarkerDrain`.
+
+A run is clean when the deterministic pair is unchanged and nothing outside these four is red.
+**NOTE:** `Ck.*`-rooted specs (all PerfLab and all OptimizationDebugger specs) do NOT appear in a
+no-pattern `--test` run — always name the pattern.
+
+**Branches (local only, never pushed, no gitlink bumps):**
+CkGameplayDebugger `feature/perf-lab`, CkFoundation `feature/perf-lab`, CkTests `feature/perf-lab`.
+
+**Next action:** Phase 7 per [PHASE_7.md](PHASE_7.md) — the Performance page in
+`SCkOptimizationDebuggerWindow`, which also carries Phase 6's deferred check-family integration.
 **Blocked on:** nothing.
 
 ## Decision log
@@ -33,6 +35,54 @@ inherit `CkModuleRules` and must link `CkEcs`.
 | 2026-08-21 | Validation strategy: fixtures + budget-manipulation, no authored heavy content | Fable ruling, DECISIONS_PENDING_REVIEW D-003 | Downstream BusterBlock verify passes |
 
 ## Dated entries (append-only, newest first)
+
+### 2026-08-22 — Phases 3, 4, 5, 6 landed
+
+**Phase 3 — position planner.** Pure `Generate_Plan(survey, request)`; navmesh-seeded where the map
+has navigation data, content-weighted grid where it does not; positions ranked by nearby cost, kept
+apart by a spacing rule, emitted in id order. Position ids are a hash of the location quantised to
+50 cm, which is what makes two sessions of the same map comparable. Gate: `Ck.PerfLab` 16 → 23 green.
+
+**Phase 4 — the measurement runner.** `UCk_PerfLab_Runner_Subsystem` armed only by
+`-CkPerfLab-Request=`; forces and records the measurement cvars; asserts its environment (refuses
+fixed timestep, disables frame smoothing through `bForceDisableFrameRateSmoothing`); settle detector
+gates every dwell; writes the session progressively so a killed child still decodes.
+**Verified end to end on real hardware, not merely compiled** — armed, planned, measured 3 positions,
+wrote a valid session, exited 0 unaided. That run also finally exercised the GPU `Available` branch
+that every headless run could only hit vacuously (D3D12, AMD RX 7900 XTX, ~1.3 ms GPU).
+
+*The live run exposed a defect no unit test would have caught:* only frame times went through the
+settle window, and the other four metrics were reduced from a single trailing snapshot — so their
+worst case, p99 and 1% low each described one arbitrary frame while reporting `n=20`. All five now
+accumulate in step with the settle gate. GPU availability is latched across the dwell, because a
+window with one missing timestamp would otherwise average whichever frames happened to report.
+
+**Phase 5 — host orchestration.** `FCk_MeasurementChild` (launch via
+`FPlatformProcess::ExecutablePath()`, poll, graceful cancel then terminate, child-log tail captured
+on failure) and the session store. *Its own spec caught the store deleting itself:* an empty session
+id resolved to the store root, and a containment check written as "not equal to root" missed it on a
+trailing-separator mismatch — `Try_DeleteSession("")` removed the entire Sessions directory. Ids are
+now validated before they become paths, with a normalised strict-child check behind that. Only test
+artifacts were lost.
+
+**Phase 6 — analysis.** The 0–100 score (eight disclosed components, harmonic aggregation,
+unavailable components excluded and weights renormalised) and the evidence-gated rule catalog.
+**Both directions of the gate are validated on real measured data**, per the Fable ruling in D-003: a
+session captured by an actual child run is checked in as `Source/CkPerfLab/Fixtures/ThinMapSession.json`
+and analysed twice — at 33.3 ms it publishes nothing and scores 90+, and at 0.5 ms every position is
+genuinely over budget yet still publishes only `Perf.General.OverBudgetUnattributed`, because the map
+is sparse and no rule's signal is near its threshold. That closes VALIDATION rows 6 / 6a / 6b.
+
+**Gate of record after Phase 6:** `--test-pattern PerfLab` **44/44 green, exit 0**.
+
+**Also this session, at Adam's request:** a sweep of hand-rolled loops onto `ck::algo`, and the
+statistics that were missing from it added rather than written at the call site — `Variance`,
+`StandardDeviation`, `CoefficientOfVariation`, `SumBy` (and earlier `Mean`, `Median`, `Percentile`,
+`MedianAbsoluteDeviation`, `MeanAbsoluteDeviation`), each with README rows and specs.
+
+**Deferred, deliberately:** Phase 6's `CkOptimizationDebugger` check-family integration moves to
+Phase 7, where the debugger's window and finding plumbing are opened anyway. The analysis itself is
+complete and testable without it.
 
 ### 2026-08-21 — Phase 2 complete: CkPerfLab module (model, statistics, codec)
 

@@ -8,9 +8,8 @@
 #include "CkPerfLab_Session.generated.h"
 
 // --------------------------------------------------------------------------------------------------------------------
-// The on-disk contract for a measurement session. The field set and its meanings are specified in
-// the campaign's SCHEMA.md; this header is that document expressed as types, and the codec is the
-// only thing allowed to translate between the two.
+// The on-disk contract for a measurement session. This header IS the contract; the codec is the only
+// thing allowed to translate between it and JSON, so a field's meaning lives here and nowhere else.
 // --------------------------------------------------------------------------------------------------------------------
 
 UENUM(BlueprintType)

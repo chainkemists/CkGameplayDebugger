@@ -19,8 +19,8 @@ namespace ck_perf_lab_store
      * A session id names ONE directory directly under the store. Validating that here rather than
      * relying only on comparing resolved paths is deliberate: an empty id resolves to the store root
      * itself, and a containment check written as "not equal to root" misses it the moment either
-     * path carries a trailing separator. That hole deleted the whole store during development, so
-     * the id is now rejected before it is ever turned into a path.
+     * path carries a trailing separator — which would delete the entire store rather than one
+     * session. The id is therefore rejected before it is ever turned into a path.
      */
     auto
         Get_IsWellFormedSessionId(
@@ -63,14 +63,6 @@ namespace ck_perf_lab_store
 namespace ck::perf_lab
 {
     auto
-        Get_SessionsRoot()
-        -> FString
-    {
-        return FPaths::ConvertRelativePathToFull(
-            FPaths::Combine(FPaths::ProjectSavedDir(), TEXT("CkPerfLab"), TEXT("Sessions")));
-    }
-
-    auto
         Get_SessionRows()
         -> TArray<FCk_PerfLab_SessionRow>
     {
@@ -86,7 +78,7 @@ namespace ck::perf_lab
             auto Json = FString{};
 
             if (FFileHelper::LoadFileToString(Json,
-                    *FPaths::Combine(Get_SessionsRoot(), Directory, TEXT("session.json"))))
+                    *Get_SessionFilePath(FPaths::Combine(Get_SessionsRoot(), Directory))))
             {
                 auto Summary = FCk_PerfLab_Session{};
 
@@ -121,7 +113,7 @@ namespace ck::perf_lab
         auto Json = FString{};
 
         if (NOT FFileHelper::LoadFileToString(Json,
-                *FPaths::Combine(Get_SessionDirFor(InSessionId), TEXT("session.json"))))
+                *Get_SessionFilePath(Get_SessionDirFor(InSessionId))))
         {
             return false;
         }

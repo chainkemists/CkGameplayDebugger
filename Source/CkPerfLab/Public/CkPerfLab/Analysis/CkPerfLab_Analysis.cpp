@@ -64,34 +64,11 @@ namespace ck_perf_lab_analysis
     }
 
     /**
-     * Aggregate per-position scores with a weighted harmonic mean.
+     * The per-position scores for one metric, skipping positions where it was never measured.
      *
-     * Harmonic rather than arithmetic on purpose: one terrible area should drag the result down
-     * hard, because that is how a player experiences a level. Twenty good rooms do not compensate
-     * for the one that stutters, and an arithmetic mean would say they do.
+     * Filter-and-project in one pass rather than Filter then Transform, because filtering positions
+     * would copy each one, and a position owns its census array.
      */
-    auto
-        Get_HarmonicMean(
-            const TArray<double>& InValues)
-        -> TOptional<double>
-    {
-        if (InValues.IsEmpty())
-        {
-            return {};
-        }
-
-        // A zero anywhere means "no headroom at all", and the harmonic mean's reciprocal is
-        // undefined there; answering zero is the honest limit rather than a division error.
-        if (ck::algo::AnyOf(InValues, [](double InValue) { return InValue <= 0.0; }))
-        {
-            return 0.0;
-        }
-
-        const auto SumOfReciprocals = ck::algo::SumBy(InValues, [](double InValue) { return 1.0 / InValue; });
-
-        return static_cast<double>(InValues.Num()) / SumOfReciprocals;
-    }
-
     auto
         Get_MetricValues(
             const TArray<FCk_PerfLab_PositionResult>& InPositions,
@@ -99,21 +76,11 @@ namespace ck_perf_lab_analysis
             TFunctionRef<double(const FCk_PerfLab_MetricStats&)> InProjection)
         -> TArray<double>
     {
-        auto Values = TArray<double>{};
-
-        for (const auto& Position : InPositions)
-        {
-            const auto& Stats = Position.Get_Aggregate().Get_ByMetric(InMetric);
-
-            if (NOT Stats.Get_IsAvailable())
-            {
-                continue;
-            }
-
-            Values.Add(InProjection(Stats));
-        }
-
-        return Values;
+        return ck::algo::TransformIf<TArray<double>>(InPositions,
+            [&](const FCk_PerfLab_PositionResult& InPosition)
+            { return InPosition.Get_Aggregate().Get_ByMetric(InMetric).Get_IsAvailable(); },
+            [&](const FCk_PerfLab_PositionResult& InPosition)
+            { return InProjection(InPosition.Get_Aggregate().Get_ByMetric(InMetric)); });
     }
 }
 
@@ -210,7 +177,10 @@ namespace ck::perf_lab
                 }
             }
 
-            const auto Aggregated = Get_HarmonicMean(Values);
+            // Harmonic rather than arithmetic on purpose: one terrible area should drag the result
+            // down hard, because that is how a player experiences a level. Twenty good rooms do not
+            // compensate for the one that stutters, and an arithmetic mean would say they do.
+            const auto Aggregated = ck::algo::HarmonicMean(Values);
 
             Results.Add(FCk_PerfLab_ScoreComponentResult{}
                 .Set_Component(Weighted._Component)
@@ -239,12 +209,12 @@ namespace ck::perf_lab
 
         // Renormalise over what survived, so a missing GPU shifts weight onto the axes that were
         // measured rather than dragging the total down.
-        for (auto& Result : Results)
+        ck::algo::ForEach(Results, [&](FCk_PerfLab_ScoreComponentResult& InResult)
         {
-            Result.Set_Weight(Result.Get_Included()
-                ? static_cast<float>(Result.Get_Weight() / TotalIncludedWeight)
+            InResult.Set_Weight(InResult.Get_Included()
+                ? static_cast<float>(InResult.Get_Weight() / TotalIncludedWeight)
                 : 0.0f);
-        }
+        });
 
         const auto Total = ck::algo::SumBy(Results, [](const FCk_PerfLab_ScoreComponentResult& InResult)
         {

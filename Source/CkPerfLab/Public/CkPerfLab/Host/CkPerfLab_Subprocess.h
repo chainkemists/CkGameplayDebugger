@@ -1,17 +1,17 @@
 #pragma once
 
-#include "CkPerfLab/Session/CkPerfLab_Session.h"
+#include "CkPerfLab/Session/CkPerfLab_SessionCodec.h"
 
 #include <HAL/PlatformProcess.h>
 
 // --------------------------------------------------------------------------------------------------------------------
 // Launching and supervising the measurement child from the host editor.
 //
-// The child is the host's OWN executable. That is not a convenience: this project sets
-// TargetBuildEnvironment.Unique, so it builds CkPluginsEditor-Cmd.exe and a module set the engine's
-// stock UnrealEditor-Cmd.exe cannot resolve at all. Composing a path from the engine directory is
-// the exact bug that cost Phase 0 three failed smoke runs, and launching ExecutablePath() is
-// self-correcting on shared-environment projects too.
+// The child is the host's OWN executable. That is not a convenience: a project using
+// TargetBuildEnvironment.Unique builds its own editor binary and module set, which the engine's
+// stock UnrealEditor-Cmd.exe cannot resolve at all, so a path composed from the engine directory
+// finds a binary that dies at PostConfigInit. Launching ExecutablePath() is correct for both build
+// environments without having to know which one this is.
 // --------------------------------------------------------------------------------------------------------------------
 
 namespace ck::perf_lab
@@ -102,11 +102,6 @@ namespace ck::perf_lab
         const FString& InMapPath,
         const FString& InRequestPath,
         const FString& InLogPath) -> FString;
-
-    /** Where a session's files live. */
-    CKPERFLAB_API auto
-    Get_SessionDirFor(
-        const FString& InSessionId) -> FString;
 }
 
 // --------------------------------------------------------------------------------------------------------------------

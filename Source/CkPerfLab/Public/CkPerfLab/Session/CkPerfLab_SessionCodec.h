@@ -19,6 +19,20 @@ namespace ck::perf_lab
     inline constexpr int32 k_SchemaVersion = 1;
 
     // ----------------------------------------------------------------------------------------------------------------
+    // The layout of a session directory is the wire format between two processes. It lives here, in
+    // one place, because a typo in either half is a silent hang rather than a compile error: the
+    // child writes a heartbeat nobody reads, and the host waits for one that never arrives.
+
+    CKPERFLAB_API auto Get_SessionsRoot() -> FString;
+    CKPERFLAB_API auto Get_SessionDirFor(const FString& InSessionId) -> FString;
+
+    CKPERFLAB_API auto Get_SessionFilePath(const FString& InSessionDir) -> FString;
+    CKPERFLAB_API auto Get_HeartbeatFilePath(const FString& InSessionDir) -> FString;
+    CKPERFLAB_API auto Get_RequestFilePath(const FString& InSessionDir) -> FString;
+    CKPERFLAB_API auto Get_CancelFlagFilePath(const FString& InSessionDir) -> FString;
+    CKPERFLAB_API auto Get_ChildLogFilePath(const FString& InSessionDir) -> FString;
+
+    // ----------------------------------------------------------------------------------------------------------------
 
     CKPERFLAB_API auto
     Write_RequestToJson(

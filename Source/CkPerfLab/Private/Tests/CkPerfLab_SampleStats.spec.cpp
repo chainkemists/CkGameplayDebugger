@@ -1,5 +1,6 @@
 #include "CkPerfLab/Stats/CkPerfLab_SampleStats.h"
 
+#include "CkCore/Algorithms/CkAlgorithms.h"
 #include "CkCore/Macros/CkMacros.h"
 
 #include "Misc/AutomationTest.h"
@@ -237,14 +238,8 @@ bool FCkPerfLab_Confidence_Reasons_AreOrderStable::RunTest(const FString& Parame
     const auto First  = ck::perf_lab::Compute_Confidence(Inputs);
     const auto Second = ck::perf_lab::Compute_Confidence(Inputs);
 
-    TestEqual(TEXT("The same inputs produce the same reason count"),
-        First.Get_Reasons().Num(), Second.Get_Reasons().Num());
-
-    for (auto Index = 0; Index < First.Get_Reasons().Num(); ++Index)
-    {
-        TestTrue(TEXT("The same inputs produce the same reason order"),
-            First.Get_Reasons()[Index] == Second.Get_Reasons()[Index]);
-    }
+    TestTrue(TEXT("The same inputs produce the same reasons in the same order"),
+        ck::algo::Compare(First.Get_Reasons(), Second.Get_Reasons()));
 
     return true;
 }

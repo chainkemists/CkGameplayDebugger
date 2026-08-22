@@ -27,8 +27,8 @@ class CKPERFLAB_API UCk_PerfLab_Runner_Subsystem : public UGameInstanceSubsystem
     GENERATED_BODY()
 
 public:
-    virtual void Initialize(FSubsystemCollectionBase& InCollection) override;
-    virtual void Deinitialize() override;
+    virtual auto Initialize(FSubsystemCollectionBase& InCollection) -> void override;
+    virtual auto Deinitialize() -> void override;
 
 public:
     /** True when a request was supplied and parsed. Lets a spec assert the inert path. */
@@ -52,6 +52,7 @@ private:
     auto DoAssert_Environment(UWorld* InWorld) -> bool;
     auto DoForce_MeasurementCvars() -> void;
     auto DoApply_CameraFor(const FCk_PerfLab_PlannedPosition& InPosition, float InYaw) -> bool;
+    auto DoPlace_Camera(const FCk_PerfLab_PlannedPosition& InPosition, float InYaw) -> void;
     auto DoAdvance_Measurement(UWorld* InWorld, float InDeltaSeconds) -> void;
     auto DoFinish_Position() -> void;
     auto DoBegin_Dwell() -> void;
@@ -97,6 +98,17 @@ private:
 
     float _DwellElapsedSec = 0.0f;
     float _RunElapsedSec   = 0.0f;
+
+    // Latched across a position's directions. The settle detector is rebuilt per direction, so
+    // reading it directly at the end would describe only whichever direction finished last: a
+    // position where three of four directions failed to settle would report the fourth one's
+    // confidence.
+    bool _AnyDwellTimedOut     = false;
+    bool _AnyDwellSawStreaming = false;
+
+    // Measuring without having moved the camera would file the PREVIOUS view's numbers under this
+    // position's id and location, which is worse than failing.
+    bool _CameraIsPlaced = false;
 
     bool _IsArmed = false;
 };

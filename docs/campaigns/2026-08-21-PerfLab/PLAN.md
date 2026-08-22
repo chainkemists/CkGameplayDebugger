@@ -15,7 +15,7 @@ change class, with gate counts diffed against the baseline recorded at its entry
 | [0](PHASE_0.md) | Verification spike and contract lock | scratch only + campaign docs | 1 | ✅ Done (2026-08-21) |
 | [1](PHASE_1.md) | Timing surface in CkProfile | `CkFoundation/Source/CkProfile` | 2 | ✅ Done (2026-08-21) |
 | [2](PHASE_2.md) | CkPerfLab module: session model, stats, codec | new `CkGameplayDebugger/Source/CkPerfLab` | 2 | ✅ Done (2026-08-21) |
-| [3](PHASE_3.md) | Position planner | `CkPerfLab` | 2 | ⏳ Pending |
+| [3](PHASE_3.md) | Position planner | `CkPerfLab` | 2 | ✅ Done (2026-08-21) |
 | [4](PHASE_4.md) | In-child measurement runner | `CkPerfLab` | 2 | ⏳ Pending |
 | [5](PHASE_5.md) | Host orchestration (subprocess + session store) | `CkPerfLab` | 2 | ⏳ Pending |
 | [6](PHASE_6.md) | Analysis: score, perf rules, contributors, recommendations | `CkPerfLab` + `CkOptimizationDebugger` | 2/3 | ⏳ Pending |

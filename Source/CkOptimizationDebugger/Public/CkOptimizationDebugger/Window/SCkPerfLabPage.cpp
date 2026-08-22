@@ -9,10 +9,7 @@
 
 #include "CkEditorTools/Style/CkStyle.h"
 
-#include <Editor.h>
-#include <EditorModeManager.h>
 #include <Engine/World.h>
-#include <LevelEditor.h>
 #include <Misc/FileHelper.h>
 #include <Misc/Paths.h>
 #include <Styling/AppStyle.h>
@@ -26,6 +23,15 @@
 #include <Widgets/SBoxPanel.h>
 #include <Widgets/Text/STextBlock.h>
 #include <Widgets/Views/STableRow.h>
+
+#if WITH_EDITOR
+// GEditor, GLevelEditorModeTools and FEditorDelegates. This module is a DeveloperTool — it ships in packaged
+// Development and DebugGame, where none of these exist — so every use of them is guarded, and each guard below
+// states what the page does instead.
+#include <Editor.h>
+#include <EditorModeManager.h>
+#include <LevelEditor.h>
+#endif
 
 #define LOCTEXT_NAMESPACE "SCkPerfLabPage"
 
@@ -95,17 +101,32 @@ namespace ck_perf_lab_page
             GetTypeHash(InMapPath));
     }
 
-    /** The level the user is actually looking at, which is the one they mean by "this level". */
+    /**
+     * The level the user is actually looking at, which is the one they mean by "this level".
+     *
+     * In a packaged Development build there is no editor world — the running one is the only world there is, and
+     * it is equally the level the user is looking at. The measurement itself does not care which produced the
+     * path: the child is launched with it either way.
+     */
     auto
         Get_CurrentMapPath()
         -> FString
     {
-        if (ck::Is_NOT_Valid(GEditor))
+#if WITH_EDITOR
+        if (ck::IsValid(GEditor))
         {
-            return FString{};
-        }
+            const auto* EditorWorld = GEditor->GetEditorWorldContext().World();
 
-        const auto* World = GEditor->GetEditorWorldContext().World();
+            if (ck::IsValid(EditorWorld))
+            {
+                return EditorWorld->GetOutermost()->GetPathName();
+            }
+        }
+#endif
+
+        // GWorld is a UWorldProxy, not a pointer — converted explicitly so the validity check is on the thing
+        // being dereferenced rather than on the proxy.
+        const UWorld* World = GWorld;
 
         if (ck::Is_NOT_Valid(World))
         {
@@ -166,10 +187,15 @@ auto
 {
     _MapPath = ck_perf_lab_page::Get_CurrentMapPath();
 
+#if WITH_EDITOR
     // Everything on this page is scoped to one level — the Run target, the heatmap's coordinates, which sessions are
     // worth looking at. Polling for a map change in a paint lambda would keep the LABEL honest and leave the rest
     // stale, so the change is handled as the event it is.
+    //
+    // Outside the editor there is no "open a different level" to react to: the running world is fixed for the
+    // lifetime of this page, so the path read at construction stays correct.
     _MapOpenedHandle = FEditorDelegates::OnMapOpened.AddSP(this, &SCkPerfLabPage::DoHandle_MapOpened);
+#endif
 
     DoRefresh_Sessions();
 
@@ -227,11 +253,13 @@ auto
 
 SCkPerfLabPage::~SCkPerfLabPage()
 {
+#if WITH_EDITOR
     // FEditorDelegates is a global that outlives every window bound to it.
     if (_MapOpenedHandle.IsValid())
     {
         FEditorDelegates::OnMapOpened.Remove(_MapOpenedHandle);
     }
+#endif
 
     // The slot is a process-global and the EdMode is owned by the level editor, so neither dies with this page. Left
     // published, the overlay would keep drawing over the viewport with no UI in existence to turn it off — and a
@@ -1264,6 +1292,7 @@ auto
         bool InEnabled)
     -> bool
 {
+#if WITH_EDITOR
     // Publishing a snapshot makes nothing appear on its own. The module's StaticClass reference only makes the mode
     // DISCOVERABLE; until something activates it on the level editor, Render is never called and the overlay is a
     // feature that exists and cannot be seen.
@@ -1289,6 +1318,11 @@ auto
     // the editor, or the mode never registering because its module did not load — and an unchecked call turns that
     // into a toggle that reads "on" while nothing draws.
     return ModeTools.IsModeActive(ck::perf_lab::heatmap::k_EdModeId) == InEnabled;
+#else
+    // No level editor, so no viewport to draw an overlay over. Returning false is what makes the toggle refuse and
+    // say so, rather than latching "on" over a viewport that will never render a marker.
+    return false;
+#endif
 }
 
 auto

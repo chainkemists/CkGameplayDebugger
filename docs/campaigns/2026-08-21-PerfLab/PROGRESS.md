@@ -34,6 +34,56 @@ inherit `CkModuleRules` and must link `CkEcs`.
 
 ## Dated entries (append-only, newest first)
 
+### 2026-08-21 — Phase 2 complete: CkPerfLab module (model, statistics, codec)
+
+**Shipped:**
+- New `CkPerfLab` module (DeveloperTool) in CkGameplayDebugger: Build.cs (inherits `CkModuleRules`,
+  links `CkEcs` per the Phase 0 correction), module + log scaffold, uplugin entry, `Claude.md`.
+- `Session/CkPerfLab_Session.{h,cpp}` — the SCHEMA.md contract as types (6 enums, 11 structs).
+- `Stats/CkPerfLab_SampleStats.{h,cpp}` — sample reduction and the confidence rating.
+- `Session/CkPerfLab_SessionCodec.{h,cpp}` — JSON for request / heartbeat / session + summary fast path.
+- CkFoundation `ck::algo`: `Mean`, `Median`, `Percentile`, `MedianAbsoluteDeviation`,
+  **`MeanAbsoluteDeviation`** + README section (doctrine: grow the library, don't hand-roll).
+- 16 `Ck.PerfLab.*` specs and 6 `CkTests.UnitTests.CkCore.Statistics.*` specs.
+
+**Gates:** `--test-pattern PerfLab` **16/16 green, exit 0**. Full suite **1250 / 1246 / 4**
+(+6 vs the corrected 1244 baseline = exactly the 6 new Statistics specs; the 16 PerfLab specs are
+`Ck.*`-rooted and so do not appear in a no-pattern run, same as `Ck.OptimizationDebugger` — the
+gate-hygiene finding from Phase 0, not a discovery failure).
+
+**A real defect my own test caught — worth reading before touching the outlier code.**
+`Reduce_Samples` originally disabled outlier detection whenever MAD was zero. That guard looked
+prudent and was badly wrong: **MAD collapses to zero whenever more than half the samples are
+identical, which is the normal shape of a stable frame-time window.** The spec fixture (forty 10 ms
+samples and one 500 ms spike) produced MAD = 0, so the spike was never classified and sat inside the
+average, which read 21.95 ms instead of 10 ms. In other words the detector switched itself off
+exactly when the data was cleanest — the failure mode that would have quietly corrupted every real
+measurement. Fixed by falling back to the **mean** absolute deviation when the median form
+degenerates; only when both are zero is a window genuinely spreadless. `ck::algo` gained
+`MeanAbsoluteDeviation` for it, the caveat is documented on `MedianAbsoluteDeviation` itself and in
+the README, and two specs now pin both halves.
+
+**⚠ Baseline refined again — the suite has TWO unstable tests, not one.**
+`Angelscript.CppTests.AngelscriptCodeCoverage.IntegrationTest` fails **in isolation too**, on missing
+coverage reports for `CkChaos` / `CkPixelArt` / `CkUsf` AngelScript files — modules this campaign has
+never touched. It is a coverage-**of-execution** test, so its outcome depends on which other tests
+ran alongside it, and isolation is therefore not a valid check for it. It failed in the Phase 0
+baseline (before any of this campaign's code existed), passed in Phase 1, and failed again in Phase 2
+— it oscillates independently of anything here.
+
+**The honest baseline for every later phase:**
+- **Deterministic reds — never allowed to grow:** `Ck_AutoTest_PathNetworkFollower_DesiredNavmeshClearanceMovesInward`,
+  `Ck_AutoTest_PathNetworkFollower_ProjectsRibbonWaypointWithinNavQueryExtent`.
+- **Unstable reds — pre-existing, selection/lane dependent, present or absent without meaning:**
+  `Angelscript.CppTests.AngelscriptCodeCoverage.IntegrationTest`,
+  `Ck_AutoTest_ScriptProcessor_PumpStopsAfterMarkerDrain`.
+A run is clean when the deterministic pair is unchanged and nothing outside these four is red.
+
+**Also recorded:** `--generate` cannot run on this machine (project-file generation needs Visual
+Studio 2022, which is not installed; the build itself does not). A killed `--generate` left an engine
+writer lock behind that deadlocked the next build — cleared by killing that orphan process only. A
+sibling session's BusterBlock test run was live throughout and was left untouched.
+
 ### 2026-08-21 — Phase 1 complete: thread-timings surface in CkProfile
 
 **Shipped** (CkFoundation `feature/perf-lab`, CkTests `feature/perf-lab`):

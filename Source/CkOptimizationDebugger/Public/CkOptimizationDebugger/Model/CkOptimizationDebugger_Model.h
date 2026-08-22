@@ -17,7 +17,7 @@
 
 // --------------------------------------------------------------------------------------------------------------------
 
-/** The window's six pages. The page bar and the body switcher are both driven from this enum IN DECLARATION ORDER —
+/** The window's seven pages. The page bar and the body switcher are both driven from this enum IN DECLARATION ORDER —
  *  `Get_PageIndex` is the enum's own value, so a switcher slot must be added per page in exactly this order, and a
  *  new page is APPENDED. Inserting one mid-enum renumbers every page after it and silently points each tab at its
  *  neighbour's body. */
@@ -29,6 +29,7 @@ enum class ECkOptimizationDebugger_Page : uint8
     Profiling,
     Cleanup,
     Snapshots,
+    Performance,
 };
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -1143,7 +1144,7 @@ public:
 
 namespace ck_optimization_debugger_model
 {
-    constexpr auto k_PageCount         = 6;
+    constexpr auto k_PageCount         = 7;
     constexpr auto k_SeverityCount     = 3;
     constexpr auto k_CategoryCount     = 8;
     constexpr auto k_DiskCategoryCount = 8;

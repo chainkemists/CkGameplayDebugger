@@ -100,21 +100,14 @@ namespace ck_perf_lab_rules
     auto
         Get_LargestClassCluster(const FCk_Census& InCensus) -> double
     {
-        auto CountsByClass = TMap<FString, int32>{};
+        auto CountsByClass = ck::algo::CountBy(InCensus,
+            [](const FCk_PerfLab_ActorCensusRow& InRow) { return InRow.Get_ClassName(); });
 
-        for (const auto& Row : InCensus)
-        {
-            CountsByClass.FindOrAdd(Row.Get_ClassName()) += 1;
-        }
+        const auto Largest = ck::algo::MaxElement(CountsByClass,
+            [](const TPair<FString, int32>& InPair) { return InPair.Value; });
 
-        auto Largest = 0;
-
-        for (const auto& Pair : CountsByClass)
-        {
-            Largest = FMath::Max(Largest, Pair.Value);
-        }
-
-        return Largest;
+        // Unset rather than zero for an empty census: nothing to count is not a count of nothing.
+        return Largest.IsSet() ? static_cast<double>(Largest->Value) : 0.0;
     }
 
     // ----------------------------------------------------------------------------------------------------------------
@@ -244,6 +237,24 @@ namespace ck::perf_lab
                                        "sampled, so its numbers describe the transition rather than the level."))}));
             }
 
+            // Whether this position is over budget AT ALL, decided once across every measured metric.
+            // Deriving it as a side effect of the rule loop meant a position whose frame time was over
+            // budget while each individual thread sat inside it reported "measured clean" AND
+            // published an over-budget finding in the same breath — which is the ordinary shape of a
+            // pipelined frame, not an exotic case.
+            for (const auto Metric : {ECk_PerfLab_Metric::Frame, ECk_PerfLab_Metric::GameThread,
+                                      ECk_PerfLab_Metric::RenderThread, ECk_PerfLab_Metric::RhiThread,
+                                      ECk_PerfLab_Metric::Gpu})
+            {
+                const auto& MetricStats = Position.Get_Aggregate().Get_ByMetric(Metric);
+
+                if (MetricStats.Get_IsAvailable() && InBudgetMs > 0.0f && MetricStats.Get_AvgMs() > InBudgetMs)
+                {
+                    AnyOverBudget = true;
+                    break;
+                }
+            }
+
             for (const auto& Rule : Rules)
             {
                 const auto& Stats = Position.Get_Aggregate().Get_ByMetric(Rule._Metric);
@@ -260,8 +271,6 @@ namespace ck::perf_lab
                 {
                     continue;
                 }
-
-                AnyOverBudget = true;
 
                 // Half two: the static signal has to actually be there. This is what stops the tool
                 // reporting a busy-looking room that measured perfectly well.
@@ -284,7 +293,8 @@ namespace ck::perf_lab
                         .Set_Rank(Index + 1)
                         .Set_ObjectPath(Census[Index].Get_ObjectPath())
                         .Set_ClassName(Census[Index].Get_ClassName())
-                        .Set_DistanceCm(Census[Index].Get_DistanceCm()));
+                        .Set_DistanceCm(Census[Index].Get_DistanceCm())
+                        .Set_Note(k_ContributorDisclaimer));
                 }
 
                 Findings.Add(FCk_PerfLab_Finding{}

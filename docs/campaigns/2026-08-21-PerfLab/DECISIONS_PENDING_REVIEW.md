@@ -142,6 +142,70 @@ Row format: **What was asked** · **Options weighed** · **Decision + why** · *
   session JSON maps enum→string explicitly rather than through display text, so display names would
   add a second place for the same name to drift.
 
+### D-007 — Adversarial review outcomes (2026-08-22), including one I got wrong
+
+Three independent reviewers (correctness, style/doctrine, reuse) went over ~7,000 lines. Findings
+were verified before acting — several were real, one "critical" was refuted, and **one refutation of
+mine was itself wrong**, which is the entry worth reading.
+
+**The launcher was broken and I initially claimed it wasn't.** A reviewer found that
+`Build_ChildCommandLine` emitted `"-CkPerfLab-Request=<path>"` quoted as a WHOLE TOKEN, and that
+`FParse::Value` locates its key with `Strifind(..., bSkipQuotedChars = true)` — so the switch is
+skipped and reads as absent. I ran a test that appeared to refute it and reported the finding as
+wrong. **My test was invalid: bash strips quotes before exec, so I had tested the unquoted form.**
+Re-tested passing literal quote characters: the child **never armed** and ran until killed
+(exit 124). The reviewer was right; every live capture in this campaign had been hand-launched with
+the unquoted form, so `Build_ChildCommandLine`'s output had never once been fed to a child.
+Fixed to value-quoting (`-CkPerfLab-Request="<path>"`, matching `-abslog`), and **verified**: armed,
+planned, completed, exit 0. The spec that had pinned the broken form now asserts both the correct
+form and the absence of the broken one.
+
+**Other confirmed defects fixed:**
+- `MeasuredClean` could report true while an over-budget finding was published — `AnyOverBudget` was
+  a side effect of the rule loop, so a position over budget on frame time while every individual
+  thread sat inside it reported clean. That is the ordinary shape of a pipelined frame. Now decided
+  once across all five metrics.
+- **Every `GetObjectField` + `IsValid()` guard in the codec was dead.** UE returns a static
+  empty-but-VALID object for a missing field, so the guards could never fire: a request without an
+  `outlier` block silently decoded `madK = 0` (collapsing the outlier threshold onto the median) and
+  `childWallClockBudgetSec = 0` (self-abort on first tick), and a position without a `location`
+  decoded to the world origin. Switched to `TryGetObjectField`, which actually fails.
+- The contributor disclaimer was defined, exported and spec-pinned but **nothing ever emitted it** —
+  the honesty claim rested on a string no consumer could see. Contributors now carry it as a field.
+- Confidence never received the outlier count, so `OutlierHeavy` could not fire; and it read the
+  settle detector directly, which is rebuilt per direction, so it described only the last direction.
+  Both fixed (latched across the position).
+- A failed camera placement was ignored at all five call sites, silently measuring the previous view
+  under the new position's id. Now fails the run.
+- `viewportSizeActual` was never populated despite GPU cost scaling with resolution.
+- An empty `directionsPerPosition` would have crashed the runner on `Get_Yaws()[0]`.
+
+**Style/doctrine fixes:** process breadcrumbs removed from shipped comments (five sites naming
+"Phase 0", "the campaign", "during development"); `Initialize`/`Deinitialize` moved to trailing
+returns per the 18-of-20 house precedent; two same-line `if` bodies split; an alignment-induced typo
+(`auto Render= …`) corrected; missing includes added.
+
+**Validity-check correction from Adam mid-review:** `TObjectPtr` and smart pointers take the PLAIN
+`ck::IsValid`; the nullptr policy is only for raw pointers that are not UObjects. Swept — the only
+remaining policy use is `IConsoleVariable*`, which is correctly not a UObject.
+
+**Known-open, NOT fixed (recorded rather than silently carried):**
+- **Plan determinism on navmesh maps.** Navmesh seeding uses the global RNG, not the request seed, so
+  candidate points — and therefore position ids — vary run to run on maps with real navigation data.
+  `Generate_Plan` IS deterministic given a survey (spec-pinned), but the pipeline that produces the
+  survey is not. The only map measured so far takes the grid path, which has no randomness, so the
+  fixture and every capture here are unaffected. **This breaks session-to-session compare on real
+  maps and must be fixed before Phase 9's compare view ships.**
+- Child failure exit codes are swallowed: `RequestExitWithStatus(false, N)` yields process exit 0, so
+  the host reads a failed run as a clean one.
+- Skeletal meshes contribute zero triangles to the survey, and instanced static meshes are counted
+  once rather than per instance.
+- An all-zero sample window (e.g. RHI thread when not separate) is published as `Available` and
+  scores full marks, which contradicts the never-zero-as-data contract.
+- The runner never verifies the loaded map matches the request.
+- `_InViewYaws` is written by the codec and populated by nothing, so the evidence gate's static half
+  is 360°-unfiltered — triangles behind the camera count toward the signal.
+
 ### D-004 — Plan-vs-code corrections found in Phase 0 (no ruling needed, recorded for audit)
 
 - `PHASE_2.md` claimed CkGameplayDebugger modules use plain `ModuleRules`. **False** —

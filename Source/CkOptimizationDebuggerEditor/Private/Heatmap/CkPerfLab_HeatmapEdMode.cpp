@@ -23,13 +23,17 @@ IMPLEMENT_HIT_PROXY(HCkPerfLabHeatmap_HitProxy, HHitProxy);
 
 namespace ck_perf_lab_heatmap_edmode
 {
-    const FEditorModeID HeatmapModeId = TEXT("Ck.PerfLab.Heatmap");
-
     constexpr auto k_BaseRadius      = 40.0f;
     constexpr auto k_MaxRadiusScale  = 2.5f;
     constexpr auto k_Thickness       = 2.0f;
     constexpr auto k_SelectedScale   = 1.5f;
     constexpr auto k_StemHeight      = 90.0f;
+
+    // The shape axis, by severity. Fewer sides reads as sharper and more urgent, and the three are far enough apart
+    // to tell at a glance from across a level.
+    constexpr auto k_TriangleSides = 3;
+    constexpr auto k_DiamondSides  = 4;
+    constexpr auto k_CircleSides   = 16;
 
     /**
      * Size reads the over-budget multiple, clamped so one catastrophic position cannot produce a marker that fills
@@ -54,12 +58,12 @@ namespace ck_perf_lab_heatmap_edmode
     {
         switch (InSeverity)
         {
-            case ECk_PerfLab_Severity::Critical: return 3;   // triangle
-            case ECk_PerfLab_Severity::Major:    return 4;   // diamond
-            case ECk_PerfLab_Severity::Minor:    return 16;  // circle
+            case ECk_PerfLab_Severity::Critical: return k_TriangleSides;
+            case ECk_PerfLab_Severity::Major:    return k_DiamondSides;
+            case ECk_PerfLab_Severity::Minor:    return k_CircleSides;
         }
 
-        return 16;
+        return k_CircleSides;
     }
 
     auto
@@ -99,7 +103,7 @@ namespace ck_perf_lab_heatmap_edmode
 UCk_PerfLab_HeatmapEdMode::UCk_PerfLab_HeatmapEdMode()
 {
     Info = FEditorModeInfo(
-        ck_perf_lab_heatmap_edmode::HeatmapModeId,
+        ck::perf_lab::heatmap::k_EdModeId,
         LOCTEXT("CkPerfLabHeatmapMode", "PerfLab Heatmap"),
         FSlateIcon(),
         /*bVisibleInUI*/ false);
@@ -159,7 +163,14 @@ auto
         const auto Radius = Get_Radius(Marker._OverBudgetRatio) * (IsSelected ? k_SelectedScale : 1.0f);
         const auto Sides  = Get_SideCount(Marker._Severity);
 
-        InPdi->SetHitProxy(new HCkPerfLabHeatmap_HitProxy{Marker._PositionId});
+        // Only on the hit-testing pass. Allocating a proxy in the ordinary draw pass copies an FString and takes a
+        // GLOBAL critical section twice per marker, per viewport, per frame — for an object immediately discarded.
+        const auto IsHitTesting = InPdi->IsHitTesting();
+
+        if (IsHitTesting)
+        {
+            InPdi->SetHitProxy(new HCkPerfLabHeatmap_HitProxy{Marker._PositionId});
+        }
 
         Draw_Ring(*InPdi, Marker._Location, Radius, Sides, Color,
             IsSelected ? k_Thickness * 2.0f : k_Thickness);
@@ -170,16 +181,21 @@ auto
             Marker._Location + FVector{0.0, 0.0, static_cast<double>(k_StemHeight)},
             Color, SDPG_Foreground, k_Thickness);
 
-        InPdi->SetHitProxy(nullptr);
+        if (IsHitTesting)
+        {
+            InPdi->SetHitProxy(nullptr);
+        }
     }
 }
 
 // --------------------------------------------------------------------------------------------------------------------
 
-bool UCk_PerfLab_HeatmapEdMode::HandleClick(
-    FEditorViewportClient* InViewportClient,
-    HHitProxy* InHitProxy,
-    const FViewportClick& InClick)
+bool
+    UCk_PerfLab_HeatmapEdMode::
+    HandleClick(
+        FEditorViewportClient* InViewportClient,
+        HHitProxy* InHitProxy,
+        const FViewportClick& InClick)
 {
     if (ck::Is_NOT_Valid(InHitProxy, ck::IsValid_Policy_NullptrOnly{}) ||
         NOT InHitProxy->IsA(HCkPerfLabHeatmap_HitProxy::StaticGetType()))

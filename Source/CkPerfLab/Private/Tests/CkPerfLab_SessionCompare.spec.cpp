@@ -247,8 +247,8 @@ bool FCkPerfLab_Compare_WarnsAcrossEnvironmentsButStillRenders::RunTest(const FS
     // A differing REQUESTED budget earns a banner — the two runs may have settled differently — but
     // it must NOT suppress the score delta. Both scores are computed against the single budget
     // handed to Compare_Sessions, never against what each session asked for, so they are on one
-    // scale by construction. An earlier version withheld the delta here, which hid exactly the
-    // number a CI job exists to produce.
+    // scale by construction. Suppressing here would hide exactly the number a CI job exists to
+    // produce, which is why this asserts the delta is present rather than merely that it is right.
     auto OtherBudget = Make_Session(TEXT("curr"), {Make_Position(TEXT("a"), 40.0f)});
     OtherBudget.Set_Request(OtherBudget.Get_Request().Set_BudgetMs(33.33f));
 

@@ -17,6 +17,12 @@ namespace ck_perf_lab_subprocess
     // How long a cancelled child is given to write its final session before it is terminated.
     constexpr auto k_CancelGraceSec = 10.0f;
 
+    // The same courtesy at teardown, but far shorter: this one blocks the game thread while the
+    // editor closes the window, so it buys a chance at a readable session without being felt as a
+    // hang. One second total.
+    constexpr auto k_TeardownGraceTicks   = 20;
+    constexpr auto k_TeardownGraceTickSec = 0.05f;
+
     // How much of a dead child's log to surface. A child that dies before its first heartbeat is
     // otherwise completely mute, and the reason is always in the last few lines.
     constexpr auto k_LogTailLines = 25;
@@ -58,6 +64,24 @@ namespace ck::perf_lab
     {
         // Never leave an orphan behind: a measurement child holds a rendering window and would
         // outlive the editor that forgot it.
+        //
+        // The cancel flag goes out FIRST so a child mid-measurement gets the chance to finish writing its session
+        // before it is killed. Without it, abandoning a run leaves a directory with a request and no session, which
+        // the store lists forever as an unreadable row. The wait is deliberately short — this runs on the game
+        // thread during teardown, so a long block would stall the editor closing.
+        if (_ProcessHandle.IsValid() && FPlatformProcess::IsProcRunning(_ProcessHandle))
+        {
+            Request_Cancel();
+
+            for (auto Attempt = 0; Attempt < ck_perf_lab_subprocess::k_TeardownGraceTicks; ++Attempt)
+            {
+                if (NOT FPlatformProcess::IsProcRunning(_ProcessHandle))
+                { break; }
+
+                FPlatformProcess::Sleep(ck_perf_lab_subprocess::k_TeardownGraceTickSec);
+            }
+        }
+
         if (_ProcessHandle.IsValid() && FPlatformProcess::IsProcRunning(_ProcessHandle))
         {
             FPlatformProcess::TerminateProc(_ProcessHandle, true);
@@ -205,6 +229,14 @@ namespace ck::perf_lab
         if (ReturnCode == 0)
         {
             _Outcome = ECk_ChildOutcome::ExitedCleanly;
+            return _Outcome;
+        }
+
+        // A child that exits non-zero DURING the cancel grace window was obeying the cancel, not
+        // failing. Reporting an error here would tell the user their own Cancel press went wrong.
+        if (_CancelGraceSec >= 0.0f)
+        {
+            _Outcome = ECk_ChildOutcome::KilledByUser;
             return _Outcome;
         }
 

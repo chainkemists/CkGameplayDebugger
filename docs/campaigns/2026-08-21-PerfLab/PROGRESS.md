@@ -44,7 +44,7 @@ CkGameplayDebugger `feature/perf-lab`, CkFoundation `feature/perf-lab`, CkTests 
 | 1 | Spec gates green, no regression vs baseline | ✅ `Ck.PerfLab` 60/60, `Ck.OptimizationDebugger` 76/76, full suite 1254/1251/3 with the baseline's exact failing names |
 | 2 | `session.json` carries all five metrics or an explicit unavailability reason, never 0-as-data | ✅ read the artifact: `Saved/CkPerfLab/Sessions/fixture-thinmap/session.json` carries `availability`/`reason`/avg/worst/p99/1%-low/sampleCount/outlierCount per metric |
 | 3 | Two runs of one map match by position id; compare renders a delta | ⚠️ **compare half CONFIRMED** on two real sessions (a 4x-faster baseline came back `Regressed`, +1.560 ms vs a ±1.085 band); **the "two runs of one map" half is `[EDITOR-VERIFY]`** and is the campaign's single most important open check — see below |
-| 4 | Heatmap draws, nothing spawned, nothing dirtied | `[EDITOR-VERIFY]` — code refuses to spawn or transact by construction, but not observed in an editor |
+| 4 | Heatmap draws, nothing spawned, nothing dirtied | `[EDITOR-VERIFY]` — **and the highest-risk row in the table.** A post-campaign review found the EdMode was registered but never ACTIVATED, so it could not draw at all; fixed (D-009), but the fix has still never been seen working in an editor. No spec can cover this — they exercise the snapshot builder and the slot, neither of which instantiates the mode |
 | 5 | Every finding names its measurement; a clean level says "measured clean" | ✅ spec-pinned (the evidence gate) and visible in the exported HTML |
 | 6 | Exports deterministic | ✅ `Ck.PerfLab.Export.Determinism` asserts byte-identical HTML/CSV/JSON, and that incoming position order does not reach the file |
 | 7 | Headless entry exits 0 / non-zero past threshold, unattended | ✅ verified on the real binary: 0, 2, 1, 1, and 1 for a NaN budget |
@@ -64,6 +64,12 @@ from here.
 3. **Merge, in this order** (CkFoundation first — CkGameplayDebugger's `CkPerfLab` includes
    CkProfile's new `CkStats_Utils.h` surface), then bump the superproject gitlinks:
    CkFoundation `feature/perf-lab` → CkGameplayDebugger `feature/perf-lab` → CkTests `feature/perf-lab`.
+
+**Post-campaign review (D-009).** Style, algo-reuse and lifetime were reviewed after close-out —
+the Phase 9 review had been scoped to correctness only. It found the heatmap EdMode was never
+activated (the whole feature was inert behind a green gate), six stale-state and lifetime defects in
+the page and subprocess, and six hand-rolled loops that had algos. All fixed; `ck::algo::IndexBy`
+added to CkCore. Three items are recorded as debt rather than fixed — see D-009.
 
 **What I could NOT verify, and would most expect to be wrong:** the navmesh lattice. It compiles,
 and it is deterministic by construction because it contains no RNG call — but it has never run

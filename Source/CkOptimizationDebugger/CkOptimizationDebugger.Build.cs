@@ -67,6 +67,10 @@ public class CkOptimizationDebugger : CkModuleRules
                 "TargetPlatform",
 
                 "WorkspaceMenuStructure",
+
+                // GLevelEditorModeTools — the PerfLab heatmap EdMode is registered by the Editor module, but
+                // registration only makes it discoverable. Something has to ACTIVATE it or Render is never called.
+                "LevelEditor",
             });
         }
     }

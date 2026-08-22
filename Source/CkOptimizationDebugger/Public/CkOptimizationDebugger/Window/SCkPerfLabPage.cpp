@@ -244,11 +244,14 @@ SCkPerfLabPage::~SCkPerfLabPage()
     // Detach the item source before _SessionRows is destroyed. This body runs BEFORE any member does, whereas the
     // list widget itself is released by the base class's ChildSlot AFTER all of them — so without this the widget
     // briefly holds the address of a freed array. Declaration order cannot close that window, because the base
-    // class always outlives the derived members. Nothing dereferences it on today's teardown path, which is a
-    // property of that path rather than a guarantee.
+    // class always outlives the derived members.
+    //
+    // ClearItemsSource, NOT SetItemsSource(nullptr): the latter ensures on a null argument and only reaches the
+    // clear path after firing, so it turns this teardown into an ensure on every tab close. Detaching is the
+    // supported operation and has its own verb.
     if (ck::IsValid(_SessionListView))
     {
-        _SessionListView->SetItemsSource(nullptr);
+        _SessionListView->ClearItemsSource();
     }
 }
 

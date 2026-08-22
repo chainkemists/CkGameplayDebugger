@@ -5,11 +5,11 @@
 #include <Components/LightComponent.h>
 #include <Components/PrimitiveComponent.h>
 #include <Components/StaticMeshComponent.h>
-#include <Components/SkeletalMeshComponent.h>
+
 #include <Engine/StaticMesh.h>
 #include <Engine/World.h>
 #include <EngineUtils.h>
-#include <FXSystem.h>
+
 #include <GameFramework/Actor.h>
 #include <NavigationSystem.h>
 #include <Particles/ParticleSystemComponent.h>
@@ -42,14 +42,14 @@ namespace ck_perf_lab_survey
 
         for (const auto* Component : TInlineComponentArray<UStaticMeshComponent*>{InActor})
         {
-            if (ck::Is_NOT_Valid(Component, ck::IsValid_Policy_NullptrOnly{}))
+            if (ck::Is_NOT_Valid(Component))
             {
                 continue;
             }
 
             const UStaticMesh* Mesh = Component->GetStaticMesh();
 
-            if (ck::Is_NOT_Valid(Mesh, ck::IsValid_Policy_NullptrOnly{}))
+            if (ck::Is_NOT_Valid(Mesh))
             {
                 continue;
             }
@@ -70,21 +70,25 @@ namespace ck_perf_lab_survey
             const AActor* InActor)
         -> FCk_PerfLab_ActorCensusRow
     {
-        auto MaterialSlots = int32{0};
-        auto CastsShadow   = false;
-        auto HasCollision  = false;
+        const auto Primitives = TInlineComponentArray<UPrimitiveComponent*>{InActor};
 
-        for (const auto* Component : TInlineComponentArray<UPrimitiveComponent*>{InActor})
+        const auto Is_Usable = [](const UPrimitiveComponent* InComponent)
+        { return ck::IsValid(InComponent); };
+
+        // Three separate questions rather than three accumulators sharing a loop: each one reads as
+        // what it asks, each result is const, and the two predicates short-circuit.
+        const auto MaterialSlots = static_cast<int32>(ck::algo::SumBy(Primitives,
+            [&](const UPrimitiveComponent* InComponent)
+            { return Is_Usable(InComponent) ? InComponent->GetNumMaterials() : 0; }));
+
+        const auto CastsShadow = ck::algo::AnyOf(Primitives, [&](const UPrimitiveComponent* InComponent)
         {
-            if (ck::Is_NOT_Valid(Component, ck::IsValid_Policy_NullptrOnly{}))
-            {
-                continue;
-            }
+            return Is_Usable(InComponent) && InComponent->CastShadow
+                && InComponent->Mobility == EComponentMobility::Movable;
+        });
 
-            MaterialSlots += Component->GetNumMaterials();
-            CastsShadow    = CastsShadow  || (Component->CastShadow && Component->Mobility == EComponentMobility::Movable);
-            HasCollision   = HasCollision || Component->IsCollisionEnabled();
-        }
+        const auto HasCollision = ck::algo::AnyOf(Primitives, [&](const UPrimitiveComponent* InComponent)
+        { return Is_Usable(InComponent) && InComponent->IsCollisionEnabled(); });
 
         const auto Lights = TInlineComponentArray<ULightComponent*>{InActor}.Num();
 
@@ -129,7 +133,7 @@ namespace ck::perf_lab
     {
         auto Survey = FCk_PerfLab_WorldSurvey{};
 
-        if (ck::Is_NOT_Valid(InWorld, ck::IsValid_Policy_NullptrOnly{}))
+        if (ck::Is_NOT_Valid(InWorld))
         {
             return Survey;
         }
@@ -141,7 +145,7 @@ namespace ck::perf_lab
         {
             const auto* Actor = *Iterator;
 
-            if (ck::Is_NOT_Valid(Actor, ck::IsValid_Policy_NullptrOnly{}))
+            if (ck::Is_NOT_Valid(Actor))
             {
                 continue;
             }
@@ -177,7 +181,7 @@ namespace ck::perf_lab
         {
             // A map with no navigation data is a normal case; the planner falls back to a grid and
             // says so, so absence here is a quiet branch rather than an error.
-            if (ck::IsValid(NavSystem->GetDefaultNavDataInstance(), ck::IsValid_Policy_NullptrOnly{}))
+            if (ck::IsValid(NavSystem->GetDefaultNavDataInstance()))
             {
                 const auto Origin = Bounds.IsValid ? Bounds.GetCenter() : FVector::ZeroVector;
                 const auto Radius = Bounds.IsValid ? Bounds.GetExtent().Size2D() : 0.0;
@@ -197,8 +201,11 @@ namespace ck::perf_lab
                 // into the plan through the dedup-first-wins rule.
                 ck::algo::Sort(NavmeshPoints, [](const FVector& InA, const FVector& InB)
                 {
-                    if (InA.X != InB.X) { return InA.X < InB.X; }
-                    if (InA.Y != InB.Y) { return InA.Y < InB.Y; }
+                    if (InA.X != InB.X)
+                    { return InA.X < InB.X; }
+
+                    if (InA.Y != InB.Y)
+                    { return InA.Y < InB.Y; }
                     return InA.Z < InB.Z;
                 });
             }
@@ -218,20 +225,14 @@ namespace ck::perf_lab
     {
         const auto RadiusSq = static_cast<double>(InRadiusCm) * static_cast<double>(InRadiusCm);
 
-        auto Rows = TArray<FCk_PerfLab_ActorCensusRow>{};
-
-        for (const auto& Actor : InSurvey.Get_Actors())
-        {
-            const auto DistanceSq = FVector::DistSquared(Actor.Get_Location(), InLocation);
-
-            if (DistanceSq > RadiusSq)
+        auto Rows = ck::algo::TransformIf<TArray<FCk_PerfLab_ActorCensusRow>>(InSurvey.Get_Actors(),
+            [&](const FCk_PerfLab_SurveyActor& InActor)
+            { return FVector::DistSquared(InActor.Get_Location(), InLocation) <= RadiusSq; },
+            [&](const FCk_PerfLab_SurveyActor& InActor)
             {
-                continue;
-            }
-
-            Rows.Add(FCk_PerfLab_ActorCensusRow{Actor.Get_Census()}
-                .Set_DistanceCm(static_cast<float>(FMath::Sqrt(DistanceSq))));
-        }
+                return FCk_PerfLab_ActorCensusRow{InActor.Get_Census()}.Set_DistanceCm(
+                    static_cast<float>(FVector::Dist(InActor.Get_Location(), InLocation)));
+            });
 
         // Nearest first, object path as the tie-break: this order reaches the session file and the
         // contributor list, so it has to be reproducible rather than incidental.

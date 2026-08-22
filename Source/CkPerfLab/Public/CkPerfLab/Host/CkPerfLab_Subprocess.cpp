@@ -4,6 +4,8 @@
 
 #include "CkPerfLab/Session/CkPerfLab_SessionCodec.h"
 
+#include "CkCore/Algorithms/CkAlgorithms.h"
+
 #include <HAL/FileManager.h>
 #include <Misc/FileHelper.h>
 #include <Misc/Paths.h>
@@ -19,28 +21,12 @@ namespace ck_perf_lab_subprocess
     // otherwise completely mute, and the reason is always in the last few lines.
     constexpr auto k_LogTailLines = 25;
 
-    auto
-        Get_LogPathFor(
-            const FString& InSessionDir)
-        -> FString
-    {
-        return FPaths::Combine(InSessionDir, TEXT("child.log"));
-    }
 }
 
 // --------------------------------------------------------------------------------------------------------------------
 
 namespace ck::perf_lab
 {
-    auto
-        Get_SessionDirFor(
-            const FString& InSessionId)
-        -> FString
-    {
-        return FPaths::ConvertRelativePathToFull(
-            FPaths::Combine(FPaths::ProjectSavedDir(), TEXT("CkPerfLab"), TEXT("Sessions"), InSessionId));
-    }
-
     auto
         Build_ChildCommandLine(
             const FString& InProjectPath,
@@ -49,14 +35,17 @@ namespace ck::perf_lab
             const FString& InLogPath)
         -> FString
     {
-        // Every path is quoted: spaces in project paths are the norm on Windows, and an unquoted one
-        // fails as a mangled map name rather than as an obvious error.
+        // Paths are quoted because spaces in them are the norm on Windows, and an unquoted one fails
+        // as a mangled map name rather than as an obvious error.
         //
-        // -abslog keeps the child out of Saved/Logs, which matters because the repo's tooling probes
-        // an exclusive lock on the project log to decide whether an editor is running.
+        // The VALUE is quoted, never the whole token. FParse::Value locates its key with
+        // FCString::Strifind(..., bSkipQuotedChars = true), so a key sitting inside a quoted region
+        // is skipped and the switch reads as absent: the child boots, finds no request, stays inert,
+        // and the host waits out its entire timeout for a run that never started. -abslog already
+        // uses the value-quoted form, and this one has to match it.
         return FString::Printf(
             TEXT("\"%s\" \"%s\" -game -windowed -resx=1280 -resy=720 -unattended -nosplash -nopause ")
-            TEXT("-SCCProvider=None -abslog=\"%s\" \"-CkPerfLab-Request=%s\""),
+            TEXT("-SCCProvider=None -abslog=\"%s\" -CkPerfLab-Request=\"%s\""),
             *InProjectPath,
             *InMapPath,
             *InLogPath,
@@ -97,7 +86,7 @@ namespace ck::perf_lab
         _Request = InRequest;
 
         const auto SessionDir  = Get_SessionDir();
-        const auto RequestPath = FPaths::Combine(SessionDir, TEXT("request.json"));
+        const auto RequestPath = Get_RequestFilePath(SessionDir);
 
         if (NOT FFileHelper::SaveStringToFile(Write_RequestToJson(_Request), *RequestPath))
         {
@@ -112,7 +101,7 @@ namespace ck::perf_lab
             FPaths::ConvertRelativePathToFull(FPaths::GetProjectFilePath()),
             _Request.Get_MapPath(),
             RequestPath,
-            ck_perf_lab_subprocess::Get_LogPathFor(SessionDir));
+            Get_ChildLogFilePath(SessionDir));
 
         _ProcessHandle = FPlatformProcess::CreateProc(
             Executable, *_CommandLine, true, false, false, nullptr, 0, nullptr, nullptr);
@@ -126,7 +115,7 @@ namespace ck::perf_lab
 
         _Outcome = ECk_ChildOutcome::Running;
 
-        ck::perf_lab::Log(TEXT("PerfLab launched child [{}] {}"), Executable, _CommandLine);
+        ck::perf_lab::Log(TEXT("PerfLab launched child [{}] with [{}]"), Executable, _CommandLine);
 
         return true;
     }
@@ -142,7 +131,7 @@ namespace ck::perf_lab
         auto Contents = FString{};
 
         if (NOT FFileHelper::LoadFileToString(Contents,
-                *ck_perf_lab_subprocess::Get_LogPathFor(Get_SessionDir())))
+                *Get_ChildLogFilePath(Get_SessionDir())))
         {
             return;
         }
@@ -150,14 +139,7 @@ namespace ck::perf_lab
         auto Lines = TArray<FString>{};
         Contents.ParseIntoArrayLines(Lines);
 
-        const auto First = FMath::Max(0, Lines.Num() - ck_perf_lab_subprocess::k_LogTailLines);
-
-        auto Tail = TArray<FString>{};
-
-        for (auto Index = First; Index < Lines.Num(); ++Index)
-        {
-            Tail.Add(Lines[Index]);
-        }
+        const auto Tail = ck::algo::TakeLast(Lines, ck_perf_lab_subprocess::k_LogTailLines);
 
         _FailureReason += FString::Printf(TEXT("\n--- last %d lines of the child log ---\n%s"),
             Tail.Num(), *FString::Join(Tail, TEXT("\n")));
@@ -179,7 +161,7 @@ namespace ck::perf_lab
         auto HeartbeatJson = FString{};
 
         if (FFileHelper::LoadFileToString(HeartbeatJson,
-                *FPaths::Combine(Get_SessionDir(), TEXT("heartbeat.json"))))
+                *Get_HeartbeatFilePath(Get_SessionDir())))
         {
             // A partially written heartbeat is expected — the child rewrites it while we read — so a
             // failed decode is simply last frame's state, not an error.
@@ -246,7 +228,7 @@ namespace ck::perf_lab
         // Ask first: a child given a moment to finish writes a session that says it was cancelled,
         // where one killed outright leaves a file nobody can explain.
         FFileHelper::SaveStringToFile(FString{TEXT("cancel")},
-            *FPaths::Combine(Get_SessionDir(), TEXT("cancel.flag")));
+            *Get_CancelFlagFilePath(Get_SessionDir()));
 
         _CancelGraceSec = ck_perf_lab_subprocess::k_CancelGraceSec;
     }

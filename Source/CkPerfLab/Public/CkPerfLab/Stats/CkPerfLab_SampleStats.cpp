@@ -20,9 +20,7 @@ namespace ck_perf_lab_sample_stats
 
         const auto Count = FMath::Max(1, FMath::CeilToInt32(InSortedAscending.Num() * 0.01f));
 
-        const auto Worst = TArray<float>{InSortedAscending.GetData() + (InSortedAscending.Num() - Count), Count};
-
-        return static_cast<float>(ck::algo::Mean(Worst).Get(0.0));
+        return static_cast<float>(ck::algo::Mean(ck::algo::TakeLast(InSortedAscending, Count)).Get(0.0));
     }
 }
 

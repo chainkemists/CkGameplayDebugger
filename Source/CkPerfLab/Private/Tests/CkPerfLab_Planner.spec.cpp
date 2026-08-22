@@ -1,5 +1,6 @@
 #include "CkPerfLab/Planner/CkPerfLab_Planner.h"
 
+#include "CkCore/Algorithms/CkAlgorithms.h"
 #include "CkCore/Macros/CkMacros.h"
 
 #include "Misc/AutomationTest.h"
@@ -75,14 +76,11 @@ bool FCkPerfLab_Planner_IsDeterministicAndOrderIndependent::RunTest(const FStrin
     const auto First  = ck::perf_lab::Generate_Plan(Survey, Request);
     const auto Second = ck::perf_lab::Generate_Plan(Survey, Request);
 
-    TestEqual(TEXT("The same survey plans the same number of positions"),
-        First.Get_Positions().Num(), Second.Get_Positions().Num());
+    const auto Has_SamePositions = [](const FCk_PerfLab_PlannedPosition& InA, const FCk_PerfLab_PlannedPosition& InB)
+    { return InA.Get_PositionId() == InB.Get_PositionId(); };
 
-    for (auto Index = 0; Index < First.Get_Positions().Num(); ++Index)
-    {
-        TestEqual(TEXT("The same survey plans the same positions in the same order"),
-            First.Get_Positions()[Index].Get_PositionId(), Second.Get_Positions()[Index].Get_PositionId());
-    }
+    TestTrue(TEXT("The same survey plans the same positions in the same order"),
+        ck::algo::Compare(First.Get_Positions(), Second.Get_Positions(), Has_SamePositions));
 
     // The survey is gathered by iterating a world, and iteration order is not a contract. A planner
     // sensitive to it would produce different position ids on every run and silently break the
@@ -98,14 +96,8 @@ bool FCkPerfLab_Planner_IsDeterministicAndOrderIndependent::RunTest(const FStrin
 
     const auto FromShuffled = ck::perf_lab::Generate_Plan(Shuffled, Request);
 
-    TestEqual(TEXT("Reversing the survey plans the same count"),
-        FromShuffled.Get_Positions().Num(), First.Get_Positions().Num());
-
-    for (auto Index = 0; Index < First.Get_Positions().Num(); ++Index)
-    {
-        TestEqual(TEXT("Reversing the survey plans the same positions"),
-            FromShuffled.Get_Positions()[Index].Get_PositionId(), First.Get_Positions()[Index].Get_PositionId());
-    }
+    TestTrue(TEXT("Reversing the survey plans the same positions in the same order"),
+        ck::algo::Compare(FromShuffled.Get_Positions(), First.Get_Positions(), Has_SamePositions));
 
     return true;
 }
@@ -215,6 +207,32 @@ bool FCkPerfLab_Planner_FallsBackToGridWithoutNavmesh::RunTest(const FString& Pa
     TestTrue (TEXT("Without navmesh points the plan says it fell back"),
         Plan.Get_Outcome() == ECk_PerfLab_PlanOutcome::GridFallback);
     TestTrue (TEXT("The fallback still plans positions"), Plan.Get_Positions().Num() > 0);
+
+    return true;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FCkPerfLab_Planner_EveryPositionAlwaysHasADirection,
+    "Ck.PerfLab.Planner.EveryPositionAlwaysHasADirection",
+    ck_perf_lab_planner_spec::kFlags)
+
+bool FCkPerfLab_Planner_EveryPositionAlwaysHasADirection::RunTest(const FString& Parameters)
+{
+    // A request is a file on disk and can be hand-written, so a nonsensical direction count has to
+    // degrade rather than crash. The runner indexes the first yaw of every planned position, so an
+    // empty list would be an out-of-bounds read in the child instead of a poor measurement.
+    for (const auto Requested : TArray<int32>{0, -4})
+    {
+        const auto Plan = ck::perf_lab::Generate_Plan(
+            ck_perf_lab_planner_spec::Make_Survey(), ck_perf_lab_planner_spec::Make_Request(5, Requested));
+
+        for (const auto& Position : Plan.Get_Positions())
+        {
+            TestTrue(TEXT("Every planned position has at least one direction"), Position.Get_Yaws().Num() >= 1);
+        }
+    }
 
     return true;
 }

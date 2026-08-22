@@ -1,6 +1,6 @@
 #pragma once
 
-#include "CkPerfLab/Session/CkPerfLab_Session.h"
+#include "CkPerfLab/Session/CkPerfLab_SessionCodec.h"
 
 #include "CkPerfLab_SessionStore.generated.h"
 
@@ -68,10 +68,6 @@ namespace ck::perf_lab
     CKPERFLAB_API auto
     Try_DeleteSession(
         const FString& InSessionId) -> bool;
-
-    /** The root every session lives under. */
-    CKPERFLAB_API auto
-    Get_SessionsRoot() -> FString;
 }
 
 // --------------------------------------------------------------------------------------------------------------------

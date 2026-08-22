@@ -1,6 +1,7 @@
 #include "CkPerfLab/Host/CkPerfLab_SessionStore.h"
 #include "CkPerfLab/Host/CkPerfLab_Subprocess.h"
 
+#include "CkCore/Algorithms/CkAlgorithms.h"
 #include "CkCore/Macros/CkMacros.h"
 
 #include "Misc/AutomationTest.h"
@@ -34,8 +35,14 @@ bool FCkPerfLab_Host_CommandLine_QuotesAndCarriesEverything::RunTest(const FStri
 
     TestTrue(TEXT("The project path is quoted"),  CommandLine.Contains(TEXT("\"D:/Some Path/Proj.uproject\"")));
     TestTrue(TEXT("The map path is quoted"),      CommandLine.Contains(TEXT("\"/Game/Maps/Test.Test\"")));
-    TestTrue(TEXT("The request argument is quoted whole"),
-        CommandLine.Contains(TEXT("\"-CkPerfLab-Request=D:/Some Path/Saved/req.json\"")));
+    // The VALUE is quoted, never the whole token. FParse::Value skips quoted regions when locating
+    // its key, so a whole-token-quoted switch reads as absent and the child boots inert while the
+    // host waits out its full timeout. That is precisely how this shipped before a review caught it,
+    // and it is why the assertion is written as an exclusion as well as an inclusion.
+    TestTrue(TEXT("The request path is quoted as a value"),
+        CommandLine.Contains(TEXT("-CkPerfLab-Request=\"D:/Some Path/Saved/req.json\"")));
+    TestFalse(TEXT("The request switch is never quoted as a whole token"),
+        CommandLine.Contains(TEXT("\"-CkPerfLab-Request")));
     TestTrue(TEXT("The log path is quoted"),      CommandLine.Contains(TEXT("-abslog=\"D:/Some Path/Saved/child.log\"")));
 
     // The flags the measurement depends on, each for a stated reason elsewhere: game mode, a real
@@ -112,11 +119,9 @@ bool FCkPerfLab_Host_Rows_AreNewestFirst::RunTest(const FString& Parameters)
 
     // Whatever happens to be on this machine, the ordering contract has to hold: ids lead with a UTC
     // timestamp, so descending id is newest first.
-    for (auto Index = 1; Index < Rows.Num(); ++Index)
-    {
-        TestTrue(TEXT("Rows are ordered newest first"),
-            Rows[Index - 1].Get_SessionId() >= Rows[Index].Get_SessionId());
-    }
+    TestTrue(TEXT("Rows are ordered newest first"),
+        ck::algo::IsSorted(Rows, [](const FCk_PerfLab_SessionRow& InA, const FCk_PerfLab_SessionRow& InB)
+        { return InA.Get_SessionId() > InB.Get_SessionId(); }));
 
     return true;
 }

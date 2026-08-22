@@ -10,6 +10,7 @@
 #include "CkProfile/Stats/CkStats_Utils.h"
 
 #include <Engine/Engine.h>
+#include <Engine/GameViewportClient.h>
 #include <Engine/World.h>
 #include <GameFramework/Actor.h>
 #include <GameFramework/Pawn.h>
@@ -21,8 +22,10 @@
 #include <Misc/App.h>
 #include <Misc/CommandLine.h>
 #include <Misc/FileHelper.h>
+#include <Misc/EngineVersion.h>
 #include <Misc/Parse.h>
 #include <Misc/Paths.h>
+#include <HAL/PlatformProcess.h>
 #include <RHIGlobals.h>
 #include <UObject/UObjectGlobals.h>
 
@@ -36,7 +39,9 @@ namespace ck_perf_lab_runner
             const TCHAR* InValue)
         -> void
     {
-        if (auto* Variable = IConsoleManager::Get().FindConsoleVariable(InName))
+        auto* Variable = IConsoleManager::Get().FindConsoleVariable(InName);
+
+        if (ck::IsValid(Variable, ck::IsValid_Policy_NullptrOnly{}))
         {
             Variable->Set(InValue, ECVF_SetByCode);
         }
@@ -51,8 +56,8 @@ namespace ck_perf_lab_runner
         return ck::IsValid(Variable, ck::IsValid_Policy_NullptrOnly{}) ? Variable->GetString() : FString{TEXT("<absent>")};
     }
 
-    // Streaming quiescence has no single signal, so this is the composite the Phase 0 addendum
-    // settled on. It is deliberately conservative: anything in flight counts as noisy.
+    // Streaming quiescence has no single engine signal, so this composite stands in for one. It is
+    // deliberately conservative: anything in flight at all counts as noisy.
     auto
         Get_IsStreamingQuiet()
         -> bool
@@ -66,11 +71,40 @@ namespace ck_perf_lab_runner
     {
         return FDateTime::UtcNow().ToIso8601();
     }
+
+    // The resolution actually rendered at, not the one requested on the command line. GPU and
+    // render-thread cost scale with it, so a session that cannot state it is not comparable with
+    // another.
+    auto
+        Get_ViewportSize()
+        -> FIntPoint
+    {
+        if (ck::Is_NOT_Valid(GEngine))
+        {
+            return FIntPoint::ZeroValue;
+        }
+
+        const auto Viewport = GEngine->GameViewport;
+
+        if (ck::Is_NOT_Valid(Viewport))
+        {
+            return FIntPoint::ZeroValue;
+        }
+
+        auto Size = FVector2D::ZeroVector;
+        Viewport->GetViewportSize(Size);
+
+        return FIntPoint{static_cast<int32>(Size.X), static_cast<int32>(Size.Y)};
+    }
 }
 
 // --------------------------------------------------------------------------------------------------------------------
 
-void UCk_PerfLab_Runner_Subsystem::Initialize(FSubsystemCollectionBase& InCollection)
+auto
+    UCk_PerfLab_Runner_Subsystem::
+    Initialize(
+        FSubsystemCollectionBase& InCollection)
+    -> void
 {
     Super::Initialize(InCollection);
 
@@ -112,7 +146,10 @@ void UCk_PerfLab_Runner_Subsystem::Initialize(FSubsystemCollectionBase& InCollec
         _Request.Get_SessionId(), _Request.Get_MapPath());
 }
 
-void UCk_PerfLab_Runner_Subsystem::Deinitialize()
+auto
+    UCk_PerfLab_Runner_Subsystem::
+    Deinitialize()
+    -> void
 {
     if (_TickHandle.IsValid())
     {
@@ -134,7 +171,7 @@ auto
     Get_SessionDir() const
     -> FString
 {
-    return FPaths::Combine(FPaths::ProjectSavedDir(), TEXT("CkPerfLab"), TEXT("Sessions"), _Request.Get_SessionId());
+    return ck::perf_lab::Get_SessionDirFor(_Request.Get_SessionId());
 }
 
 auto
@@ -157,7 +194,7 @@ auto
 
     FFileHelper::SaveStringToFile(
         ck::perf_lab::Write_HeartbeatToJson(Heartbeat),
-        *FPaths::Combine(Get_SessionDir(), TEXT("heartbeat.json")));
+        *ck::perf_lab::Get_HeartbeatFilePath(Get_SessionDir()));
 }
 
 auto
@@ -169,7 +206,7 @@ auto
     // leaves a session that still decodes, with its state saying how far it got.
     FFileHelper::SaveStringToFile(
         ck::perf_lab::Write_SessionToJson(_Session),
-        *FPaths::Combine(Get_SessionDir(), TEXT("session.json")));
+        *ck::perf_lab::Get_SessionFilePath(Get_SessionDir()));
 }
 
 auto
@@ -225,7 +262,7 @@ auto
 
     // The runtime lever that wins regardless of what any ini said: frame-rate smoothing clamps fast
     // frames into a configured range, which would quietly floor every measurement taken here.
-    if (ck::IsValid(GEngine, ck::IsValid_Policy_NullptrOnly{}))
+    if (ck::IsValid(GEngine))
     {
         GEngine->bForceDisableFrameRateSmoothing = true;
     }
@@ -264,7 +301,7 @@ auto
         return false;
     }
 
-    if (ck::Is_NOT_Valid(UGameplayStatics::GetPlayerController(InWorld, 0), ck::IsValid_Policy_NullptrOnly{}))
+    if (ck::Is_NOT_Valid(UGameplayStatics::GetPlayerController(InWorld, 0)))
     {
         DoFail(ECk_PerfLab_RunState::Failed_Internal,
             TEXT("no player controller to position the camera with"));
@@ -283,14 +320,14 @@ auto
 {
     auto* World = GetGameInstance() ? GetGameInstance()->GetWorld() : nullptr;
 
-    if (ck::Is_NOT_Valid(World, ck::IsValid_Policy_NullptrOnly{}))
+    if (ck::Is_NOT_Valid(World))
     {
         return false;
     }
 
     auto* Controller = UGameplayStatics::GetPlayerController(World, 0);
 
-    if (ck::Is_NOT_Valid(Controller, ck::IsValid_Policy_NullptrOnly{}))
+    if (ck::Is_NOT_Valid(Controller))
     {
         return false;
     }
@@ -300,7 +337,7 @@ auto
 
     // Move whatever the player is actually looking through: the pawn when there is one, the
     // controller itself when there is not.
-    if (APawn* Pawn = Controller->GetPawn(); ck::IsValid(Pawn, ck::IsValid_Policy_NullptrOnly{}))
+    if (APawn* Pawn = Controller->GetPawn(); ck::IsValid(Pawn))
     {
         Pawn->SetActorLocationAndRotation(Location, Rotation, false, nullptr, ETeleportType::TeleportPhysics);
     }
@@ -313,6 +350,16 @@ auto
     Controller->SetControlRotation(Rotation);
 
     return true;
+}
+
+auto
+    UCk_PerfLab_Runner_Subsystem::
+    DoPlace_Camera(
+        const FCk_PerfLab_PlannedPosition& InPosition,
+        float InYaw)
+    -> void
+{
+    _CameraIsPlaced = DoApply_CameraFor(InPosition, InYaw);
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -359,7 +406,7 @@ auto
         UWorld* InWorld)
     -> void
 {
-    if (ck::Is_NOT_Valid(InWorld, ck::IsValid_Policy_NullptrOnly{}))
+    if (ck::Is_NOT_Valid(InWorld))
     {
         DoFail(ECk_PerfLab_RunState::Failed_MapMismatch, TEXT("no world after map load"));
         return;
@@ -378,6 +425,7 @@ auto
                .Set_EngineVersion(FEngineVersion::Current().ToString())
                .Set_ChildBinary(FPaths::GetCleanFilename(FPlatformProcess::ExecutablePath()))
                .Set_SourceControlDisabled(FParse::Param(FCommandLine::Get(), TEXT("SCCProvider=None")))
+               .Set_ViewportSizeActual(ck_perf_lab_runner::Get_ViewportSize())
                .Set_StartedUtc(ck_perf_lab_runner::Get_NowUtc());
     _Session.Set_Environment(Environment);
 
@@ -405,7 +453,7 @@ auto
     _Stage = _Request.Get_ModeParams().Get_WarmSweep() ? EStage::WarmSweep : EStage::Measuring;
 
     DoBegin_Dwell();
-    DoApply_CameraFor(_Plan.Get_Positions()[0], _Plan.Get_Positions()[0].Get_Yaws()[0]);
+    DoPlace_Camera(_Plan.Get_Positions()[0], _Plan.Get_Positions()[0].Get_Yaws()[0]);
 
     _TickHandle = FTSTicker::GetCoreTicker().AddTicker(
         FTickerDelegate::CreateUObject(this, &UCk_PerfLab_Runner_Subsystem::DoTick), 0.0f);
@@ -426,7 +474,7 @@ auto
 
     // The host asks before it insists. Stopping here rather than being terminated means the session
     // on disk says it was cancelled, instead of being a file nobody can account for.
-    if (IFileManager::Get().FileExists(*FPaths::Combine(Get_SessionDir(), TEXT("cancel.flag"))))
+    if (IFileManager::Get().FileExists(*ck::perf_lab::Get_CancelFlagFilePath(Get_SessionDir())))
     {
         _Stage = EStage::Finished;
         _Session.Set_State(ECk_PerfLab_RunState::Aborted_UserCancel);
@@ -448,7 +496,7 @@ auto
 
     auto* World = GetGameInstance() ? GetGameInstance()->GetWorld() : nullptr;
 
-    if (ck::Is_NOT_Valid(World, ck::IsValid_Policy_NullptrOnly{}))
+    if (ck::Is_NOT_Valid(World))
     {
         return true;
     }
@@ -461,13 +509,13 @@ auto
         {
             _Stage = EStage::Measuring;
             DoBegin_Dwell();
-            DoApply_CameraFor(_Plan.Get_Positions()[0], _Plan.Get_Positions()[0].Get_Yaws()[0]);
+            DoPlace_Camera(_Plan.Get_Positions()[0], _Plan.Get_Positions()[0].Get_Yaws()[0]);
             DoWrite_Heartbeat(ECk_PerfLab_RunState::Measuring, TEXT(""));
             return true;
         }
 
         const auto& Position = _Plan.Get_Positions()[_WarmSweepIndex];
-        DoApply_CameraFor(Position, Position.Get_Yaws()[0]);
+        DoPlace_Camera(Position, Position.Get_Yaws()[0]);
         ++_WarmSweepIndex;
 
         DoWrite_Heartbeat(ECk_PerfLab_RunState::WarmSweep, TEXT(""));
@@ -487,6 +535,15 @@ auto
     -> void
 {
     const auto& Position = _Plan.Get_Positions()[_PositionIndex];
+
+    if (NOT _CameraIsPlaced)
+    {
+        // Measuring without having moved the camera would file the PREVIOUS view's numbers under
+        // this position's id and location. Better to fail the run than to publish that.
+        DoFail(ECk_PerfLab_RunState::Failed_Internal,
+            TEXT("the camera could not be placed for a measurement position"));
+        return;
+    }
 
     _DwellElapsedSec += InDeltaSeconds;
 
@@ -543,12 +600,15 @@ auto
         .Set_YawDegrees(Position.Get_Yaws()[_DirectionIndex])
         .Set_Metrics(Metrics));
 
+    _AnyDwellTimedOut     = _AnyDwellTimedOut     || _Settle.Get_SettleTimedOut();
+    _AnyDwellSawStreaming = _AnyDwellSawStreaming || _Settle.Get_StreamingWasActive();
+
     ++_DirectionIndex;
 
     if (_DirectionIndex < Position.Get_Yaws().Num())
     {
         DoBegin_Dwell();
-        DoApply_CameraFor(Position, Position.Get_Yaws()[_DirectionIndex]);
+        DoPlace_Camera(Position, Position.Get_Yaws()[_DirectionIndex]);
         return;
     }
 
@@ -562,13 +622,6 @@ auto
 {
     const auto& Planned = _Plan.Get_Positions()[_PositionIndex];
 
-    auto Inputs = ck::perf_lab::FCk_ConfidenceInputs{};
-    Inputs._WarmupConverged        = NOT _Settle.Get_SettleTimedOut();
-    Inputs._StreamingQuiet         = NOT _Settle.Get_StreamingWasActive();
-    Inputs._SampleCount            = _Settle.Get_AcceptedCount();
-    Inputs._TargetSampleCount      = _Request.Get_Settle().Get_TargetSampleCount();
-    Inputs._CoefficientOfVariation = _Settle.Get_CoefficientOfVariation();
-
     // The aggregate is the worst direction's metrics: a position is as slow as the ugliest thing you
     // can turn and look at from it, so reporting an average across directions would hide exactly the
     // view worth finding.
@@ -578,6 +631,18 @@ auto
     });
 
     const auto Aggregate = Worst.IsSet() ? Worst->Get_Metrics() : FCk_PerfLab_MetricSet{};
+
+    // The settle flags come from the LATCHES rather than from _Settle directly: the detector is
+    // rebuilt per direction, so reading it here would describe only whichever direction happened to
+    // finish the position. A position where three of four directions failed to settle must not
+    // report the fourth one's confidence.
+    auto Inputs = ck::perf_lab::FCk_ConfidenceInputs{};
+    Inputs._WarmupConverged        = NOT _AnyDwellTimedOut;
+    Inputs._StreamingQuiet         = NOT _AnyDwellSawStreaming;
+    Inputs._SampleCount            = _Settle.Get_AcceptedCount();
+    Inputs._TargetSampleCount      = _Request.Get_Settle().Get_TargetSampleCount();
+    Inputs._CoefficientOfVariation = _Settle.Get_CoefficientOfVariation();
+    Inputs._OutlierCount           = Aggregate.Get_Frame().Get_OutlierCount();
 
     auto Positions = _Session.Get_Positions();
     Positions.Add(FCk_PerfLab_PositionResult{}
@@ -593,6 +658,8 @@ auto
     _Session.Set_Positions(Positions).Set_State(ECk_PerfLab_RunState::Measuring);
 
     _CompletedDirections.Reset();
+    _AnyDwellTimedOut     = false;
+    _AnyDwellSawStreaming = false;
     _DirectionIndex = 0;
     ++_PositionIndex;
 
@@ -608,7 +675,7 @@ auto
     DoBegin_Dwell();
 
     const auto& Next = _Plan.Get_Positions()[_PositionIndex];
-    DoApply_CameraFor(Next, Next.Get_Yaws()[0]);
+    DoPlace_Camera(Next, Next.Get_Yaws()[0]);
 }
 
 // --------------------------------------------------------------------------------------------------------------------

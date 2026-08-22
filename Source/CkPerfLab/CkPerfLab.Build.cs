@@ -25,6 +25,13 @@ public class CkPerfLab : CkModuleRules
             // UCk_Utils_Stats_UE::Get_ThreadTimings — the measurement the runner records.
             "CkProfile",
 
+            // UNavigationSystemV1::GetRandomReachablePointInRadius — navmesh-seeded positions, which
+            // are preferred over a grid because a spot no player can reach costs nobody anything.
+            "NavigationSystem",
+
+            // RHIGetGPUFrameCycles and GUsingNullRHI, for the runner's environment assertion.
+            "RHI",
+
             "CkLog"
         });
     }

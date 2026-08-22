@@ -10,16 +10,19 @@
 #include "CkEditorTools/Style/CkStyle.h"
 
 #include <Editor.h>
-#include <Engine/World.h>
 #include <EditorModeManager.h>
+#include <Engine/World.h>
 #include <LevelEditor.h>
 #include <Misc/FileHelper.h>
 #include <Misc/Paths.h>
+#include <Styling/AppStyle.h>
 #include <Widgets/Input/SButton.h>
+#include <Widgets/Input/SCheckBox.h>
 #include <Widgets/Input/SSpinBox.h>
 #include <Widgets/Layout/SBorder.h>
 #include <Widgets/Layout/SBox.h>
 #include <Widgets/Layout/SScrollBox.h>
+#include <Widgets/Layout/SWrapBox.h>
 #include <Widgets/SBoxPanel.h>
 #include <Widgets/Text/STextBlock.h>
 #include <Widgets/Views/STableRow.h>
@@ -53,6 +56,34 @@ namespace ck_perf_lab_page
         return TEXT("Quick");
     }
 
+    /**
+     * What each mode actually costs and buys. Modes are parameter presets over ONE measurement path — position
+     * count, directions per position, and how hard the runner tries to settle before sampling — so the difference
+     * between them is coverage and runtime, never method.
+     */
+    auto
+        Get_ModeTooltip(
+            ECk_PerfLab_Mode InMode)
+        -> FString
+    {
+        switch (InMode)
+        {
+            case ECk_PerfLab_Mode::Quick:
+                return TEXT("Quick — the coarsest. Answers whether this level has a problem at all, not precisely "
+                            "where. Fewest positions, fewest camera directions, shortest dwell.");
+
+            case ECk_PerfLab_Mode::Standard:
+                return TEXT("Standard — the default. Denser sampling at a runtime most levels can absorb, and "
+                            "positions that miss the budget are measured again.");
+
+            case ECk_PerfLab_Mode::Deep:
+                return TEXT("Deep — the densest sampling, extra camera pitches and a second full pass. Much the "
+                            "longest of the three; use it once Standard has told you roughly where to look.");
+        }
+
+        return FString{};
+    }
+
     /** A sortable, collision-resistant id. The timestamp leads so descending id is newest first. */
     auto
         Make_SessionId(
@@ -84,6 +115,31 @@ namespace ck_perf_lab_page
         return World->GetOutermost()->GetPathName();
     }
 
+    /** Where a 0-100 score sits, in words. A bare number does not tell a reader whether to act on it. */
+    auto
+        Get_ScoreBand(
+            int32 InScore)
+        -> FString
+    {
+        if (InScore >= 90) { return TEXT("Comfortable"); }
+        if (InScore >= 75) { return TEXT("Good"); }
+        if (InScore >= 50) { return TEXT("Marginal"); }
+
+        return TEXT("Over budget");
+    }
+
+    auto
+        Get_ScoreTone(
+            int32 InScore)
+        -> ECk_Tone
+    {
+        if (InScore >= 90) { return ECk_Tone::Ok; }
+        if (InScore >= 75) { return ECk_Tone::Info; }
+        if (InScore >= 50) { return ECk_Tone::Warn; }
+
+        return ECk_Tone::Err;
+    }
+
     auto
         Get_SeverityTone(
             ECk_PerfLab_Severity InSeverity)
@@ -109,6 +165,11 @@ auto
     -> void
 {
     _MapPath = ck_perf_lab_page::Get_CurrentMapPath();
+
+    // Everything on this page is scoped to one level — the Run target, the heatmap's coordinates, which sessions are
+    // worth looking at. Polling for a map change in a paint lambda would keep the LABEL honest and leave the rest
+    // stale, so the change is handled as the event it is.
+    _MapOpenedHandle = FEditorDelegates::OnMapOpened.AddSP(this, &SCkPerfLabPage::DoHandle_MapOpened);
 
     DoRefresh_Sessions();
 
@@ -166,6 +227,12 @@ auto
 
 SCkPerfLabPage::~SCkPerfLabPage()
 {
+    // FEditorDelegates is a global that outlives every window bound to it.
+    if (_MapOpenedHandle.IsValid())
+    {
+        FEditorDelegates::OnMapOpened.Remove(_MapOpenedHandle);
+    }
+
     // The slot is a process-global and the EdMode is owned by the level editor, so neither dies with this page. Left
     // published, the overlay would keep drawing over the viewport with no UI in existence to turn it off — and a
     // reopened page would come back with its toggle reading "off" while markers were still on screen.
@@ -244,21 +311,34 @@ auto
 
     for (const auto Mode : {ECk_PerfLab_Mode::Quick, ECk_PerfLab_Mode::Standard, ECk_PerfLab_Mode::Deep})
     {
+        // Check boxes styled as a button row, not plain buttons: these are mutually exclusive and exactly one is
+        // always in effect, so the control has to SHOW which. Three identical buttons that visibly do nothing when
+        // pressed read as broken rather than as a choice already made.
         ModeButtons->AddSlot()
         .AutoWidth()
         .Padding(0.0f, 0.0f, CkStyle::SpaceS, 0.0f)
         [
-            SNew(SButton)
-            .Text(FText::FromString(ck_perf_lab_page::Get_ModeLabel(Mode)))
-            .ToolTipText(FText::FromString(TEXT(
-                "Modes are parameter presets over one measurement path: how many positions, how many directions at "
-                "each, and how hard it tries to settle before sampling.")))
+            SNew(SCheckBox)
+            .Style(FAppStyle::Get(), "RadioButton")
+            .ToolTipText(FText::FromString(ck_perf_lab_page::Get_ModeTooltip(Mode)))
             .IsEnabled_Lambda([this]() -> bool { return NOT Get_IsRunning(); })
-            .OnClicked_Lambda([this, Mode]() -> FReply
+            .IsChecked_Lambda([this, Mode]() -> ECheckBoxState
             {
-                _Mode = Mode;
-                return FReply::Handled();
+                return _Mode == Mode ? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
             })
+            .OnCheckStateChanged_Lambda([this, Mode](ECheckBoxState InState)
+            {
+                // Radio semantics: a click always SELECTS. Unchecking the active mode would leave no mode at all.
+                if (InState == ECheckBoxState::Checked)
+                {
+                    _Mode = Mode;
+                }
+            })
+            [
+                SNew(STextBlock)
+                .Margin(FMargin{CkStyle::SpaceS, 0.0f, CkStyle::SpaceS, 0.0f})
+                .Text(FText::FromString(ck_perf_lab_page::Get_ModeLabel(Mode)))
+            ]
         ];
     }
 
@@ -293,7 +373,17 @@ auto
                 .AutoWidth()
                 .VAlign(VAlign_Center)
                 [
-                    SNew(STextBlock).Text(FText::FromString(TEXT("Frame budget (ms)")))
+                    SNew(STextBlock).Text(FText::FromString(TEXT("Target")))
+                ]
+
+                // FPS presets, because a target is something people hold in frames per second and then have to
+                // convert. The millisecond box stays beside them — it is what everything is actually measured
+                // against, and hiding it would make the score's own formula unreadable.
+                + SHorizontalBox::Slot()
+                .AutoWidth()
+                .Padding(CkStyle::SpaceS, 0.0f, 0.0f, 0.0f)
+                [
+                    DoBuild_TargetPresets()
                 ]
 
                 + SHorizontalBox::Slot()
@@ -379,7 +469,7 @@ auto
                     {
                         return FText::FromString(Get_IsRunning() ? TEXT("Cancel") : TEXT("Run"));
                     })
-                    .IsEnabled_Lambda([this]() -> bool { return NOT _MapPath.IsEmpty(); })
+                    .IsEnabled_Lambda([]() -> bool { return NOT ck_perf_lab_page::Get_CurrentMapPath().IsEmpty(); })
                     .OnClicked_Lambda([this]() -> FReply
                     {
                         if (Get_IsRunning())
@@ -399,6 +489,60 @@ auto
 }
 
 // --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkPerfLabPage::
+    DoBuild_TargetPresets()
+    -> TSharedRef<SWidget>
+{
+    auto Row = SNew(SHorizontalBox);
+
+    // The three targets worth one click. Anything else is typed into the millisecond box beside them, which is why
+    // there is no "Custom" preset — the custom case is the box, already visible.
+    const auto Presets = TArray<int32>{30, 60, 120};
+
+    for (const auto Fps : Presets)
+    {
+        const auto BudgetMs = 1000.0f / static_cast<float>(Fps);
+
+        Row->AddSlot()
+        .AutoWidth()
+        .Padding(0.0f, 0.0f, CkStyle::SpaceS, 0.0f)
+        [
+            SNew(SCheckBox)
+            .Style(FAppStyle::Get(), "RadioButton")
+            .IsEnabled_Lambda([this]() -> bool { return NOT Get_IsRunning(); })
+            .ToolTipText(FText::FromString(ck::Format_UE(
+                TEXT("{} FPS — a {:.2f} ms frame budget. Every score component and every finding is judged against it."),
+                Fps, BudgetMs)))
+            .IsChecked_Lambda([this, BudgetMs]() -> ECheckBoxState
+            {
+                // Nearly-equal, not exact: the stored budget is whatever the spin box last committed, and a preset
+                // should still read as selected when the user typed the same number by hand.
+                return FMath::IsNearlyEqual(_BudgetMs, BudgetMs, 0.01f)
+                    ? ECheckBoxState::Checked
+                    : ECheckBoxState::Unchecked;
+            })
+            .OnCheckStateChanged_Lambda([this, BudgetMs](ECheckBoxState InState)
+            {
+                if (InState != ECheckBoxState::Checked)
+                { return; }
+
+                _BudgetMs = BudgetMs;
+
+                // Re-analyse immediately: the whole point of a preset is seeing the score move.
+                DoSelect_Session(_SelectedSessionId);
+            })
+            [
+                SNew(STextBlock)
+                .Margin(FMargin{CkStyle::SpaceS, 0.0f, CkStyle::SpaceS, 0.0f})
+                .Text(FText::FromString(ck::Format_UE(TEXT("{} FPS"), Fps)))
+            ]
+        ];
+    }
+
+    return Row;
+}
 
 auto
     SCkPerfLabPage::
@@ -430,7 +574,8 @@ auto
                         *FPaths::GetCleanFilename(InRow->Get_MapPath()))
                     : FString::Printf(TEXT("%s    (unreadable)"), *InRow->Get_SessionId());
 
-                const auto SessionId = InRow->Get_SessionId();
+                const auto SessionId  = InRow->Get_SessionId();
+                const auto IsReadable = InRow->Get_IsReadable();
 
                 return SNew(STableRow<TSharedPtr<FCk_PerfLab_SessionRow>>, InOwner)
                 [
@@ -450,7 +595,19 @@ auto
                     .VAlign(VAlign_Center)
                     [
                         SNew(SButton)
-                        .IsEnabled(InRow->Get_IsReadable())
+                        // Never against itself. A session compared to itself can only report that nothing changed,
+                        // which looks exactly like a comparison that silently failed.
+                        .IsEnabled_Lambda([this, SessionId, IsReadable]
+                        {
+                            return IsReadable && SessionId != _SelectedSessionId;
+                        })
+                        .ToolTipText_Lambda([this, SessionId]
+                        {
+                            return FText::FromString(SessionId == _SelectedSessionId
+                                ? TEXT("This is the session being shown. Pick a DIFFERENT run as the baseline — the "
+                                       "one you want to know whether things got better or worse since.")
+                                : TEXT("Compare the shown session against this one. Same map only."));
+                        })
                         .Text_Lambda([this, SessionId]
                         {
                             return FText::FromString(_BaselineSessionId == SessionId
@@ -479,24 +636,70 @@ auto
 {
     const auto& Score = _SelectedAnalysis.Get_Score();
 
-    auto Components = SNew(SVerticalBox);
+    // Tiles rather than a printf-aligned list. Eight weighted components is exactly the amount of information a
+    // column of monospaced text turns into a wall — and the weights are the part that makes the score auditable, so
+    // they have to stay legible rather than merely present.
+    auto Tiles = SNew(SWrapBox).UseAllottedSize(true);
 
-    // The whole component table, including the parts that were excluded. A score nobody can decompose is a rating to
-    // be trusted rather than a measurement to be read, and the excluded rows are exactly where that trust is earned.
     for (const auto& Component : Score.Get_Components())
     {
-        Components->AddSlot()
-        .AutoHeight()
+        const auto Included = Component.Get_Included();
+        const auto Value    = Component.Get_Value();
+
+        Tiles->AddSlot()
+        .Padding(0.0f, 0.0f, CkStyle::SpaceS, CkStyle::SpaceS)
         [
-            SNew(STextBlock)
-            .Text(FText::FromString(Component.Get_Included()
-                ? FString::Printf(TEXT("   %-26s  weight %5.3f   score %3d"),
-                    *ck::Format_UE(TEXT("{}"), Component.Get_Component()),
-                    Component.Get_Weight(),
-                    Component.Get_Value())
-                : FString::Printf(TEXT("   %-26s  excluded — %s"),
-                    *ck::Format_UE(TEXT("{}"), Component.Get_Component()),
-                    *Component.Get_ExcludedReason())))
+            SNew(SBorder)
+            .Padding(CkStyle::SpaceS)
+            .ToolTipText(FText::FromString(Included
+                ? ck::Format_UE(TEXT("Contributes {:.1f}% of the score."), Component.Get_Weight() * 100.0f)
+                : ck::Format_UE(TEXT("Excluded — {}. Its weight is redistributed across the components that "
+                                     "were measured, rather than scoring this one as zero."),
+                                Component.Get_ExcludedReason())))
+            [
+                SNew(SBox)
+                .MinDesiredWidth(190.0f)
+                [
+                    SNew(SVerticalBox)
+
+                    + SVerticalBox::Slot()
+                    .AutoHeight()
+                    [
+                        SNew(STextBlock)
+                        .Text(FText::FromString(ck::Format_UE(TEXT("{}"), Component.Get_Component())))
+                    ]
+
+                    + SVerticalBox::Slot()
+                    .AutoHeight()
+                    [
+                        SNew(SHorizontalBox)
+
+                        + SHorizontalBox::Slot()
+                        .AutoWidth()
+                        [
+                            SNew(SCkDebug_StatusPill)
+                            .ShowDot(true)
+                            .Tone(Included
+                                ? ck_perf_lab_page::Get_ScoreTone(Value)
+                                : ECk_Tone::Neutral)
+                            .Text(FText::FromString(Included
+                                ? ck::Format_UE(TEXT("{}"), Value)
+                                : FString{TEXT("not measured")}))
+                        ]
+
+                        + SHorizontalBox::Slot()
+                        .FillWidth(1.0f)
+                        .VAlign(VAlign_Center)
+                        .Padding(CkStyle::SpaceS, 0.0f, 0.0f, 0.0f)
+                        [
+                            SNew(STextBlock)
+                            .Text(FText::FromString(Included
+                                ? ck::Format_UE(TEXT("weight {:.0f}%"), Component.Get_Weight() * 100.0f)
+                                : FString{TEXT("weight redistributed")}))
+                        ]
+                    ]
+                ]
+            ]
         ];
     }
 
@@ -505,10 +708,43 @@ auto
         + SVerticalBox::Slot()
         .AutoHeight()
         [
-            SNew(STextBlock)
-            .Text(FText::FromString(FString::Printf(TEXT("Score  %d / 100"), Score.Get_Value())))
+            SNew(SHorizontalBox)
+
+            // The number, then what it means in words. A bare 63/100 does not tell a reader whether to act.
+            + SHorizontalBox::Slot()
+            .AutoWidth()
+            .VAlign(VAlign_Center)
+            [
+                SNew(SCkDebug_StatusPill)
+                .ShowDot(true)
+                .Tone(ck_perf_lab_page::Get_ScoreTone(Score.Get_Value()))
+                .Text(FText::FromString(ck::Format_UE(TEXT("{} / 100   {}"),
+                    Score.Get_Value(), ck_perf_lab_page::Get_ScoreBand(Score.Get_Value()))))
+            ]
+
+            + SHorizontalBox::Slot()
+            .FillWidth(1.0f)
+            .VAlign(VAlign_Center)
+            .Padding(CkStyle::SpaceM, 0.0f, 0.0f, 0.0f)
+            [
+                SNew(STextBlock)
+                .Text(FText::FromString(ck::Format_UE(
+                    TEXT("{} position(s) measured   ·   {} finding(s)   ·   against {:.2f} ms"),
+                    _SelectedSession.Get_Positions().Num(),
+                    _SelectedAnalysis.Get_Findings().Num(),
+                    _SelectedAnalysis.Get_BudgetMs())))
+            ]
         ]
 
+        + SVerticalBox::Slot()
+        .AutoHeight()
+        .Padding(0.0f, CkStyle::SpaceM, 0.0f, 0.0f)
+        [
+            Tiles
+        ]
+
+        // The formula last and small: it has to be present for the score to be auditable, but a reader reaches for
+        // it only once, and putting it above the numbers buries them.
         + SVerticalBox::Slot()
         .AutoHeight()
         .Padding(0.0f, CkStyle::SpaceS, 0.0f, 0.0f)
@@ -516,13 +752,6 @@ auto
             SNew(STextBlock)
             .AutoWrapText(true)
             .Text(FText::FromString(Score.Get_Formula()))
-        ]
-
-        + SVerticalBox::Slot()
-        .AutoHeight()
-        .Padding(0.0f, CkStyle::SpaceS, 0.0f, 0.0f)
-        [
-            Components
         ];
 }
 
@@ -803,6 +1032,34 @@ auto
 
 auto
     SCkPerfLabPage::
+    DoHandle_MapOpened(
+        const FString& InFilename,
+        bool InAsTemplate)
+    -> void
+{
+    _MapPath = ck_perf_lab_page::Get_CurrentMapPath();
+
+    // The published snapshot carries the OLD map's coordinates. The EdMode already refuses to draw it against a
+    // different level, but leaving it published would show the toggle reading "on" over an empty viewport with no
+    // explanation — so the overlay is dropped rather than left silently inert.
+    if (_HeatmapEnabled)
+    {
+        _HeatmapEnabled = false;
+
+        ck::perf_lab::heatmap::Clear();
+        DoSet_HeatmapModeActive(false);
+    }
+
+    // The selected session belongs to the level that was open when it was picked.
+    DoSelect_Session(FString{});
+    DoSelect_Baseline(FString{});
+
+    DoRefresh_Sessions();
+    DoBuild_Results();
+}
+
+auto
+    SCkPerfLabPage::
     DoRefresh_Sessions()
     -> void
 {
@@ -832,7 +1089,9 @@ auto
     // a position id belonging to the session the reader just navigated away from.
     _ClickedPositionId.Reset();
 
-    if (ck::perf_lab::TryLoad_Session(InSessionId, _SelectedSession))
+    // An empty id is how this page says "nothing selected" — deselecting on a map change, for one. That is not a
+    // session which failed to load, and it must never reach the store as a path.
+    if (NOT InSessionId.IsEmpty() && ck::perf_lab::TryLoad_Session(InSessionId, _SelectedSession))
     {
         // Analysed against the budget shown on this page rather than the one the run was requested with, so a
         // captured session can be re-read against a different target without measuring again.
@@ -944,14 +1203,14 @@ auto
     SCkPerfLabPage::
     DoSet_HeatmapModeActive(
         bool InEnabled)
-    -> void
+    -> bool
 {
     // Publishing a snapshot makes nothing appear on its own. The module's StaticClass reference only makes the mode
     // DISCOVERABLE; until something activates it on the level editor, Render is never called and the overlay is a
     // feature that exists and cannot be seen.
     if (ck::Is_NOT_Valid(GEditor) || ck::IsValid(GEditor->PlayWorld))
     {
-        return;
+        return false;
     }
 
     auto& ModeTools = GLevelEditorModeTools();
@@ -966,6 +1225,11 @@ auto
     }
 
     GEditor->RedrawLevelEditingViewports();
+
+    // Ask whether it actually took, rather than assuming. Activation can be refused — another exclusive mode holding
+    // the editor, or the mode never registering because its module did not load — and an unchecked call turns that
+    // into a toggle that reads "on" while nothing draws.
+    return ModeTools.IsModeActive(ck::perf_lab::heatmap::k_EdModeId) == InEnabled;
 }
 
 auto
@@ -976,7 +1240,21 @@ auto
     _HeatmapEnabled = NOT _HeatmapEnabled;
 
     DoPublish_Heatmap();
-    DoSet_HeatmapModeActive(_HeatmapEnabled);
+
+    if (NOT DoSet_HeatmapModeActive(_HeatmapEnabled) && _HeatmapEnabled)
+    {
+        // Refuse to show an "on" toggle over a viewport that will not draw. Saying why is the whole point: the
+        // failure is otherwise indistinguishable from a heatmap with nothing to show.
+        _HeatmapEnabled = false;
+        _ExportMessage  = TEXT("The viewport overlay could not be switched on. The editor refused the mode — this "
+                               "usually means another exclusive editor mode is active, or the editor is in play "
+                               "mode. Leave PIE and try again.");
+
+        ck::perf_lab::heatmap::Clear();
+        DoBuild_Results();
+
+        return;
+    }
 
     if (_HeatmapEnabled)
     {

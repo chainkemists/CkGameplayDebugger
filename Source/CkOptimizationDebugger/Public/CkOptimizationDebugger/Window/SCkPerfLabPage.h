@@ -3,6 +3,7 @@
 #include "CkEditorTools/Style/CkStyle.h"
 
 #include "CkPerfLab/Analysis/CkPerfLab_Analysis.h"
+#include "CkPerfLab/Heatmap/CkPerfLab_HeatmapSlot.h"
 #include "CkPerfLab/Host/CkPerfLab_SessionStore.h"
 #include "CkPerfLab/Host/CkPerfLab_Subprocess.h"
 
@@ -41,6 +42,10 @@ private:
     auto DoCancel_Run() -> void;
 
     auto DoPoll(double InCurrentTime, float InDeltaTime) -> EActiveTimerReturnType;
+    auto DoPoll_Heatmap(double InCurrentTime, float InDeltaTime) -> EActiveTimerReturnType;
+
+    auto DoToggle_Heatmap() -> void;
+    auto DoPublish_Heatmap() -> void;
 
     auto Get_StatusText() const -> FText;
     auto Get_StatusTone() const -> ECk_Tone;
@@ -62,12 +67,19 @@ private:
     FString _SelectedSessionId;
     FString _MapPath;
     FString _LastFailure;
+    FString _ClickedPositionId;
 
     float _BudgetMs = 16.67f;
 
     ECk_PerfLab_Mode _Mode = ECk_PerfLab_Mode::Quick;
 
     TSharedPtr<FActiveTimerHandle> _PollTimer;
+
+    // Only ticks while the heatmap is on, and only to notice a viewport click. An overlay nobody switched on
+    // costs this page nothing at all.
+    TSharedPtr<FActiveTimerHandle> _HeatmapTimer;
+
+    bool _HeatmapEnabled = false;
 };
 
 // --------------------------------------------------------------------------------------------------------------------

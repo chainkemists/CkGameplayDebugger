@@ -1,6 +1,6 @@
 # Phase 8 — Viewport heatmap EdMode (new CkOptimizationDebuggerEditor module)
 
-> **Status:** ⏳ Pending
+> **Status:** ✅ Done (2026-08-22)
 > **Depends on:** Phase 6 ✅ (independent of Phase 7; either order)
 > **Estimate:** 1 session
 > **Change class:** 2 (new Editor module; additive)

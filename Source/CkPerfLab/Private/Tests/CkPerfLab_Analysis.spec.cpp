@@ -119,9 +119,20 @@ bool FCkPerfLab_Gate_OverBudgetWithoutSignal_OnlyAttributesGenerically::RunTest(
 {
     using namespace ck_perf_lab_analysis_spec;
 
-    // The other direction: genuinely over budget, but an empty census. Nothing may be blamed, and
-    // the only publishable finding is the one that admits it does not know.
-    const auto Session = Make_Session({Make_Position(TEXT("p_1"), Make_Metrics(40.0f, 20.0f, 30.0f, true), false)});
+    // The other direction: genuinely over budget, with content nearby that clears NO threshold. Nothing may be
+    // blamed, and the only publishable finding is the one that admits it does not know.
+    //
+    // The census is deliberately light rather than empty. An empty one would mean something different and worse —
+    // that the survey never saw the level at all — which is its own finding, and conflating the two is exactly the
+    // confusion this pair of rules exists to separate.
+    const auto Light = TArray<FCk_PerfLab_ActorCensusRow>{FCk_PerfLab_ActorCensusRow{}
+        .Set_ObjectPath(TEXT("/Game/Map.Map:PersistentLevel.SM_Lonely"))
+        .Set_ClassName(TEXT("StaticMeshActor"))
+        .Set_DistanceCm(500.0f)
+        .Set_TriangleCount(12)};
+
+    const auto Session = Make_Session({Make_Position(TEXT("p_1"), Make_Metrics(40.0f, 20.0f, 30.0f, true), false)
+        .Set_ActorCensus(Light)});
 
     const auto Analysis = ck::perf_lab::Analyse_Session(Session, 16.67f);
 
@@ -135,6 +146,58 @@ bool FCkPerfLab_Gate_OverBudgetWithoutSignal_OnlyAttributesGenerically::RunTest(
         TestEqual(TEXT("It has no contributors to point at"),
             Analysis.Get_Findings()[0].Get_Contributors().Num(), 0);
     }
+
+    return true;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FCkPerfLab_Gate_NothingSurveyed_IsAMeasurementProblemNotALevelProblem,
+    "Ck.PerfLab.Gate.NothingSurveyed_IsAMeasurementProblemNotALevelProblem",
+    ck_perf_lab_analysis_spec::kFlags)
+
+bool FCkPerfLab_Gate_NothingSurveyed_IsAMeasurementProblemNotALevelProblem::RunTest(const FString& Parameters)
+{
+    using namespace ck_perf_lab_analysis_spec;
+
+    // No actors found near ANY position. Every static signal is then zero by construction, so every over-budget
+    // position falls through to the generic fallback and the report reads "your level is slow and I cannot say
+    // why" — when the truth is "I never saw your level". Saying so is the difference between a finding a reader
+    // can act on and one that quietly wastes their afternoon.
+    const auto Session = Make_Session(
+    {
+        Make_Position(TEXT("p_1"), Make_Metrics(40.0f, 20.0f, 30.0f, true), false),
+        Make_Position(TEXT("p_2"), Make_Metrics(40.0f, 20.0f, 30.0f, true), false),
+    });
+
+    const auto Analysis = ck::perf_lab::Analyse_Session(Session, 16.67f);
+
+    const auto Surveyed = ck::algo::FindIf(Analysis.Get_Findings(),
+        [](const FCk_PerfLab_Finding& InFinding)
+        { return InFinding.Get_CheckId() == TEXT("Perf.Survey.NothingSurveyed"); });
+
+    TestTrue(TEXT("An empty survey is reported"), Surveyed.IsSet());
+
+    if (Surveyed.IsSet())
+    {
+        // Critical, and above the per-position noise: it invalidates the attribution of everything else in the
+        // session, so a reader must not have to scroll past twelve fallbacks to reach it.
+        TestEqual(TEXT("...as Critical"), Surveyed->Get_Severity(), ECk_PerfLab_Severity::Critical);
+        TestEqual(TEXT("...naming the signal it checked"),
+            Surveyed->Get_Evidence().Get_Signal(), TEXT("actorsSurveyedNearAnyPosition"));
+    }
+
+    TestEqual(TEXT("It sorts to the top"),
+        Analysis.Get_Findings()[0].Get_CheckId(), TEXT("Perf.Survey.NothingSurveyed"));
+
+    // A survey that DID see content must not raise it — otherwise the warning is permanent wallpaper.
+    const auto Surveyed_Ok = ck::perf_lab::Analyse_Session(
+        Make_Session({Make_Position(TEXT("p_1"), Make_Metrics(40.0f, 20.0f, 30.0f, true), true)}), 16.67f);
+
+    TestFalse(TEXT("A survey that saw content does not raise it"),
+        ck::algo::AnyOf(Surveyed_Ok.Get_Findings(), [](const FCk_PerfLab_Finding& InFinding)
+        { return InFinding.Get_CheckId() == TEXT("Perf.Survey.NothingSurveyed"); }));
 
     return true;
 }

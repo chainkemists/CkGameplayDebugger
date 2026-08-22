@@ -223,6 +223,148 @@ namespace ck::perf_lab
 
         return Score.Set_Components(Results).Set_Value(FMath::Clamp(FMath::RoundToInt32(Total), 0, 100));
     }
+
+    auto
+        Group_Findings(
+            const FCk_PerfLab_Analysis& InAnalysis)
+        -> TArray<FCk_PerfLab_FindingGroup>
+    {
+        auto GroupsByCheckId = TMap<FString, FCk_PerfLab_FindingGroup>{};
+
+        for (const auto& Finding : InAnalysis.Get_Findings())
+        {
+            auto& Group = GroupsByCheckId.FindOrAdd(Finding.Get_CheckId());
+
+            auto PositionIds = Group.Get_PositionIds();
+            PositionIds.Add(Finding.Get_PositionId());
+
+            // The WORST measurement leads, and carries its own position with it. An averaged evidence row would
+            // describe a place that does not exist, and the reader's next action is to go stand somewhere.
+            const auto IsWorst = Group.Get_CheckId().IsEmpty() ||
+                Finding.Get_Evidence().Get_OverBudgetRatio() > Group.Get_WorstEvidence().Get_OverBudgetRatio();
+
+            // Severity is declared worst-first, so the LOWEST enum value is the most severe.
+            const auto Severity = Group.Get_CheckId().IsEmpty()
+                ? Finding.Get_Severity()
+                : FMath::Min(Group.Get_Severity(), Finding.Get_Severity());
+
+            Group.Set_CheckId(Finding.Get_CheckId())
+                 .Set_PositionIds(PositionIds)
+                 .Set_Severity(Severity);
+
+            if (IsWorst)
+            {
+                Group.Set_WorstEvidence(Finding.Get_Evidence())
+                     .Set_WorstPositionId(Finding.Get_PositionId());
+            }
+
+            // Contributors merge across positions, deduplicated by object path: one actor near four measured spots
+            // is one suspect, and listing it four times would inflate it purely by being in a busy area.
+            auto Contributors = Group.Get_Contributors();
+
+            for (const auto& Contributor : Finding.Get_Contributors())
+            {
+                const auto AlreadyListed = ck::algo::AnyOf(Contributors,
+                    [&](const FCk_PerfLab_Contributor& InExisting)
+                    { return InExisting.Get_ObjectPath() == Contributor.Get_ObjectPath(); });
+
+                if (NOT AlreadyListed)
+                { Contributors.Add(Contributor); }
+            }
+
+            Group.Set_Contributors(Contributors);
+
+            // Recommendations dedupe by text. Every position firing one rule produces the same advice, and repeating
+            // it once per position is what turns a short actionable list into a wall.
+            auto Recommendations = Group.Get_Recommendations();
+
+            for (const auto& Recommendation : Finding.Get_Recommendations())
+            {
+                const auto AlreadySaid = ck::algo::AnyOf(Recommendations,
+                    [&](const FCk_PerfLab_Recommendation& InExisting)
+                    { return InExisting.Get_Text() == Recommendation.Get_Text(); });
+
+                if (NOT AlreadySaid)
+                { Recommendations.Add(Recommendation); }
+            }
+
+            Group.Set_Recommendations(Recommendations);
+        }
+
+        auto Groups = TArray<FCk_PerfLab_FindingGroup>{};
+        GroupsByCheckId.GenerateValueArray(Groups);
+
+        for (auto& Group : Groups)
+        {
+            // Nearest first, then path: proximity is all a contributor claims, and the tie-break keeps the list
+            // stable across runs.
+            auto Contributors = Group.Get_Contributors();
+
+            ck::algo::Sort(Contributors,
+                [](const FCk_PerfLab_Contributor& InA, const FCk_PerfLab_Contributor& InB)
+                {
+                    if (InA.Get_DistanceCm() != InB.Get_DistanceCm())
+                    { return InA.Get_DistanceCm() < InB.Get_DistanceCm(); }
+
+                    return InA.Get_ObjectPath() < InB.Get_ObjectPath();
+                });
+
+            // Renumbered across the merge: a list carrying each finding's own ranks would show two number ones.
+            for (auto Index = 0; Index < Contributors.Num(); ++Index)
+            {
+                Contributors[Index].Set_Rank(Index + 1);
+            }
+
+            auto PositionIds = Group.Get_PositionIds();
+            ck::algo::Sort(PositionIds);
+
+            auto Recommendations = Group.Get_Recommendations();
+
+            ck::algo::Sort(Recommendations,
+                [](const FCk_PerfLab_Recommendation& InA, const FCk_PerfLab_Recommendation& InB)
+                {
+                    // Most gain first, then least effort — the order somebody works through them in.
+                    if (InA.Get_GainBand() != InB.Get_GainBand())
+                    { return InA.Get_GainBand() < InB.Get_GainBand(); }
+
+                    if (InA.Get_EffortBand() != InB.Get_EffortBand())
+                    { return InA.Get_EffortBand() > InB.Get_EffortBand(); }
+
+                    return InA.Get_Text() < InB.Get_Text();
+                });
+
+            Group.Set_Contributors(Contributors)
+                 .Set_PositionIds(PositionIds)
+                 .Set_Recommendations(Recommendations);
+        }
+
+        // Groups about the MEASUREMENT lead, matching the ungrouped order: a caveat that the survey saw nothing
+        // qualifies every group underneath it, and read second it is read too late.
+        const auto Is_AboutTheMeasurement = [](const FCk_PerfLab_FindingGroup& InGroup)
+        {
+            return InGroup.Get_CheckId().StartsWith(TEXT("Perf.Survey.")) ||
+                   InGroup.Get_CheckId().StartsWith(TEXT("Perf.Confidence."));
+        };
+
+        // Then worst severity, then the rule that hit the most positions, then check id. TMap iteration order is
+        // not stable, so this sort is what makes the list reproducible at all — not merely tidy.
+        ck::algo::Sort(Groups,
+            [&](const FCk_PerfLab_FindingGroup& InA, const FCk_PerfLab_FindingGroup& InB)
+            {
+                if (Is_AboutTheMeasurement(InA) != Is_AboutTheMeasurement(InB))
+                { return Is_AboutTheMeasurement(InA); }
+
+                if (InA.Get_Severity() != InB.Get_Severity())
+                { return InA.Get_Severity() < InB.Get_Severity(); }
+
+                if (InA.Get_PositionIds().Num() != InB.Get_PositionIds().Num())
+                { return InA.Get_PositionIds().Num() > InB.Get_PositionIds().Num(); }
+
+                return InA.Get_CheckId() < InB.Get_CheckId();
+            });
+
+        return Groups;
+    }
 }
 
 // --------------------------------------------------------------------------------------------------------------------

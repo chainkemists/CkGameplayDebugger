@@ -347,10 +347,55 @@ namespace ck::perf_lab
             }
         }
 
-        // Severity first — the enum is declared worst-first, so ascending by value is most-severe
-        // first — then check id and position, so the order is reproducible across runs.
-        ck::algo::Sort(Findings, [](const FCk_PerfLab_Finding& InA, const FCk_PerfLab_Finding& InB)
+        // Nothing surveyed anywhere is a MEASUREMENT problem, not a level problem, and the two are easy to confuse:
+        // an empty census makes every static signal fall below its threshold, so every over-budget position falls
+        // through to the unattributed fallback and the report reads as "your level is slow and I cannot say why"
+        // when the truth is "I never saw your level". The commonest cause is a world whose content had not streamed
+        // in when the survey ran — World Partition, or level streaming with nothing loaded.
+        const auto SurveyedAnything = ck::algo::AnyOf(InSession.Get_Positions(),
+            [](const FCk_PerfLab_PositionResult& InPosition)
+            { return NOT InPosition.Get_ActorCensus().IsEmpty(); });
+
+        if (NOT InSession.Get_Positions().IsEmpty() && NOT SurveyedAnything)
         {
+            Findings.Add(FCk_PerfLab_Finding{}
+                .Set_CheckId(TEXT("Perf.Survey.NothingSurveyed"))
+                .Set_StableKey(TEXT("Perf.Survey.NothingSurveyed"))
+                .Set_Severity(ECk_PerfLab_Severity::Critical)
+                .Set_Evidence(FCk_PerfLab_Evidence{}
+                    .Set_Metric(ECk_PerfLab_Metric::Frame)
+                    .Set_BudgetMs(InBudgetMs)
+                    .Set_Signal(TEXT("actorsSurveyedNearAnyPosition"))
+                    .Set_SignalValue(0.0f))
+                .Set_Recommendations({FCk_PerfLab_Recommendation{}
+                    .Set_Order(1)
+                    .Set_GainBand(ECk_PerfLab_Band::High)
+                    .Set_EffortBand(ECk_PerfLab_Band::Low)
+                    .Set_Text(TEXT("No actors were found near ANY measured position, so no finding here can name a "
+                                   "cause — the timings are real but nothing could be attributed. This usually means "
+                                   "the level's content had not streamed in when the survey ran. Check whether the "
+                                   "map uses World Partition or level streaming, and treat every other finding in "
+                                   "this session as unattributed by measurement, not by absence of a problem."))}));
+        }
+
+        // Findings about the MEASUREMENT come before findings about the level, ahead of severity. A caveat saying
+        // the survey saw nothing, or that streaming never settled, qualifies every number underneath it — read
+        // second, it is read too late to stop somebody acting on attribution it has just invalidated.
+        const auto Is_AboutTheMeasurement = [](const FCk_PerfLab_Finding& InFinding)
+        {
+            return InFinding.Get_CheckId().StartsWith(TEXT("Perf.Survey.")) ||
+                   InFinding.Get_CheckId().StartsWith(TEXT("Perf.Confidence."));
+        };
+
+        // Then severity — the enum is declared worst-first, so ascending by value is most-severe first — then check
+        // id and position, so the order is reproducible across runs.
+        ck::algo::Sort(Findings, [&](const FCk_PerfLab_Finding& InA, const FCk_PerfLab_Finding& InB)
+        {
+            if (Is_AboutTheMeasurement(InA) != Is_AboutTheMeasurement(InB))
+            {
+                return Is_AboutTheMeasurement(InA);
+            }
+
             if (InA.Get_Severity() != InB.Get_Severity())
             {
                 return InA.Get_Severity() < InB.Get_Severity();

@@ -1,0 +1,1258 @@
+{
+	"schemaVersion": 1,
+	"sessionId": "fixture-thinmap",
+	"state": "Done",
+	"request":
+	{
+		"sessionId": "fixture-thinmap",
+		"mapPath": "/CkTests/TestGyms/TestGyms_CkTests_Level",
+		"budgetMs": 33.299999237060547,
+		"seed": 1337,
+		"requestingHostPid": 0,
+		"createdUtc": "2026-08-22T00:00:00Z",
+		"mode": "Quick",
+		"modeParams":
+		{
+			"positionBudget": 3,
+			"directionsPerPosition": 2,
+			"repeats": 1,
+			"minPositionSpacingCm": 300,
+			"eyeHeightCm": 160,
+			"censusRadiusCm": 5000,
+			"warmSweep": false,
+			"adaptiveRevisit": false,
+			"retainRawSamples": false
+		},
+		"settle":
+		{
+			"warmupFrames": 5,
+			"stabilityCv": 0.25,
+			"stabilityFrames": 5,
+			"streamingQuietFrames": 3,
+			"settleTimeoutSec": 5,
+			"targetSampleCount": 20
+		},
+		"outlier":
+		{
+			"madK": 3.5
+		},
+		"watchdog":
+		{
+			"childWallClockBudgetSec": 180
+		}
+	},
+	"environment":
+	{
+		"buildConfiguration": "Development",
+		"instanceMode": "game",
+		"rhiName": "D3D12",
+		"gpuBrand": "AMD Radeon RX 7900 XTX",
+		"cpuBrand": "AMD Ryzen 7 7800X3D 8-Core Processor",
+		"cpuCoreCount": 8,
+		"machineName": "DESKTOP-Q72V8KF",
+		"engineVersion": "5.7.4-0+UE5",
+		"childBinary": "CkPluginsEditor-Cmd.exe",
+		"sourceControlDisabled": true,
+		"startedUtc": "2026-08-22T04:17:08.299Z",
+		"finishedUtc": "2026-08-22T04:17:09.616Z",
+		"viewportSizeActual":
+		{
+			"width": 0,
+			"height": 0
+		},
+		"forcedCvars":
+		{
+			"bForceDisableFrameRateSmoothing": "true",
+			"r.VSync": "0",
+			"t.IdleWhenNotForeground": "0",
+			"t.MaxFPS": "0"
+		}
+	},
+	"positions": [
+		{
+			"positionId": "p_00b5ce09",
+			"eyeHeightCm": 160,
+			"revisited": false,
+			"location":
+			{
+				"x": -734.375,
+				"y": 443.359375,
+				"z": -3075
+			},
+			"directions": [
+				{
+					"yawDegrees": 257,
+					"pitchDegrees": 0,
+					"metrics":
+					{
+						"frame":
+						{
+							"availability": "Available",
+							"reason": "",
+							"avgMs": 2.2504386901855469,
+							"worstMs": 3.2151005268096924,
+							"p99Ms": 3.2037198543548584,
+							"onePercentLowMs": 3.2151005268096924,
+							"sampleCount": 20,
+							"outlierCount": 2
+						},
+						"gameThread":
+						{
+							"availability": "Available",
+							"reason": "",
+							"avgMs": 1.1200058460235596,
+							"worstMs": 2.1960000991821289,
+							"p99Ms": 2.0981500148773193,
+							"onePercentLowMs": 2.1960000991821289,
+							"sampleCount": 20,
+							"outlierCount": 3
+						},
+						"renderThread":
+						{
+							"availability": "Available",
+							"reason": "",
+							"avgMs": 2.2747156620025635,
+							"worstMs": 3.9065001010894775,
+							"p99Ms": 3.7720940113067627,
+							"onePercentLowMs": 3.9065001010894775,
+							"sampleCount": 20,
+							"outlierCount": 1
+						},
+						"rhiThread":
+						{
+							"availability": "Available",
+							"reason": "",
+							"avgMs": 1.2109800577163696,
+							"worstMs": 2.2263998985290527,
+							"p99Ms": 2.2055759429931641,
+							"onePercentLowMs": 2.2263998985290527,
+							"sampleCount": 20,
+							"outlierCount": 0
+						},
+						"gpu":
+						{
+							"availability": "Available",
+							"reason": "",
+							"avgMs": 1.5462058782577515,
+							"worstMs": 2.1282000541687012,
+							"p99Ms": 2.1134181022644043,
+							"onePercentLowMs": 2.1282000541687012,
+							"sampleCount": 20,
+							"outlierCount": 3
+						}
+					}
+				},
+				{
+					"yawDegrees": 77,
+					"pitchDegrees": 0,
+					"metrics":
+					{
+						"frame":
+						{
+							"availability": "Available",
+							"reason": "",
+							"avgMs": 2.0154128074645996,
+							"worstMs": 3.7841014862060547,
+							"p99Ms": 3.7611303329467773,
+							"onePercentLowMs": 3.7841014862060547,
+							"sampleCount": 20,
+							"outlierCount": 4
+						},
+						"gameThread":
+						{
+							"availability": "Available",
+							"reason": "",
+							"avgMs": 1.0431176424026489,
+							"worstMs": 2.0871999263763428,
+							"p99Ms": 2.0595550537109375,
+							"onePercentLowMs": 2.0871999263763428,
+							"sampleCount": 20,
+							"outlierCount": 3
+						},
+						"renderThread":
+						{
+							"availability": "Available",
+							"reason": "",
+							"avgMs": 2.2041158676147461,
+							"worstMs": 4.2016000747680664,
+							"p99Ms": 4.1206412315368652,
+							"onePercentLowMs": 4.2016000747680664,
+							"sampleCount": 20,
+							"outlierCount": 1
+						},
+						"rhiThread":
+						{
+							"availability": "Available",
+							"reason": "",
+							"avgMs": 0.87711578607559204,
+							"worstMs": 1.6500999927520752,
+							"p99Ms": 1.6063050031661987,
+							"onePercentLowMs": 1.6500999927520752,
+							"sampleCount": 20,
+							"outlierCount": 1
+						},
+						"gpu":
+						{
+							"availability": "Available",
+							"reason": "",
+							"avgMs": 1.5201058387756348,
+							"worstMs": 2.1665999889373779,
+							"p99Ms": 2.1638829708099365,
+							"onePercentLowMs": 2.1665999889373779,
+							"sampleCount": 20,
+							"outlierCount": 3
+						}
+					}
+				}
+			],
+			"aggregate":
+			{
+				"frame":
+				{
+					"availability": "Available",
+					"reason": "",
+					"avgMs": 2.0154128074645996,
+					"worstMs": 3.7841014862060547,
+					"p99Ms": 3.7611303329467773,
+					"onePercentLowMs": 3.7841014862060547,
+					"sampleCount": 20,
+					"outlierCount": 4
+				},
+				"gameThread":
+				{
+					"availability": "Available",
+					"reason": "",
+					"avgMs": 1.0431176424026489,
+					"worstMs": 2.0871999263763428,
+					"p99Ms": 2.0595550537109375,
+					"onePercentLowMs": 2.0871999263763428,
+					"sampleCount": 20,
+					"outlierCount": 3
+				},
+				"renderThread":
+				{
+					"availability": "Available",
+					"reason": "",
+					"avgMs": 2.2041158676147461,
+					"worstMs": 4.2016000747680664,
+					"p99Ms": 4.1206412315368652,
+					"onePercentLowMs": 4.2016000747680664,
+					"sampleCount": 20,
+					"outlierCount": 1
+				},
+				"rhiThread":
+				{
+					"availability": "Available",
+					"reason": "",
+					"avgMs": 0.87711578607559204,
+					"worstMs": 1.6500999927520752,
+					"p99Ms": 1.6063050031661987,
+					"onePercentLowMs": 1.6500999927520752,
+					"sampleCount": 20,
+					"outlierCount": 1
+				},
+				"gpu":
+				{
+					"availability": "Available",
+					"reason": "",
+					"avgMs": 1.5201058387756348,
+					"worstMs": 2.1665999889373779,
+					"p99Ms": 2.1638829708099365,
+					"onePercentLowMs": 2.1665999889373779,
+					"sampleCount": 20,
+					"outlierCount": 3
+				}
+			},
+			"confidence":
+			{
+				"rating": "Medium",
+				"reasons": [
+					"HighVariance"
+				]
+			},
+			"actorCensus": [
+				{
+					"objectPath": "/CkTests/TestGyms/TestGyms_CkTests_Level.TestGyms_CkTests_Level:PersistentLevel.AbstractNavData-Default",
+					"className": "AbstractNavData",
+					"distanceCm": 3192.412841796875,
+					"inViewYaws": [],
+					"costProxies":
+					{
+						"triangleCount": 0,
+						"materialSlotCount": 0,
+						"lightCount": 0,
+						"niagaraComponentCount": 0,
+						"tickEnabled": true,
+						"castsDynamicShadow": false,
+						"hasCollision": false
+					}
+				},
+				{
+					"objectPath": "/CkTests/TestGyms/TestGyms_CkTests_Level.TestGyms_CkTests_Level:PersistentLevel.Ck_EcsWorld_Actor_UE_0",
+					"className": "Ck_EcsWorld_Actor_UE",
+					"distanceCm": 3192.412841796875,
+					"inViewYaws": [],
+					"costProxies":
+					{
+						"triangleCount": 0,
+						"materialSlotCount": 0,
+						"lightCount": 0,
+						"niagaraComponentCount": 0,
+						"tickEnabled": true,
+						"castsDynamicShadow": false,
+						"hasCollision": false
+					}
+				},
+				{
+					"objectPath": "/CkTests/TestGyms/TestGyms_CkTests_Level.TestGyms_CkTests_Level:PersistentLevel.Ck_EcsWorld_Actor_UE_1",
+					"className": "Ck_EcsWorld_Actor_UE",
+					"distanceCm": 3192.412841796875,
+					"inViewYaws": [],
+					"costProxies":
+					{
+						"triangleCount": 0,
+						"materialSlotCount": 0,
+						"lightCount": 0,
+						"niagaraComponentCount": 0,
+						"tickEnabled": true,
+						"castsDynamicShadow": false,
+						"hasCollision": false
+					}
+				},
+				{
+					"objectPath": "/CkTests/TestGyms/TestGyms_CkTests_Level.TestGyms_CkTests_Level:PersistentLevel.CkGym_ControlPanelHUD_0",
+					"className": "CkGym_ControlPanelHUD",
+					"distanceCm": 3192.412841796875,
+					"inViewYaws": [],
+					"costProxies":
+					{
+						"triangleCount": 0,
+						"materialSlotCount": 0,
+						"lightCount": 0,
+						"niagaraComponentCount": 0,
+						"tickEnabled": true,
+						"castsDynamicShadow": false,
+						"hasCollision": false
+					}
+				},
+				{
+					"objectPath": "/CkTests/TestGyms/TestGyms_CkTests_Level.TestGyms_CkTests_Level:PersistentLevel.GameplayDebuggerPlayerManager_0",
+					"className": "GameplayDebuggerPlayerManager",
+					"distanceCm": 3192.412841796875,
+					"inViewYaws": [],
+					"costProxies":
+					{
+						"triangleCount": 0,
+						"materialSlotCount": 0,
+						"lightCount": 0,
+						"niagaraComponentCount": 0,
+						"tickEnabled": true,
+						"castsDynamicShadow": false,
+						"hasCollision": false
+					}
+				},
+				{
+					"objectPath": "/CkTests/TestGyms/TestGyms_CkTests_Level.TestGyms_CkTests_Level:PersistentLevel.RecastNavMesh-Default",
+					"className": "RecastNavMesh",
+					"distanceCm": 3192.412841796875,
+					"inViewYaws": [],
+					"costProxies":
+					{
+						"triangleCount": 0,
+						"materialSlotCount": 0,
+						"lightCount": 0,
+						"niagaraComponentCount": 0,
+						"tickEnabled": true,
+						"castsDynamicShadow": false,
+						"hasCollision": false
+					}
+				},
+				{
+					"objectPath": "/CkTests/TestGyms/TestGyms_CkTests_Level.TestGyms_CkTests_Level:PersistentLevel.StaticMeshActor_2",
+					"className": "StaticMeshActor",
+					"distanceCm": 3192.412841796875,
+					"inViewYaws": [],
+					"costProxies":
+					{
+						"triangleCount": 3968,
+						"materialSlotCount": 1,
+						"lightCount": 0,
+						"niagaraComponentCount": 0,
+						"tickEnabled": false,
+						"castsDynamicShadow": true,
+						"hasCollision": false
+					}
+				},
+				{
+					"objectPath": "/CkTests/TestGyms/TestGyms_CkTests_Level.TestGyms_CkTests_Level:PersistentLevel.Ck_Gym_Base_Pawn_0",
+					"className": "Ck_Gym_Base_Pawn",
+					"distanceCm": 3281.122314453125,
+					"inViewYaws": [],
+					"costProxies":
+					{
+						"triangleCount": 528,
+						"materialSlotCount": 1,
+						"lightCount": 0,
+						"niagaraComponentCount": 0,
+						"tickEnabled": true,
+						"castsDynamicShadow": true,
+						"hasCollision": true
+					}
+				},
+				{
+					"objectPath": "/CkTests/TestGyms/TestGyms_CkTests_Level.TestGyms_CkTests_Level:PersistentLevel.Ck_Gym_Base_PlayerController_0",
+					"className": "Ck_Gym_Base_PlayerController",
+					"distanceCm": 3281.122314453125,
+					"inViewYaws": [],
+					"costProxies":
+					{
+						"triangleCount": 0,
+						"materialSlotCount": 0,
+						"lightCount": 0,
+						"niagaraComponentCount": 0,
+						"tickEnabled": true,
+						"castsDynamicShadow": false,
+						"hasCollision": false
+					}
+				},
+				{
+					"objectPath": "/CkTests/TestGyms/TestGyms_CkTests_Level.TestGyms_CkTests_Level:PersistentLevel.DirectionalLight_0",
+					"className": "DirectionalLight",
+					"distanceCm": 3579.3154296875,
+					"inViewYaws": [],
+					"costProxies":
+					{
+						"triangleCount": 0,
+						"materialSlotCount": 0,
+						"lightCount": 1,
+						"niagaraComponentCount": 0,
+						"tickEnabled": false,
+						"castsDynamicShadow": false,
+						"hasCollision": false
+					}
+				},
+				{
+					"objectPath": "/CkTests/TestGyms/TestGyms_CkTests_Level.TestGyms_CkTests_Level:PersistentLevel.SkyAtmosphere_0",
+					"className": "SkyAtmosphere",
+					"distanceCm": 3676.479248046875,
+					"inViewYaws": [],
+					"costProxies":
+					{
+						"triangleCount": 0,
+						"materialSlotCount": 0,
+						"lightCount": 0,
+						"niagaraComponentCount": 0,
+						"tickEnabled": true,
+						"castsDynamicShadow": false,
+						"hasCollision": false
+					}
+				},
+				{
+					"objectPath": "/CkTests/TestGyms/TestGyms_CkTests_Level.TestGyms_CkTests_Level:PersistentLevel.VolumetricCloud_0",
+					"className": "VolumetricCloud",
+					"distanceCm": 3871.239990234375,
+					"inViewYaws": [],
+					"costProxies":
+					{
+						"triangleCount": 0,
+						"materialSlotCount": 0,
+						"lightCount": 0,
+						"niagaraComponentCount": 0,
+						"tickEnabled": true,
+						"castsDynamicShadow": false,
+						"hasCollision": false
+					}
+				}
+			]
+		},
+		{
+			"positionId": "p_05a8e971",
+			"eyeHeightCm": 160,
+			"revisited": false,
+			"location":
+			{
+				"x": -1615.625,
+				"y": 2416.796875,
+				"z": -3075
+			},
+			"directions": [
+				{
+					"yawDegrees": 257,
+					"pitchDegrees": 0,
+					"metrics":
+					{
+						"frame":
+						{
+							"availability": "Available",
+							"reason": "",
+							"avgMs": 2.1540665626525879,
+							"worstMs": 3.2973997592926025,
+							"p99Ms": 3.2567024230957031,
+							"onePercentLowMs": 3.2973997592926025,
+							"sampleCount": 20,
+							"outlierCount": 2
+						},
+						"gameThread":
+						{
+							"availability": "Available",
+							"reason": "",
+							"avgMs": 1.0403895378112793,
+							"worstMs": 1.3731000423431396,
+							"p99Ms": 1.3416740894317627,
+							"onePercentLowMs": 1.3731000423431396,
+							"sampleCount": 20,
+							"outlierCount": 1
+						},
+						"renderThread":
+						{
+							"availability": "Available",
+							"reason": "",
+							"avgMs": 2.1050777435302734,
+							"worstMs": 3.7302000522613525,
+							"p99Ms": 3.6899771690368652,
+							"onePercentLowMs": 3.7302000522613525,
+							"sampleCount": 20,
+							"outlierCount": 2
+						},
+						"rhiThread":
+						{
+							"availability": "Available",
+							"reason": "",
+							"avgMs": 0.64025884866714478,
+							"worstMs": 1.2184000015258789,
+							"p99Ms": 1.2007490396499634,
+							"onePercentLowMs": 1.2184000015258789,
+							"sampleCount": 20,
+							"outlierCount": 3
+						},
+						"gpu":
+						{
+							"availability": "Available",
+							"reason": "",
+							"avgMs": 1.4729561805725098,
+							"worstMs": 2.1531000137329102,
+							"p99Ms": 2.1328270435333252,
+							"onePercentLowMs": 2.1531000137329102,
+							"sampleCount": 20,
+							"outlierCount": 4
+						}
+					}
+				},
+				{
+					"yawDegrees": 77,
+					"pitchDegrees": 0,
+					"metrics":
+					{
+						"frame":
+						{
+							"availability": "Available",
+							"reason": "",
+							"avgMs": 2.2904422283172607,
+							"worstMs": 3.4618005752563477,
+							"p99Ms": 3.4096453189849854,
+							"onePercentLowMs": 3.4618005752563477,
+							"sampleCount": 20,
+							"outlierCount": 1
+						},
+						"gameThread":
+						{
+							"availability": "Available",
+							"reason": "",
+							"avgMs": 1.1040467023849487,
+							"worstMs": 2.051300048828125,
+							"p99Ms": 2.0457141399383545,
+							"onePercentLowMs": 2.051300048828125,
+							"sampleCount": 20,
+							"outlierCount": 5
+						},
+						"renderThread":
+						{
+							"availability": "Available",
+							"reason": "",
+							"avgMs": 2.3344850540161133,
+							"worstMs": 4.1935000419616699,
+							"p99Ms": 4.0652122497558594,
+							"onePercentLowMs": 4.1935000419616699,
+							"sampleCount": 20,
+							"outlierCount": 0
+						},
+						"rhiThread":
+						{
+							"availability": "Available",
+							"reason": "",
+							"avgMs": 0.66272503137588501,
+							"worstMs": 1.6684999465942383,
+							"p99Ms": 1.554271936416626,
+							"onePercentLowMs": 1.6684999465942383,
+							"sampleCount": 20,
+							"outlierCount": 4
+						},
+						"gpu":
+						{
+							"availability": "Available",
+							"reason": "",
+							"avgMs": 1.5060286521911621,
+							"worstMs": 2.1670999526977539,
+							"p99Ms": 2.1654849052429199,
+							"onePercentLowMs": 2.1670999526977539,
+							"sampleCount": 20,
+							"outlierCount": 6
+						}
+					}
+				}
+			],
+			"aggregate":
+			{
+				"frame":
+				{
+					"availability": "Available",
+					"reason": "",
+					"avgMs": 2.2904422283172607,
+					"worstMs": 3.4618005752563477,
+					"p99Ms": 3.4096453189849854,
+					"onePercentLowMs": 3.4618005752563477,
+					"sampleCount": 20,
+					"outlierCount": 1
+				},
+				"gameThread":
+				{
+					"availability": "Available",
+					"reason": "",
+					"avgMs": 1.1040467023849487,
+					"worstMs": 2.051300048828125,
+					"p99Ms": 2.0457141399383545,
+					"onePercentLowMs": 2.051300048828125,
+					"sampleCount": 20,
+					"outlierCount": 5
+				},
+				"renderThread":
+				{
+					"availability": "Available",
+					"reason": "",
+					"avgMs": 2.3344850540161133,
+					"worstMs": 4.1935000419616699,
+					"p99Ms": 4.0652122497558594,
+					"onePercentLowMs": 4.1935000419616699,
+					"sampleCount": 20,
+					"outlierCount": 0
+				},
+				"rhiThread":
+				{
+					"availability": "Available",
+					"reason": "",
+					"avgMs": 0.66272503137588501,
+					"worstMs": 1.6684999465942383,
+					"p99Ms": 1.554271936416626,
+					"onePercentLowMs": 1.6684999465942383,
+					"sampleCount": 20,
+					"outlierCount": 4
+				},
+				"gpu":
+				{
+					"availability": "Available",
+					"reason": "",
+					"avgMs": 1.5060286521911621,
+					"worstMs": 2.1670999526977539,
+					"p99Ms": 2.1654849052429199,
+					"onePercentLowMs": 2.1670999526977539,
+					"sampleCount": 20,
+					"outlierCount": 6
+				}
+			},
+			"confidence":
+			{
+				"rating": "High",
+				"reasons": []
+			},
+			"actorCensus": [
+				{
+					"objectPath": "/CkTests/TestGyms/TestGyms_CkTests_Level.TestGyms_CkTests_Level:PersistentLevel.AbstractNavData-Default",
+					"className": "AbstractNavData",
+					"distanceCm": 4231.64013671875,
+					"inViewYaws": [],
+					"costProxies":
+					{
+						"triangleCount": 0,
+						"materialSlotCount": 0,
+						"lightCount": 0,
+						"niagaraComponentCount": 0,
+						"tickEnabled": true,
+						"castsDynamicShadow": false,
+						"hasCollision": false
+					}
+				},
+				{
+					"objectPath": "/CkTests/TestGyms/TestGyms_CkTests_Level.TestGyms_CkTests_Level:PersistentLevel.Ck_EcsWorld_Actor_UE_0",
+					"className": "Ck_EcsWorld_Actor_UE",
+					"distanceCm": 4231.64013671875,
+					"inViewYaws": [],
+					"costProxies":
+					{
+						"triangleCount": 0,
+						"materialSlotCount": 0,
+						"lightCount": 0,
+						"niagaraComponentCount": 0,
+						"tickEnabled": true,
+						"castsDynamicShadow": false,
+						"hasCollision": false
+					}
+				},
+				{
+					"objectPath": "/CkTests/TestGyms/TestGyms_CkTests_Level.TestGyms_CkTests_Level:PersistentLevel.Ck_EcsWorld_Actor_UE_1",
+					"className": "Ck_EcsWorld_Actor_UE",
+					"distanceCm": 4231.64013671875,
+					"inViewYaws": [],
+					"costProxies":
+					{
+						"triangleCount": 0,
+						"materialSlotCount": 0,
+						"lightCount": 0,
+						"niagaraComponentCount": 0,
+						"tickEnabled": true,
+						"castsDynamicShadow": false,
+						"hasCollision": false
+					}
+				},
+				{
+					"objectPath": "/CkTests/TestGyms/TestGyms_CkTests_Level.TestGyms_CkTests_Level:PersistentLevel.CkGym_ControlPanelHUD_0",
+					"className": "CkGym_ControlPanelHUD",
+					"distanceCm": 4231.64013671875,
+					"inViewYaws": [],
+					"costProxies":
+					{
+						"triangleCount": 0,
+						"materialSlotCount": 0,
+						"lightCount": 0,
+						"niagaraComponentCount": 0,
+						"tickEnabled": true,
+						"castsDynamicShadow": false,
+						"hasCollision": false
+					}
+				},
+				{
+					"objectPath": "/CkTests/TestGyms/TestGyms_CkTests_Level.TestGyms_CkTests_Level:PersistentLevel.GameplayDebuggerPlayerManager_0",
+					"className": "GameplayDebuggerPlayerManager",
+					"distanceCm": 4231.64013671875,
+					"inViewYaws": [],
+					"costProxies":
+					{
+						"triangleCount": 0,
+						"materialSlotCount": 0,
+						"lightCount": 0,
+						"niagaraComponentCount": 0,
+						"tickEnabled": true,
+						"castsDynamicShadow": false,
+						"hasCollision": false
+					}
+				},
+				{
+					"objectPath": "/CkTests/TestGyms/TestGyms_CkTests_Level.TestGyms_CkTests_Level:PersistentLevel.RecastNavMesh-Default",
+					"className": "RecastNavMesh",
+					"distanceCm": 4231.64013671875,
+					"inViewYaws": [],
+					"costProxies":
+					{
+						"triangleCount": 0,
+						"materialSlotCount": 0,
+						"lightCount": 0,
+						"niagaraComponentCount": 0,
+						"tickEnabled": true,
+						"castsDynamicShadow": false,
+						"hasCollision": false
+					}
+				},
+				{
+					"objectPath": "/CkTests/TestGyms/TestGyms_CkTests_Level.TestGyms_CkTests_Level:PersistentLevel.StaticMeshActor_2",
+					"className": "StaticMeshActor",
+					"distanceCm": 4231.64013671875,
+					"inViewYaws": [],
+					"costProxies":
+					{
+						"triangleCount": 3968,
+						"materialSlotCount": 1,
+						"lightCount": 0,
+						"niagaraComponentCount": 0,
+						"tickEnabled": false,
+						"castsDynamicShadow": true,
+						"hasCollision": false
+					}
+				},
+				{
+					"objectPath": "/CkTests/TestGyms/TestGyms_CkTests_Level.TestGyms_CkTests_Level:PersistentLevel.Ck_Gym_Base_Pawn_0",
+					"className": "Ck_Gym_Base_Pawn",
+					"distanceCm": 4298.9580078125,
+					"inViewYaws": [],
+					"costProxies":
+					{
+						"triangleCount": 528,
+						"materialSlotCount": 1,
+						"lightCount": 0,
+						"niagaraComponentCount": 0,
+						"tickEnabled": true,
+						"castsDynamicShadow": true,
+						"hasCollision": true
+					}
+				},
+				{
+					"objectPath": "/CkTests/TestGyms/TestGyms_CkTests_Level.TestGyms_CkTests_Level:PersistentLevel.Ck_Gym_Base_PlayerController_0",
+					"className": "Ck_Gym_Base_PlayerController",
+					"distanceCm": 4298.9580078125,
+					"inViewYaws": [],
+					"costProxies":
+					{
+						"triangleCount": 0,
+						"materialSlotCount": 0,
+						"lightCount": 0,
+						"niagaraComponentCount": 0,
+						"tickEnabled": true,
+						"castsDynamicShadow": false,
+						"hasCollision": false
+					}
+				},
+				{
+					"objectPath": "/CkTests/TestGyms/TestGyms_CkTests_Level.TestGyms_CkTests_Level:PersistentLevel.DirectionalLight_0",
+					"className": "DirectionalLight",
+					"distanceCm": 4530.6484375,
+					"inViewYaws": [],
+					"costProxies":
+					{
+						"triangleCount": 0,
+						"materialSlotCount": 0,
+						"lightCount": 1,
+						"niagaraComponentCount": 0,
+						"tickEnabled": false,
+						"castsDynamicShadow": false,
+						"hasCollision": false
+					}
+				},
+				{
+					"objectPath": "/CkTests/TestGyms/TestGyms_CkTests_Level.TestGyms_CkTests_Level:PersistentLevel.SkyAtmosphere_0",
+					"className": "SkyAtmosphere",
+					"distanceCm": 4607.794921875,
+					"inViewYaws": [],
+					"costProxies":
+					{
+						"triangleCount": 0,
+						"materialSlotCount": 0,
+						"lightCount": 0,
+						"niagaraComponentCount": 0,
+						"tickEnabled": true,
+						"castsDynamicShadow": false,
+						"hasCollision": false
+					}
+				},
+				{
+					"objectPath": "/CkTests/TestGyms/TestGyms_CkTests_Level.TestGyms_CkTests_Level:PersistentLevel.VolumetricCloud_0",
+					"className": "VolumetricCloud",
+					"distanceCm": 4764.63818359375,
+					"inViewYaws": [],
+					"costProxies":
+					{
+						"triangleCount": 0,
+						"materialSlotCount": 0,
+						"lightCount": 0,
+						"niagaraComponentCount": 0,
+						"tickEnabled": true,
+						"castsDynamicShadow": false,
+						"hasCollision": false
+					}
+				}
+			]
+		},
+		{
+			"positionId": "p_0e5b5aa7",
+			"eyeHeightCm": 160,
+			"revisited": false,
+			"location":
+			{
+				"x": -1909.375,
+				"y": 1430.078125,
+				"z": -3075
+			},
+			"directions": [
+				{
+					"yawDegrees": 257,
+					"pitchDegrees": 0,
+					"metrics":
+					{
+						"frame":
+						{
+							"availability": "Available",
+							"reason": "",
+							"avgMs": 2.1856527328491211,
+							"worstMs": 3.2263994216918945,
+							"p99Ms": 3.1653716564178467,
+							"onePercentLowMs": 3.2263994216918945,
+							"sampleCount": 20,
+							"outlierCount": 1
+						},
+						"gameThread":
+						{
+							"availability": "Available",
+							"reason": "",
+							"avgMs": 1.0442235469818115,
+							"worstMs": 1.5275000333786011,
+							"p99Ms": 1.5116159915924072,
+							"onePercentLowMs": 1.5275000333786011,
+							"sampleCount": 20,
+							"outlierCount": 3
+						},
+						"renderThread":
+						{
+							"availability": "Available",
+							"reason": "",
+							"avgMs": 2.1167631149291992,
+							"worstMs": 3.263200044631958,
+							"p99Ms": 3.2043759822845459,
+							"onePercentLowMs": 3.263200044631958,
+							"sampleCount": 20,
+							"outlierCount": 1
+						},
+						"rhiThread":
+						{
+							"availability": "Available",
+							"reason": "",
+							"avgMs": 0.62844115495681763,
+							"worstMs": 1.5507999658584595,
+							"p99Ms": 1.49788498878479,
+							"onePercentLowMs": 1.5507999658584595,
+							"sampleCount": 20,
+							"outlierCount": 3
+						},
+						"gpu":
+						{
+							"availability": "Available",
+							"reason": "",
+							"avgMs": 1.4718937873840332,
+							"worstMs": 2.1607000827789307,
+							"p99Ms": 2.1542401313781738,
+							"onePercentLowMs": 2.1607000827789307,
+							"sampleCount": 20,
+							"outlierCount": 4
+						}
+					}
+				},
+				{
+					"yawDegrees": 77,
+					"pitchDegrees": 0,
+					"metrics":
+					{
+						"frame":
+						{
+							"availability": "Available",
+							"reason": "",
+							"avgMs": 1.9595625400543213,
+							"worstMs": 3.4518985748291016,
+							"p99Ms": 3.3756706714630127,
+							"onePercentLowMs": 3.4518985748291016,
+							"sampleCount": 20,
+							"outlierCount": 4
+						},
+						"gameThread":
+						{
+							"availability": "Available",
+							"reason": "",
+							"avgMs": 1.0891499519348145,
+							"worstMs": 1.2300000190734863,
+							"p99Ms": 1.2243000268936157,
+							"onePercentLowMs": 1.2300000190734863,
+							"sampleCount": 20,
+							"outlierCount": 0
+						},
+						"renderThread":
+						{
+							"availability": "Available",
+							"reason": "",
+							"avgMs": 2.0013890266418457,
+							"worstMs": 4.8336000442504883,
+							"p99Ms": 4.4809408187866211,
+							"onePercentLowMs": 4.8336000442504883,
+							"sampleCount": 20,
+							"outlierCount": 2
+						},
+						"rhiThread":
+						{
+							"availability": "Available",
+							"reason": "",
+							"avgMs": 0.62253749370574951,
+							"worstMs": 1.0342999696731567,
+							"p99Ms": 1.0276309251785278,
+							"onePercentLowMs": 1.0342999696731567,
+							"sampleCount": 20,
+							"outlierCount": 4
+						},
+						"gpu":
+						{
+							"availability": "Available",
+							"reason": "",
+							"avgMs": 1.4960293769836426,
+							"worstMs": 2.1587998867034912,
+							"p99Ms": 2.1560258865356445,
+							"onePercentLowMs": 2.1587998867034912,
+							"sampleCount": 20,
+							"outlierCount": 3
+						}
+					}
+				}
+			],
+			"aggregate":
+			{
+				"frame":
+				{
+					"availability": "Available",
+					"reason": "",
+					"avgMs": 1.9595625400543213,
+					"worstMs": 3.4518985748291016,
+					"p99Ms": 3.3756706714630127,
+					"onePercentLowMs": 3.4518985748291016,
+					"sampleCount": 20,
+					"outlierCount": 4
+				},
+				"gameThread":
+				{
+					"availability": "Available",
+					"reason": "",
+					"avgMs": 1.0891499519348145,
+					"worstMs": 1.2300000190734863,
+					"p99Ms": 1.2243000268936157,
+					"onePercentLowMs": 1.2300000190734863,
+					"sampleCount": 20,
+					"outlierCount": 0
+				},
+				"renderThread":
+				{
+					"availability": "Available",
+					"reason": "",
+					"avgMs": 2.0013890266418457,
+					"worstMs": 4.8336000442504883,
+					"p99Ms": 4.4809408187866211,
+					"onePercentLowMs": 4.8336000442504883,
+					"sampleCount": 20,
+					"outlierCount": 2
+				},
+				"rhiThread":
+				{
+					"availability": "Available",
+					"reason": "",
+					"avgMs": 0.62253749370574951,
+					"worstMs": 1.0342999696731567,
+					"p99Ms": 1.0276309251785278,
+					"onePercentLowMs": 1.0342999696731567,
+					"sampleCount": 20,
+					"outlierCount": 4
+				},
+				"gpu":
+				{
+					"availability": "Available",
+					"reason": "",
+					"avgMs": 1.4960293769836426,
+					"worstMs": 2.1587998867034912,
+					"p99Ms": 2.1560258865356445,
+					"onePercentLowMs": 2.1587998867034912,
+					"sampleCount": 20,
+					"outlierCount": 3
+				}
+			},
+			"confidence":
+			{
+				"rating": "High",
+				"reasons": []
+			},
+			"actorCensus": [
+				{
+					"objectPath": "/CkTests/TestGyms/TestGyms_CkTests_Level.TestGyms_CkTests_Level:PersistentLevel.AbstractNavData-Default",
+					"className": "AbstractNavData",
+					"distanceCm": 3891.845458984375,
+					"inViewYaws": [],
+					"costProxies":
+					{
+						"triangleCount": 0,
+						"materialSlotCount": 0,
+						"lightCount": 0,
+						"niagaraComponentCount": 0,
+						"tickEnabled": true,
+						"castsDynamicShadow": false,
+						"hasCollision": false
+					}
+				},
+				{
+					"objectPath": "/CkTests/TestGyms/TestGyms_CkTests_Level.TestGyms_CkTests_Level:PersistentLevel.Ck_EcsWorld_Actor_UE_0",
+					"className": "Ck_EcsWorld_Actor_UE",
+					"distanceCm": 3891.845458984375,
+					"inViewYaws": [],
+					"costProxies":
+					{
+						"triangleCount": 0,
+						"materialSlotCount": 0,
+						"lightCount": 0,
+						"niagaraComponentCount": 0,
+						"tickEnabled": true,
+						"castsDynamicShadow": false,
+						"hasCollision": false
+					}
+				},
+				{
+					"objectPath": "/CkTests/TestGyms/TestGyms_CkTests_Level.TestGyms_CkTests_Level:PersistentLevel.Ck_EcsWorld_Actor_UE_1",
+					"className": "Ck_EcsWorld_Actor_UE",
+					"distanceCm": 3891.845458984375,
+					"inViewYaws": [],
+					"costProxies":
+					{
+						"triangleCount": 0,
+						"materialSlotCount": 0,
+						"lightCount": 0,
+						"niagaraComponentCount": 0,
+						"tickEnabled": true,
+						"castsDynamicShadow": false,
+						"hasCollision": false
+					}
+				},
+				{
+					"objectPath": "/CkTests/TestGyms/TestGyms_CkTests_Level.TestGyms_CkTests_Level:PersistentLevel.CkGym_ControlPanelHUD_0",
+					"className": "CkGym_ControlPanelHUD",
+					"distanceCm": 3891.845458984375,
+					"inViewYaws": [],
+					"costProxies":
+					{
+						"triangleCount": 0,
+						"materialSlotCount": 0,
+						"lightCount": 0,
+						"niagaraComponentCount": 0,
+						"tickEnabled": true,
+						"castsDynamicShadow": false,
+						"hasCollision": false
+					}
+				},
+				{
+					"objectPath": "/CkTests/TestGyms/TestGyms_CkTests_Level.TestGyms_CkTests_Level:PersistentLevel.GameplayDebuggerPlayerManager_0",
+					"className": "GameplayDebuggerPlayerManager",
+					"distanceCm": 3891.845458984375,
+					"inViewYaws": [],
+					"costProxies":
+					{
+						"triangleCount": 0,
+						"materialSlotCount": 0,
+						"lightCount": 0,
+						"niagaraComponentCount": 0,
+						"tickEnabled": true,
+						"castsDynamicShadow": false,
+						"hasCollision": false
+					}
+				},
+				{
+					"objectPath": "/CkTests/TestGyms/TestGyms_CkTests_Level.TestGyms_CkTests_Level:PersistentLevel.RecastNavMesh-Default",
+					"className": "RecastNavMesh",
+					"distanceCm": 3891.845458984375,
+					"inViewYaws": [],
+					"costProxies":
+					{
+						"triangleCount": 0,
+						"materialSlotCount": 0,
+						"lightCount": 0,
+						"niagaraComponentCount": 0,
+						"tickEnabled": true,
+						"castsDynamicShadow": false,
+						"hasCollision": false
+					}
+				},
+				{
+					"objectPath": "/CkTests/TestGyms/TestGyms_CkTests_Level.TestGyms_CkTests_Level:PersistentLevel.StaticMeshActor_2",
+					"className": "StaticMeshActor",
+					"distanceCm": 3891.845458984375,
+					"inViewYaws": [],
+					"costProxies":
+					{
+						"triangleCount": 3968,
+						"materialSlotCount": 1,
+						"lightCount": 0,
+						"niagaraComponentCount": 0,
+						"tickEnabled": false,
+						"castsDynamicShadow": true,
+						"hasCollision": false
+					}
+				},
+				{
+					"objectPath": "/CkTests/TestGyms/TestGyms_CkTests_Level.TestGyms_CkTests_Level:PersistentLevel.Ck_Gym_Base_Pawn_0",
+					"className": "Ck_Gym_Base_Pawn",
+					"distanceCm": 3964.93701171875,
+					"inViewYaws": [],
+					"costProxies":
+					{
+						"triangleCount": 528,
+						"materialSlotCount": 1,
+						"lightCount": 0,
+						"niagaraComponentCount": 0,
+						"tickEnabled": true,
+						"castsDynamicShadow": true,
+						"hasCollision": true
+					}
+				},
+				{
+					"objectPath": "/CkTests/TestGyms/TestGyms_CkTests_Level.TestGyms_CkTests_Level:PersistentLevel.Ck_Gym_Base_PlayerController_0",
+					"className": "Ck_Gym_Base_PlayerController",
+					"distanceCm": 3964.93701171875,
+					"inViewYaws": [],
+					"costProxies":
+					{
+						"triangleCount": 0,
+						"materialSlotCount": 0,
+						"lightCount": 0,
+						"niagaraComponentCount": 0,
+						"tickEnabled": true,
+						"castsDynamicShadow": false,
+						"hasCollision": false
+					}
+				},
+				{
+					"objectPath": "/CkTests/TestGyms/TestGyms_CkTests_Level.TestGyms_CkTests_Level:PersistentLevel.DirectionalLight_0",
+					"className": "DirectionalLight",
+					"distanceCm": 4215.02783203125,
+					"inViewYaws": [],
+					"costProxies":
+					{
+						"triangleCount": 0,
+						"materialSlotCount": 0,
+						"lightCount": 1,
+						"niagaraComponentCount": 0,
+						"tickEnabled": false,
+						"castsDynamicShadow": false,
+						"hasCollision": false
+					}
+				},
+				{
+					"objectPath": "/CkTests/TestGyms/TestGyms_CkTests_Level.TestGyms_CkTests_Level:PersistentLevel.SkyAtmosphere_0",
+					"className": "SkyAtmosphere",
+					"distanceCm": 4297.84375,
+					"inViewYaws": [],
+					"costProxies":
+					{
+						"triangleCount": 0,
+						"materialSlotCount": 0,
+						"lightCount": 0,
+						"niagaraComponentCount": 0,
+						"tickEnabled": true,
+						"castsDynamicShadow": false,
+						"hasCollision": false
+					}
+				},
+				{
+					"objectPath": "/CkTests/TestGyms/TestGyms_CkTests_Level.TestGyms_CkTests_Level:PersistentLevel.VolumetricCloud_0",
+					"className": "VolumetricCloud",
+					"distanceCm": 4465.58642578125,
+					"inViewYaws": [],
+					"costProxies":
+					{
+						"triangleCount": 0,
+						"materialSlotCount": 0,
+						"lightCount": 0,
+						"niagaraComponentCount": 0,
+						"tickEnabled": true,
+						"castsDynamicShadow": false,
+						"hasCollision": false
+					}
+				}
+			]
+		}
+	],
+	"analysis": null
+}

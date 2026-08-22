@@ -293,6 +293,58 @@ public:
 
 // --------------------------------------------------------------------------------------------------------------------
 
+/**
+ * Every position one rule fired at, collapsed into a single entry.
+ *
+ * A rule firing at twelve positions is ONE thing wrong with the level, not twelve — and a reader handed twelve
+ * near-identical blocks has to diff them by eye to discover they say the same thing. The group keeps what differs
+ * (which positions, and the worst measurement among them) and merges what does not.
+ */
+USTRUCT(BlueprintType)
+struct CKPERFLAB_API FCk_PerfLab_FindingGroup
+{
+    GENERATED_BODY()
+
+public:
+    CK_GENERATED_BODY(FCk_PerfLab_FindingGroup);
+
+private:
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, meta = (AllowPrivateAccess = true))
+    FString _CheckId;
+
+    /** The worst severity anywhere in the group — a rule that was Critical somewhere is a Critical problem. */
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, meta = (AllowPrivateAccess = true))
+    ECk_PerfLab_Severity _Severity = ECk_PerfLab_Severity::Minor;
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, meta = (AllowPrivateAccess = true))
+    TArray<FString> _PositionIds;
+
+    /** Evidence from the position that measured WORST. A range's midpoint would describe nowhere real. */
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, meta = (AllowPrivateAccess = true))
+    FCk_PerfLab_Evidence _WorstEvidence;
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, meta = (AllowPrivateAccess = true))
+    FString _WorstPositionId;
+
+    /** Contributors seen at any position in the group, deduplicated by object path and re-ranked by proximity. */
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, meta = (AllowPrivateAccess = true))
+    TArray<FCk_PerfLab_Contributor> _Contributors;
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, meta = (AllowPrivateAccess = true))
+    TArray<FCk_PerfLab_Recommendation> _Recommendations;
+
+public:
+    CK_PROPERTY(_CheckId);
+    CK_PROPERTY(_Severity);
+    CK_PROPERTY(_PositionIds);
+    CK_PROPERTY(_WorstEvidence);
+    CK_PROPERTY(_WorstPositionId);
+    CK_PROPERTY(_Contributors);
+    CK_PROPERTY(_Recommendations);
+};
+
+// --------------------------------------------------------------------------------------------------------------------
+
 namespace ck::perf_lab
 {
     /** The wording every contributor carries. Pinned by spec so nobody can soften it into a claim. */
@@ -315,6 +367,17 @@ namespace ck::perf_lab
     Compute_Score(
         const FCk_PerfLab_Session& InSession,
         float InBudgetMs) -> FCk_PerfLab_Score;
+
+    /**
+     * Findings collapsed by rule, worst first.
+     *
+     * Pure and separate from `Analyse_Session` on purpose: the ungrouped findings remain the record — they are what
+     * the exports and the compare view read — and this is a projection over them for a reader. Grouping inside the
+     * analysis would make the two disagree about how many findings there are.
+     */
+    CKPERFLAB_API auto
+    Group_Findings(
+        const FCk_PerfLab_Analysis& InAnalysis) -> TArray<FCk_PerfLab_FindingGroup>;
 }
 
 // --------------------------------------------------------------------------------------------------------------------

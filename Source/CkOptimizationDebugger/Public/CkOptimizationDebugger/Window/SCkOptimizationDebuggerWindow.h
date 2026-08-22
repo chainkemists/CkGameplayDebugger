@@ -22,6 +22,7 @@
 
 // --------------------------------------------------------------------------------------------------------------------
 
+class SCkPerfLabPage;
 class FCkInspectorEditGuard;
 class ITableRow;
 class SEditableTextBox;
@@ -172,6 +173,7 @@ private:
     auto DoCreate_ProfilingPage() -> TSharedRef<SWidget>;
     auto DoCreate_CleanupPage() -> TSharedRef<SWidget>;
     auto DoCreate_SnapshotsPage() -> TSharedRef<SWidget>;
+    auto DoCreate_PerformancePage() -> TSharedRef<SWidget>;
 
     auto DoCreate_CategoryFilters() -> TSharedRef<SWidget>;
     auto DoCreate_ScopeFilters() -> TSharedRef<SWidget>;
@@ -585,6 +587,7 @@ private:
     FCkOptimizationDebugger_Model _Model;
 
     TSharedPtr<SWidgetSwitcher> _PageSwitcher;
+    TSharedPtr<SCkPerfLabPage>  _PerfLabPage;
 
     TSharedPtr<SVerticalBox> _DashboardBox;
     TSharedPtr<SVerticalBox> _FindingDetailBox;

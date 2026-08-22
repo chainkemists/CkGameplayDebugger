@@ -292,6 +292,26 @@ auto
 
                 + SHorizontalBox::Slot()
                 .AutoWidth()
+                .Padding(0.0f, 0.0f, CkStyle::SpaceS, 0.0f)
+                [
+                    SNew(SButton)
+                    .Text_Lambda([this]() -> FText
+                    {
+                        return FText::FromString(_HeatmapEnabled ? TEXT("Heatmap: on") : TEXT("Heatmap: off"));
+                    })
+                    .ToolTipText(FText::FromString(TEXT(
+                        "Draws each measured position over the level viewport. Spawns nothing and modifies nothing; "
+                        "it will not draw at all if the selected session was measured against a different level.")))
+                    .IsEnabled_Lambda([this]() -> bool { return NOT _SelectedSessionId.IsEmpty(); })
+                    .OnClicked_Lambda([this]() -> FReply
+                    {
+                        DoToggle_Heatmap();
+                        return FReply::Handled();
+                    })
+                ]
+
+                + SHorizontalBox::Slot()
+                .AutoWidth()
                 [
                     SNew(SButton)
                     .Text_Lambda([this]() -> FText
@@ -442,6 +462,17 @@ auto
         DoBuild_ScoreCard()
     ];
 
+    if (NOT _ClickedPositionId.IsEmpty())
+    {
+        _ResultsBox->AddSlot()
+        .AutoHeight()
+        .Padding(0.0f, CkStyle::SpaceS, 0.0f, 0.0f)
+        [
+            SNew(STextBlock)
+            .Text(FText::FromString(FString::Printf(TEXT("Selected in viewport: %s"), *_ClickedPositionId)))
+        ];
+    }
+
     // "Measured clean" is a statement, not an absence. A level nobody scanned and a level with nothing wrong look
     // identical if the page only ever shows findings.
     if (_SelectedAnalysis.Get_MeasuredClean())
@@ -574,7 +605,75 @@ auto
         _SelectedAnalysis = ck::perf_lab::Analyse_Session(_SelectedSession, _BudgetMs);
     }
 
+    ck::perf_lab::heatmap::Set_SelectedPositionId(FString{});
+
+    DoPublish_Heatmap();
     DoBuild_Results();
+}
+
+auto
+    SCkPerfLabPage::
+    DoPublish_Heatmap()
+    -> void
+{
+    if (NOT _HeatmapEnabled || _SelectedSessionId.IsEmpty())
+    {
+        ck::perf_lab::heatmap::Clear();
+        return;
+    }
+
+    ck::perf_lab::heatmap::Publish(
+        ck::perf_lab::heatmap::Build_Snapshot(_SelectedSession, _SelectedAnalysis));
+}
+
+auto
+    SCkPerfLabPage::
+    DoToggle_Heatmap()
+    -> void
+{
+    _HeatmapEnabled = NOT _HeatmapEnabled;
+
+    DoPublish_Heatmap();
+
+    if (_HeatmapEnabled)
+    {
+        if (NOT _HeatmapTimer.IsValid())
+        {
+            _HeatmapTimer = RegisterActiveTimer(ck_perf_lab_page::k_PollIntervalSec,
+                FWidgetActiveTimerDelegate::CreateSP(this, &SCkPerfLabPage::DoPoll_Heatmap));
+        }
+    }
+    else if (_HeatmapTimer.IsValid())
+    {
+        UnRegisterActiveTimer(_HeatmapTimer.ToSharedRef());
+        _HeatmapTimer.Reset();
+    }
+}
+
+auto
+    SCkPerfLabPage::
+    DoPoll_Heatmap(
+        double InCurrentTime,
+        float InDeltaTime)
+    -> EActiveTimerReturnType
+{
+    if (NOT _HeatmapEnabled)
+    {
+        _HeatmapTimer.Reset();
+        return EActiveTimerReturnType::Stop;
+    }
+
+    // The EdMode pushes a clicked marker's id back through the slot; picking it up here is what makes a viewport
+    // click select the row, without either side holding a reference to the other.
+    const auto Clicked = ck::perf_lab::heatmap::Get_SelectedPositionId();
+
+    if (NOT Clicked.IsEmpty() && Clicked != _ClickedPositionId)
+    {
+        _ClickedPositionId = Clicked;
+        DoBuild_Results();
+    }
+
+    return EActiveTimerReturnType::Continue;
 }
 
 // --------------------------------------------------------------------------------------------------------------------

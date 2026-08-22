@@ -1,10 +1,11 @@
 # PerfLab — PROGRESS.md (living log)
 
 ## Current state  <!-- supersedes everything below; update at EVERY gate and session end -->
-**As of 2026-08-22.** Phases 0-6 DONE. Phases 7 (Performance page UI), 8 (heatmap EdMode) and
-9 (compare / exports / CI entry / close-out) NOT STARTED.
+**As of 2026-08-22.** Phases 0-8 DONE. Phase 9 (compare / exports / CI entry / close-out) NOT STARTED.
 
-**Gate of record:** `--test-pattern PerfLab` → **45/45 green, exit 0** (2026-08-22, final binary).
+**Gate of record:** `--test-pattern PerfLab` → **49/49 green, exit 0** (2026-08-22, final binary,
+after the heatmap specs). `--test-pattern OptimizationDebugger` → **76/76 green, exit 0** with the
+Performance page and the new Editor module in the build.
 **Full suite after the review pass:** **1254 / 1251 / 3** — the deterministic pair unchanged, plus
 one known unstable red. No regressions. (+10 vs the 1244 baseline = the new CkCore statistics specs;
 PerfLab's 45 are `Ck.*`-rooted and never appear in a no-pattern run.)
@@ -24,9 +25,12 @@ no-pattern `--test` run — always name the pattern.
 **Branches (local only, never pushed, no gitlink bumps):**
 CkGameplayDebugger `feature/perf-lab`, CkFoundation `feature/perf-lab`, CkTests `feature/perf-lab`.
 
-**Next action:** Phase 7 per [PHASE_7.md](PHASE_7.md) — the Performance page in
-`SCkOptimizationDebuggerWindow`, which also carries Phase 6's deferred check-family integration.
-**Blocked on:** nothing.
+**Next action:** Phase 9 per [PHASE_9.md](PHASE_9.md) — session compare, HTML/CSV/JSON exports with
+determinism specs, the `-run=CkPerfLabReport` CI commandlet, and campaign close-out.
+**Blocked on:** nothing — but **the compare view cannot ship until D-007's navmesh plan determinism
+defect is fixed** (navmesh-seeded planning draws from the global RNG rather than the request seed, so
+position ids are unstable run-to-run on any map with real navigation data, and compare matches BY
+position id). Fix it first, inside Phase 9.
 
 ## Decision log
 | Date | Decision | Why | Revisit when |
@@ -39,6 +43,46 @@ CkGameplayDebugger `feature/perf-lab`, CkFoundation `feature/perf-lab`, CkTests 
 | 2026-08-21 | Validation strategy: fixtures + budget-manipulation, no authored heavy content | Fable ruling, DECISIONS_PENDING_REVIEW D-003 | Downstream BusterBlock verify passes |
 
 ## Dated entries (append-only, newest first)
+
+### 2026-08-22 — Phases 7 and 8 landed (UI surface + viewport heatmap)
+
+**Phase 7 — the Performance page.** `SCkPerfLabPage` appended as a seventh page on
+`ECkOptimizationDebugger_Page` (the enum is index-ordered by the switcher, so append-only is a
+correctness constraint, not a style preference). The page owns map/budget/mode selection, Start /
+Cancel, live progress from the heartbeat file, the score with its eight disclosed components, the
+rule findings, contributors and recommendations. `CkOptimizationDebugger.Build.cs` gained
+`CkPerfLab`. Gate: `Ck.OptimizationDebugger` 76/76 unchanged — the page adds UI, not test surface.
+
+**Phase 8 — viewport heatmap.** New `CkOptimizationDebuggerEditor` module (the plugin's second
+Editor module; `CkSaveDebuggerEditor` is the precedent this one copies). `UCk_PerfLab_HeatmapEdMode`
+is a hidden auto-discovered `UBaseLegacyWidgetEdMode` that draws one ring per measured position and
+holds **no state of its own**: every `Render` pulls the immutable snapshot from
+`ck::perf_lab::heatmap`, and every click pushes a position id back through the same slot, so the mode
+cannot go stale and cannot outlive the window.
+
+Three encodings, deliberately redundant — colour from `ck::debug_axes::Get_HeatColor` (the suite-wide
+ramp, so this tool cannot drift from every other one), **shape** by severity band (3/4/16 sides) and
+**size** by over-budget multiple. Colour alone would exclude a deuteranopic reader from the whole
+feature; shape carries the same message without it. Size is clamped at 2.5x so one catastrophic
+position cannot paint over the rest of the level.
+
+Two refusals are the load-bearing part: the mode **draws nothing when the published session belongs
+to a different map** (markers placed from another level's coordinates would look exactly as
+authoritative as real ones), and **unmeasured positions produce no marker at all** — drawing them in
+the cool colour would claim a reading that does not exist, which is the zero-as-data mistake in
+visual form. Both are pinned by spec, not by inspection.
+
+Gate: `Ck.PerfLab` **45 → 49 green** (4 heatmap specs: ramp normalisation, the unmeasured refusal,
+the map/legend contract, slot round-trip and clear); `Ck.OptimizationDebugger` **76/76**, both exit 0
+on the final binary with the new module linked.
+
+*Build errors worth recording:* `CkDebugDraw_StreamerMode.h` does not exist — the streamer-mode
+predicate lives in `CkCore/Debug/CkDebugDraw_Utils.h`; and `ECk_Tone` needed
+`CkEditorTools/Style/CkStyle.h`, resolving the Phase 0 follow-up that could not locate it in
+`CkDebuggerAxes.h`.
+
+*Toolbox gotcha, cost one wasted run:* `--test-pattern PerfLab OptimizationDebugger` matches
+**nothing** — multiple tokens are ANDed, not ORed. Run one pattern per invocation.
 
 ### 2026-08-22 — Phases 3, 4, 5, 6 landed
 

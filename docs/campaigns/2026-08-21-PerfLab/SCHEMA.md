@@ -121,6 +121,13 @@ decodes), then **augmented host-side** with the `analysis` block by Phase 6. The
     "engineVersion": "5.6.0-angelscript",
     "perfLabVersion": "0.1.0",
     "statsEnabled": true,                  // STATS compiled in? affects nothing we read, but pin it
+    "childBinary": "CkPluginsEditor-Cmd.exe",  // which executable ran; Unique-build-env projects use their OWN
+    "viewportSizeActual": { "width": 1280, "height": 720 },  // ACTUAL backbuffer, not the requested -resx/-resy
+    "sourceControlDisabled": true,         // child must not init an SCC provider (this project ships GitSourceControl)
+    "shaderCompileActivity": {             // first-run-validity signal; feeds the confidence rating
+      "jobsDuringWarmSweep": 412,
+      "jobsDuringMeasurement": 0           // non-zero here degrades confidence — measured through a compile storm
+    },
     "forcedCvars": {                       // honesty: the run states its own conditions
       "r.VSync": "0",
       "t.MaxFPS": "0",

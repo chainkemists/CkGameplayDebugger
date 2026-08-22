@@ -18,10 +18,19 @@
 
 namespace ck_perf_lab_survey
 {
-    // How many navmesh samples to ask for. Generous relative to any sane position budget, because
-    // the planner decimates and content-weights them afterwards; the cost of an unused sample is a
-    // vector, and the cost of too few is a level measured only where the sampler happened to land.
-    constexpr auto k_NavmeshSampleCount = 512;
+    // Navmesh candidates come from projecting a fixed lattice onto the navigation data, never from
+    // random sampling. Two sessions of an unchanged map must produce the same position ids, because
+    // compare matches BY position id — a sampler that lands differently each run silently turns
+    // "this position regressed" into "these are different positions", which is worse than no compare
+    // at all. A lattice is also better coverage than random sampling at equal cost: random points
+    // clump and leave holes.
+    constexpr auto k_NavmeshLatticeCellsPerAxis = 24;
+
+    // Vertical reach of the projection query. Generous on Z so a lattice point hovering over a floor
+    // or buried under a ramp still finds the surface beneath it, tight on XY so a point does not
+    // snap sideways into a different room and misrepresent where it was asked about.
+    constexpr auto k_NavmeshProjectExtentXYCm = 150.0f;
+    constexpr auto k_NavmeshProjectExtentZCm  = 2000.0f;
 
     // Triangle counts dominate the ranking if taken raw — a single dense mesh would outrank a room
     // full of lights and particles. Scaling them down keeps the axes comparable without pretending
@@ -32,6 +41,73 @@ namespace ck_perf_lab_survey
     constexpr auto k_WeightPerEffect        = 6.0f;
     constexpr auto k_WeightPerTickingActor  = 1.0f;
     constexpr auto k_WeightPerShadowCaster  = 2.0f;
+
+    /**
+     * Walks a fixed lattice over the level's XY footprint and keeps every cell centre that projects
+     * onto navigation data. The result depends only on the world bounds and the navmesh itself, so
+     * an unchanged map yields an identical point set on every run — which is the whole contract that
+     * makes position ids, and therefore session compare, mean anything.
+     *
+     * Projected points are deduplicated: neighbouring lattice cells over a flat floor frequently
+     * snap to the same navmesh vertex, and a duplicate would bias the planner's ranking toward that
+     * spot for no reason other than lattice spacing.
+     */
+    auto
+        Project_LatticeOntoNavmesh(
+            const UNavigationSystemV1& InNavSystem,
+            const FBox& InBounds)
+        -> TArray<FVector>
+    {
+        const auto Min    = InBounds.Min;
+        const auto Size   = InBounds.GetSize();
+        const auto Centre = InBounds.GetCenter();
+        const auto Extent = FVector
+        {
+            static_cast<double>(k_NavmeshProjectExtentXYCm),
+            static_cast<double>(k_NavmeshProjectExtentXYCm),
+            static_cast<double>(k_NavmeshProjectExtentZCm)
+        };
+
+        const auto StepX = Size.X / static_cast<double>(k_NavmeshLatticeCellsPerAxis);
+        const auto StepY = Size.Y / static_cast<double>(k_NavmeshLatticeCellsPerAxis);
+
+        auto Points = TArray<FVector>{};
+        auto Seen   = TSet<FString>{};
+
+        for (auto CellX = 0; CellX < k_NavmeshLatticeCellsPerAxis; ++CellX)
+        {
+            for (auto CellY = 0; CellY < k_NavmeshLatticeCellsPerAxis; ++CellY)
+            {
+                const auto Query = FVector
+                {
+                    Min.X + (StepX * (static_cast<double>(CellX) + 0.5)),
+                    Min.Y + (StepY * (static_cast<double>(CellY) + 0.5)),
+                    Centre.Z
+                };
+
+                auto Projected = FNavLocation{};
+
+                if (NOT InNavSystem.ProjectPointToNavigation(Query, Projected, Extent))
+                {
+                    continue;
+                }
+
+                // Deduplicated on the same 50 cm quantisation the planner uses for position ids, so
+                // two lattice cells that resolve to the same measurable spot count once.
+                const auto Key = ck::perf_lab::Get_PositionId(Projected.Location);
+
+                if (Seen.Contains(Key))
+                {
+                    continue;
+                }
+
+                Seen.Add(Key);
+                Points.Add(Projected.Location);
+            }
+        }
+
+        return Points;
+    }
 
     auto
         Get_TriangleCount(
@@ -183,31 +259,21 @@ namespace ck::perf_lab
             // says so, so absence here is a quiet branch rather than an error.
             if (ck::IsValid(NavSystem->GetDefaultNavDataInstance()))
             {
-                const auto Origin = Bounds.IsValid ? Bounds.GetCenter() : FVector::ZeroVector;
-                const auto Radius = Bounds.IsValid ? Bounds.GetExtent().Size2D() : 0.0;
+                // The navigation system's OWN bounds, not the actor bounds accumulated above. Those
+                // are a box over actor PIVOTS, and a level built as one landscape proxy with its
+                // pivot at the origin produces a box a few centimetres across over a kilometre of
+                // navigable space — the lattice would collapse into a single cell and return one
+                // point for the whole map. Actor bounds remain the fallback for a navigation system
+                // that reports nothing.
+                const auto NavBounds = NavSystem->GetWorldBounds();
+                const auto LatticeBounds = NavBounds.IsValid && NavBounds.GetSize().Size2D() > 0.0
+                    ? NavBounds
+                    : Bounds;
 
-                for (auto Sample = 0; Sample < ck_perf_lab_survey::k_NavmeshSampleCount; ++Sample)
+                if (LatticeBounds.IsValid)
                 {
-                    auto Location = FNavLocation{};
-
-                    if (const_cast<UNavigationSystemV1*>(NavSystem)->GetRandomReachablePointInRadius(
-                            Origin, static_cast<float>(Radius), Location))
-                    {
-                        NavmeshPoints.Add(Location.Location);
-                    }
+                    NavmeshPoints = ck_perf_lab_survey::Project_LatticeOntoNavmesh(*NavSystem, LatticeBounds);
                 }
-
-                // The samples are random, so their order carries no meaning and would otherwise leak
-                // into the plan through the dedup-first-wins rule.
-                ck::algo::Sort(NavmeshPoints, [](const FVector& InA, const FVector& InB)
-                {
-                    if (InA.X != InB.X)
-                    { return InA.X < InB.X; }
-
-                    if (InA.Y != InB.Y)
-                    { return InA.Y < InB.Y; }
-                    return InA.Z < InB.Z;
-                });
             }
         }
 

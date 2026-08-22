@@ -1,15 +1,27 @@
 # PerfLab — PROGRESS.md (living log)
 
 ## Current state  <!-- supersedes everything below; update at EVERY gate and session end -->
-**As of 2026-08-22.** Phases 0-8 DONE. Phase 9 (compare / exports / CI entry / close-out) NOT STARTED.
+**As of 2026-08-22. ALL NINE PHASES DONE.** Nothing pushed; no gitlink bumps.
 
-**Gate of record:** `--test-pattern PerfLab` → **49/49 green, exit 0** (2026-08-22, final binary,
-after the heatmap specs). `--test-pattern OptimizationDebugger` → **76/76 green, exit 0** with the
-Performance page and the new Editor module in the build.
-**Full suite after the review pass:** **1254 / 1251 / 3** — the deterministic pair unchanged, plus
-one known unstable red. No regressions. (+10 vs the 1244 baseline = the new CkCore statistics specs;
-PerfLab's 45 are `Ck.*`-rooted and never appear in a no-pattern run.)
-**Live child launch re-verified after the launcher fix:** armed, planned, measured, exit 0.
+**Gates of record — all on the FINAL binary, after the Phase 9 review fixes:**
+- `--test-pattern PerfLab` → **60/60 green, exit 0**
+- `--test-pattern OptimizationDebugger` → **76/76 green, exit 0**
+- Full suite → **1254 / 1251 / 3**, failing names identical to the baseline
+  (the deterministic PathNetworkFollower pair + `Ck_AutoTest_ScriptProcessor_PumpStopsAfterMarkerDrain`).
+  **No regressions.** None of the three touch PerfLab.
+
+**Verified at RUNTIME, not merely compiled:**
+- Live child launch: armed, planned, measured, exit 0.
+- Commandlet end to end on a real session, all four exit paths: clean run → **0**;
+  `-failbelow=101` → **2**; nonexistent session directory → **1**; missing `-session=` → **1**;
+  `-budget=nan` → **1** (the guard the review added).
+- Compare end to end on two real sessions: a position whose baseline was 4x faster came back
+  `Regressed` (0.520 → 2.080 ms, delta +1.560 against a ±1.085 noise band), the dropped position was
+  listed under "Only in the current session", and the summary read
+  `Score 94.0 → 100.0 (+6.0)` / `1 regressed · 0 improved · 2 positions compared`.
+- The three exported files were READ back, not just counted: `report.json` re-parses and its analysis
+  block matches SCHEMA §3.1 (camelCase keys, `score` object, `componentsUsed`, `analysedUtc`);
+  `report.csv` carries all six sections with every cell quoted; `report.html` is self-contained.
 **Full-suite baseline to diff against:** total ~1250, with this shape:
 - **Deterministic reds, never allowed to grow:**
   `Ck_AutoTest_PathNetworkFollower_DesiredNavmeshClearanceMovesInward`,
@@ -25,12 +37,44 @@ no-pattern `--test` run — always name the pattern.
 **Branches (local only, never pushed, no gitlink bumps):**
 CkGameplayDebugger `feature/perf-lab`, CkFoundation `feature/perf-lab`, CkTests `feature/perf-lab`.
 
-**Next action:** Phase 9 per [PHASE_9.md](PHASE_9.md) — session compare, HTML/CSV/JSON exports with
-determinism specs, the `-run=CkPerfLabReport` CI commandlet, and campaign close-out.
-**Blocked on:** nothing — but **the compare view cannot ship until D-007's navmesh plan determinism
-defect is fixed** (navmesh-seeded planning draws from the global RNG rather than the request seed, so
-position ids are unstable run-to-run on any map with real navigation data, and compare matches BY
-position id). Fix it first, inside Phase 9.
+**PROMPT.md success criteria — status with named evidence:**
+
+| # | Criterion | Status |
+|---|---|---|
+| 1 | Spec gates green, no regression vs baseline | ✅ `Ck.PerfLab` 60/60, `Ck.OptimizationDebugger` 76/76, full suite 1254/1251/3 with the baseline's exact failing names |
+| 2 | `session.json` carries all five metrics or an explicit unavailability reason, never 0-as-data | ✅ read the artifact: `Saved/CkPerfLab/Sessions/fixture-thinmap/session.json` carries `availability`/`reason`/avg/worst/p99/1%-low/sampleCount/outlierCount per metric |
+| 3 | Two runs of one map match by position id; compare renders a delta | ⚠️ **compare half CONFIRMED** on two real sessions (a 4x-faster baseline came back `Regressed`, +1.560 ms vs a ±1.085 band); **the "two runs of one map" half is `[EDITOR-VERIFY]`** and is the campaign's single most important open check — see below |
+| 4 | Heatmap draws, nothing spawned, nothing dirtied | `[EDITOR-VERIFY]` — code refuses to spawn or transact by construction, but not observed in an editor |
+| 5 | Every finding names its measurement; a clean level says "measured clean" | ✅ spec-pinned (the evidence gate) and visible in the exported HTML |
+| 6 | Exports deterministic | ✅ `Ck.PerfLab.Export.Determinism` asserts byte-identical HTML/CSV/JSON, and that incoming position order does not reach the file |
+| 7 | Headless entry exits 0 / non-zero past threshold, unattended | ✅ verified on the real binary: 0, 2, 1, 1, and 1 for a NaN budget |
+| 8 | Main editor stays responsive during a run | `[EDITOR-VERIFY]` — the child is a genuinely separate process (confirmed), but responsiveness not observed |
+| 9 | No PerfLab module in Test/Shipping packages | ✅ `CkDebugger.uplugin`: `CkPerfLab` = DeveloperTool, `CkOptimizationDebuggerEditor` = Editor |
+
+**Next action: Adam's.** The campaign is code-complete and gate-green; what remains cannot be done
+from here.
+
+1. **Run VALIDATION.md §B** — every `[EDITOR-VERIFY]` row, in an open editor. The single most
+   important one is **plan determinism on a map with real navmesh**: run the same map twice and diff
+   the position ids. Phase 9 removed the last RNG call from the module (D-007), but every automated
+   gate runs on a fixture or a navmesh-less map, so **the branch that was broken is still the branch
+   no test exercises**. If the ids differ, D-007 reopens and compare is broken on real maps.
+2. **Rule on the open items in DECISIONS_PENDING_REVIEW.md** — D-007's remaining known-opens and
+   D-008's review outcomes are recorded there; nothing in them is silently carried.
+3. **Merge, in this order** (CkFoundation first — CkGameplayDebugger's `CkPerfLab` includes
+   CkProfile's new `CkStats_Utils.h` surface), then bump the superproject gitlinks:
+   CkFoundation `feature/perf-lab` → CkGameplayDebugger `feature/perf-lab` → CkTests `feature/perf-lab`.
+
+**What I could NOT verify, and would most expect to be wrong:** the navmesh lattice. It compiles,
+and it is deterministic by construction because it contains no RNG call — but it has never run
+against real navigation data on this machine. If `Project_LatticeOntoNavmesh` projects poorly (bad
+extents, a navmesh whose `GetWorldBounds()` disagrees with where the geometry is), the symptom will
+be too few positions on a real map rather than an error. That is item 1 above.
+
+**Branches (local only, never pushed, no gitlink bumps):**
+CkGameplayDebugger `feature/perf-lab`, CkFoundation `feature/perf-lab`, CkTests `feature/perf-lab`.
+The superproject's dirty `CkPlugins.uproject` and `Config/*.ini` are **not mine** and were never
+staged.
 
 ## Decision log
 | Date | Decision | Why | Revisit when |
@@ -43,6 +87,61 @@ position id). Fix it first, inside Phase 9.
 | 2026-08-21 | Validation strategy: fixtures + budget-manipulation, no authored heavy content | Fable ruling, DECISIONS_PENDING_REVIEW D-003 | Downstream BusterBlock verify passes |
 
 ## Dated entries (append-only, newest first)
+
+### 2026-08-22 — Phase 9 landed: compare, exports, CI entry, close-out
+
+**Opened by fixing the blocker.** D-007's navmesh plan determinism defect had to go first, because
+compare matches BY position id and those ids were unstable run-to-run on any map with navigation
+data. `GetRandomReachablePointInRadius` (512 calls, global RNG) is replaced by
+`Project_LatticeOntoNavmesh`: a fixed 24×24 lattice over the navigable bounds, each cell centre
+projected onto the navmesh, deduplicated on the same 50 cm quantisation the ids use. **No RNG call
+remains anywhere in the module** — swept and confirmed. It is also better sampling: random points
+clump and leave holes, a lattice does not.
+
+**Compare** (`Analysis/CkPerfLab_SessionCompare.{h,cpp}`, pure). Matched by position id, never by
+index — an index match would pair unrelated positions the moment the plan gained one and report the
+difference between two *places* as a change over *time*, the most misleading thing this tool could
+produce. Per-metric deltas against a noise band derived from both runs' own spreads rather than a
+fixed threshold, so a jittery scene earns a wide band and a stable one a narrow band. Refuses across
+maps and when nothing matches; **warns but still renders** across differing machine/GPU/RHI/config —
+suppressing would hide the very fact the reader needs to discount the numbers correctly.
+`Incomparable` is kept distinct from `Unchanged`: "we looked and nothing moved" and "we cannot tell"
+are different answers.
+
+**Exports** (`Export/CkPerfLab_Export.{h,cpp}`, pure). Self-contained HTML, six fixed CSV tables, and
+JSON that is *the session file plus an analysis block* — delegated to the codec rather than
+re-serialised, because two writers of one schema drift. Every number goes through fmt's
+locale-independent path (`%f` and `SanitizeFloat` both emit a comma under a European locale, which
+would break the byte-identical contract on someone else's desk rather than on mine). The limitation
+paragraph and the contributor disclaimer travel in the files, and the disclaimer travels in the CSV
+*row* so it survives a reader re-sorting the sheet.
+
+**CI entry.** `-run=CkPerfLabReport`, exit 0 / 2 / 1. It only ANALYSES — measurement stays with the
+`-game` child, because a commandlet has no rendering viewport and would measure a frame nobody drew:
+numbers that parse, look plausible, and describe nothing.
+
+**Two things the real binary taught me that no unit test would have:**
+- The commandlet class had to be named `UCkPerfLabReportCommandlet`, not `UCk_PerfLab_...` — UE
+  resolves `-run=X` by looking up a class literally called `XCommandlet`, so the class name IS the
+  command-line token. First run failed with "looked like a commandlet, but we could not find the
+  class."
+- `ck::perf_lab::Log` never reaches a commandlet's stdout; only Display and above do. The score line
+  — the one thing a CI job shows its reader — was invisible until promoted to `Display`.
+
+**A near-miss worth recording.** My first compare smoke test reported every position `Unchanged`. I
+had built the baseline by copying the fixture and dividing one metric by four, filtered on
+`availability == 'available'` — but the session file writes `"Available"`, so the edit silently
+no-opped and I was comparing two byte-identical files. I nearly reported "compare verified end to
+end" from a run that proved nothing. Reading the artifact caught it. (That casing is itself a
+SCHEMA/codec mismatch, now recorded in D-007's known-opens.)
+
+**Adversarial review found six defects, all fixed** — see D-008. The one that mattered: the score
+delta was suppressed whenever the two sessions' *requested* budgets differed, on reasoning that does
+not hold, because both scores are computed against the single budget passed to `Compare_Sessions`.
+It would have hidden real regressions behind "(not comparable)".
+
+Gate: `Ck.PerfLab` **49 → 60 green**, `Ck.OptimizationDebugger` **76/76**, full suite
+**1254/1251/3** with the baseline's exact failing names.
 
 ### 2026-08-22 — Phases 7 and 8 landed (UI surface + viewport heatmap)
 

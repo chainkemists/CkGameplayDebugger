@@ -54,6 +54,20 @@ Phase 9:
       touched positions and flags any regression; cross-config compare shows the warning banner.
 - [ ] Open exported HTML in a browser: self-contained, score formula table present, limitation
       paragraph present.
+- [ ] **Plan determinism on a map with real navmesh** — the one item Phase 9's own fix cannot prove
+      from a unit test. Run the same map twice without editing it; the two runs must produce the SAME
+      set of position ids. Phase 9 replaced `GetRandomReachablePointInRadius` with a fixed lattice
+      projected onto the navmesh (`Project_LatticeOntoNavmesh`), removing the last RNG call from the
+      module — but every automated gate here runs on a fixture or on a map with no navigation data,
+      so the branch that used to be non-deterministic is **still not exercised by any test**. If the
+      ids differ, compare is broken on real maps and D-007 reopens.
+- [ ] Open `report.csv` in a spreadsheet: six sections present, no column shifted (machine names and
+      object paths carry commas), and the contributors table's disclaimer column present.
+- [ ] `report.json` re-imported as a session: it must load, proving the export did not fork the
+      schema.
+- [ ] Commandlet exit codes end to end, on a real session directory:
+      `-run=CkPerfLabReport -session=<dir> -output=<dir>` → 0; add `-failbelow=101` → 2; point
+      `-session=` at a directory with no session file → 1.
 
 Post-campaign (downstream, BusterBlock):
 - [ ] Run PerfLab against a real BusterBlock level: at least one specific rule (1–8) fires with

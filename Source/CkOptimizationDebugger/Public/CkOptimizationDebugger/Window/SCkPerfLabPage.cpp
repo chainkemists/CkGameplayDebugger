@@ -11,6 +11,7 @@
 
 #include <Editor.h>
 #include <Engine/World.h>
+#include <Misc/FileHelper.h>
 #include <Misc/Paths.h>
 #include <Widgets/Input/SButton.h>
 #include <Widgets/Input/SSpinBox.h>
@@ -312,6 +313,23 @@ auto
 
                 + SHorizontalBox::Slot()
                 .AutoWidth()
+                .Padding(0.0f, 0.0f, CkStyle::SpaceS, 0.0f)
+                [
+                    SNew(SButton)
+                    .Text(FText::FromString(TEXT("Export")))
+                    .ToolTipText(FText::FromString(TEXT(
+                        "Writes report.html, report.csv and report.json beside the session, plus compare.html when a "
+                        "baseline is selected. Every file carries the limitation paragraph.")))
+                    .IsEnabled_Lambda([this]() -> bool { return NOT _SelectedSessionId.IsEmpty(); })
+                    .OnClicked_Lambda([this]() -> FReply
+                    {
+                        DoExport_Session();
+                        return FReply::Handled();
+                    })
+                ]
+
+                + SHorizontalBox::Slot()
+                .AutoWidth()
                 [
                     SNew(SButton)
                     .Text_Lambda([this]() -> FText
@@ -369,9 +387,41 @@ auto
                         *FPaths::GetCleanFilename(InRow->Get_MapPath()))
                     : FString::Printf(TEXT("%s    (unreadable)"), *InRow->Get_SessionId());
 
+                const auto SessionId = InRow->Get_SessionId();
+
                 return SNew(STableRow<TSharedPtr<FCk_PerfLab_SessionRow>>, InOwner)
                 [
-                    SNew(STextBlock).Text(FText::FromString(Label))
+                    SNew(SHorizontalBox)
+
+                    + SHorizontalBox::Slot()
+                    .FillWidth(1.0f)
+                    .VAlign(VAlign_Center)
+                    [
+                        SNew(STextBlock).Text(FText::FromString(Label))
+                    ]
+
+                    // An explicit button rather than a modifier-click: the baseline of a comparison is
+                    // a deliberate choice, and a gesture nobody can see is a feature nobody finds.
+                    + SHorizontalBox::Slot()
+                    .AutoWidth()
+                    .VAlign(VAlign_Center)
+                    [
+                        SNew(SButton)
+                        .IsEnabled(InRow->Get_IsReadable())
+                        .Text_Lambda([this, SessionId]
+                        {
+                            return FText::FromString(_BaselineSessionId == SessionId
+                                ? TEXT("Baseline ✓")
+                                : TEXT("Baseline"));
+                        })
+                        .OnClicked_Lambda([this, SessionId]
+                        {
+                            // Clicking the current baseline clears it, so there is always a way back to
+                            // reading one session on its own.
+                            DoSelect_Baseline(_BaselineSessionId == SessionId ? FString{} : SessionId);
+                            return FReply::Handled();
+                        })
+                    ]
                 ];
             })
         ];
@@ -565,7 +615,145 @@ auto
         ];
     }
 
+    _ResultsBox->AddSlot()
+    .AutoHeight()
+    .Padding(0.0f, CkStyle::SpaceM, 0.0f, 0.0f)
+    [
+        DoBuild_Compare()
+    ];
+
+    if (NOT _ExportMessage.IsEmpty())
+    {
+        _ResultsBox->AddSlot()
+        .AutoHeight()
+        .Padding(0.0f, CkStyle::SpaceM, 0.0f, 0.0f)
+        [
+            SNew(STextBlock).Text(FText::FromString(_ExportMessage))
+        ];
+    }
+
     return _ResultsBox.ToSharedRef();
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkPerfLabPage::
+    DoBuild_Compare()
+    -> TSharedRef<SWidget>
+{
+    if (_BaselineSessionId.IsEmpty())
+    {
+        return SNew(STextBlock)
+            .Text(FText::FromString(TEXT("Press Baseline on another session to compare this one against it.")));
+    }
+
+    auto Box = SNew(SVerticalBox);
+
+    Box->AddSlot()
+    .AutoHeight()
+    [
+        SNew(SCkDebug_SectionHeader)
+        .Label(FText::FromString(FString::Printf(TEXT("Compared against %s"), *_BaselineSessionId)))
+    ];
+
+    // A refusal replaces the table rather than sitting above an empty one, because the reason IS the
+    // whole result: there is nothing underneath it to read.
+    if (NOT _Compare.Get_IsComparable())
+    {
+        Box->AddSlot()
+        .AutoHeight()
+        [
+            SNew(SCkDebug_StatusPill)
+            .ShowDot(true)
+            .Tone(ECk_Tone::Warn)
+            .Text(FText::FromString(ck::perf_lab::Get_RefusalText(_Compare.Get_Refusal())))
+        ];
+
+        return Box;
+    }
+
+    // Warnings sit ABOVE the numbers they qualify. Below them, a reader has already drawn a
+    // conclusion from a table that was never comparable in the way they assumed.
+    for (const auto Warning : _Compare.Get_Warnings())
+    {
+        Box->AddSlot()
+        .AutoHeight()
+        [
+            SNew(SCkDebug_StatusPill)
+            .ShowDot(true)
+            .Tone(ECk_Tone::Warn)
+            .Text(FText::FromString(ck::perf_lab::Get_WarningText(Warning)))
+        ];
+    }
+
+    // Always set by this point: the refusal returned above, and a comparison that was not refused
+    // always has a delta because both scores were computed against the same budget.
+    const auto ScoreDelta = _Compare.Get_ScoreDelta().Get(0.0f);
+
+    Box->AddSlot()
+    .AutoHeight()
+    .Padding(0.0f, CkStyle::SpaceS, 0.0f, 0.0f)
+    [
+        SNew(STextBlock)
+        .Text(FText::FromString(FString::Printf(
+            TEXT("Score %.1f → %.1f  (%+.1f)      %d regressed, %d improved"),
+            _Compare.Get_BaselineScore(), _Compare.Get_CurrentScore(), ScoreDelta,
+            _Compare.Get_RegressedCount(), _Compare.Get_ImprovedCount())))
+    ];
+
+    for (const auto& Position : _Compare.Get_Positions())
+    {
+        // Unchanged positions are the bulk of any comparison and carry no information a reader is
+        // scanning for. They stay in the export; the page shows what moved.
+        if (Position.Get_Verdict() == ECk_PerfLab_CompareVerdict::Unchanged ||
+            Position.Get_Verdict() == ECk_PerfLab_CompareVerdict::Incomparable)
+        {
+            continue;
+        }
+
+        const auto Frame = Position.Get_FrameDelta();
+
+        Box->AddSlot()
+        .AutoHeight()
+        [
+            SNew(SCkDebug_StatusPill)
+            .ShowDot(true)
+            .Tone(Position.Get_Verdict() == ECk_PerfLab_CompareVerdict::Regressed
+                ? ECk_Tone::Err
+                : ECk_Tone::Ok)
+            .Text(FText::FromString(Frame.IsSet()
+                ? FString::Printf(TEXT("%s   %s   %.2f → %.2f ms  (%+.2f, band ±%.2f)"),
+                      *Position.Get_PositionId(),
+                      *ck::Format_UE(TEXT("{}"), Position.Get_Verdict()),
+                      Frame->Get_BaselineMs(), Frame->Get_CurrentMs(),
+                      Frame->Get_DeltaMs(), Frame->Get_NoiseBandMs())
+                : FString::Printf(TEXT("%s   %s"),
+                      *Position.Get_PositionId(),
+                      *ck::Format_UE(TEXT("{}"), Position.Get_Verdict()))))
+        ];
+    }
+
+    // Positions on one side only are the finding, not noise to drop: a map that changed shape
+    // between two runs is what a reader chasing a regression needs to know first.
+    const auto AppendIdList = [&Box](const TCHAR* InLabel, const TArray<FString>& InIds)
+    {
+        if (InIds.IsEmpty())
+        { return; }
+
+        Box->AddSlot()
+        .AutoHeight()
+        [
+            SNew(STextBlock)
+            .AutoWrapText(true)
+            .Text(FText::FromString(FString::Printf(TEXT("%s: %s"), InLabel, *FString::Join(InIds, TEXT(", ")))))
+        ];
+    };
+
+    AppendIdList(TEXT("Only in the baseline"), _Compare.Get_OnlyInBaseline());
+    AppendIdList(TEXT("Only in this session"), _Compare.Get_OnlyInCurrent());
+
+    return Box;
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -607,7 +795,87 @@ auto
 
     ck::perf_lab::heatmap::Set_SelectedPositionId(FString{});
 
+    DoRecompute_Compare();
     DoPublish_Heatmap();
+    DoBuild_Results();
+}
+
+auto
+    SCkPerfLabPage::
+    DoSelect_Baseline(
+        const FString& InSessionId)
+    -> void
+{
+    _BaselineSessionId = InSessionId;
+    _BaselineSession   = FCk_PerfLab_Session{};
+
+    if (NOT InSessionId.IsEmpty() && NOT ck::perf_lab::TryLoad_Session(InSessionId, _BaselineSession))
+    {
+        // A baseline that will not load is dropped rather than silently compared as an empty
+        // session — comparing against nothing would report every position as newly appeared.
+        _BaselineSessionId.Reset();
+    }
+
+    DoRecompute_Compare();
+    DoBuild_Results();
+}
+
+auto
+    SCkPerfLabPage::
+    DoRecompute_Compare()
+    -> void
+{
+    _Compare = FCk_PerfLab_Compare{};
+
+    if (_BaselineSessionId.IsEmpty() || _SelectedSessionId.IsEmpty())
+    {
+        return;
+    }
+
+    // Both sides are analysed against the budget on this page, so the comparison answers "against
+    // the target I care about now" rather than against two targets set at two different times.
+    _Compare = ck::perf_lab::Compare_Sessions(_BaselineSession, _SelectedSession, _BudgetMs);
+}
+
+auto
+    SCkPerfLabPage::
+    DoExport_Session()
+    -> void
+{
+    if (_SelectedSessionId.IsEmpty())
+    {
+        return;
+    }
+
+    const auto Directory = ck::perf_lab::Get_SessionDirFor(_SelectedSessionId);
+
+    // Written beside the session it describes rather than through a save dialog: the reports belong
+    // with the measurement, and a reader who finds the folder finds everything about that run.
+    const auto GeneratedAt = FDateTime::UtcNow();
+
+    const auto Write = [&Directory](const TCHAR* InFileName, const FString& InContent)
+    {
+        return FFileHelper::SaveStringToFile(InContent, *FPaths::Combine(Directory, InFileName),
+            FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM);
+    };
+
+    const auto Wrote =
+        Write(TEXT("report.html"),
+            ck::perf_lab::exporter::Build_SessionHtml(_SelectedSession, _SelectedAnalysis, GeneratedAt)) &&
+        Write(TEXT("report.csv"),
+            ck::perf_lab::exporter::Build_SessionCsvBundle(_SelectedSession, _SelectedAnalysis)) &&
+        Write(TEXT("report.json"),
+            ck::perf_lab::exporter::Build_SessionJson(_SelectedSession, _SelectedAnalysis, GeneratedAt));
+
+    if (Wrote && NOT _BaselineSessionId.IsEmpty())
+    {
+        Write(TEXT("compare.html"), ck::perf_lab::exporter::Build_CompareHtml(_Compare, GeneratedAt));
+    }
+
+    _ExportMessage = Wrote
+        ? FString::Printf(TEXT("Exported to %s"), *Directory)
+        : FString::Printf(TEXT("Could not write the reports to %s"), *Directory);
+
     DoBuild_Results();
 }
 

@@ -21,7 +21,7 @@ change class, with gate counts diffed against the baseline recorded at its entry
 | [6](PHASE_6.md) | Analysis: score, perf rules, contributors, recommendations | `CkPerfLab` (debugger check-family integration deferred to Phase 7) | 2 | ✅ Done (2026-08-22) |
 | [7](PHASE_7.md) | Performance page UI | `CkOptimizationDebugger` | 3 | ✅ Done (2026-08-22) |
 | [8](PHASE_8.md) | Viewport heatmap EdMode | new `CkOptimizationDebuggerEditor` | 2 | ✅ Done (2026-08-22) |
-| [9](PHASE_9.md) | Compare, exports (HTML/CSV/JSON), CI entry, docs & close-out | `CkPerfLab` + `CkOptimizationDebugger` | 3 | ⏳ Pending |
+| [9](PHASE_9.md) | Compare, exports (HTML/CSV/JSON), CI entry, docs & close-out | `CkPerfLab` + `CkOptimizationDebugger` | 3 | ✅ Done (2026-08-22) |
 
 Dependency shape: 0 → 1 → 2 → {3,4} → 5 → 6 → {7,8} → 9. Phases 3 and 4 may interleave (planner is
 pure logic; runner consumes it), but land 3 first. Phases 7 and 8 are independent of each other.

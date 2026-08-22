@@ -6,6 +6,7 @@
 #include "CkPerfLab/Session/CkPerfLab_SessionCodec.h"
 #include "CkPerfLab/Stats/CkPerfLab_SampleStats.h"
 
+#include "CkCore/Algorithms/CkAlgorithms.h"
 #include "CkProfile/Stats/CkStats_Utils.h"
 
 #include <Engine/Engine.h>
@@ -423,6 +424,18 @@ auto
 
     _RunElapsedSec += InDeltaSeconds;
 
+    // The host asks before it insists. Stopping here rather than being terminated means the session
+    // on disk says it was cancelled, instead of being a file nobody can account for.
+    if (IFileManager::Get().FileExists(*FPaths::Combine(Get_SessionDir(), TEXT("cancel.flag"))))
+    {
+        _Stage = EStage::Finished;
+        _Session.Set_State(ECk_PerfLab_RunState::Aborted_UserCancel);
+        DoWrite_Session();
+        DoWrite_Heartbeat(ECk_PerfLab_RunState::Aborted_UserCancel, TEXT("cancelled by the host"));
+        FPlatformMisc::RequestExit(false);
+        return false;
+    }
+
     if (_RunElapsedSec > static_cast<float>(_Request.Get_ChildWallClockBudgetSec()))
     {
         // Flush what was measured before giving up: a partial session beats none, and the state
@@ -556,17 +569,15 @@ auto
     Inputs._TargetSampleCount      = _Request.Get_Settle().Get_TargetSampleCount();
     Inputs._CoefficientOfVariation = _Settle.Get_CoefficientOfVariation();
 
-    // The aggregate is the worst direction's frame metric: a position is as slow as the ugliest
-    // thing you can turn and look at from it.
-    auto Aggregate = FCk_PerfLab_MetricSet{};
-
-    for (const auto& Direction : _CompletedDirections)
+    // The aggregate is the worst direction's metrics: a position is as slow as the ugliest thing you
+    // can turn and look at from it, so reporting an average across directions would hide exactly the
+    // view worth finding.
+    const auto Worst = ck::algo::MaxElement(_CompletedDirections, [](const FCk_PerfLab_DirectionResult& InDirection)
     {
-        if (Direction.Get_Metrics().Get_Frame().Get_WorstMs() >= Aggregate.Get_Frame().Get_WorstMs())
-        {
-            Aggregate = Direction.Get_Metrics();
-        }
-    }
+        return InDirection.Get_Metrics().Get_Frame().Get_WorstMs();
+    });
+
+    const auto Aggregate = Worst.IsSet() ? Worst->Get_Metrics() : FCk_PerfLab_MetricSet{};
 
     auto Positions = _Session.Get_Positions();
     Positions.Add(FCk_PerfLab_PositionResult{}

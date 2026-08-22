@@ -42,17 +42,12 @@ namespace ck_perf_lab_planner
     {
         const auto RadiusSq = static_cast<double>(InRadiusCm) * static_cast<double>(InRadiusCm);
 
-        auto Weight = 0.0f;
-
-        for (const auto& Actor : InActors)
+        return static_cast<float>(ck::algo::SumBy(InActors, [&](const FCk_PerfLab_SurveyActor& InActor)
         {
-            if (FVector::DistSquared(Actor.Get_Location(), InLocation) <= RadiusSq)
-            {
-                Weight += Actor.Get_CostWeight();
-            }
-        }
-
-        return Weight;
+            return FVector::DistSquared(InActor.Get_Location(), InLocation) <= RadiusSq
+                ? InActor.Get_CostWeight()
+                : 0.0f;
+        }));
     }
 
     // Evenly spaced around the circle, with the first direction derived from the seed so a run can

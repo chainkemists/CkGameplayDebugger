@@ -17,7 +17,7 @@ change class, with gate counts diffed against the baseline recorded at its entry
 | [2](PHASE_2.md) | CkPerfLab module: session model, stats, codec | new `CkGameplayDebugger/Source/CkPerfLab` | 2 | ✅ Done (2026-08-21) |
 | [3](PHASE_3.md) | Position planner | `CkPerfLab` | 2 | ✅ Done (2026-08-21) |
 | [4](PHASE_4.md) | In-child measurement runner | `CkPerfLab` | 2 | ✅ Done (2026-08-22) |
-| [5](PHASE_5.md) | Host orchestration (subprocess + session store) | `CkPerfLab` | 2 | ⏳ Pending |
+| [5](PHASE_5.md) | Host orchestration (subprocess + session store) | `CkPerfLab` | 2 | ✅ Done (2026-08-22) |
 | [6](PHASE_6.md) | Analysis: score, perf rules, contributors, recommendations | `CkPerfLab` + `CkOptimizationDebugger` | 2/3 | ⏳ Pending |
 | [7](PHASE_7.md) | Performance page UI | `CkOptimizationDebugger` (+ launcher catalog spec) | 3 | ⏳ Pending |
 | [8](PHASE_8.md) | Viewport heatmap EdMode | new `CkOptimizationDebuggerEditor` | 2 | ⏳ Pending |

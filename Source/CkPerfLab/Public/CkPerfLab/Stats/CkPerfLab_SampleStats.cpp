@@ -20,14 +20,9 @@ namespace ck_perf_lab_sample_stats
 
         const auto Count = FMath::Max(1, FMath::CeilToInt32(InSortedAscending.Num() * 0.01f));
 
-        auto Sum = 0.0;
+        const auto Worst = TArray<float>{InSortedAscending.GetData() + (InSortedAscending.Num() - Count), Count};
 
-        for (auto Index = InSortedAscending.Num() - Count; Index < InSortedAscending.Num(); ++Index)
-        {
-            Sum += static_cast<double>(InSortedAscending[Index]);
-        }
-
-        return static_cast<float>(Sum / static_cast<double>(Count));
+        return static_cast<float>(ck::algo::Mean(Worst).Get(0.0));
     }
 }
 
@@ -70,21 +65,11 @@ namespace ck::perf_lab
             ? *Median + (static_cast<double>(InMadK) * Spread)
             : TNumericLimits<double>::Max();
 
-        auto Inliers = TArray<float>{};
-        Inliers.Reserve(Sorted.Num());
+        const auto Is_Inlier = [Threshold](float InSample)
+        { return static_cast<double>(InSample) <= Threshold; };
 
-        auto OutlierCount = 0;
-
-        for (const auto& Sample : Sorted)
-        {
-            if (static_cast<double>(Sample) > Threshold)
-            {
-                ++OutlierCount;
-                continue;
-            }
-
-            Inliers.Add(Sample);
-        }
+        const auto Inliers      = ck::algo::Filter(Sorted, Is_Inlier);
+        const auto OutlierCount = Sorted.Num() - Inliers.Num();
 
         // Every sample being an outlier would leave nothing to average; fall back to the full set so
         // the average stays a real number rather than becoming unavailable on a technicality.

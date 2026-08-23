@@ -50,7 +50,8 @@ auto
         const TArray<TSharedPtr<ICk_DebugOverlay_Provider>>& InProviders,
         const FCk_DebugOverlay_Layout&                       InLayout,
         FCk_DebugOverlay_History*                            InHistory,
-        double                                               InNow)
+        double                                               InNow,
+        FCk_DebugOverlay_EntityModelBuildOptions             InOptions)
     -> FCk_DebugOverlay_EntityModel
 {
     auto OutModel   = FCk_DebugOverlay_EntityModel{};
@@ -75,21 +76,42 @@ auto
     // the whole NPC, so every source below contributes sections. Breadth-first with
     // a visited guard (malformed cycles must not hang the overlay tick).
     auto Sources = TArray<FCk_Handle>{};
+    auto SourceTopology = TArray<ck_debugoverlay::FCk_DebugOverlay_SourceTopology>{};
     {
         Sources.Add(InFocusEntity);
+        const auto FocusEntityId = static_cast<uint32>(InFocusEntity.Get_Entity().Get_EntityNumber());
+        SourceTopology.Add({ FocusEntityId, 0, 0 });
 
-        auto Visited = TSet<FCk_Handle>{};
-        Visited.Add(InFocusEntity);
+        // IDs are the same identity emitted into provider sections, so this
+        // preserves breadth-first discovery order while making the cycle guard
+        // and the exported parent/depth topology agree exactly.
+        auto VisitedEntityIds = TSet<uint32>{ FocusEntityId };
 
         for (auto Index = 0; Index < Sources.Num(); ++Index)
         {
+            const auto& ParentTopology = SourceTopology[Index];
+            auto DependentByEntityId = TMap<uint32, FCk_Handle>{};
+            auto DependentEntityIds = TArray<uint32>{};
             for (const auto& Dependent : UCk_Utils_EntityLifetime_UE::Get_LifetimeDependents(Sources[Index]))
             {
-                if (ck::Is_NOT_Valid(Dependent) || Visited.Contains(Dependent))
+                if (ck::Is_NOT_Valid(Dependent))
                 { continue; }
 
-                Visited.Add(Dependent);
-                Sources.Add(Dependent);
+                const auto DependentId = static_cast<uint32>(Dependent.Get_Entity().Get_EntityNumber());
+                DependentByEntityId.FindOrAdd(DependentId) = Dependent;
+                DependentEntityIds.Add(DependentId);
+            }
+
+            const auto AddedIds = ck_debugoverlay::Append_SourceTopology(
+                ParentTopology.EntityId,
+                ParentTopology.SourceDepth,
+                DependentEntityIds,
+                VisitedEntityIds,
+                SourceTopology);
+            for (const auto AddedId : AddedIds)
+            {
+                if (const auto* AddedHandle = DependentByEntityId.Find(AddedId))
+                { Sources.Add(*AddedHandle); }
             }
         }
     }
@@ -127,6 +149,8 @@ auto
             Section.MergeBehavior  = InProvider->Get_MergeBehavior();
             Section.SourceEntityId = static_cast<uint32>(Source.Get_Entity().Get_EntityNumber());
             Section.SourceOrder    = SourceIdx;
+            Section.ParentSourceEntityId = SourceTopology[SourceIdx].ParentSourceEntityId;
+            Section.SourceDepth          = SourceTopology[SourceIdx].SourceDepth;
             if (SourceIdx > 0)
             { Section.SourceName = Get_SourceName(Source); }
 
@@ -221,7 +245,7 @@ auto
     // ---- Condense pass (CondensePerSource providers) ----
     // Must run HERE, not in Prepare_FocusCardModel: the summary row is the provider's own
     // wording, and the provider pointers only exist on this side of the model boundary.
-    if (MergeDuplicateRows)
+    if (Should_CondensePerSourceSections(InOptions, MergeDuplicateRows))
     {
         auto ProviderByTag = TMap<FGameplayTag, TSharedPtr<ICk_DebugOverlay_Provider>>{};
         for (const auto& Provider : InProviders)
@@ -250,7 +274,8 @@ auto
             });
     }
 
-    return Prepare_FocusCardModel(OutModel, MergeDuplicateRows);
+    return Prepare_FocusCardModel(
+        OutModel, MergeDuplicateRows, InOptions.bRetainEmptySourceSections);
 }
 
 // ====================================================================================================================
@@ -342,7 +367,8 @@ auto
     ck_debugoverlay::
     Prepare_FocusCardModel(
         const FCk_DebugOverlay_EntityModel& InModel,
-        bool                                InMergeDuplicateRows)
+        bool                                InMergeDuplicateRows,
+        bool                                InRetainEmptySections)
     -> FCk_DebugOverlay_EntityModel
 {
     auto Result = InModel;
@@ -449,9 +475,13 @@ auto
         }
     }
 
-    // A section with no rows renders as a lone provider chip on a blank line.
-    Result.Sections.RemoveAll([](const FCk_DebugOverlay_Section& InSection)
-    { return InSection.Rows.IsEmpty(); });
+    // Focus cards discard empty sections because they render as a lone provider chip. Detailed
+    // consumers may retain them because the provider/source identity itself is useful topology.
+    if (NOT InRetainEmptySections)
+    {
+        Result.Sections.RemoveAll([](const FCk_DebugOverlay_Section& InSection)
+        { return InSection.Rows.IsEmpty(); });
+    }
 
     return Result;
 }

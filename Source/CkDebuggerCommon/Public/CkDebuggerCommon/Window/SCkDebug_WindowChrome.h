@@ -27,6 +27,7 @@ public:
         SLATE_ATTRIBUTE(FText, StatusText)
         SLATE_ARGUMENT(TArray<FCkDebug_CommandGroup>, CommandGroups)
         SLATE_ARGUMENT(bool, ShowRefreshControls)
+        SLATE_NAMED_SLOT(FArguments, CommonActionsContent)
         SLATE_NAMED_SLOT(FArguments, MenuActionsContent)
         SLATE_NAMED_SLOT(FArguments, ToolbarContent)
         SLATE_NAMED_SLOT(FArguments, Content)
@@ -36,8 +37,7 @@ public:
     auto Construct(const FArguments& InArgs) -> void;
 
 private:
-    auto Build_DebuggerMenu() const -> TSharedRef<SWidget>;
-    auto OnOpenDebugger(FName InTabId) const -> FReply;
+    auto OnOpenLauncher() const -> FReply;
     auto Get_DefaultStatusText() const -> FText;
 
     FName _WindowId;

@@ -30,7 +30,7 @@ public:
         // Tint of the halo. Alpha 0 → hidden.
         SLATE_ATTRIBUTE(FLinearColor, GlowColor)
         // How far (px) the halo extends past the content on each side.
-        SLATE_ARGUMENT(float, Extent)
+        SLATE_ATTRIBUTE(float, Extent)
         // true → crisp small-element halo (Glow_Tight), false → wide soft halo.
         SLATE_ARGUMENT(bool, Tight)
         // Multiplied into GlowColor's alpha — one knob for overall strength.

@@ -4,6 +4,7 @@
 
 #include "CkDebuggerCommon/Settings/CkDebuggerStyleSettings.h"
 #include "CkDebuggerCommon/Styles/CkDebuggerAxes.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_Card.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_EntityRef.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_Icon.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_SelectableLabel.h"
@@ -332,6 +333,7 @@ auto
         const FArguments& InArgs)
     -> void
 {
+    _Group = InArgs._Group;
     _InputHudPreviewModel = ck_style_lab_sample::Make_InputHudPreviewModel();
 
     ChildSlot
@@ -383,59 +385,51 @@ auto
 {
     const auto& Selection = UCkDebuggerStyleSettings::Get_Selection();
 
-    return SNew(SVerticalBox)
+    auto Body = SNew(SVerticalBox);
+    const auto Add = [&Body](const TSharedRef<SWidget>& InWidget)
+    {
+        Body->AddSlot().AutoHeight().Padding(0.0f, CkStyle::SpaceS)[InWidget];
+    };
 
-        + SVerticalBox::Slot().AutoHeight()
-            [
-                ck::debug_axes::Make_SectionHeader(
-                    Selection, FText::FromString(TEXT("On-screen focus card")), ECk_Tone::Accent)
-            ]
+    switch (_Group)
+    {
+        case ECkStyleLab_Group::WorkbenchSurfaces:
+            Add(Build_WorkbenchSurfaces(Selection));
+            Add(Build_TreeRows(Selection));
+            Add(Build_Separator(Selection));
+            Add(Build_Inspector(Selection));
+            break;
 
-        + SVerticalBox::Slot().AutoHeight().Padding(0.0f, CkStyle::SpaceS)
-            [
-                Build_FocusCard()
-            ]
+        case ECkStyleLab_Group::TokensLegend:
+            Add(Build_FocusCard());
+            Add(Build_TreeRows(Selection));
+            Add(Build_Inspector(Selection));
+            break;
 
-        + SVerticalBox::Slot().AutoHeight()
-            [
-                Build_Separator(Selection)
-            ]
+        case ECkStyleLab_Group::EntityValues:
+            Add(Build_TreeRows(Selection));
+            Add(Build_Inspector(Selection));
+            break;
 
-        + SVerticalBox::Slot().AutoHeight().Padding(0.0f, CkStyle::SpaceS, 0.0f, 0.0f)
-            [
-                Build_InputHudPreview(Selection)
-            ]
+        case ECkStyleLab_Group::HierarchyEditing:
+            Add(Build_TreeRows(Selection));
+            Add(Build_Inspector(Selection));
+            break;
 
-        + SVerticalBox::Slot().AutoHeight().Padding(0.0f, CkStyle::SpaceS, 0.0f, 0.0f)
-            [
-                ck::debug_axes::Make_SectionHeader(
-                    Selection, FText::FromString(TEXT("Entity tree")), ECk_Tone::Accent)
-            ]
+        case ECkStyleLab_Group::Icons:
+            Add(Build_Icons(Selection));
+            break;
 
-        + SVerticalBox::Slot().AutoHeight().Padding(0.0f, CkStyle::SpaceS)
-            [
-                Build_TreeRows(Selection)
-            ]
+        case ECkStyleLab_Group::GraphTelemetry:
+            Add(Build_GraphTelemetry(Selection));
+            break;
 
-        + SVerticalBox::Slot().AutoHeight()
-            [
-                Build_Separator(Selection)
-            ]
+        case ECkStyleLab_Group::InputHud:
+            Add(Build_InputHudPreview(Selection));
+            break;
+    }
 
-        + SVerticalBox::Slot().AutoHeight().Padding(0.0f, CkStyle::SpaceS, 0.0f, 0.0f)
-            [
-                Build_Inspector(Selection)
-            ]
-
-        + SVerticalBox::Slot().AutoHeight()
-            [
-                Build_Separator(Selection)
-            ]
-
-        + SVerticalBox::Slot().AutoHeight().Padding(0.0f, CkStyle::SpaceS, 0.0f, 0.0f)
-            [
-                Build_ShapesAndSurfaces(Selection)
-            ];
+    return Body;
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -713,7 +707,7 @@ auto
 
 auto
     SCkStyleLab_SamplePane::
-    Build_ShapesAndSurfaces(
+    Build_WorkbenchSurfaces(
         const FCkDebuggerStyleSelection& InSelection) const
     -> TSharedRef<SWidget>
 {
@@ -754,37 +748,6 @@ auto
             CornerRow
         ];
 
-    // ---- IconTreatment: the same glyph on three feature accents ---------------
-    auto IconRow = SNew(SHorizontalBox);
-
-    const auto IconTones = TArray<ECk_Tone>{ECk_Tone::Accent, ECk_Tone::Ok, ECk_Tone::Warn};
-    for (const auto Tone : IconTones)
-    {
-        IconRow->AddSlot()
-            .AutoWidth()
-            .VAlign(VAlign_Center)
-            .Padding(0.0f, 0.0f, CkStyle::SpaceM, 0.0f)
-            [
-                SNew(SCkDebug_Icon)
-                    .Brush(FAppStyle::GetBrush("Icons.FilledCircle"))
-                    .Meaning(FText::FromString(TEXT("Icon treatment preview")))
-                    .ColorAndOpacity(FSlateColor{CkStyle::GetToneColor(Tone)})
-                    .Accent(CkStyle::GetToneColor(Tone))
-            ];
-    }
-
-    IconRow->AddSlot()
-        .AutoWidth()
-        .VAlign(VAlign_Center)
-        [
-            ck_style_lab_sample::Make_KeyLabel(TEXT("icon treatment"))
-        ];
-
-    Body->AddSlot().AutoHeight().Padding(0.0f, CkStyle::SpaceS)
-        [
-            IconRow
-        ];
-
     // ---- SurfaceElevation: a depth-1 strip wrapping a depth-2 body ------------
     Body->AddSlot().AutoHeight().Padding(0.0f, CkStyle::SpaceS)
         [
@@ -813,27 +776,84 @@ auto
                 ]
         ];
 
-    // ---- GraphNodeStyle: an active node beside a faded inactive one -----------
-    constexpr auto NodeIsActive = true;
-
+    // The real common card proves the same live pane geometry used by debugger splitters: Layered
+    // reserves breathing room, while Flat tiles edge-to-edge without reconstructing it.
     Body->AddSlot().AutoHeight().Padding(0.0f, CkStyle::SpaceS)
         [
-            SNew(SHorizontalBox)
-
-            + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.0f, 0.0f, CkStyle::SpaceS, 0.0f)
+            SNew(SCkDebug_Card)
+                .BodyPadding(FMargin{CkStyle::SpaceM, CkStyle::SpaceS})
                 [
-                    ck_style_lab_sample::Make_GraphNode(
-                        FText::FromString(TEXT("Reach_Target")), NodeIsActive)
-                ]
-
-            + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-                [
-                    ck_style_lab_sample::Make_GraphNode(
-                        FText::FromString(TEXT("Gather_Wood")), NOT NodeIsActive)
+                    ck_style_lab_sample::Make_KeyLabel(TEXT("real common pane/card"))
                 ]
         ];
 
     return Body;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkStyleLab_SamplePane::
+    Build_Icons(
+        const FCkDebuggerStyleSelection& InSelection) const
+    -> TSharedRef<SWidget>
+{
+    auto Body = SNew(SVerticalBox);
+    Body->AddSlot().AutoHeight()
+        [ ck::debug_axes::Make_SectionHeader(InSelection, FText::FromString(TEXT("Icons and glyph treatment")), ECk_Tone::Accent) ];
+
+    auto IconRow = SNew(SHorizontalBox);
+    for (const auto Tone : TArray<ECk_Tone>{ECk_Tone::Accent, ECk_Tone::Ok, ECk_Tone::Warn})
+    {
+        IconRow->AddSlot().AutoWidth().VAlign(VAlign_Center).Padding(0.0f, 0.0f, CkStyle::SpaceM, 0.0f)
+            [
+                SNew(SCkDebug_Icon)
+                    .Brush(FAppStyle::GetBrush("Icons.FilledCircle"))
+                    .Meaning(FText::FromString(TEXT("Icon treatment preview")))
+                    .ColorAndOpacity(FSlateColor{CkStyle::GetToneColor(Tone)})
+                    .Accent(CkStyle::GetToneColor(Tone))
+                    .Size(FVector2D{ck::debug_axes::Get_IconSize(InSelection), ck::debug_axes::Get_IconSize(InSelection)})
+            ];
+    }
+    Body->AddSlot().AutoHeight().Padding(0.0f, CkStyle::SpaceS)[IconRow];
+    return Body;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkStyleLab_SamplePane::
+    Build_GraphTelemetry(
+        const FCkDebuggerStyleSelection& InSelection) const
+    -> TSharedRef<SWidget>
+{
+    constexpr auto NodeIsActive = true;
+    const auto* MotionLabel = ck::style_lab::Find_AxisOptionLabel(
+        TEXT("GraphMotion"), static_cast<int64>(InSelection.GraphMotion));
+    const auto* EmphasisLabel = ck::style_lab::Find_AxisOptionLabel(
+        TEXT("GraphEventEmphasis"), static_cast<int64>(InSelection.GraphEventEmphasis));
+
+    return SNew(SVerticalBox)
+        + SVerticalBox::Slot().AutoHeight()
+        [ ck::debug_axes::Make_SectionHeader(InSelection, FText::FromString(TEXT("Graph telemetry")), ECk_Tone::Accent) ]
+        + SVerticalBox::Slot().AutoHeight().Padding(0.0f, CkStyle::SpaceS)
+        [
+            SNew(SHorizontalBox)
+            + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.0f, 0.0f, CkStyle::SpaceS, 0.0f)
+            [ ck_style_lab_sample::Make_GraphNode(FText::FromString(TEXT("Reach_Target")), NodeIsActive) ]
+            + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+            [ ck_style_lab_sample::Make_GraphNode(FText::FromString(TEXT("Gather_Wood")), NOT NodeIsActive) ]
+        ]
+        + SVerticalBox::Slot().AutoHeight().Padding(0.0f, CkStyle::SpaceS, 0.0f, 0.0f)
+        [
+            SNew(STextBlock)
+                .Text(FText::FromString(FString::Printf(
+                    TEXT("Transition feedback: %s pacing · %s emphasis"),
+                    MotionLabel != nullptr ? *MotionLabel->ToString() : TEXT("(unknown)"),
+                    EmphasisLabel != nullptr ? *EmphasisLabel->ToString() : TEXT("(unknown)"))))
+                .Font(ck::debug_axes::ScaledFont("Regular", CkStyle::FontSizeSmall()))
+                .ColorAndOpacity(FSlateColor{CkStyle::TextDim()})
+        ];
 }
 
 // --------------------------------------------------------------------------------------------------------------------

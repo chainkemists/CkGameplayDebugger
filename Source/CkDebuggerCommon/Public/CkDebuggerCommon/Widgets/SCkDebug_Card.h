@@ -26,6 +26,8 @@ public:
         SLATE_ATTRIBUTE(FLinearColor, StripeColor)
         SLATE_ATTRIBUTE(FLinearColor, GlowColor)
         SLATE_ATTRIBUTE(bool, Selected)
+        // Unset follows Style Lab's Surface Elevation live; callers may bind/override for bespoke glows.
+        SLATE_ATTRIBUTE(float, GlowExtent)
         SLATE_ARGUMENT(FMargin, BodyPadding)
         SLATE_DEFAULT_SLOT(FArguments, Content)
     SLATE_END_ARGS()

@@ -2,12 +2,14 @@
 
 #include "CkStyleLabDebugger/Styles/CkStyleLab_AxisMetadata.h"
 #include "CkStyleLabDebugger/Widgets/SCkStyleLab_InputHudControls.h"
+#include "CkStyleLabDebugger/Widgets/SCkStyleLab_SamplePane.h"
 
 #include "CkCore/Format/CkFormat.h"
 #include "CkCore/Macros/CkMacros.h"
 
 #include "CkDebuggerCommon/Settings/CkDebuggerStyleSettings.h"
 #include "CkDebuggerCommon/Styles/CkDebuggerAxes.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_InspectorPanel.h"
 
 #include "CkEditorTools/Style/CkStyle.h"
 
@@ -16,6 +18,8 @@
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SBox.h"
+#include "Widgets/Layout/SSeparator.h"
+#include "Widgets/Layout/SWrapBox.h"
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/Text/STextBlock.h"
 
@@ -39,7 +43,8 @@ namespace ck_style_lab_controls
         return nullptr;
     }
 
-    // UHT appends a hidden _MAX entry to every UENUM; cycling through it would show a bogus option.
+    // UHT appends a hidden _MAX entry to every UENUM. The authored runtime metadata filter below owns
+    // option exposure, including legacy wire values, because UEnum metadata is stripped from packaged builds.
     auto Get_AxisOptions(const UEnum* InEnum) -> TArray<int64>
     {
         auto Options = TArray<int64>{};
@@ -114,7 +119,14 @@ auto
         Axis->Property    = *PropertyIt;
         Axis->DisplayName = Metadata->DisplayName;
         Axis->ToolTip     = Metadata->ToolTip;
+        Axis->Group       = Metadata->Group;
         Axis->Options     = ck_style_lab_controls::Get_AxisOptions(AxisEnum);
+        Axis->Options.RemoveAll([PropertyName = Axis->Property->GetFName()](const int64 InOption)
+        {
+            // Authored runtime metadata is the packaged-safe exposure contract. This also keeps
+            // retired wire values hidden when UEnum editor metadata is stripped from a build.
+            return ck::style_lab::Find_AxisOptionLabel(PropertyName, InOption) == nullptr;
+        });
 
         if (Axis->Options.IsEmpty())
         { continue; }
@@ -142,43 +154,18 @@ auto
         _Axes.Add(MoveTemp(Axis));
     }
 
-    const auto& Profiles = ck::debug_axes::Get_StyleProfiles();
-    for (auto Index = 0; Index < Profiles.Num(); ++Index)
-    { _ProfileItems.Add(MakeShared<int32>(Index)); }
-
     ChildSlot
     [
-        SNew(SBorder)
-            .BorderImage(CkStyle::GetRoundedBrush_Large())
-            .BorderBackgroundColor(FSlateColor{CkStyle::Bg1()})
-            .Padding(FMargin{CkStyle::SpaceM})
+        SNew(SVerticalBox)
+
+        + SVerticalBox::Slot().AutoHeight()
             [
-                SNew(SVerticalBox)
+                Build_ProfileControls()
+            ]
 
-                + SVerticalBox::Slot().AutoHeight()
-                    [
-                        Build_ProfileControls()
-                    ]
-
-                + SVerticalBox::Slot().AutoHeight().Padding(0.0f, CkStyle::SpaceM, 0.0f, 0.0f)
-                    [
-                        SNew(SCkStyleLab_InputHudControls)
-                            .OnChanged(FOnCkStyleLab_InputHudChanged::CreateSP(
-                                this, &SCkStyleLab_ControlsPane::Notify_SelectionChanged))
-                    ]
-
-                + SVerticalBox::Slot().AutoHeight().Padding(0.0f, CkStyle::SpaceM, 0.0f, CkStyle::SpaceS)
-                    [
-                        SNew(STextBlock)
-                            .Text(FText::FromString(TEXT("AXES")))
-                            .Font(CkStyle::BoldFont(CkStyle::FontSizeH4()))
-                            .ColorAndOpacity(FSlateColor{CkStyle::TextDim()})
-                    ]
-
-                + SVerticalBox::Slot().AutoHeight()
-                    [
-                        Build_AxisRows()
-                    ]
+        + SVerticalBox::Slot().AutoHeight().Padding(0.0f, CkStyle::SpaceM, 0.0f, 0.0f)
+            [
+                Build_GroupedAxes()
             ]
     ];
 }
@@ -187,22 +174,118 @@ auto
 
 auto
     SCkStyleLab_ControlsPane::
-    Build_AxisRows()
+    Build_GroupedAxes()
     -> TSharedRef<SWidget>
 {
-    auto Rows = SNew(SVerticalBox);
+    auto Groups = SNew(SVerticalBox);
 
-    for (const auto& Axis : _Axes)
+    for (const auto& Group : ck::style_lab::Get_GroupMetadata())
     {
-        Rows->AddSlot()
+        Groups->AddSlot()
             .AutoHeight()
-            .Padding(0.0f, 0.0f, 0.0f, CkStyle::SpaceXS)
+            .Padding(0.0f, 0.0f, 0.0f, CkStyle::SpaceM)
             [
-                Build_AxisRow(Axis)
+                Group.Group == ECkStyleLab_Group::InputHud
+                    ? Build_InputHudGroup(Group)
+                    : Build_AxisGroup(Group)
             ];
     }
 
-    return Rows;
+    return Groups;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkStyleLab_ControlsPane::
+    Build_AxisGroup(
+        const FCkStyleLab_GroupMetadata& InGroup)
+    -> TSharedRef<SWidget>
+{
+    auto Rows = SNew(SVerticalBox);
+    auto AxisCount = 0;
+
+    for (const auto& Axis : _Axes)
+    {
+        if (NOT Axis.IsValid() || Axis->Group != InGroup.Group)
+        { continue; }
+
+        ++AxisCount;
+        Rows->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, CkStyle::SpaceXS)
+            [Build_AxisRow(Axis)];
+    }
+
+    TSharedPtr<SCkStyleLab_SamplePane> Preview;
+
+    auto Body = SNew(SVerticalBox)
+        + SVerticalBox::Slot().AutoHeight().Padding(CkStyle::SpaceM, CkStyle::SpaceS)
+            [
+                SNew(STextBlock)
+                    .Text(InGroup.Description)
+                    .AutoWrapText(true)
+                    .Font(CkStyle::RegularFont(CkStyle::FontSizeSmall()))
+                    .ColorAndOpacity(FSlateColor{CkStyle::TextDim()})
+            ]
+        + SVerticalBox::Slot().AutoHeight().Padding(CkStyle::SpaceM, 0.0f, CkStyle::SpaceM, CkStyle::SpaceS)
+            [Rows]
+        + SVerticalBox::Slot().AutoHeight()
+            [SNew(SSeparator)]
+        + SVerticalBox::Slot().AutoHeight().Padding(CkStyle::SpaceM)
+            [
+                SAssignNew(Preview, SCkStyleLab_SamplePane)
+                    .Group(InGroup.Group)
+            ];
+
+    _GroupPreviews.Add(Preview);
+
+    return SNew(SCkDebug_InspectorPanel)
+        .Title(InGroup.DisplayName)
+        .CountText(FText::AsNumber(AxisCount))
+        .StartExpanded(InGroup.bStartExpanded)
+        .Body()
+        [Body];
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkStyleLab_ControlsPane::
+    Build_InputHudGroup(
+        const FCkStyleLab_GroupMetadata& InGroup)
+    -> TSharedRef<SWidget>
+{
+    TSharedPtr<SCkStyleLab_SamplePane> Preview;
+
+    auto Body = SNew(SVerticalBox)
+        + SVerticalBox::Slot().AutoHeight().Padding(CkStyle::SpaceM, CkStyle::SpaceS)
+            [
+                SNew(STextBlock)
+                    .Text(InGroup.Description)
+                    .AutoWrapText(true)
+                    .Font(CkStyle::RegularFont(CkStyle::FontSizeSmall()))
+                    .ColorAndOpacity(FSlateColor{CkStyle::TextDim()})
+            ]
+        + SVerticalBox::Slot().AutoHeight().Padding(CkStyle::SpaceM, 0.0f, CkStyle::SpaceM, CkStyle::SpaceS)
+            [
+                SNew(SCkStyleLab_InputHudControls)
+                    .OnChanged(FOnCkStyleLab_InputHudChanged::CreateSP(
+                        this, &SCkStyleLab_ControlsPane::Notify_SelectionChanged))
+            ]
+        + SVerticalBox::Slot().AutoHeight()
+            [SNew(SSeparator)]
+        + SVerticalBox::Slot().AutoHeight().Padding(CkStyle::SpaceM)
+            [
+                SAssignNew(Preview, SCkStyleLab_SamplePane)
+                    .Group(ECkStyleLab_Group::InputHud)
+            ];
+
+    _GroupPreviews.Add(Preview);
+
+    return SNew(SCkDebug_InspectorPanel)
+        .Title(InGroup.DisplayName)
+        .StartExpanded(InGroup.bStartExpanded)
+        .Body()
+        [Body];
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -268,71 +351,68 @@ auto
     Build_ProfileControls()
     -> TSharedRef<SWidget>
 {
-    return SNew(SVerticalBox)
+    auto Buttons = SNew(SWrapBox).UseAllottedSize(true);
+    const auto& Profiles = ck::debug_axes::Get_StyleProfiles();
 
-        + SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, CkStyle::SpaceS)
+    for (auto Index = 0; Index < Profiles.Num(); ++Index)
+    {
+        const auto& Profile = Profiles[Index];
+        Buttons->AddSlot().Padding(0.0f, 0.0f, CkStyle::SpaceS, CkStyle::SpaceS)
             [
-                SNew(STextBlock)
-                    .Text(FText::FromString(TEXT("PROFILE")))
-                    .Font(CkStyle::BoldFont(CkStyle::FontSizeH4()))
-                    .ColorAndOpacity(FSlateColor{CkStyle::TextDim()})
-            ]
-
-        + SVerticalBox::Slot().AutoHeight()
-            [
-                SAssignNew(_ProfileCombo, SComboBox<TSharedPtr<int32>>)
-                    .OptionsSource(&_ProfileItems)
-                    .OnGenerateWidget_Lambda([](TSharedPtr<int32> InItem) -> TSharedRef<SWidget>
+                SNew(SButton)
+                    .ToolTipText(FText::FromString(Profile.Blurb))
+                    .OnClicked_Lambda([this, Index]() -> FReply
                     {
-                        const auto& Profiles = ck::debug_axes::Get_StyleProfiles();
-
-                        if (NOT InItem.IsValid() || NOT Profiles.IsValidIndex(*InItem))
-                        { return SNullWidget::NullWidget; }
-
-                        const auto& Profile = Profiles[*InItem];
-
-                        // The active profile carries a marker so the open list shows which point in
-                        // axis space is currently applied.
-                        const auto* Settings = UCkDebuggerStyleSettings::Get();
-                        const auto IsActive = Settings != nullptr && Settings->ActiveProfileName == Profile.Name;
-                        const auto Label = IsActive
-                            ? ck::Format_UE(TEXT("* {}"), Profile.Name)
-                            : Profile.Name;
-
-                        return SNew(STextBlock)
-                            .Text(FText::FromString(Label))
-                            .ToolTipText(FText::FromString(Profile.Blurb))
-                            .Font(CkStyle::RegularFont(CkStyle::FontSizeSmall()))
-                            .ColorAndOpacity(FSlateColor{IsActive ? CkStyle::Accent() : CkStyle::Text()});
-                    })
-                    .OnSelectionChanged_Lambda([this](TSharedPtr<int32> InItem, ESelectInfo::Type)
-                    {
-                        if (NOT InItem.IsValid())
-                        { return; }
-
-                        Apply_Profile(*InItem);
+                        Apply_Profile(Index);
+                        return FReply::Handled();
                     })
                     [
                         SNew(STextBlock)
-                            .Text_Lambda([]() -> FText
+                            .Text(FText::FromString(Profile.Name))
+                            .Font(CkStyle::BoldFont(CkStyle::FontSizeSmall()))
+                            .ColorAndOpacity_Lambda([Name = Profile.Name]() -> FSlateColor
                             {
                                 const auto* Settings = UCkDebuggerStyleSettings::Get();
-                                return FText::FromString(Settings != nullptr
-                                    ? Settings->ActiveProfileName
-                                    : FString{});
+                                return FSlateColor{Settings != nullptr && Settings->ActiveProfileName == Name
+                                    ? CkStyle::Accent()
+                                    : CkStyle::Text()};
                             })
-                            .Font(CkStyle::BoldFont(CkStyle::FontSizeSmall()))
-                            .ColorAndOpacity(FSlateColor{CkStyle::Accent()})
                     ]
+            ];
+    }
+
+    auto Body = SNew(SVerticalBox)
+
+        + SVerticalBox::Slot().AutoHeight().Padding(CkStyle::SpaceM, CkStyle::SpaceS)
+            [
+                SNew(STextBlock)
+                    .Text(FText::FromString(TEXT("Profiles apply a complete curated style. Editing any individual control below changes the profile to Custom.")))
+                    .AutoWrapText(true)
+                    .Font(CkStyle::RegularFont(CkStyle::FontSizeSmall()))
+                    .ColorAndOpacity(FSlateColor{CkStyle::TextDim()})
             ]
 
-        + SVerticalBox::Slot().AutoHeight().Padding(0.0f, CkStyle::SpaceS, 0.0f, 0.0f)
+        + SVerticalBox::Slot().AutoHeight().Padding(CkStyle::SpaceM, 0.0f)
+            [Buttons]
+
+        + SVerticalBox::Slot().AutoHeight().Padding(CkStyle::SpaceM, CkStyle::SpaceS)
             [
-                SNew(SButton)
-                    .Text(FText::FromString(TEXT("Reset to Classic")))
-                    .ToolTipText(FText::FromString(TEXT("Restore every axis to its default — identical to applying the Classic profile.")))
-                    .OnClicked(FOnClicked::CreateSP(this, &SCkStyleLab_ControlsPane::OnResetToClassic))
+                SNew(STextBlock)
+                    .Text_Lambda([]() -> FText
+                    {
+                        const auto* Settings = UCkDebuggerStyleSettings::Get();
+                        return FText::FromString(ck::Format_UE(TEXT("Current: {}"),
+                            Settings != nullptr ? Settings->ActiveProfileName : FString{TEXT("Unavailable")}));
+                    })
+                    .Font(CkStyle::BoldFont(CkStyle::FontSizeSmall()))
+                    .ColorAndOpacity(FSlateColor{CkStyle::Accent()})
             ];
+
+    return SNew(SCkDebug_InspectorPanel)
+        .Title(FText::FromString(TEXT("Curated profiles")))
+        .StartExpanded(true)
+        .Body()
+        [Body];
 }
 
 // ====================================================================================================================
@@ -396,19 +476,6 @@ auto
 
 auto
     SCkStyleLab_ControlsPane::
-    OnResetToClassic()
-    -> FReply
-{
-    constexpr auto ClassicProfileIndex = 0;
-    Apply_Profile(ClassicProfileIndex);
-
-    return FReply::Handled();
-}
-
-// --------------------------------------------------------------------------------------------------------------------
-
-auto
-    SCkStyleLab_ControlsPane::
     Apply_Profile(
         int32 InProfileIndex)
     -> void
@@ -436,8 +503,40 @@ auto
     Notify_SelectionChanged()
     -> void
 {
+    RequestPreviewRebuilds();
+
     if (_OnSelectionChanged.IsBound())
     { _OnSelectionChanged.Execute(); }
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkStyleLab_ControlsPane::
+    RequestPreviewRebuilds()
+    -> void
+{
+    for (const auto& Preview : _GroupPreviews)
+    {
+        if (Preview.IsValid())
+        { Preview->RequestRebuild(); }
+    }
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkStyleLab_ControlsPane::
+    Set_ShowAllTones(
+        bool InShowAllTones)
+    -> void
+{
+    _ShowAllTones = InShowAllTones;
+    for (const auto& Preview : _GroupPreviews)
+    {
+        if (Preview.IsValid())
+        { Preview->Set_ShowAllTones(InShowAllTones); }
+    }
 }
 
 // ====================================================================================================================

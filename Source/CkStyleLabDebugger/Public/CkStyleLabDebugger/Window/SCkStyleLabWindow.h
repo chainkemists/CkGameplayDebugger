@@ -4,14 +4,13 @@
 #include "CkDebuggerCommon/Window/SCkDebugger_WindowBase.h"
 
 class SCkStyleLab_ControlsPane;
-class SCkStyleLab_SamplePane;
 
 // --------------------------------------------------------------------------------------------------------------------
 // CK Debugger Style Lab — the iteration vehicle for the debugger-wide style axes.
 //
-// Left: one canned worst-case document rendered through ck::debug_axes. Right: every axis plus the
-// curated profiles. Changing an axis writes the shared per-user settings, so real debugger tabs
-// follow live; the Lab's own sample rebuilds on the same signal.
+// One scrollable workbench: curated profiles, then grouped axes with the real preview widgets they
+// affect immediately beneath them. Changing an axis writes the shared per-user settings, so real
+// debugger tabs follow live; each local group preview rebuilds on the same explicit signal.
 //
 // No ECS handles, no PIE data, nothing cached that outlives a session — so there is no EndPIE
 // clearing to do. The gated Tick exists only to notice a settings revision that came from
@@ -35,12 +34,11 @@ public:
 private:
     auto Build_MenuActions() -> TSharedRef<SWidget>;
     auto Get_StatusText() const -> FText;
-    auto OnSampleSelectionChanged() -> void;
+    auto OnSelectionChanged() -> void;
 
     auto Get_ShowAllTones() const -> bool;
     auto Set_ShowAllTones(bool InShowAllTones) -> void;
 
-    TSharedPtr<SCkStyleLab_SamplePane>   _SamplePane;
     TSharedPtr<SCkStyleLab_ControlsPane> _ControlsPane;
 
     uint32 _LastSeenRevision = 0;

@@ -773,6 +773,16 @@ auto
     return CkStyle::GetRoundedBrush_Large();
 }
 
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    ck::debug_axes::
+    Get_CardSurfaceBrush()
+    -> const FSlateBrush*
+{
+    return Get_CardBrush();
+}
+
 // ====================================================================================================================
 // SURFACES
 
@@ -782,8 +792,7 @@ auto
         int32 InDepth)
     -> const FSlateBrush*
 {
-    // The ground is always a solid fill: an outlined or flattened ROOT would let editor chrome
-    // read through the debugger, which no option is asking for.
+    // The ground is always a solid fill: a transparent ROOT would let editor chrome read through.
     if (InDepth <= 0)
     { return CkStyle::GetFilledBrush(); }
 
@@ -791,7 +800,8 @@ auto
     {
         case ECkDebugAxis_SurfaceElevation::Layered:  return CkStyle::GetFilledBrush();
         case ECkDebugAxis_SurfaceElevation::Flat:     return CkStyle::GetFilledBrush();
-        case ECkDebugAxis_SurfaceElevation::Outlined: return FCkDebuggerStyle::Get_SurfaceOutlineBrush();
+        // Legacy wire value: behave exactly like Flat until PostInitProperties normalizes it.
+        case ECkDebugAxis_SurfaceElevation::Outlined: return CkStyle::GetFilledBrush();
     }
 
     return CkStyle::GetFilledBrush();
@@ -820,12 +830,29 @@ auto
         case ECkDebugAxis_SurfaceElevation::Flat:
             return CkStyle::Bg1();
 
-        // Paired with the outline brush, whose fill is transparent: the tint lands on the ring.
+        // Legacy wire value: behave exactly like Flat until PostInitProperties normalizes it.
         case ECkDebugAxis_SurfaceElevation::Outlined:
-            return CkStyle::Border();
+            return CkStyle::Bg1();
     }
 
     return CkStyle::Bg1();
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    ck::debug_axes::
+    Get_CardOuterExtent()
+    -> float
+{
+    switch (ck_debugger_axes::Get_LiveSelection().SurfaceElevation)
+    {
+        case ECkDebugAxis_SurfaceElevation::Layered:  return 6.0f;
+        case ECkDebugAxis_SurfaceElevation::Flat:     return 0.0f;
+        case ECkDebugAxis_SurfaceElevation::Outlined: return 0.0f;
+    }
+
+    return 0.0f;
 }
 
 // ====================================================================================================================
@@ -1460,6 +1487,15 @@ auto
             TEXT("Every axis at its default — the look the debuggers shipped with."),
             FCkDebuggerStyleSelection{}});
 
+        auto Workbench = FCkDebuggerStyleSelection{};
+        Workbench.CornerStyle      = ECkDebugAxis_CornerStyle::Sharp;
+        Workbench.SurfaceElevation = ECkDebugAxis_SurfaceElevation::Flat;
+
+        Result.Add(FCkDebuggerStyleProfile{
+            TEXT("Workbench"),
+            TEXT("Continuous square panes with shared dividers and no card gutters."),
+            Workbench});
+
         auto Dense = FCkDebuggerStyleSelection{};
         Dense.RowDensity        = ECkDebugAxis_RowDensity::Compact;
         Dense.EntityIdStyle     = ECkDebugAxis_EntityIdStyle::CompactId;
@@ -1511,13 +1547,13 @@ auto
         MinimalInk.SeparatorWeight   = ECkDebugAxis_SeparatorWeight::Hairline;
         MinimalInk.ProviderChipStyle = ECkDebugAxis_ProviderChipStyle::AbbrevOnly;
         MinimalInk.LegendMode        = ECkDebugAxis_LegendMode::Off;
-        // Rings instead of fills, everywhere the choice exists — consistent with the hollow badges
-        // and unfilled chips this profile already asks for. Type size stays honest.
+        // Minimal ornament everywhere the choice remains — consistent with the hollow badges and
+        // unfilled chips this profile already asks for. Type size stays honest.
         MinimalInk.IconTreatment     = ECkDebugAxis_IconTreatment::Ring;
         MinimalInk.TextScale         = ECkDebugAxis_TextScale::Normal;
         MinimalInk.EntityRefStyle    = ECkDebugAxis_EntityRefStyle::Monochrome;
         MinimalInk.CornerStyle       = ECkDebugAxis_CornerStyle::Sharp;
-        MinimalInk.SurfaceElevation  = ECkDebugAxis_SurfaceElevation::Outlined;
+        MinimalInk.SurfaceElevation  = ECkDebugAxis_SurfaceElevation::Flat;
         MinimalInk.GraphNodeStyle    = ECkDebugAxis_GraphNodeStyle::Minimal;
         MinimalInk.GraphEventEmphasis = ECkDebugAxis_GraphEventEmphasis::Subtle;
         MinimalInk.RowBanding        = ECkDebugAxis_RowBanding::Off;

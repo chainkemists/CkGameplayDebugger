@@ -34,6 +34,13 @@ auto
 {
     Super::PostInitProperties();
 
+    // Keep the legacy reflected value long enough for old ini files to deserialize, then immediately
+    // normalize it to the supported edge-to-edge treatment. Do not leave a hidden style running.
+    if (Selection.SurfaceElevation == ECkDebugAxis_SurfaceElevation::Outlined)
+    {
+        Selection.SurfaceElevation = ECkDebugAxis_SurfaceElevation::Flat;
+    }
+
     if (SchemaVersion < CurrentSchemaVersion)
     {
         UE_LOG(LogCkDebuggerStyle, Warning, TEXT("%s"), *ck::Format_UE(

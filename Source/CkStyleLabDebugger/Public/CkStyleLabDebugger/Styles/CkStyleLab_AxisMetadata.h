@@ -4,6 +4,27 @@
 
 // ====================================================================================================================
 
+enum class ECkStyleLab_Group : uint8
+{
+    WorkbenchSurfaces,
+    TokensLegend,
+    EntityValues,
+    HierarchyEditing,
+    Icons,
+    GraphTelemetry,
+    InputHud,
+};
+
+struct FCkStyleLab_GroupMetadata
+{
+    ECkStyleLab_Group Group = ECkStyleLab_Group::WorkbenchSurfaces;
+    FText             DisplayName;
+    FText             Description;
+    bool              bStartExpanded = true;
+};
+
+// ====================================================================================================================
+
 /**
  * Runtime presentation contract for FCkDebuggerStyleSelection's reflected axes.
  *
@@ -17,6 +38,7 @@ struct FCkStyleLab_AxisMetadata
     FName PropertyName;
     FText DisplayName;
     FText ToolTip;
+    ECkStyleLab_Group Group = ECkStyleLab_Group::WorkbenchSurfaces;
 };
 
 struct FCkStyleLab_AxisOptionMetadata
@@ -28,6 +50,7 @@ struct FCkStyleLab_AxisOptionMetadata
 
 namespace ck::style_lab
 {
+    CKSTYLELABDEBUGGER_API auto Get_GroupMetadata() -> const TArray<FCkStyleLab_GroupMetadata>&;
     CKSTYLELABDEBUGGER_API auto Find_AxisMetadata(FName InPropertyName) -> const FCkStyleLab_AxisMetadata*;
     CKSTYLELABDEBUGGER_API auto Find_AxisOptionLabel(FName InPropertyName, int64 InValue) -> const FText*;
 }

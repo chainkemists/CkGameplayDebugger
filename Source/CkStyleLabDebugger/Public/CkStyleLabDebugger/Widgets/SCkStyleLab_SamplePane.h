@@ -1,6 +1,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "CkStyleLabDebugger/Styles/CkStyleLab_AxisMetadata.h"
 #include "Widgets/SCompoundWidget.h"
 
 struct FCkDebuggerStyleSelection;
@@ -22,7 +23,10 @@ class SBorder;
 class SCkStyleLab_SamplePane : public SCompoundWidget
 {
 public:
-    SLATE_BEGIN_ARGS(SCkStyleLab_SamplePane) {}
+    SLATE_BEGIN_ARGS(SCkStyleLab_SamplePane)
+        : _Group(ECkStyleLab_Group::WorkbenchSurfaces)
+    {}
+        SLATE_ARGUMENT(ECkStyleLab_Group, Group)
     SLATE_END_ARGS()
 
     auto Construct(const FArguments& InArgs) -> void;
@@ -40,9 +44,9 @@ private:
     auto Build_Separator(const FCkDebuggerStyleSelection& InSelection) const -> TSharedRef<SWidget>;
     auto Build_InputHudPreview(const FCkDebuggerStyleSelection& InSelection) const -> TSharedRef<SWidget>;
 
-    // Shapes, surfaces, glyph backdrops and graph nodes — the axes whose effect is a BOX rather
-    // than a row, so the document above cannot show them without contriving one.
-    auto Build_ShapesAndSurfaces(const FCkDebuggerStyleSelection& InSelection) const -> TSharedRef<SWidget>;
+    auto Build_WorkbenchSurfaces(const FCkDebuggerStyleSelection& InSelection) const -> TSharedRef<SWidget>;
+    auto Build_Icons(const FCkDebuggerStyleSelection& InSelection) const -> TSharedRef<SWidget>;
+    auto Build_GraphTelemetry(const FCkDebuggerStyleSelection& InSelection) const -> TSharedRef<SWidget>;
 
     TSharedPtr<SBorder> _Root;
 
@@ -50,6 +54,7 @@ private:
     // model for the preview's complete Slate lifetime.
     TSharedPtr<FCk_InputHud_Model> _InputHudPreviewModel;
 
+    ECkStyleLab_Group _Group = ECkStyleLab_Group::WorkbenchSurfaces;
     bool _ShowAllTones = false;
 };
 

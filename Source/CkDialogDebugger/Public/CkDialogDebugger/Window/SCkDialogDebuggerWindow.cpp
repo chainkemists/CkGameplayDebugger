@@ -5,6 +5,7 @@
 #include "CkDebuggerCommon/Styles/CkDebuggerAxes.h"
 #include "CkDebuggerCommon/Window/CkDebuggerRefreshGate.h"
 #include "CkDebuggerCommon/Window/SCkDebug_WindowChrome.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_PaneHost.h"
 #include "CkDebuggerCommon/Search/SCkDebug_DualSearchBar.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_MeterBar.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_IconToggle.h"
@@ -105,6 +106,8 @@ auto
         .ToolTabId(TEXT("CkDialogDebugger"))
         .Content()
         [
+            SNew(SCkDebug_PaneHost)
+            [
             SNew(SVerticalBox)
         + SVerticalBox::Slot()
         .FillHeight(1.0f)
@@ -124,6 +127,7 @@ auto
                 .Text(FText::FromString(TEXT("(waiting for a PIE session…)")))
             ]
         ]
+            ]
         ]
     ];
 

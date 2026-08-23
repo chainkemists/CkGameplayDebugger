@@ -22,8 +22,7 @@ auto SCkCrowdDebugger_StatsPanel::Construct(const FArguments& InArgs) -> void
 	ChildSlot
 	[
 		SNew(SBorder)
-		.BorderImage(CkStyle::GetFilledBrush())
-		.BorderBackgroundColor(FSlateColor(CkStyle::Bg1()))
+		.BorderBackgroundColor(FLinearColor::Transparent)
 		.Padding_Lambda([]() { return ck::debug_axes::Apply_RowDensity(FMargin{CkStyle::SpaceM, CkStyle::SpaceS}); })
 		[
 			SNew(SVerticalBox)

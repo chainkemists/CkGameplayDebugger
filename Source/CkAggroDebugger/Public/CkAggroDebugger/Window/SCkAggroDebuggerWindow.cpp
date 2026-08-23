@@ -10,6 +10,7 @@
 #include "CkDebuggerCommon/Widgets/SCkDebug_SectionHeader.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_StatPair.h"
 #include "CkDebuggerCommon/Window/SCkDebug_WindowChrome.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_PaneHost.h"
 
 #include "CkEditorTools/Style/CkStyle.h"
 
@@ -154,6 +155,8 @@ auto
             })
             .Content()
             [
+                SNew(SCkDebug_PaneHost)
+                [
                 SNew(SVerticalBox)
         + SVerticalBox::Slot()
         .FillHeight(1.0f)
@@ -164,6 +167,7 @@ auto
             [
                 SAssignNew(_OwnerBox, SVerticalBox)
             ]
+                ]
         ]
             ]
     ];

@@ -12,6 +12,7 @@
 #include "CkDebuggerCommon/Styles/CkDebuggerAxes.h"
 #include "CkDebuggerCommon/Window/SCkDebug_WindowChrome.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_CategoryDot.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_PaneHost.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_WorldSelector.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_SectionHeader.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_IconToggle.h"
@@ -176,11 +177,7 @@ auto
         .ShowRefreshControls(true)
         .Content()
         [
-        SNew(SBorder)
-        .BorderImage(FAppStyle::GetBrush("WhiteBrush"))
-        .BorderBackgroundColor(CkStyle::Bg1())
-        [
-            SNew(SVerticalBox)
+        SNew(SVerticalBox)
 
             + SVerticalBox::Slot().AutoHeight().Padding(CkStyle::SpaceM, CkStyle::SpaceS)
                 [ _SummaryText.ToSharedRef() ]
@@ -196,7 +193,7 @@ auto
                         [
                             SNew(SVerticalBox)
 
-                            + SVerticalBox::Slot().AutoHeight().Padding(0.0f, CkStyle::SpaceS * 0.5f)
+                            + SVerticalBox::Slot().AutoHeight()
                                 [
                                     BuildSection(
                                         FText::FromString(TEXT("Held & Recent Keys")),
@@ -204,7 +201,7 @@ auto
                                         _KeyStripBox.ToSharedRef())
                                 ]
 
-                            + SVerticalBox::Slot().AutoHeight().Padding(0.0f, CkStyle::SpaceS * 0.5f)
+                            + SVerticalBox::Slot().AutoHeight()
                                 [
                                     BuildSection(
                                         FText::FromString(TEXT("Devices")),
@@ -212,7 +209,7 @@ auto
                                         BuildDevicesSection())
                                 ]
 
-                            + SVerticalBox::Slot().AutoHeight().Padding(0.0f, CkStyle::SpaceS * 0.5f)
+                            + SVerticalBox::Slot().AutoHeight()
                                 [
                                     BuildSection(
                                         FText::FromString(TEXT("Timeline")),
@@ -223,7 +220,7 @@ auto
                                         _TimelineHost.ToSharedRef())
                                 ]
 
-                            + SVerticalBox::Slot().AutoHeight().Padding(0.0f, CkStyle::SpaceS * 0.5f)
+                            + SVerticalBox::Slot().AutoHeight()
                                 [
                                     BuildSection(
                                         FText::FromString(TEXT("Player Bindings — default vs current")),
@@ -231,7 +228,7 @@ auto
                                         _BindingsListBox.ToSharedRef())
                                 ]
 
-                            + SVerticalBox::Slot().AutoHeight().Padding(0.0f, CkStyle::SpaceS * 0.5f)
+                            + SVerticalBox::Slot().AutoHeight()
                                 [
                                     BuildSection(
                                         FText::FromString(TEXT("Mapping Context Stack")),
@@ -239,7 +236,7 @@ auto
                                         _ContextListBox.ToSharedRef())
                                 ]
 
-                            + SVerticalBox::Slot().AutoHeight().Padding(0.0f, CkStyle::SpaceS * 0.5f)
+                            + SVerticalBox::Slot().AutoHeight()
                                 [
                                     BuildSection(
                                         FText::FromString(TEXT("Resolved Bindings (live)")),
@@ -248,7 +245,6 @@ auto
                                 ]
                         ]
                 ]
-        ]
         ]
     ];
 }
@@ -358,13 +354,15 @@ auto
         const TSharedRef<SWidget>& InBody)
     -> TSharedRef<SWidget>
 {
-    return SNew(SExpandableArea)
-        .InitiallyCollapsed(false)
-        .BorderBackgroundColor(CkStyle::Bg1())
-        .HeaderPadding(FMargin(CkStyle::SpaceS, CkStyle::SpaceS * 0.5f))
-        .Padding(FMargin(CkStyle::SpaceS, CkStyle::SpaceS * 0.5f, 0.0f, CkStyle::SpaceS * 0.5f))
-        .HeaderContent()
+    return SNew(SCkDebug_PaneHost)
         [
+            SNew(SExpandableArea)
+            .InitiallyCollapsed(false)
+            .BorderBackgroundColor(FLinearColor::Transparent)
+            .HeaderPadding(FMargin(CkStyle::SpaceS, CkStyle::SpaceS * 0.5f))
+            .Padding(FMargin(CkStyle::SpaceS, CkStyle::SpaceS * 0.5f, 0.0f, CkStyle::SpaceS * 0.5f))
+            .HeaderContent()
+            [
             SNew(SHorizontalBox)
 
             + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
@@ -377,9 +375,10 @@ auto
 
             + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.0f, 0.0f, CkStyle::SpaceM, 0.0f)
                 [ InHeaderExtra ]
-        ]
-        .BodyContent()
-        [ InBody ];
+            ]
+            .BodyContent()
+            [ InBody ]
+        ];
 }
 
 auto

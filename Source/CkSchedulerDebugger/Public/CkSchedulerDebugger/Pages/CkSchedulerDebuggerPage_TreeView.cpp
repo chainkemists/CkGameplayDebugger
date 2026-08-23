@@ -2,6 +2,7 @@
 
 #include "CkCore/Format/CkFormat.h"
 #include "CkDebuggerCommon/Graph/SCkDebug_GraphCanvas.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_PaneHost.h"
 #include "CkDebuggerCommon/Styles/CkDebuggerStyle.h"
 #include "CkDebuggerCommon/Utils/CkDebug_CopyMenu_Utils.h"
 #include "CkSchedulerDebugger/Graph/SCkSchedulerProcessorCard.h"
@@ -12,10 +13,8 @@
 #include "CkSchedulerDebugger/Widgets/SCkSchedulerDebugger_ProcessorTree.h"
 #include "Framework/Application/SlateApplication.h"
 #include "Framework/MultiBox/MultiBoxBuilder.h"
-#include "Styling/AppStyle.h"
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Input/SSpinBox.h"
-#include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/Layout/SSpacer.h"
 #include "Widgets/Layout/SSplitter.h"
@@ -62,17 +61,11 @@ auto FCkSchedulerDebuggerPage_TreeView::Build_Content(
 
            +
            SSplitter::Slot().Value(0.25f).MinSize(
-               240.0f)[SNew(SBorder)
-                           .BorderImage(FAppStyle::GetBrush("ToolPanel.GroupBorder"))
-                           .Padding(
-                               0.0f)[SAssignNew(_ProcessorTree, SCkSchedulerDebugger_ProcessorTree)
-                                         .ViewModel(InViewModel)]]
+                240.0f)[SNew(SCkDebug_PaneHost)[SAssignNew(_ProcessorTree, SCkSchedulerDebugger_ProcessorTree)
+                                                     .ViewModel(InViewModel)]]
 
            + SSplitter::Slot().Value(0.50f).MinSize(400.0f)
-                 [SNew(SBorder)
-                      .BorderImage(FAppStyle::GetBrush("ToolPanel.GroupBorder"))
-                      .Padding(0.0f)
-                          [SNew(SVerticalBox)
+                  [SNew(SCkDebug_PaneHost).ContentMode(ECkDebugPaneContent::OpaqueRenderer)[SNew(SVerticalBox)
 
                            + SVerticalBox::Slot().AutoHeight().Padding(
                                  FCkSchedulerDebuggerStyle::Padding_Small,
@@ -173,13 +166,11 @@ auto FCkSchedulerDebuggerPage_TreeView::Build_Content(
                                                             })]]]
 
                            + SVerticalBox::Slot().FillHeight(
-                                 1.0f)[_DetailGraphContainer.ToSharedRef()]]]
+                                  1.0f)[_DetailGraphContainer.ToSharedRef()]]]
 
            + SSplitter::Slot().Value(0.25f).MinSize(
-                 260.0f)[SNew(SBorder)
-                             .BorderImage(FAppStyle::GetBrush("ToolPanel.GroupBorder"))
-                             .Padding(0.0f)[SAssignNew(_Inspector, SCkSchedulerDebugger_Inspector)
-                                                .ViewModel(InViewModel)]];
+                  260.0f)[SNew(SCkDebug_PaneHost)[SAssignNew(_Inspector, SCkSchedulerDebugger_Inspector)
+                                                     .ViewModel(InViewModel)]];
 }
 
 // --------------------------------------------------------------------------------------------------------------------

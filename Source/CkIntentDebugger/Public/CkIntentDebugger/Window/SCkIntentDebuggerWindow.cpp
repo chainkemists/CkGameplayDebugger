@@ -28,6 +28,7 @@
 #include "CkDebuggerCommon/Widgets/SCkDebug_WorldSelector.h"
 #include "CkDebuggerCommon/Window/CkDebuggerRefreshGate.h"
 #include "CkDebuggerCommon/Window/SCkDebug_WindowChrome.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_PaneHost.h"
 
 #include "CkEditorTools/Style/CkStyle.h"
 
@@ -170,6 +171,14 @@ auto
                     InputHudCommandGroup),
                 FCkDebug_CommandGroup::Context(TEXT("IntentTarget"), FText::FromString(TEXT("Intent source and target")), Build_Toolbar())
             })
+            .CommonActionsContent()
+            [
+                SNew(SCkDebug_ViewportPickerControls)
+                    .Picker(_ViewportPicker)
+                    .PickTooltip(FText::FromString(TEXT(
+                        "Enter pick mode: click an entity carrying an input source or input layer.\n"
+                        "Only those entities (and their owning pawn) are shown and pickable.")))
+            ]
             .ShowRefreshControls(true)
             .Content()
             [
@@ -209,17 +218,6 @@ auto
                     .ShowHeaderLabel(false)
             ]
 
-            // Viewport picker (shared) — click an input source/layer entity.
-            + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-                .Padding(ck_intent_debugger_window::PadS, 0.0f)
-            [
-                SNew(SCkDebug_ViewportPickerControls)
-                    .Picker(_ViewportPicker)
-                    .PickTooltip(FText::FromString(TEXT(
-                        "Enter pick mode: click an entity carrying an input source or input layer.\n"
-                        "Only those entities (and their owning pawn) are shown and pickable.")))
-            ]
-
             + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
                 .Padding(ck_intent_debugger_window::PadM, 0.0f, ck_intent_debugger_window::PadS, 0.0f)
             [
@@ -253,15 +251,13 @@ auto
 
         + SSplitter::Slot().Value(0.30f)
         [
-            SNew(SBorder)
-                .BorderImage(FAppStyle::GetBrush("WhiteBrush"))
-                .BorderBackgroundColor(CkStyle::Bg2())
-            [
-                SNew(SSplitter)
-                    .Orientation(Orient_Horizontal)
+            SNew(SSplitter)
+                .Orientation(Orient_Horizontal)
 
                 + SSplitter::Slot().Value(0.34f)
                 [
+                    SNew(SCkDebug_PaneHost)
+                    [
                     SNew(SVerticalBox)
 
                     + SVerticalBox::Slot().AutoHeight()
@@ -271,16 +267,18 @@ auto
                             .SubText(FText::FromString(TEXT("top-down · first Consume wins")))
                             .Underline(true)
                     ]
-
                     + SVerticalBox::Slot().FillHeight(1.0f)
                     [
                         SAssignNew(_LayerStackPanel, SCkIntentDebugger_LayerStackPanel)
                             .ViewModel(_ViewModel)
                     ]
+                    ]
                 ]
 
                 + SSplitter::Slot().Value(0.36f)
                 [
+                    SNew(SCkDebug_PaneHost)
+                    [
                     SNew(SVerticalBox)
 
                     + SVerticalBox::Slot().AutoHeight()
@@ -289,16 +287,18 @@ auto
                             .Label(FText::FromString(TEXT("Resolution table")))
                             .Underline(true)
                     ]
-
                     + SVerticalBox::Slot().FillHeight(1.0f)
                     [
                         SAssignNew(_ResolutionPanel, SCkIntentDebugger_ResolutionPanel)
                             .ViewModel(_ViewModel)
                     ]
+                    ]
                 ]
 
                 + SSplitter::Slot().Value(0.30f)
                 [
+                    SNew(SCkDebug_PaneHost)
+                    [
                     SNew(SVerticalBox)
 
                     + SVerticalBox::Slot().AutoHeight()
@@ -307,14 +307,13 @@ auto
                             .Label(FText::FromString(TEXT("Near misses")))
                             .Underline(true)
                     ]
-
                     + SVerticalBox::Slot().FillHeight(1.0f)
                     [
                         SAssignNew(_NearMissPanel, SCkIntentDebugger_NearMissPanel)
                             .ViewModel(_ViewModel)
                     ]
+                    ]
                 ]
-            ]
         ]
 
         + SSplitter::Slot().Value(0.70f)
@@ -324,8 +323,12 @@ auto
 
             + SSplitter::Slot().Value(0.35f)
             [
-                SAssignNew(_TimelineDock, SCkIntentDebugger_TimelineDock)
-                    .ViewModel(_ViewModel)
+                SNew(SCkDebug_PaneHost)
+                .ContentMode(ECkDebugPaneContent::OpaqueRenderer)
+                [
+                    SAssignNew(_TimelineDock, SCkIntentDebugger_TimelineDock)
+                        .ViewModel(_ViewModel)
+                ]
             ]
 
             + SSplitter::Slot().Value(0.65f)
@@ -335,6 +338,8 @@ auto
 
                 + SSplitter::Slot().Value(0.38f)
                 [
+                    SNew(SCkDebug_PaneHost)
+                    [
                     SNew(SVerticalBox)
 
                     + SVerticalBox::Slot().AutoHeight()
@@ -343,16 +348,18 @@ auto
                             .Label(FText::FromString(TEXT("Key / State")))
                             .Underline(true)
                     ]
-
                     + SVerticalBox::Slot().FillHeight(1.0f)
                     [
                         SAssignNew(_KeyStatePanel, SCkIntentDebugger_KeyStatePanel)
                             .ViewModel(_ViewModel)
                     ]
+                    ]
                 ]
 
                 + SSplitter::Slot().Value(0.62f)
                 [
+                    SNew(SCkDebug_PaneHost)
+                    [
                     SNew(SVerticalBox)
 
                     + SVerticalBox::Slot().AutoHeight()
@@ -362,11 +369,11 @@ auto
                             .SubText(FText::FromString(TEXT("flash = press · fill = hold toward the verdict · outline = the game listens to it · dim = not connected")))
                             .Underline(true)
                     ]
-
                     + SVerticalBox::Slot().FillHeight(1.0f)
                     [
                         SAssignNew(_DevicesPanel, SCkIntentDebugger_DevicesPanel)
                             .ViewModel(_ViewModel)
+                    ]
                     ]
                 ]
             ]

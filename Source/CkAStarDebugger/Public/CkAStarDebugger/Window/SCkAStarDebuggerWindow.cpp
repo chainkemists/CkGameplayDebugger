@@ -23,6 +23,7 @@
 
 #include "CkAStar/CkAStar_Fragment.h"
 #include "CkDebuggerCommon/Window/SCkDebug_WindowChrome.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_PaneHost.h"
 
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/Layout/SBox.h"
@@ -112,7 +113,7 @@ auto
         SNew(SCkDebug_WindowChrome)
             .WindowId(WindowId)
             .ToolTabId(TEXT("CkAStarDebugger"))
-            .CommandGroups({
+             .CommandGroups({
                 FCkDebug_CommandGroup::Primary(TEXT("Capture"), FText::FromString(TEXT("Capture controls")),
                 SNew(SCkDebug_IconToggle)
                 .IconId(ECk_Icon::Waiting)
@@ -123,9 +124,17 @@ auto
                 {
                     if (_ViewModel.IsValid()) { _ViewModel->Set_Paused(InPaused); }
                 })),
-                FCkDebug_CommandGroup::Context(TEXT("Target"), FText::FromString(TEXT("Search target and status")), BuildToolbar())
-            })
-            .ShowRefreshControls(true)
+                 FCkDebug_CommandGroup::Context(TEXT("Target"), FText::FromString(TEXT("Search target and status")), BuildToolbar())
+             })
+             .CommonActionsContent()
+             [
+                 SNew(SCkDebug_ViewportPickerControls)
+                     .Picker(_ViewportPicker)
+                     .PickTooltip(FText::FromString(TEXT(
+                         "Enter pick mode: click an A* search entity in the viewport to inspect it.\n"
+                         "Only entities with A* debug state (and their owning NPC) are shown and pickable.")))
+             ]
+             .ShowRefreshControls(true)
             .Content()
             [
                 SNew(SVerticalBox)
@@ -141,7 +150,11 @@ auto
                         + SSplitter::Slot()
                             .Value(0.7f)
                             [
-                                SAssignNew(_GridView, SCkAStarDebugger_GridView, _ViewModel)
+                                SNew(SCkDebug_PaneHost)
+                                    .ContentMode(ECkDebugPaneContent::OpaqueRenderer)
+                                    [
+                                        SAssignNew(_GridView, SCkAStarDebugger_GridView, _ViewModel)
+                                    ]
                             ]
 
                         // Right panel (~30%)
@@ -155,14 +168,20 @@ auto
                                     + SSplitter::Slot()
                                         .Value(0.6f)
                                         [
-                                            SAssignNew(_StatsPanel, SCkAStarDebugger_StatsPanel, _ViewModel)
+                                            SNew(SCkDebug_PaneHost)
+                                                [
+                                                    SAssignNew(_StatsPanel, SCkAStarDebugger_StatsPanel, _ViewModel)
+                                                ]
                                         ]
 
                                     // Search history (bottom, ~40%)
                                     + SSplitter::Slot()
                                         .Value(0.4f)
                                         [
-                                            SAssignNew(_SearchHistory, SCkAStarDebugger_SearchHistory, _ViewModel)
+                                            SNew(SCkDebug_PaneHost)
+                                                [
+                                                    SAssignNew(_SearchHistory, SCkAStarDebugger_SearchHistory, _ViewModel)
+                                                ]
                                         ]
                             ]
                 ]
@@ -310,19 +329,6 @@ auto
             [
                 SNew(SCkDebug_WorldSelector, _WorldModel)
                     .ShowHeaderLabel(false)
-            ]
-
-        // Viewport picker (shared) — click an A* search entity in the world.
-        + SHorizontalBox::Slot()
-            .AutoWidth()
-            .VAlign(VAlign_Center)
-            .Padding(4.0f, 0.0f)
-            [
-                SNew(SCkDebug_ViewportPickerControls)
-                    .Picker(_ViewportPicker)
-                    .PickTooltip(FText::FromString(TEXT(
-                        "Enter pick mode: click an A* search entity in the viewport to inspect it.\n"
-                        "Only entities with A* debug state (and their owning NPC) are shown and pickable.")))
             ]
 
         // "Entity:" label

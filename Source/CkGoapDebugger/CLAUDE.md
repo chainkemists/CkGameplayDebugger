@@ -10,6 +10,10 @@
 
 The layout, feature set, and visual language are a faithful Slate port of the interactive HTML mockup at [Mockups/mockup_d_mission_control.html](Mockups/mockup_d_mission_control.html) — treat that file as the visual spec. The port plan + phase history live in `docs/plans/2026-07-18-goap-mission-control/PROGRESS.md` (repo root docs).
 
+The five Inspector workspace panes are framed by Common `SCkDebug_Card` surfaces. Their pane geometry is therefore
+live Style Lab policy: Classic/Layered uses separated rounded cards, while the Workbench profile selects Flat + Sharp
+for contiguous square panes. Splitter values and minimum sizes remain GOAP-owned and unchanged by styling.
+
 ---
 
 ## Window anatomy (top to bottom)

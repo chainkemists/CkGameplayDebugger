@@ -27,21 +27,46 @@ public:
     FCkDebuggerModel_WorldSelector(FCkDebuggerModel_WorldSelector&&) = delete;
     auto operator=(FCkDebuggerModel_WorldSelector&&) -> FCkDebuggerModel_WorldSelector& = delete;
 
-    auto Set_SelectedWorld(UWorld* InWorld) -> void;
-    auto Get_SelectedWorld() const -> UWorld*;
-    auto Get_AvailableWorlds() const -> TArray<UWorld*>;
+    auto
+    Set_SelectedWorld(
+        UWorld* InWorld) -> void;
 
-    // If nothing is selected (fresh window) or the selection went stale (PIE
-    // ended and the weak ptr is now null), pick the first available world.
+    auto
+    Get_SelectedWorld() const -> UWorld*;
+
+    auto
+    Get_AvailableWorlds() const -> TArray<UWorld*>;
+
+    /** Opt-in for tools that can inspect the live Editor world as well as PIE/Game worlds. */
+    auto
+    Set_IncludeEditorWorld(
+        bool InIncludeEditorWorld) -> void;
+
+    // If nothing is selected or the selection went stale, pick an available
+    // world. Editor-capable models promote Editor -> PIE/Game when play starts
+    // and fall back to Editor when the playable world ends.
     // Returns true if the selection changed as a result.
-    auto Ensure_AutoSelect() -> bool;
+    auto
+    Ensure_AutoSelect() -> bool;
 
     FCkDebugger_OnWorldChanged OnWorldChanged;
 
 private:
-    auto BroadcastWorldChanged() -> void;
-    auto HandleWorldCleanup(UWorld* InWorld, bool InSessionEnded, bool InCleanupResources) -> void;
+    auto
+    Set_AutoSelectedWorld(
+        UWorld* InWorld) -> void;
+
+    auto
+    BroadcastWorldChanged() -> void;
+
+    auto
+    HandleWorldCleanup(
+        UWorld* InWorld,
+        bool InSessionEnded,
+        bool InCleanupResources) -> void;
 
     TWeakObjectPtr<UWorld> SelectedWorld;
+    bool IncludeEditorWorld = false;
+    bool SelectedWorldIsAutomatic = false;
     FDelegateHandle WorldCleanupHandle;
 };

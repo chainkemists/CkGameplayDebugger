@@ -61,5 +61,13 @@ public class CkDebuggerCommon : CkModuleRules
         {
             RuntimeDependencies.Add(GraphEditorResource, StagedFileType.NonUFS);
         }
+
+        foreach (var CommonResource in Directory.EnumerateFiles(
+            Path.Combine(ModuleDirectory, "Resources", "Common"),
+            "*.png",
+            SearchOption.AllDirectories))
+        {
+            RuntimeDependencies.Add(CommonResource, StagedFileType.NonUFS);
+        }
     }
 }

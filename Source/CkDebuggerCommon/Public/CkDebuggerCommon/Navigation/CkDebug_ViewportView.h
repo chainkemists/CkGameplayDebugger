@@ -22,6 +22,12 @@ struct FCk_Handle;
 
 namespace ck::DebugViewportView
 {
+    /** Converts normalized viewport coordinates to pixels, rejecting points outside the viewport. */
+    CKDEBUGGERCOMMON_API auto
+    TryGet_ViewportPixel(
+        const FVector2D& InNormalizedViewportPosition,
+        const FIntPoint& InViewportSize) -> TOptional<FVector2D>;
+
 #if WITH_EDITOR
     // The level-editor viewport client currently driving input/rendering, or
     // nullptr when the player is possessed (or no PIE). Non-null == "ejected".
@@ -42,10 +48,8 @@ namespace ck::DebugViewportView
     // camera while ejected, else the first player controller's view point.
     CKDEBUGGERCOMMON_API auto Get_ViewCameraLocation(UWorld* InWorld) -> TOptional<FVector>;
 
-    // Deproject a Slate absolute screen position to a world ray through
-    // whichever camera is active (ejected path reads the level-editor
-    // viewport's own cursor, so InAbsolutePos is only used while possessed).
-    // Returns false when the cursor is outside the viewport or no view exists.
+    // Deproject a Slate absolute screen position through the active ordinary-editor,
+    // ejected-PIE, or game viewport. Returns false outside the viewport.
     CKDEBUGGERCOMMON_API auto Deproject(
         UWorld*          InWorld,
         const FVector2D& InAbsolutePos,

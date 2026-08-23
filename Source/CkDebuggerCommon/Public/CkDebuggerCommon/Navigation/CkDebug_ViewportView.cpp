@@ -27,22 +27,57 @@ namespace ck::DebugViewportView
 {
 
 #if WITH_EDITOR
+namespace
+{
+    auto
+        TryGet_ActiveLevelEditorViewport() -> FEditorViewportClient*
+    {
+        if (GEditor == nullptr)
+        { return nullptr; }
+
+        auto* ViewportClient = GCurrentLevelEditingViewportClient;
+        if (ViewportClient == nullptr || ViewportClient->Viewport == nullptr)
+        { return nullptr; }
+
+        if (GEditor->GetActiveViewport() != ViewportClient->Viewport)
+        { return nullptr; }
+
+        return ViewportClient;
+    }
+}
+
 auto
     TryGet_LevelEditorViewport() -> FEditorViewportClient*
 {
     if (GEditor == nullptr || GEditor->PlayWorld == nullptr)
     { return nullptr; }
 
-    auto* LEVC = GCurrentLevelEditingViewportClient;
-    if (LEVC == nullptr || LEVC->Viewport == nullptr)
-    { return nullptr; }
-
-    if (GEditor->GetActiveViewport() != LEVC->Viewport)
-    { return nullptr; }
-
-    return LEVC;
+    return TryGet_ActiveLevelEditorViewport();
 }
 #endif
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    TryGet_ViewportPixel(
+        const FVector2D& InNormalizedViewportPosition,
+        const FIntPoint& InViewportSize) -> TOptional<FVector2D>
+{
+    if (InViewportSize.X <= 0 || InViewportSize.Y <= 0)
+    { return {}; }
+
+    const auto IsInsideViewport =
+        InNormalizedViewportPosition.X >= 0.0f &&
+        InNormalizedViewportPosition.Y >= 0.0f &&
+        InNormalizedViewportPosition.X < 1.0f &&
+        InNormalizedViewportPosition.Y < 1.0f;
+    if (NOT IsInsideViewport)
+    { return {}; }
+
+    return FVector2D{
+        InNormalizedViewportPosition.X * InViewportSize.X,
+        InNormalizedViewportPosition.Y * InViewportSize.Y};
+}
 
 // --------------------------------------------------------------------------------------------------------------------
 
@@ -102,6 +137,13 @@ auto
 #if WITH_EDITOR
     if (auto* LEVC = TryGet_LevelEditorViewport())
     { return LEVC->GetViewLocation(); }
+
+    if (InWorld->WorldType == EWorldType::Editor)
+    {
+        auto* ViewportClient = TryGet_ActiveLevelEditorViewport();
+        if (ViewportClient != nullptr && ViewportClient->GetWorld() == InWorld)
+        { return ViewportClient->GetViewLocation(); }
+    }
 #endif
 
     auto* PC = InWorld->GetFirstPlayerController();
@@ -122,6 +164,7 @@ namespace
 #if WITH_EDITOR
     auto Deproject_LevelEditorViewport(
         FEditorViewportClient* InVC,
+        const FVector2D&       InAbsolutePos,
         FVector&               OutOrigin,
         FVector&               OutDirection) -> bool
     {
@@ -129,12 +172,12 @@ namespace
         if (Viewport == nullptr)
         { return false; }
 
-        const auto Size   = Viewport->GetSizeXY();
-        const auto MouseX = Viewport->GetMouseX();
-        const auto MouseY = Viewport->GetMouseY();
-        if (Size.X <= 0 || Size.Y <= 0)
-        { return false; }
-        if (MouseX < 0 || MouseY < 0 || MouseX >= Size.X || MouseY >= Size.Y)
+        const auto Size = Viewport->GetSizeXY();
+        const auto NormalizedPosition = Viewport->VirtualDesktopPixelToViewport(FIntPoint{
+            FMath::RoundToInt(static_cast<float>(InAbsolutePos.X)),
+            FMath::RoundToInt(static_cast<float>(InAbsolutePos.Y))});
+        const auto ViewportPixel = TryGet_ViewportPixel(NormalizedPosition, Size);
+        if (NOT ViewportPixel.IsSet())
         { return false; }
 
         if (InVC->IsOrtho())
@@ -163,7 +206,7 @@ namespace
         const auto ViewRect    = FIntRect(0, 0, Size.X, Size.Y);
 
         FSceneView::DeprojectScreenToWorld(
-            FVector2D(MouseX, MouseY), ViewRect, InvViewProj, OutOrigin, OutDirection);
+            ViewportPixel.GetValue(), ViewRect, InvViewProj, OutOrigin, OutDirection);
         return true;
     }
 #endif
@@ -184,7 +227,24 @@ auto
     // viewport's live camera instead.
     if (auto* LEVC = TryGet_LevelEditorViewport())
     {
-        return Deproject_LevelEditorViewport(LEVC, OutOrigin, OutDirection);
+        return Deproject_LevelEditorViewport(
+            LEVC,
+            InAbsolutePos,
+            OutOrigin,
+            OutDirection);
+    }
+
+    if (InWorld->WorldType == EWorldType::Editor)
+    {
+        auto* ViewportClient = TryGet_ActiveLevelEditorViewport();
+        if (ViewportClient == nullptr || ViewportClient->GetWorld() != InWorld)
+        { return false; }
+
+        return Deproject_LevelEditorViewport(
+            ViewportClient,
+            InAbsolutePos,
+            OutOrigin,
+            OutDirection);
     }
 #endif
 

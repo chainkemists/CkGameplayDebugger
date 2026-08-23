@@ -91,7 +91,9 @@ auto SCkDebug_WorldSelector::Build_ButtonStrip() -> TSharedRef<SWidget>
         { continue; }
 
         const TWeakObjectPtr<UWorld> WorldWeak(World);
-        const auto WorldLabel = ck::Format_UE(TEXT("{}"), World->GetNetMode());
+        const auto WorldLabel = World->WorldType == EWorldType::Editor
+            ? FString{TEXT("Editor")}
+            : ck::Format_UE(TEXT("{}"), World->GetNetMode());
 
         // Sidebar form fills the container width evenly; compact toolbar form gives
         // each button more padding so it reads as a real button next to the other

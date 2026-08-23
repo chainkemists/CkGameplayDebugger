@@ -47,6 +47,7 @@
 # Precompiled Assets
 SourceArt/**/*.png
 SourceArt/**/*.tga
+!Content/TextureDebugger/SourceArt/CustomUVChecker_*.png
 
 # Binary Files
 Binaries/*

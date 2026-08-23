@@ -10,6 +10,7 @@
 #include "CkDebuggerCommon/Styles/CkDebuggerAxes.h"
 #include "CkDebuggerCommon/Window/CkDebuggerRefreshGate.h"
 #include "CkDebuggerCommon/Window/SCkDebug_WindowChrome.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_PaneHost.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_IconToggle.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_SelectableLabel.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_WorldSelector.h"
@@ -22,7 +23,6 @@
 #include "Engine/World.h"
 #include "Engine/Engine.h"
 #include "Widgets/SBoxPanel.h"
-#include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/Layout/SSeparator.h"
 #include "Widgets/Layout/SSplitter.h"
@@ -135,29 +135,38 @@ auto
         .Content()
         [
         SNew(SVerticalBox)
-        + SVerticalBox::Slot().FillHeight(1.0f).Padding(FMargin{6.0f, 6.0f, 6.0f, 6.0f})
+        + SVerticalBox::Slot().FillHeight(1.0f)
         [
             SNew(SSplitter)
             .Orientation(Orient_Horizontal)
             + SSplitter::Slot().Value(0.30f)
             [
-                SNew(SBorder).Padding(FMargin{4.0f})
+                SNew(SCkDebug_PaneHost)
                 [
-                    SAssignNew(_QueryList, SCkEqsDebugger_QueryList).ViewModel(_ViewModel)
+                    SNew(SBox).Padding(FMargin{4.0f})
+                    [
+                        SAssignNew(_QueryList, SCkEqsDebugger_QueryList).ViewModel(_ViewModel)
+                    ]
                 ]
             ]
             + SSplitter::Slot().Value(0.35f)
             [
-                SNew(SBorder).Padding(FMargin{4.0f})
+                SNew(SCkDebug_PaneHost)
                 [
-                    SAssignNew(_CandidatePanel, SCkEqsDebugger_CandidatePanel).ViewModel(_ViewModel)
+                    SNew(SBox).Padding(FMargin{4.0f})
+                    [
+                        SAssignNew(_CandidatePanel, SCkEqsDebugger_CandidatePanel).ViewModel(_ViewModel)
+                    ]
                 ]
             ]
             + SSplitter::Slot().Value(0.35f)
             [
-                SNew(SBorder).Padding(FMargin{4.0f})
+                SNew(SCkDebug_PaneHost)
                 [
-                    SAssignNew(_TestBreakdownPanel, SCkEqsDebugger_TestBreakdownPanel).ViewModel(_ViewModel)
+                    SNew(SBox).Padding(FMargin{4.0f})
+                    [
+                        SAssignNew(_TestBreakdownPanel, SCkEqsDebugger_TestBreakdownPanel).ViewModel(_ViewModel)
+                    ]
                 ]
             ]
         ]

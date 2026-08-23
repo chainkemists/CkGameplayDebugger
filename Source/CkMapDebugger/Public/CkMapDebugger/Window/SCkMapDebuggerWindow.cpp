@@ -7,6 +7,7 @@
 #include "CkDebuggerCommon/Settings/CkDebuggerStyleSettings.h"
 #include "CkDebuggerCommon/Styles/CkDebuggerAxes.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_EntityRef.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_PaneHost.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_IconToggle.h"
 #include "CkDebuggerCommon/Window/CkDebuggerRefreshGate.h"
 #include "CkDebuggerCommon/Window/SCkDebug_WindowChrome.h"
@@ -711,9 +712,10 @@ auto
     // ---- Status bar ----
 
     auto StatusBar =
+        SNew(SCkDebug_PaneHost)
+        [
         SNew(SBorder)
-        .BorderImage(FAppStyle::GetBrush("WhiteBrush"))
-        .BorderBackgroundColor(CkStyle::BgRoot())
+        .BorderBackgroundColor(FLinearColor::Transparent)
         .Padding(FMargin(CkStyle::SpaceM, CkStyle::SpaceS))
         [
             SNew(STextBlock)
@@ -736,6 +738,7 @@ auto
                     _Snapshot->Pois.Num(), _Snapshot->NumEnabledPois,
                     _Snapshot->Compasses.Num(), _Snapshot->Minimaps.Num(), FogPart));
             })
+        ]
         ];
 
     // ---- Body ----
@@ -774,35 +777,32 @@ auto
                 .OverflowPolicy(ETextOverflowPolicy::Ellipsis))})
         .Content()
         [
-        SNew(SBorder)
-        .BorderImage(FAppStyle::GetBrush("WhiteBrush"))
-        .BorderBackgroundColor(CkStyle::Bg1())
-        [
-            SNew(SVerticalBox)
+        SNew(SVerticalBox)
 
             + SVerticalBox::Slot().FillHeight(1.0f)
                 [
                     SNew(SHorizontalBox)
 
                     + SHorizontalBox::Slot().AutoWidth()
-                        [ SNew(SBox).WidthOverride(250.0f) [ LeftRail ] ]
+                        [ SNew(SBox).WidthOverride(250.0f)
+                            [ SNew(SCkDebug_PaneHost) [ LeftRail ] ] ]
 
                     + SHorizontalBox::Slot().AutoWidth()
                         [ MakeRailSeparator() ]
 
                     + SHorizontalBox::Slot().FillWidth(1.0f)
-                        [ _Canvas.ToSharedRef() ]
+                        [ SNew(SCkDebug_PaneHost).ContentMode(ECkDebugPaneContent::OpaqueRenderer) [ _Canvas.ToSharedRef() ] ]
 
                     + SHorizontalBox::Slot().AutoWidth()
                         [ MakeRailSeparator() ]
 
                     + SHorizontalBox::Slot().AutoWidth()
-                        [ SNew(SBox).WidthOverride(280.0f) [ RightRail ] ]
+                        [ SNew(SBox).WidthOverride(280.0f)
+                            [ SNew(SCkDebug_PaneHost) [ RightRail ] ] ]
                 ]
 
             + SVerticalBox::Slot().AutoHeight()
                 [ StatusBar ]
-        ]
         ]
     ];
 }
@@ -1240,11 +1240,14 @@ auto
     return SNew(SBox)
         .WidthOverride_Lambda([]() -> FOptionalSize
         {
-            return FOptionalSize{ck_map_debugger::Get_SeparatorThickness()};
+            return ck::debug_axes::Get_CardOuterExtent() == 0.0f
+                ? FOptionalSize{ck_map_debugger::Get_SeparatorThickness()}
+                : FOptionalSize{0.0f};
         })
         .Visibility_Lambda([]()
         {
-            return ck_map_debugger::Get_SeparatorThickness() > 0.0f
+            return ck::debug_axes::Get_CardOuterExtent() == 0.0f
+                && ck_map_debugger::Get_SeparatorThickness() > 0.0f
                 ? EVisibility::Visible
                 : EVisibility::Collapsed;
         })

@@ -51,8 +51,7 @@ auto SCkCrowdDebugger_AgentDetailPanel::Construct(const FArguments& InArgs) -> v
 	ChildSlot
 	[
 		SNew(SBorder)
-		.BorderImage(CkStyle::GetFilledBrush())
-		.BorderBackgroundColor(FSlateColor(CkStyle::Bg1()))
+		.BorderBackgroundColor(FLinearColor::Transparent)
 		.Padding_Lambda([]() { return ck::debug_axes::Apply_RowDensity(FMargin{CkStyle::SpaceM, CkStyle::SpaceS}); })
 		[
 			SNew(SScrollBox)

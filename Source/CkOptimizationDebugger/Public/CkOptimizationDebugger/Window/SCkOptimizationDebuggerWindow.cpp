@@ -15,6 +15,7 @@
 #include "CkOptimizationDebugger/Window/SCkPerfLabPage.h"
 
 #include "CkDebuggerCommon/Widgets/SCkDebug_Card.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_PaneHost.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_CategoryDot.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_Chip.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_CopyableContainer.h"
@@ -1760,13 +1761,15 @@ auto
             + SSplitter::Slot()
             .Value(0.62f)
             [
-                SNew(SVerticalBox)
-
-                + SVerticalBox::Slot()
-                .AutoHeight()
-                .Padding(CkStyle::SpaceM, CkStyle::SpaceS, CkStyle::SpaceM, 0.0f)
+                SNew(SCkDebug_PaneHost)
                 [
-                    SNew(SCkDebug_SectionHeader)
+                    SNew(SVerticalBox)
+
+                    + SVerticalBox::Slot()
+                    .AutoHeight()
+                    .Padding(CkStyle::SpaceM, CkStyle::SpaceS, CkStyle::SpaceM, 0.0f)
+                    [
+                        SNew(SCkDebug_SectionHeader)
                     .Label(FText::FromString(TEXT("Findings")))
                     .ToolTip(FText::FromString(TEXT("Grouped by the check that produced them, worst first")))
                     .Underline(true)
@@ -1822,53 +1825,57 @@ auto
                     ]
                 ]
 
-                + SVerticalBox::Slot()
-                .FillHeight(1.0f)
-                [
-                    SAssignNew(_FindingList, SListView<FFindingItem>)
-                    .ListItemsSource(&_FindingItems)
-                    .OnGenerateRow(this, &SCkOptimizationDebuggerWindow::DoGenerate_FindingRow)
-                    .OnSelectionChanged(this, &SCkOptimizationDebuggerWindow::DoOnFindingSelectionChanged)
-                    .OnContextMenuOpening(this, &SCkOptimizationDebuggerWindow::DoOnFindingContextMenu)
-                    .OnMouseButtonDoubleClick(this, &SCkOptimizationDebuggerWindow::DoOnFindingDoubleClicked)
-                    .SelectionMode(ESelectionMode::Multi)
+                    + SVerticalBox::Slot()
+                    .FillHeight(1.0f)
+                    [
+                        SAssignNew(_FindingList, SListView<FFindingItem>)
+                        .ListItemsSource(&_FindingItems)
+                        .OnGenerateRow(this, &SCkOptimizationDebuggerWindow::DoGenerate_FindingRow)
+                        .OnSelectionChanged(this, &SCkOptimizationDebuggerWindow::DoOnFindingSelectionChanged)
+                        .OnContextMenuOpening(this, &SCkOptimizationDebuggerWindow::DoOnFindingContextMenu)
+                        .OnMouseButtonDoubleClick(this, &SCkOptimizationDebuggerWindow::DoOnFindingDoubleClicked)
+                        .SelectionMode(ESelectionMode::Multi)
+                    ]
                 ]
             ]
 
             + SSplitter::Slot()
             .Value(0.38f)
             [
-                // Detail above, fix queue below. A splitter rather than a fixed split so a reader assembling a
-                // large batch can give the tray the room, and one reading a long explanation can take it back.
-                SNew(SSplitter)
-                .Orientation(Orient_Vertical)
-
-                + SSplitter::Slot()
-                .Value(0.45f)
+                SNew(SCkDebug_PaneHost)
                 [
-                    SNew(SScrollBox)
+                    // Detail above, fix queue below. A splitter rather than a fixed split so a reader assembling a
+                    // large batch can give the tray the room, and one reading a long explanation can take it back.
+                    SNew(SSplitter)
+                    .Orientation(Orient_Vertical)
 
-                    + SScrollBox::Slot()
-                    .Padding(CkStyle::SpaceM, CkStyle::SpaceS)
+                    + SSplitter::Slot()
+                    .Value(0.45f)
                     [
-                        SAssignNew(_FindingDetailBox, SVerticalBox)
+                        SNew(SScrollBox)
+
+                        + SScrollBox::Slot()
+                        .Padding(CkStyle::SpaceM, CkStyle::SpaceS)
+                        [
+                            SAssignNew(_FindingDetailBox, SVerticalBox)
+                        ]
                     ]
-                ]
 
-                + SSplitter::Slot()
-                .Value(0.35f)
-                [
-                    DoCreate_FixQueuePanel()
-                ]
-
-                + SSplitter::Slot()
-                .Value(0.20f)
-                [
-                    SNew(SScrollBox)
-
-                    + SScrollBox::Slot()
+                    + SSplitter::Slot()
+                    .Value(0.35f)
                     [
-                        DoCreate_AppliedFixesPanel()
+                        DoCreate_FixQueuePanel()
+                    ]
+
+                    + SSplitter::Slot()
+                    .Value(0.20f)
+                    [
+                        SNew(SScrollBox)
+
+                        + SScrollBox::Slot()
+                        [
+                            DoCreate_AppliedFixesPanel()
+                        ]
                     ]
                 ]
             ]

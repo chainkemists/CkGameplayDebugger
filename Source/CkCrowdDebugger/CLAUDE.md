@@ -27,3 +27,8 @@
   ribbons, Voxel content, atomic failure, appearance ownership, and 240-agent stable instancing.
 - Re-run the full serial `Crowd` family after adapter changes. The current CkPlugins user config has an inherited
   `Nav.Filter.Customer` mapping failure; do not hide new failures behind that known baseline.
+## Cross-debugger reuse
+
+`FCkCrowdDebugger_ViewModel` and `SCkCrowdDebugger_3dViewport` are exported reuse surfaces for concise overview tools.
+Both publish/consume value-only snapshots. Keep live fragment/world ownership in the collector/view-model and never copy
+the Crowd collector, preview adapter, or scene adapter into another debugger.

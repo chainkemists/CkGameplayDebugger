@@ -18,6 +18,7 @@ auto
 
     auto GlowColor = InArgs._GlowColor;
     const auto GlowOpacity = InArgs._GlowOpacity;
+    const auto Extent = InArgs._Extent;
 
     const auto ResolveColor = [GlowColor, GlowOpacity]() -> FSlateColor
     {
@@ -46,7 +47,10 @@ auto
         ]
 
         + SOverlay::Slot()
-        .Padding(InArgs._Extent)
+        .Padding(TAttribute<FMargin>::CreateLambda([Extent]() -> FMargin
+        {
+            return FMargin{FMath::Max(0.0f, Extent.Get(7.0f))};
+        }))
         [
             InArgs._Content.Widget
         ]

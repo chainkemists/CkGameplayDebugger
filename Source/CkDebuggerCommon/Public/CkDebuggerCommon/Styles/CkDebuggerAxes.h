@@ -135,20 +135,23 @@ namespace ck::debug_axes
     CKDEBUGGERCOMMON_API auto Get_ChipBrush()  -> const FSlateBrush*;
     CKDEBUGGERCOMMON_API auto Get_BadgeBrush() -> const FSlateBrush*;
     CKDEBUGGERCOMMON_API auto Get_CardBrush()  -> const FSlateBrush*;
+    CKDEBUGGERCOMMON_API auto Get_CardSurfaceBrush() -> const FSlateBrush*;
 
     // SurfaceElevation, for the COMMON surface widgets (card body, window chrome strips, inspector
     // header, labeled group, expandable column). Depth 0 is the window ground and stays an opaque
     // BgRoot fill under every option — a transparent root would show editor chrome through the
     // debugger. Depth 1 is a header/strip, 2 a body, 3+ an inset.
     //
-    // The tint is whatever the BRUSH paints: the fill under Layered / Flat, the ring under Outlined
-    // (whose fill is transparent at any tint). A Slate border carries one tint, so the two options
-    // are expressed by swapping the brush, not by adding a second layer.
+    // The tint is the fill painted by the selected surface brush. A Slate border carries one tint;
+    // outline-capable feature widgets use their own dedicated brush selectors.
     //
     // Flat collapses the nested fills onto one tier rather than growing per-surface hairlines —
     // boundary weight stays the SeparatorWeight axis' business.
     CKDEBUGGERCOMMON_API auto Get_SurfaceBrush(int32 InDepth) -> const FSlateBrush*;
     CKDEBUGGERCOMMON_API auto Get_SurfaceTint(int32 InDepth)  -> FLinearColor;
+    // Outer breathing room for a pane/card surface. Layered reads as separated cards; Flat tiles
+    // edge-to-edge like a workbench. Attribute-bind this value so Style Lab applies live.
+    CKDEBUGGERCOMMON_API auto Get_CardOuterExtent() -> float;
 
     // RowBanding for list / tree surfaces. Under Zebra the brush is the row's full-bleed fill and
     // the rule thickness is zero; under Hairline the brush is the 1px rule the caller draws along

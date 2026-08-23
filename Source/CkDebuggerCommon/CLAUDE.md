@@ -311,6 +311,7 @@ module with a one-line justification comment.
 | Per-frame history the user scrubs / freezes (frame times, tick costs) | `SCkDebug_FrameStrip` — heat columns, budget or relative scale, scrub + pan + zoom, highlight bands, marker dots, LIVE/FROZEN gutter label |
 | A run timeline of coloured spans with a cursor (state machine runs, plan history) | `SCkDebug_ScrubTimeline` — segments with optional subdivision cells, Live/Scrub modes, cut / flag / dot / tick marks, widget-owned pan+zoom window, ruler with a caller-supplied label formatter |
 | A capped rolling list of "what just happened" | `SCkDebug_EventLog` — severity tones, optional category chip, timestamps, multi-select right-click copy |
+| A live keyed list of "what is true now" | `SCkDebug_EvidenceList` — stable reconciliation, severity/source stripe and chip, hierarchy indentation, trailing value/state, wrapped detail, multi-select copy |
 | Lanes of time-positioned markers + activation spans | `SCkDebug_EventTimeline` |
 | A value trend in a row or card | `SCkDebug_Sparkline` |
 
@@ -689,6 +690,8 @@ CkDebuggerCommon/
 │   ├── SCkDebug_FrameStrip.h         (scrubbable per-frame heat columns)
 │   ├── SCkDebug_ScrubTimeline.h      (segment track + scrub cursor + marks)
 │   ├── SCkDebug_EventLog.h           (capped severity-toned event list)
+│   ├── SCkDebug_EvidenceList.h        (keyed current-evidence / hierarchy list)
+│   ├── SCkDebug_PaneHost.h            (outer owner for splitter/fixed-rail panes; Cards vs Workbench grammar)
 │   ├── SCkDebug_NodePill.h           (graph / plan-step pill + opt-in CopyText)
 │   ├── SCkDebug_InspectorPanel.h     (collapsible section)
 │   └── SCkDebug_CountBadge.h
@@ -706,3 +709,27 @@ CkFoundation/Source/CkEditorTools/Public/CkEditorTools/
 └── Settings/
     └── CkStyleSettings.h             (UCk_Style_UserSettings_UE — Editor Preferences → Ck → Style)
 ```
+## Shared debugger chrome and AI overview primitives
+
+- `SCkDebug_WindowChrome` owns the suite-wide right-aligned utility lane. It always supplies authority-world speed and
+  the compact debugger-launcher icon. Feature pickers go through `CommonActionsContent`; do not put them back into
+  feature command groups.
+- `SCkDebug_ViewportPickerControls` is the canonical visible cursor-icon Pick Entity control and settings popover.
+  Picker availability must report the precise value-only empty-state taxonomy rather than a generic unavailable label.
+- `SCkDebug_BehaviorOverridePanel` / `Row` present generation-safe session behavior providers. Providers own gameplay
+  policy; Common stores only callbacks/descriptors, observes dynamic registration, and surfaces rejected-write reasons.
+- `SCkDebug_EntityHealthList` and `SCkDebug_StageStrip` are reusable roster/pipeline surfaces. New overview-style tools
+  compose these rather than adding feature-local cards or list rows.
+- `SCkDebug_EvidenceList` is the canonical current-fact and lightweight hierarchy surface. Callers provide stable keys,
+  source/headline/detail text, optional indent/right label, copy payload, and selection ID; the widget owns reconciliation.
+- `SCkDebug_Card` is the generic decision/panel card. It follows Style Lab's `SurfaceElevation` geometry live: Cards
+  reserves its card halo, while Workbench collapses that extent. It is not a splitter-pane host and does not clip opaque
+  descendants to its rounded brush.
+- `SCkDebug_PaneHost` is the only outer owner for splitter and fixed-rail pane shells. Cards paints one rounded Common
+  ring/surface. Workbench paints a square, ringless, zero-extent surface so the splitter handle (or one retained
+  fixed-layout separator) owns the shared boundary. Passive content must be transparent at the host edge; a canvas,
+  graph, timeline, or 3D viewport whose semantic fill reaches the edge uses `ECkDebugPaneContent::OpaqueRenderer`, which
+  adds a Cards-only interior frame and collapses it in Workbench. Never recreate pane hosting with
+  `SCkDebug_Card.BodyPadding(0)`.
+- New or encountered reusable debugger UI belongs here even when it currently has one consumer. A feature-local widget
+  requires a written explanation that future reuse is implausible.

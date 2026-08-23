@@ -38,8 +38,8 @@ public:
     static auto Get_PillBrush()   -> const FSlateBrush*;
 
     /**
-     * Transparent-fill, 1px-ring counterparts of the three corner shapes — the SurfaceElevation
-     * axis' Outlined option and the EntityRef axis' OutlinePill. The ring is white, so the widget's
+     * Transparent-fill, 1px-ring counterparts of the three corner shapes — for outline-capable
+     * common widgets and the EntityRef axis' OutlinePill. The ring is white, so the widget's
      * BorderBackgroundColor picks the ring color; the fill stays transparent whatever tint is
      * applied, which is what lets one Slate tint express both a fill and a ring.
      */

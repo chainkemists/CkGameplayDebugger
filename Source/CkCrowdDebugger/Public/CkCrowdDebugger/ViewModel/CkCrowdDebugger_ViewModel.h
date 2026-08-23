@@ -29,7 +29,7 @@ DECLARE_MULTICAST_DELEGATE_OneParam(FOnCrowd_ViewModeChanged,     ECk_CrowdDebug
 
 // --------------------------------------------------------------------------------------------------------------------
 
-class FCkCrowdDebugger_ViewModel
+class CKCROWDDEBUGGER_API FCkCrowdDebugger_ViewModel
 {
 public:
 	auto Tick(UWorld* InWorld, float InDeltaTime) -> void;

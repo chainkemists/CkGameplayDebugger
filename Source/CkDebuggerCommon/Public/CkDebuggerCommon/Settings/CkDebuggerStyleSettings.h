@@ -40,7 +40,8 @@ public:
     // v8: + InputHudStyle (colorless on-screen input HUD visual grammar).
     // v9: - InputHudStyle. Signal Strip is now the sole feature-local Input HUD layout; its palette and
     //     presentation settings belong to the Input HUD rather than the shared debugger style selection.
-    static constexpr int32 CurrentSchemaVersion = 9;
+    // v10: - SurfaceElevation::Outlined as a selectable treatment. Its hidden wire value is migrated to Flat.
+    static constexpr int32 CurrentSchemaVersion = 10;
 
 public:
     UCkDebuggerStyleSettings();

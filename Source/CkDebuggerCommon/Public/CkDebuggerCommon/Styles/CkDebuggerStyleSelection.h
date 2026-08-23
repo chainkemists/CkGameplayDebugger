@@ -248,16 +248,16 @@ enum class ECkDebugAxis_CornerStyle : uint8
 // --------------------------------------------------------------------------------------------------------------------
 
 /**
- * How much tonal separation nested surfaces get. Layered walks the Bg ladder per depth (today).
- * Flat collapses every nested tier onto one fill. Outlined drops the fills entirely and draws a
- * 1px ring instead.
+ * Pane elevation and separation. Layered walks the Bg ladder per depth and gives cards breathing
+ * room. Flat collapses every nested tier onto one edge-to-edge fill.
  */
 UENUM(BlueprintType)
 enum class ECkDebugAxis_SurfaceElevation : uint8
 {
     Layered,
     Flat,
-    Outlined,
+    // Retained only so existing GameUserSettings values still deserialize. New UI must not expose it.
+    Outlined UMETA(Hidden),
 };
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -408,7 +408,7 @@ public:
     ECkDebugAxis_CornerStyle CornerStyle = ECkDebugAxis_CornerStyle::Rounded;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Style Axes",
-        meta = (ToolTip = "Tonal separation between nested surfaces: a background ladder per depth, one flat fill, or transparent fills with 1px rings."))
+        meta = (ToolTip = "Pane depth and spacing: separated layered cards or one continuous flat workbench."))
     ECkDebugAxis_SurfaceElevation SurfaceElevation = ECkDebugAxis_SurfaceElevation::Layered;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Style Axes",

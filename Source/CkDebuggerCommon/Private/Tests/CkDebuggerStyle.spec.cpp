@@ -6,6 +6,8 @@
 #include "CkDebuggerCommon/Styles/CkDebuggerAxes.h"
 #include "CkDebuggerCommon/Styles/CkDebuggerStyle.h"
 #include "CkDebuggerCommon/Styles/CkDebuggerStyleSelection.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_Card.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_PaneHost.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_EntityRef.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_Icon.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_IconToggle.h"
@@ -22,6 +24,7 @@
 #include "UObject/UnrealType.h"
 
 #include "Widgets/SWidget.h"
+#include "Widgets/Layout/SBox.h"
 
 // --------------------------------------------------------------------------------------------------------------------
 
@@ -67,7 +70,7 @@ namespace ck_debugger_style_tests
         return FVector2D{Size.X, Size.Y};
     }
 
-    // Every enumerator of InEnumType, minus the hidden UHT-generated _MAX entry.
+    // Every selectable enumerator of InEnumType, minus hidden legacy values and UHT's _MAX entry.
     template <typename T_Axis>
     auto Get_AllOptions() -> TArray<T_Axis>
     {
@@ -79,6 +82,9 @@ namespace ck_debugger_style_tests
 
         for (auto Index = 0; Index < Enum->NumEnums() - 1; ++Index)
         {
+            if (Enum->HasMetaData(TEXT("Hidden"), Index))
+            { continue; }
+
             Options.Add(static_cast<T_Axis>(Enum->GetValueByIndex(Index)));
         }
         return Options;
@@ -101,12 +107,27 @@ bool FCkDebuggerStyle_ProfileRegistryIntegrity::RunTest(const FString& Parameter
 {
     const auto& Profiles = ck::debug_axes::Get_StyleProfiles();
 
-    TestEqual(TEXT("Four curated profiles are registered"), Profiles.Num(), 4);
+    TestEqual(TEXT("Five curated profiles are registered"), Profiles.Num(), 5);
 
-    if (Profiles.Num() != 4)
+    if (Profiles.Num() != 5)
     { return false; }
 
     TestEqual(TEXT("Classic is first"), Profiles[0].Name, FString{TEXT("Classic")});
+
+    const auto* Workbench = Profiles.FindByPredicate([](const FCkDebuggerStyleProfile& InProfile)
+    {
+        return InProfile.Name == TEXT("Workbench");
+    });
+    TestNotNull(TEXT("Workbench profile is registered"), Workbench);
+    if (Workbench != nullptr)
+    {
+        TestEqual(TEXT("Workbench uses flat surfaces"), Workbench->Selection.SurfaceElevation,
+            ECkDebugAxis_SurfaceElevation::Flat);
+        TestEqual(TEXT("Workbench uses sharp pane corners"), Workbench->Selection.CornerStyle,
+            ECkDebugAxis_CornerStyle::Sharp);
+        TestEqual(TEXT("Workbench does not silently change row density"), Workbench->Selection.RowDensity,
+            FCkDebuggerStyleSelection{}.RowDensity);
+    }
 
     auto SeenNames = TSet<FString>{};
     for (const auto& Profile : Profiles)
@@ -184,8 +205,8 @@ bool FCkDebuggerStyle_GraphMotionSelection::RunTest(const FString& Parameters)
     TestTrue(TEXT("Graph Motion includes Measured"), Options.Contains(ECkDebugAxis_GraphMotion::Measured));
     TestTrue(TEXT("Graph Motion includes Deliberate"), Options.Contains(ECkDebugAxis_GraphMotion::Deliberate));
 
-    TestEqual(TEXT("Current style schema retains the retired Input HUD axis migration"),
-        UCkDebuggerStyleSettings::CurrentSchemaVersion, 9);
+    TestEqual(TEXT("Current style schema includes the retired Outlined pane migration"),
+        UCkDebuggerStyleSettings::CurrentSchemaVersion, 10);
 
     return true;
 }
@@ -745,6 +766,68 @@ bool FCkDebuggerStyle_CommonWidgetsAreLive::RunTest(const FString& Parameters)
         TEXT("Returning to Comfortable restores the row's shipped height"),
         FMath::IsNearlyEqual(Repass(Row).Y, RowComfortable.Y));
 
+    // ---- SCkDebug_Card: SurfaceElevation controls live pane spacing -----------
+    const auto Card = SNew(SCkDebug_Card)
+        .BodyPadding(FMargin{0.0f})
+        [
+            SNew(SBox)
+                .WidthOverride(100.0f)
+                .HeightOverride(40.0f)
+        ];
+
+    Settings->Selection.SurfaceElevation = ECkDebugAxis_SurfaceElevation::Layered;
+    const auto LayeredCard = Repass(Card);
+
+    Settings->Selection.SurfaceElevation = ECkDebugAxis_SurfaceElevation::Flat;
+    const auto FlatCard = Repass(Card);
+
+    TestTrue(TEXT("Flat makes an ALREADY-BUILT card tile edge-to-edge"),
+        LayeredCard.X > FlatCard.X && LayeredCard.Y > FlatCard.Y);
+    TestTrue(TEXT("Layered card extent contributes 6px on every edge"),
+        FMath::IsNearlyEqual(LayeredCard.X - FlatCard.X, 12.0f) &&
+        FMath::IsNearlyEqual(LayeredCard.Y - FlatCard.Y, 12.0f));
+
+    // ---- SCkDebug_PaneHost: Cards own chrome; Workbench tiles ringless ------
+    const auto PaneHost = SNew(SCkDebug_PaneHost)
+        [
+            SNew(SBox)
+                .WidthOverride(100.0f)
+                .HeightOverride(40.0f)
+        ];
+
+    Settings->Selection.SurfaceElevation = ECkDebugAxis_SurfaceElevation::Layered;
+    const auto CardsPane = Repass(PaneHost);
+
+    Settings->Selection.SurfaceElevation = ECkDebugAxis_SurfaceElevation::Flat;
+    const auto WorkbenchPane = Repass(PaneHost);
+
+    TestTrue(TEXT("Workbench makes an ALREADY-BUILT pane host tile edge-to-edge"),
+        CardsPane.X > WorkbenchPane.X && CardsPane.Y > WorkbenchPane.Y);
+    const auto PassivePaneDelta = 12.0f + 2.0f * CkStyle::RingWidth();
+    TestTrue(TEXT("Passive pane host removes the Cards extent and ring in Workbench"),
+        FMath::IsNearlyEqual(CardsPane.X - WorkbenchPane.X, PassivePaneDelta) &&
+        FMath::IsNearlyEqual(CardsPane.Y - WorkbenchPane.Y, PassivePaneDelta));
+
+    const auto RendererPaneHost = SNew(SCkDebug_PaneHost)
+        .ContentMode(ECkDebugPaneContent::OpaqueRenderer)
+        [
+            SNew(SBox)
+                .WidthOverride(100.0f)
+                .HeightOverride(40.0f)
+        ];
+
+    Settings->Selection.SurfaceElevation = ECkDebugAxis_SurfaceElevation::Layered;
+    const auto CardsRendererPane = Repass(RendererPaneHost);
+    Settings->Selection.SurfaceElevation = ECkDebugAxis_SurfaceElevation::Flat;
+    const auto WorkbenchRendererPane = Repass(RendererPaneHost);
+
+    const auto RendererPaneDelta = PassivePaneDelta + 2.0f * CkStyle::SpaceS;
+    TestTrue(TEXT("Opaque renderer gains a deliberate interior frame only in Cards"),
+        FMath::IsNearlyEqual(CardsRendererPane.X - WorkbenchRendererPane.X, RendererPaneDelta) &&
+        FMath::IsNearlyEqual(CardsRendererPane.Y - WorkbenchRendererPane.Y, RendererPaneDelta));
+
+    Settings->Selection.SurfaceElevation = ECkDebugAxis_SurfaceElevation::Layered;
+
     // ---- SCkDebug_IconToggle: IconSize on the glyph box ----------------------
     const auto Toggle = SNew(SCkDebug_IconToggle)
         .IconId(ECk_Icon::Grid)
@@ -799,10 +882,10 @@ bool FCkDebuggerStyle_SchemaV4AxesResolveDistinctly::RunTest(const FString& Para
 
     // v5 split EntityIdStyle (composition) from EntityRefStyle (treatment); v6 added GraphMotion;
     // v7 added GraphEventEmphasis; v8 temporarily added InputHudStyle; v9 retires it because Signal Strip is
-    // feature-local rather than a shared debugger axis.
+    // feature-local rather than a shared debugger axis; v10 retires Outlined pane treatment.
     // The catalog schema check makes either accidental regression a test failure rather than a silent revert.
     TestEqual(TEXT("Schema version tracks the current axis catalog"),
-        UCkDebuggerStyleSettings::CurrentSchemaVersion, 9);
+        UCkDebuggerStyleSettings::CurrentSchemaVersion, 10);
 
     // ---- TextScale -----------------------------------------------------------
     const auto RoleSize = CkStyle::FontSizeSmall();
@@ -866,16 +949,30 @@ bool FCkDebuggerStyle_SchemaV4AxesResolveDistinctly::RunTest(const FString& Para
     TestTrue(TEXT("Layered depth 3 is the inset tier"), ck::debug_axes::Get_SurfaceTint(3) == CkStyle::Bg3());
     TestTrue(TEXT("Layered surfaces are plain fills"),
         ck::debug_axes::Get_SurfaceBrush(2) == CkStyle::GetFilledBrush());
+    TestTrue(TEXT("Layered card bodies retain the selected corner shape"),
+        ck::debug_axes::Get_CardSurfaceBrush() == ck::debug_axes::Get_CardBrush());
 
     Settings->Selection.SurfaceElevation = ECkDebugAxis_SurfaceElevation::Flat;
     TestTrue(TEXT("Flat collapses the nested tiers onto one fill"),
         ck::debug_axes::Get_SurfaceTint(2) == ck::debug_axes::Get_SurfaceTint(3));
 
+    const auto* SurfaceElevationEnum = StaticEnum<ECkDebugAxis_SurfaceElevation>();
+    TestTrue(TEXT("Outlined is retained only as a hidden legacy wire value"),
+        SurfaceElevationEnum != nullptr &&
+        SurfaceElevationEnum->HasMetaData(
+            TEXT("Hidden"), SurfaceElevationEnum->GetIndexByValue(
+                static_cast<int64>(ECkDebugAxis_SurfaceElevation::Outlined))));
+    TestEqual(TEXT("Only Cards and Workbench are selectable pane treatments"),
+        Get_AllOptions<ECkDebugAxis_SurfaceElevation>().Num(), 2);
+
+    // A live legacy value must still fail safe if assigned after settings initialization.
     Settings->Selection.SurfaceElevation = ECkDebugAxis_SurfaceElevation::Outlined;
-    TestTrue(TEXT("Outlined swaps the fill brush for the ring brush"),
-        ck::debug_axes::Get_SurfaceBrush(2) == FCkDebuggerStyle::Get_SurfaceOutlineBrush());
-    TestTrue(TEXT("Outlined leaves the ground opaque so editor chrome cannot read through"),
-        ck::debug_axes::Get_SurfaceBrush(0) == CkStyle::GetFilledBrush());
+    TestTrue(TEXT("Legacy Outlined resolves to Flat's filled surface"),
+        ck::debug_axes::Get_SurfaceBrush(2) == CkStyle::GetFilledBrush());
+    TestTrue(TEXT("Legacy Outlined resolves to Flat's tint"),
+        ck::debug_axes::Get_SurfaceTint(2) == CkStyle::Bg1());
+    TestTrue(TEXT("Legacy Outlined keeps the selected card shape"),
+        ck::debug_axes::Get_CardSurfaceBrush() == ck::debug_axes::Get_CardBrush());
 
     // Every option is total over any depth a caller could hand over.
     for (const auto Option : Get_AllOptions<ECkDebugAxis_SurfaceElevation>())

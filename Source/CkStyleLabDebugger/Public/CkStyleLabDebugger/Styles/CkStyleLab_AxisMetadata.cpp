@@ -4,6 +4,20 @@ namespace ck::style_lab
 {
     namespace
     {
+        auto Get_Groups() -> const TArray<FCkStyleLab_GroupMetadata>&
+        {
+            static const auto Groups = TArray<FCkStyleLab_GroupMetadata>{
+                {ECkStyleLab_Group::WorkbenchSurfaces, NSLOCTEXT("CkStyleLabGroups", "WorkbenchSurfaces.Name", "Layout, panes, and density"), NSLOCTEXT("CkStyleLabGroups", "WorkbenchSurfaces.Desc", "The overall debugger workspace: pane treatment, corners, spacing, separators, row bands, and text scale."), true},
+                {ECkStyleLab_Group::TokensLegend, NSLOCTEXT("CkStyleLabGroups", "TokensLegend.Name", "Tokens, chips, and legend"), NSLOCTEXT("CkStyleLabGroups", "TokensLegend.Desc", "Compact semantic labels: chips, badges, fold markers, provider labels, legends, and merged counts."), true},
+                {ECkStyleLab_Group::EntityValues, NSLOCTEXT("CkStyleLabGroups", "EntityValues.Name", "Entity and value reading"), NSLOCTEXT("CkStyleLabGroups", "EntityValues.Desc", "How entity references are named and drawn, and how key/value columns align."), true},
+                {ECkStyleLab_Group::HierarchyEditing, NSLOCTEXT("CkStyleLabGroups", "HierarchyEditing.Name", "Hierarchy and edit behavior"), NSLOCTEXT("CkStyleLabGroups", "HierarchyEditing.Desc", "Tree complexity, section hierarchy, edit affordances, and value-change feedback."), true},
+                {ECkStyleLab_Group::Icons, NSLOCTEXT("CkStyleLabGroups", "Icons.Name", "Icons and glyph treatment"), NSLOCTEXT("CkStyleLabGroups", "Icons.Desc", "Debugger glyph size and the backdrop used to separate icons from dense data."), true},
+                {ECkStyleLab_Group::GraphTelemetry, NSLOCTEXT("CkStyleLabGroups", "GraphTelemetry.Name", "Graph telemetry"), NSLOCTEXT("CkStyleLabGroups", "GraphTelemetry.Desc", "Node density and the timing and strength of live graph feedback."), true},
+                {ECkStyleLab_Group::InputHud, NSLOCTEXT("CkStyleLabGroups", "InputHud.Name", "Input HUD — Signal Strip"), NSLOCTEXT("CkStyleLabGroups", "InputHud.Desc", "Feature-specific Input HUD presentation. These settings are separate from the generic debugger axes above."), false},
+            };
+            return Groups;
+        }
+
         // Keep this table in FCkDebuggerStyleSelection declaration order. Reflection remains the
         // source of row order; the table is solely the packaged-safe presentation contract.
         auto Get_AxisMetadata() -> const TArray<FCkStyleLab_AxisMetadata>&
@@ -11,30 +25,30 @@ namespace ck::style_lab
             // FName registration must happen after the module/runtime has initialized, rather than
             // during static initialization of this translation unit.
             static const auto AxisMetadata = TArray<FCkStyleLab_AxisMetadata>{
-                {TEXT("ChipStyle"), NSLOCTEXT("CkStyleLabAxisMetadata", "ChipStyle.DisplayName", "Chip Style"), NSLOCTEXT("CkStyleLabAxisMetadata", "ChipStyle.ToolTip", "Treatment for inspector badge boxes, feature chips, and overlay field chips.")},
-                {TEXT("RowDensity"), NSLOCTEXT("CkStyleLabAxisMetadata", "RowDensity.DisplayName", "Row Density"), NSLOCTEXT("CkStyleLabAxisMetadata", "RowDensity.ToolTip", "Row padding for tree rows, inspector rows, and overlay card rows.")},
-                {TEXT("EntityIdStyle"), NSLOCTEXT("CkStyleLabAxisMetadata", "EntityIdStyle.DisplayName", "Entity Id Style"), NSLOCTEXT("CkStyleLabAxisMetadata", "EntityIdStyle.ToolTip", "How an entity reference composes its display TEXT on every SCkDebug_EntityRef site. How it is drawn stays with Entity Ref Style.")},
-                {TEXT("BadgeStyle"), NSLOCTEXT("CkStyleLabAxisMetadata", "BadgeStyle.DisplayName", "Badge Style"), NSLOCTEXT("CkStyleLabAxisMetadata", "BadgeStyle.ToolTip", "Treatment for count badges and fold badges.")},
-                {TEXT("SeparatorWeight"), NSLOCTEXT("CkStyleLabAxisMetadata", "SeparatorWeight.DisplayName", "Separator Weight"), NSLOCTEXT("CkStyleLabAxisMetadata", "SeparatorWeight.ToolTip", "Thickness of section separators in the inspector and the overlay card.")},
-                {TEXT("FoldChipStyle"), NSLOCTEXT("CkStyleLabAxisMetadata", "FoldChipStyle.DisplayName", "Fold Chip Style"), NSLOCTEXT("CkStyleLabAxisMetadata", "FoldChipStyle.ToolTip", "Treatment for tree fold / group chips.")},
-                {TEXT("ValueAlignment"), NSLOCTEXT("CkStyleLabAxisMetadata", "ValueAlignment.DisplayName", "Value Alignment"), NSLOCTEXT("CkStyleLabAxisMetadata", "ValueAlignment.ToolTip", "Alignment of the inspector value column.")},
-                {TEXT("ProviderChipStyle"), NSLOCTEXT("CkStyleLabAxisMetadata", "ProviderChipStyle.DisplayName", "Provider Chip Style"), NSLOCTEXT("CkStyleLabAxisMetadata", "ProviderChipStyle.ToolTip", "Treatment for overlay section provider chips.")},
-                {TEXT("LegendMode"), NSLOCTEXT("CkStyleLabAxisMetadata", "LegendMode.DisplayName", "Legend Mode"), NSLOCTEXT("CkStyleLabAxisMetadata", "LegendMode.ToolTip", "Overlay legend strip: deduped across sections, off, or repeated per section.")},
-                {TEXT("MergeCountDisplay"), NSLOCTEXT("CkStyleLabAxisMetadata", "MergeCountDisplay.DisplayName", "Merge Count Display"), NSLOCTEXT("CkStyleLabAxisMetadata", "MergeCountDisplay.ToolTip", "How a merged row's xN count renders. WHETHER merging happens stays a project setting.")},
-                {TEXT("FlashOnChange"), NSLOCTEXT("CkStyleLabAxisMetadata", "FlashOnChange.DisplayName", "Flash On Change"), NSLOCTEXT("CkStyleLabAxisMetadata", "FlashOnChange.ToolTip", "Inspector value-change flash scope.")},
-                {TEXT("SectionHeaderStyle"), NSLOCTEXT("CkStyleLabAxisMetadata", "SectionHeaderStyle.DisplayName", "Section Header Style"), NSLOCTEXT("CkStyleLabAxisMetadata", "SectionHeaderStyle.ToolTip", "Treatment for inspector and overlay section headers.")},
-                {TEXT("IconSize"), NSLOCTEXT("CkStyleLabAxisMetadata", "IconSize.DisplayName", "Icon Size"), NSLOCTEXT("CkStyleLabAxisMetadata", "IconSize.ToolTip", "Glyph size for every SCkDebug_Icon site: Small 12, Medium 16, Large 20.")},
-                {TEXT("EditControlStyle"), NSLOCTEXT("CkStyleLabAxisMetadata", "EditControlStyle.DisplayName", "Edit Control Style"), NSLOCTEXT("CkStyleLabAxisMetadata", "EditControlStyle.ToolTip", "Inspector edit affordances: always inline, revealed on row hover, or hidden (fully read-only inspectors).")},
-                {TEXT("TreeComplexity"), NSLOCTEXT("CkStyleLabAxisMetadata", "TreeComplexity.DisplayName", "Tree Complexity"), NSLOCTEXT("CkStyleLabAxisMetadata", "TreeComplexity.ToolTip", "ECS entity tree declutter dial. Minimal folds technical rows harder and tightens the sibling-group threshold; Full turns folding and grouping off. Modulates the project's own tree settings — it never replaces them.")},
-                {TEXT("IconTreatment"), NSLOCTEXT("CkStyleLabAxisMetadata", "IconTreatment.DisplayName", "Icon Treatment"), NSLOCTEXT("CkStyleLabAxisMetadata", "IconTreatment.ToolTip", "Backdrop behind every SCkDebug_Icon glyph: bare, a tinted well, or a thin ring.")},
-                {TEXT("TextScale"), NSLOCTEXT("CkStyleLabAxisMetadata", "TextScale.DisplayName", "Text Scale"), NSLOCTEXT("CkStyleLabAxisMetadata", "TextScale.ToolTip", "Type-size multiplier applied on top of the palette's font-size roles: Normal x1.0, Small x0.875, Large x1.125.")},
-                {TEXT("EntityRefStyle"), NSLOCTEXT("CkStyleLabAxisMetadata", "EntityRefStyle.DisplayName", "Entity Ref Style"), NSLOCTEXT("CkStyleLabAxisMetadata", "EntityRefStyle.ToolTip", "Visual treatment of the entity reference pill. What TEXT it composes stays with Entity Id Style.")},
-                {TEXT("CornerStyle"), NSLOCTEXT("CkStyleLabAxisMetadata", "CornerStyle.DisplayName", "Corner Style"), NSLOCTEXT("CkStyleLabAxisMetadata", "CornerStyle.ToolTip", "Corner shape for chips, badges, and cards.")},
-                {TEXT("SurfaceElevation"), NSLOCTEXT("CkStyleLabAxisMetadata", "SurfaceElevation.DisplayName", "Surface Elevation"), NSLOCTEXT("CkStyleLabAxisMetadata", "SurfaceElevation.ToolTip", "Tonal separation between nested surfaces: a background ladder per depth, one flat fill, or transparent fills with 1px rings.")},
-                {TEXT("GraphNodeStyle"), NSLOCTEXT("CkStyleLabAxisMetadata", "GraphNodeStyle.DisplayName", "Graph Node Style"), NSLOCTEXT("CkStyleLabAxisMetadata", "GraphNodeStyle.ToolTip", "Border weight and inactive fade for debug graph nodes (state machine, GOAP).")},
-                {TEXT("GraphMotion"), NSLOCTEXT("CkStyleLabAxisMetadata", "GraphMotion.DisplayName", "Graph Motion"), NSLOCTEXT("CkStyleLabAxisMetadata", "GraphMotion.ToolTip", "Pacing for state-machine graph state and transition feedback: quick, measured, or deliberate.")},
-                {TEXT("GraphEventEmphasis"), NSLOCTEXT("CkStyleLabAxisMetadata", "GraphEventEmphasis.DisplayName", "Graph Event Emphasis"), NSLOCTEXT("CkStyleLabAxisMetadata", "GraphEventEmphasis.ToolTip", "Outline and edge-flash strength for state-machine graph events: subtle, clear, or bold.")},
-                {TEXT("RowBanding"), NSLOCTEXT("CkStyleLabAxisMetadata", "RowBanding.DisplayName", "Row Banding"), NSLOCTEXT("CkStyleLabAxisMetadata", "RowBanding.ToolTip", "Row-to-row separation in list and tree surfaces: none, alternating fills, or a per-row rule.")},
+                {TEXT("ChipStyle"), NSLOCTEXT("CkStyleLabAxisMetadata", "ChipStyle.DisplayName", "Chip Style"), NSLOCTEXT("CkStyleLabAxisMetadata", "ChipStyle.ToolTip", "Treatment for inspector badge boxes, feature chips, and overlay field chips."), ECkStyleLab_Group::TokensLegend},
+                {TEXT("RowDensity"), NSLOCTEXT("CkStyleLabAxisMetadata", "RowDensity.DisplayName", "Row Density"), NSLOCTEXT("CkStyleLabAxisMetadata", "RowDensity.ToolTip", "Row padding for tree rows, inspector rows, and overlay card rows."), ECkStyleLab_Group::WorkbenchSurfaces},
+                {TEXT("EntityIdStyle"), NSLOCTEXT("CkStyleLabAxisMetadata", "EntityIdStyle.DisplayName", "Entity Id Style"), NSLOCTEXT("CkStyleLabAxisMetadata", "EntityIdStyle.ToolTip", "How an entity reference composes its display TEXT on every SCkDebug_EntityRef site. How it is drawn stays with Entity Ref Style."), ECkStyleLab_Group::EntityValues},
+                {TEXT("BadgeStyle"), NSLOCTEXT("CkStyleLabAxisMetadata", "BadgeStyle.DisplayName", "Badge Style"), NSLOCTEXT("CkStyleLabAxisMetadata", "BadgeStyle.ToolTip", "Treatment for count badges and fold badges."), ECkStyleLab_Group::TokensLegend},
+                {TEXT("SeparatorWeight"), NSLOCTEXT("CkStyleLabAxisMetadata", "SeparatorWeight.DisplayName", "Separator Weight"), NSLOCTEXT("CkStyleLabAxisMetadata", "SeparatorWeight.ToolTip", "Thickness of section separators in the inspector and the overlay card."), ECkStyleLab_Group::WorkbenchSurfaces},
+                {TEXT("FoldChipStyle"), NSLOCTEXT("CkStyleLabAxisMetadata", "FoldChipStyle.DisplayName", "Fold Chip Style"), NSLOCTEXT("CkStyleLabAxisMetadata", "FoldChipStyle.ToolTip", "Treatment for tree fold / group chips."), ECkStyleLab_Group::TokensLegend},
+                {TEXT("ValueAlignment"), NSLOCTEXT("CkStyleLabAxisMetadata", "ValueAlignment.DisplayName", "Value Alignment"), NSLOCTEXT("CkStyleLabAxisMetadata", "ValueAlignment.ToolTip", "Alignment of the inspector value column."), ECkStyleLab_Group::EntityValues},
+                {TEXT("ProviderChipStyle"), NSLOCTEXT("CkStyleLabAxisMetadata", "ProviderChipStyle.DisplayName", "Provider Chip Style"), NSLOCTEXT("CkStyleLabAxisMetadata", "ProviderChipStyle.ToolTip", "Treatment for overlay section provider chips."), ECkStyleLab_Group::TokensLegend},
+                {TEXT("LegendMode"), NSLOCTEXT("CkStyleLabAxisMetadata", "LegendMode.DisplayName", "Legend Mode"), NSLOCTEXT("CkStyleLabAxisMetadata", "LegendMode.ToolTip", "Overlay legend strip: deduped across sections, off, or repeated per section."), ECkStyleLab_Group::TokensLegend},
+                {TEXT("MergeCountDisplay"), NSLOCTEXT("CkStyleLabAxisMetadata", "MergeCountDisplay.DisplayName", "Merge Count Display"), NSLOCTEXT("CkStyleLabAxisMetadata", "MergeCountDisplay.ToolTip", "How a merged row's xN count renders. WHETHER merging happens stays a project setting."), ECkStyleLab_Group::TokensLegend},
+                {TEXT("FlashOnChange"), NSLOCTEXT("CkStyleLabAxisMetadata", "FlashOnChange.DisplayName", "Flash On Change"), NSLOCTEXT("CkStyleLabAxisMetadata", "FlashOnChange.ToolTip", "Inspector value-change flash scope."), ECkStyleLab_Group::HierarchyEditing},
+                {TEXT("SectionHeaderStyle"), NSLOCTEXT("CkStyleLabAxisMetadata", "SectionHeaderStyle.DisplayName", "Section Header Style"), NSLOCTEXT("CkStyleLabAxisMetadata", "SectionHeaderStyle.ToolTip", "Treatment for inspector and overlay section headers."), ECkStyleLab_Group::HierarchyEditing},
+                {TEXT("IconSize"), NSLOCTEXT("CkStyleLabAxisMetadata", "IconSize.DisplayName", "Icon Size"), NSLOCTEXT("CkStyleLabAxisMetadata", "IconSize.ToolTip", "Glyph size for every SCkDebug_Icon site: Small 12, Medium 16, Large 20."), ECkStyleLab_Group::Icons},
+                {TEXT("EditControlStyle"), NSLOCTEXT("CkStyleLabAxisMetadata", "EditControlStyle.DisplayName", "Edit Control Style"), NSLOCTEXT("CkStyleLabAxisMetadata", "EditControlStyle.ToolTip", "Inspector edit affordances: always inline, revealed on row hover, or hidden (fully read-only inspectors)."), ECkStyleLab_Group::HierarchyEditing},
+                {TEXT("TreeComplexity"), NSLOCTEXT("CkStyleLabAxisMetadata", "TreeComplexity.DisplayName", "Tree Complexity"), NSLOCTEXT("CkStyleLabAxisMetadata", "TreeComplexity.ToolTip", "ECS entity tree declutter dial. Minimal folds technical rows harder and tightens the sibling-group threshold; Full turns folding and grouping off. Modulates the project's own tree settings — it never replaces them."), ECkStyleLab_Group::HierarchyEditing},
+                {TEXT("IconTreatment"), NSLOCTEXT("CkStyleLabAxisMetadata", "IconTreatment.DisplayName", "Icon Treatment"), NSLOCTEXT("CkStyleLabAxisMetadata", "IconTreatment.ToolTip", "Backdrop behind every SCkDebug_Icon glyph: bare, a tinted well, or a thin ring."), ECkStyleLab_Group::Icons},
+                {TEXT("TextScale"), NSLOCTEXT("CkStyleLabAxisMetadata", "TextScale.DisplayName", "Text Scale"), NSLOCTEXT("CkStyleLabAxisMetadata", "TextScale.ToolTip", "Type-size multiplier applied on top of the palette's font-size roles: Normal x1.0, Small x0.875, Large x1.125."), ECkStyleLab_Group::WorkbenchSurfaces},
+                {TEXT("EntityRefStyle"), NSLOCTEXT("CkStyleLabAxisMetadata", "EntityRefStyle.DisplayName", "Entity Ref Style"), NSLOCTEXT("CkStyleLabAxisMetadata", "EntityRefStyle.ToolTip", "Visual treatment of the entity reference pill. What TEXT it composes stays with Entity Id Style."), ECkStyleLab_Group::EntityValues},
+                {TEXT("CornerStyle"), NSLOCTEXT("CkStyleLabAxisMetadata", "CornerStyle.DisplayName", "Corner Style"), NSLOCTEXT("CkStyleLabAxisMetadata", "CornerStyle.ToolTip", "Corner shape for chips, badges, and cards."), ECkStyleLab_Group::WorkbenchSurfaces},
+                {TEXT("SurfaceElevation"), NSLOCTEXT("CkStyleLabAxisMetadata", "SurfaceElevation.DisplayName", "Pane Treatment"), NSLOCTEXT("CkStyleLabAxisMetadata", "SurfaceElevation.ToolTip", "Cards use separated layered panes; Workbench uses contiguous flat panes."), ECkStyleLab_Group::WorkbenchSurfaces},
+                {TEXT("GraphNodeStyle"), NSLOCTEXT("CkStyleLabAxisMetadata", "GraphNodeStyle.DisplayName", "Graph Node Style"), NSLOCTEXT("CkStyleLabAxisMetadata", "GraphNodeStyle.ToolTip", "Border weight and inactive fade for debug graph nodes (state machine, GOAP)."), ECkStyleLab_Group::GraphTelemetry},
+                {TEXT("GraphMotion"), NSLOCTEXT("CkStyleLabAxisMetadata", "GraphMotion.DisplayName", "Graph Motion"), NSLOCTEXT("CkStyleLabAxisMetadata", "GraphMotion.ToolTip", "Pacing for state-machine graph state and transition feedback: quick, measured, or deliberate."), ECkStyleLab_Group::GraphTelemetry},
+                {TEXT("GraphEventEmphasis"), NSLOCTEXT("CkStyleLabAxisMetadata", "GraphEventEmphasis.DisplayName", "Graph Event Emphasis"), NSLOCTEXT("CkStyleLabAxisMetadata", "GraphEventEmphasis.ToolTip", "Outline and edge-flash strength for state-machine graph events: subtle, clear, or bold."), ECkStyleLab_Group::GraphTelemetry},
+                {TEXT("RowBanding"), NSLOCTEXT("CkStyleLabAxisMetadata", "RowBanding.DisplayName", "Row Banding"), NSLOCTEXT("CkStyleLabAxisMetadata", "RowBanding.ToolTip", "Row-to-row separation in list and tree surfaces: none, alternating fills, or a per-row rule."), ECkStyleLab_Group::WorkbenchSurfaces},
             };
             return AxisMetadata;
         }
@@ -64,7 +78,7 @@ namespace ck::style_lab
                 CK_STYLE_LAB_AXIS_OPTION(TextScale, 0, "Normal"), CK_STYLE_LAB_AXIS_OPTION(TextScale, 1, "Small"), CK_STYLE_LAB_AXIS_OPTION(TextScale, 2, "Large"),
                 CK_STYLE_LAB_AXIS_OPTION(EntityRefStyle, 0, "Flat"), CK_STYLE_LAB_AXIS_OPTION(EntityRefStyle, 1, "Pill"), CK_STYLE_LAB_AXIS_OPTION(EntityRefStyle, 2, "Outline Pill"), CK_STYLE_LAB_AXIS_OPTION(EntityRefStyle, 3, "Monochrome"),
                 CK_STYLE_LAB_AXIS_OPTION(CornerStyle, 0, "Rounded"), CK_STYLE_LAB_AXIS_OPTION(CornerStyle, 1, "Sharp"), CK_STYLE_LAB_AXIS_OPTION(CornerStyle, 2, "Pill"),
-                CK_STYLE_LAB_AXIS_OPTION(SurfaceElevation, 0, "Layered"), CK_STYLE_LAB_AXIS_OPTION(SurfaceElevation, 1, "Flat"), CK_STYLE_LAB_AXIS_OPTION(SurfaceElevation, 2, "Outlined"),
+                CK_STYLE_LAB_AXIS_OPTION(SurfaceElevation, 0, "Cards"), CK_STYLE_LAB_AXIS_OPTION(SurfaceElevation, 1, "Workbench"),
                 CK_STYLE_LAB_AXIS_OPTION(GraphNodeStyle, 0, "Card"), CK_STYLE_LAB_AXIS_OPTION(GraphNodeStyle, 1, "Minimal"), CK_STYLE_LAB_AXIS_OPTION(GraphNodeStyle, 2, "Dense"),
                 CK_STYLE_LAB_AXIS_OPTION(GraphMotion, 0, "Quick"), CK_STYLE_LAB_AXIS_OPTION(GraphMotion, 1, "Measured"), CK_STYLE_LAB_AXIS_OPTION(GraphMotion, 2, "Deliberate"),
                 CK_STYLE_LAB_AXIS_OPTION(GraphEventEmphasis, 0, "Subtle"), CK_STYLE_LAB_AXIS_OPTION(GraphEventEmphasis, 1, "Clear"), CK_STYLE_LAB_AXIS_OPTION(GraphEventEmphasis, 2, "Bold"),
@@ -74,6 +88,11 @@ namespace ck::style_lab
         }
 
         #undef CK_STYLE_LAB_AXIS_OPTION
+    }
+
+    auto Get_GroupMetadata() -> const TArray<FCkStyleLab_GroupMetadata>&
+    {
+        return Get_Groups();
     }
 
     auto Find_AxisMetadata(const FName InPropertyName) -> const FCkStyleLab_AxisMetadata*

@@ -1,7 +1,6 @@
 #include "CkStyleLabDebugger/Window/SCkStyleLabWindow.h"
 
 #include "CkStyleLabDebugger/Widgets/SCkStyleLab_ControlsPane.h"
-#include "CkStyleLabDebugger/Widgets/SCkStyleLab_SamplePane.h"
 
 #include "CkCore/Format/CkFormat.h"
 #include "CkCore/Macros/CkMacros.h"
@@ -13,16 +12,7 @@
 
 #include "CkEditorTools/Style/CkStyle.h"
 
-#include "Widgets/Layout/SBox.h"
 #include "Widgets/Layout/SScrollBox.h"
-#include "Widgets/SBoxPanel.h"
-
-// --------------------------------------------------------------------------------------------------------------------
-
-namespace ck_style_lab_window
-{
-    constexpr auto ControlsPaneWidth = 340.0f;
-}
 
 // --------------------------------------------------------------------------------------------------------------------
 
@@ -52,32 +42,13 @@ auto
             })
             .Content()
             [
-                SNew(SHorizontalBox)
+                SNew(SScrollBox)
 
-                + SHorizontalBox::Slot().FillWidth(1.0f).Padding(CkStyle::SpaceM)
+                + SScrollBox::Slot().Padding(CkStyle::SpaceM)
                     [
-                        SNew(SScrollBox)
-
-                        + SScrollBox::Slot()
-                            [
-                                SAssignNew(_SamplePane, SCkStyleLab_SamplePane)
-                            ]
-                    ]
-
-                + SHorizontalBox::Slot().AutoWidth().Padding(0.0f, CkStyle::SpaceM, CkStyle::SpaceM, CkStyle::SpaceM)
-                    [
-                        SNew(SBox)
-                            .WidthOverride(ck_style_lab_window::ControlsPaneWidth)
-                            [
-                                SNew(SScrollBox)
-
-                                + SScrollBox::Slot()
-                                    [
-                                        SAssignNew(_ControlsPane, SCkStyleLab_ControlsPane)
-                                            .OnSelectionChanged(FOnCkStyleLab_SelectionChanged::CreateSP(
-                                                this, &SCkStyleLabWindow::OnSampleSelectionChanged))
-                                    ]
-                            ]
+                        SAssignNew(_ControlsPane, SCkStyleLab_ControlsPane)
+                            .OnSelectionChanged(FOnCkStyleLab_SelectionChanged::CreateSP(
+                                this, &SCkStyleLabWindow::OnSelectionChanged))
                     ]
             ]
     ];
@@ -112,8 +83,8 @@ auto
 
     _LastSeenRevision = Revision;
 
-    if (_SamplePane.IsValid())
-    { _SamplePane->RequestRebuild(); }
+    if (_ControlsPane.IsValid())
+    { _ControlsPane->RequestPreviewRebuilds(); }
 }
 
 // ====================================================================================================================
@@ -142,7 +113,7 @@ auto
     Get_ShowAllTones() const
     -> bool
 {
-    return _SamplePane.IsValid() && _SamplePane->Get_ShowAllTones();
+    return _ControlsPane.IsValid() && _ControlsPane->Get_ShowAllTones();
 }
 
 auto
@@ -151,10 +122,10 @@ auto
         bool InShowAllTones)
     -> void
 {
-    if (NOT _SamplePane.IsValid())
+    if (NOT _ControlsPane.IsValid())
     { return; }
 
-    _SamplePane->Set_ShowAllTones(InShowAllTones);
+    _ControlsPane->Set_ShowAllTones(InShowAllTones);
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -179,14 +150,11 @@ auto
 
 auto
     SCkStyleLabWindow::
-    OnSampleSelectionChanged()
+    OnSelectionChanged()
     -> void
 {
     if (const auto* Settings = UCkDebuggerStyleSettings::Get())
     { _LastSeenRevision = Settings->Get_Revision(); }
-
-    if (_SamplePane.IsValid())
-    { _SamplePane->RequestRebuild(); }
 }
 
 // ====================================================================================================================

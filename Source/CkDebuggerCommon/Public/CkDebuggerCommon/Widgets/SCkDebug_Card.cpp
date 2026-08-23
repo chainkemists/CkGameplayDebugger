@@ -20,11 +20,14 @@ auto
     const auto Stripe   = InArgs._StripeColor;
     const auto Glow     = InArgs._GlowColor;
     const auto Selected = InArgs._Selected;
+    const auto GlowExtent = InArgs._GlowExtent.IsSet()
+        ? InArgs._GlowExtent
+        : TAttribute<float>::CreateStatic(&ck::debug_axes::Get_CardOuterExtent);
 
     ChildSlot
     [
         SNew(SCkDebug_GlowWrap)
-        .Extent(6.0f)
+        .Extent(GlowExtent)
         .GlowColor(Glow)
         [
             SNew(SBorder)
@@ -40,9 +43,9 @@ auto
             .Padding_Lambda([]{ return FMargin{CkStyle::RingWidth()}; })
             [
                 // The card body is a depth-2 surface: Layered keeps today's Bg2 fill, Flat pulls it
-                // up to the shared tier, Outlined turns it into a ring.
+                // up to the shared tier while the corner axis selects the card shape.
                 SNew(SBorder)
-                .BorderImage_Static(&ck::debug_axes::Get_CardBrush)
+                .BorderImage_Static(&ck::debug_axes::Get_CardSurfaceBrush)
                 .BorderBackgroundColor_Lambda([]
                 {
                     return FSlateColor{ck::debug_axes::Get_SurfaceTint(2)};

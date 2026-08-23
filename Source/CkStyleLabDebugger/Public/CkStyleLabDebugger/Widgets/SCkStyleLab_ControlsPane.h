@@ -1,8 +1,11 @@
 #pragma once
 
+#include "CkStyleLabDebugger/Styles/CkStyleLab_AxisMetadata.h"
+
 #include "CoreMinimal.h"
 #include "Widgets/SCompoundWidget.h"
-#include "Widgets/Input/SComboBox.h"
+
+class SCkStyleLab_SamplePane;
 
 // ====================================================================================================================
 
@@ -20,6 +23,7 @@ struct FCkStyleLab_AxisRow
     const FProperty* Property = nullptr;
     FText            DisplayName;
     FText            ToolTip;
+    ECkStyleLab_Group Group = ECkStyleLab_Group::WorkbenchSurfaces;
 
     // Option values and their labels are snapshotted at construction — the enum's shape cannot
     // change while the editor runs, and snapshotting keeps a UObject pointer out of the row.
@@ -28,7 +32,8 @@ struct FCkStyleLab_AxisRow
 };
 
 // ====================================================================================================================
-// The Style Lab's RIGHT pane: every axis, the curated profiles, and reset.
+// The Style Lab's single grouped document: curated profiles, every generic axis, and feature-local
+// controls. Each group owns the focused preview that demonstrates its settings.
 //
 // Writes go straight to UCkDebuggerStyleSettings (SaveConfig + NotifyChanged), which is what makes
 // an already-open ECS tree or overlay follow the change. Manual axis edits flip the active profile
@@ -44,24 +49,31 @@ public:
 
     auto Construct(const FArguments& InArgs) -> void;
 
+    auto RequestPreviewRebuilds() -> void;
+    auto Get_ShowAllTones() const -> bool { return _ShowAllTones; }
+    auto Set_ShowAllTones(bool InShowAllTones) -> void;
+
+    auto Get_AxisCount() const -> int32 { return _Axes.Num(); }
+    auto Get_GroupPreviewCount() const -> int32 { return _GroupPreviews.Num(); }
+
 private:
-    auto Build_AxisRows() -> TSharedRef<SWidget>;
+    auto Build_GroupedAxes() -> TSharedRef<SWidget>;
+    auto Build_AxisGroup(const FCkStyleLab_GroupMetadata& InGroup) -> TSharedRef<SWidget>;
+    auto Build_InputHudGroup(const FCkStyleLab_GroupMetadata& InGroup) -> TSharedRef<SWidget>;
     auto Build_AxisRow(const TSharedPtr<FCkStyleLab_AxisRow>& InAxis) -> TSharedRef<SWidget>;
     auto Build_ProfileControls() -> TSharedRef<SWidget>;
 
     auto Get_AxisValueLabel(TSharedPtr<FCkStyleLab_AxisRow> InAxis) const -> FText;
     auto OnCycleAxis(TSharedPtr<FCkStyleLab_AxisRow> InAxis, int32 InDirection) -> FReply;
-    auto OnResetToClassic() -> FReply;
 
     auto Apply_Profile(int32 InProfileIndex) -> void;
     auto Notify_SelectionChanged() -> void;
 
     TArray<TSharedPtr<FCkStyleLab_AxisRow>> _Axes;
-    TArray<TSharedPtr<int32>>               _ProfileItems;
-
-    TSharedPtr<SComboBox<TSharedPtr<int32>>> _ProfileCombo;
+    TArray<TSharedPtr<SCkStyleLab_SamplePane>> _GroupPreviews;
 
     FOnCkStyleLab_SelectionChanged _OnSelectionChanged;
+    bool _ShowAllTones = false;
 };
 
 // ====================================================================================================================

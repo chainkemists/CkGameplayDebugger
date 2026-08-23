@@ -15,6 +15,8 @@
 
 #include "Framework/MultiBox/MultiBoxBuilder.h"
 
+#include "Styling/StyleDefaults.h"
+
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/SBoxPanel.h"
@@ -154,8 +156,7 @@ auto
     ChildSlot
     [
         SNew(SBorder)
-        .BorderImage(CkStyle::GetFilledBrush())
-        .BorderBackgroundColor(FSlateColor{CkStyle::Bg1()})
+        .BorderImage(FStyleDefaults::GetNoBrush())
         .Padding(FMargin{0.0f})
         [
             SNew(SVerticalBox)

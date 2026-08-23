@@ -18,6 +18,7 @@
 #include "CkDebuggerCommon/Styles/CkDebuggerAxes.h"
 #include "CkDebuggerCommon/Styles/CkDebuggerCommonStyle.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_CountBadge.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_PaneHost.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_IconToggle.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_SectionHeader.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_StatPair.h"
@@ -490,23 +491,28 @@ auto
         SNew(SCkDebug_WindowChrome).WindowId(Get_WindowId()).ToolTabId(TabId)
         .ShowRefreshControls(true)
         .CommandGroups(BuildCommandGroups())
+        .CommonActionsContent()
+        [
+            SNew(SCkDebug_ViewportPickerControls)
+            .Picker(_ViewportPicker)
+            .PickTooltip(FText::FromString(TEXT("Enter pick mode: click a physics body in the GAME viewport to select it here.\nOnly Jolt bodies, baked static actors, sensors and characters (and their owning entity) are shown and pickable.")))
+        ]
         .Content()
         [
-            SNew(SBorder)
-            .BorderImage(FAppStyle::GetBrush("WhiteBrush"))
-            .BorderBackgroundColor(CkStyle::Bg1())
+            SNew(SSplitter).Orientation(Orient_Horizontal)
+
+            + SSplitter::Slot().Value(0.22f)
+            [ SNew(SCkDebug_PaneHost) [ _OutlinerPanel.ToSharedRef() ] ]
+
+            + SSplitter::Slot().Value(0.53f)
             [
-                SNew(SSplitter).Orientation(Orient_Horizontal)
-
-                + SSplitter::Slot().Value(0.22f)
-                [ _OutlinerPanel.ToSharedRef() ]
-
-                + SSplitter::Slot().Value(0.53f)
+                SNew(SCkDebug_PaneHost)
+                .ContentMode(ECkDebugPaneContent::OpaqueRenderer)
                 [ _Viewport.ToSharedRef() ]
-
-                + SSplitter::Slot().Value(0.25f)
-                [ BuildRightRail() ]
             ]
+
+            + SSplitter::Slot().Value(0.25f)
+            [ BuildRightRail() ]
         ]
     ];
 
@@ -1499,14 +1505,7 @@ auto
     return SNew(SHorizontalBox)
 
         + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.0f, 0.0f, CkStyle::SpaceM, 0.0f)
-        [ SNew(SCkDebug_WorldSelector, _WorldModel).ShowHeaderLabel(false) ]
-
-        + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-        [
-            SNew(SCkDebug_ViewportPickerControls)
-            .Picker(_ViewportPicker)
-            .PickTooltip(FText::FromString(TEXT("Enter pick mode: click a physics body in the GAME viewport to select it here.\nOnly Jolt bodies, baked static actors, sensors and characters (and their owning entity) are shown and pickable.")))
-        ];
+        [ SNew(SCkDebug_WorldSelector, _WorldModel).ShowHeaderLabel(false) ];
 }
 
 auto
@@ -2717,13 +2716,16 @@ auto
     return SNew(SSplitter).Orientation(Orient_Vertical)
 
         + SSplitter::Slot().Value(0.62f)
-        [ BuildStatRail() ]
+        [ SNew(SCkDebug_PaneHost) [ BuildStatRail() ] ]
 
         + SSplitter::Slot().Value(0.38f)
         [
-            SNew(SScrollBox)
-            + SScrollBox::Slot()
-            [ _DetailPanel.ToSharedRef() ]
+            SNew(SCkDebug_PaneHost)
+            [
+                SNew(SScrollBox)
+                + SScrollBox::Slot()
+                [ _DetailPanel.ToSharedRef() ]
+            ]
         ];
 }
 

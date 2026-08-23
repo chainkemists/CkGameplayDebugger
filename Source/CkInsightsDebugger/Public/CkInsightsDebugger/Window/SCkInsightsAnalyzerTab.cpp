@@ -13,6 +13,7 @@
 
 #include "CkDebuggerCommon/Settings/CkDebuggerStyleSettings.h"
 #include "CkDebuggerCommon/Styles/CkDebuggerAxes.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_PaneHost.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_IconToggle.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_SectionHeader.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_SelectableLabel.h"
@@ -447,9 +448,7 @@ auto
     _DepthOptions.Add(MakeShared<FString>(TEXT("Concise")));
     _DepthOptions.Add(MakeShared<FString>(TEXT("Hot Paths Only")));
 
-    const auto Content = SNew(SBorder)
-        .BorderImage(CkStyle::GetFilledBrush())
-        .BorderBackgroundColor(CkStyle::BgRoot())
+    const auto Content = SNew(SBox)
         .Padding(PanelPadding)
         [
             SNew(SVerticalBox)
@@ -1063,13 +1062,19 @@ auto
         + SSplitter::Slot()
         .Value(0.62f)
         [
-            DoCreateHotPathPanel()
+            SNew(SCkDebug_PaneHost)
+            [
+                DoCreateHotPathPanel()
+            ]
         ]
 
         + SSplitter::Slot()
         .Value(0.38f)
         [
-            DoCreateSidePanels()
+            SNew(SCkDebug_PaneHost)
+            [
+                DoCreateSidePanels()
+            ]
         ];
 }
 
@@ -1114,9 +1119,7 @@ auto
               .FixedWidth(120.0f)
         );
 
-    return SNew(SBorder)
-        .BorderImage(CkStyle::GetFilledBrush())
-        .BorderBackgroundColor(CkStyle::Bg1())
+    return SNew(SBox)
         .Padding(CkStyle::SpaceM)
         [
             SNew(SVerticalBox)

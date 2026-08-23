@@ -13,6 +13,7 @@
 #include "CkDebuggerCommon/Widgets/SCkDebug_MeterBar.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_Sparkline.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_StatPair.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_PaneHost.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_StatusPill.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_IconToggle.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_WorldSelector.h"
@@ -200,14 +201,10 @@ auto
         .CommandGroups(BuildCommandGroups())
         .Content()
         [
-            SNew(SBorder)
-        .BorderImage(FAppStyle::GetBrush("WhiteBrush"))
-        .BorderBackgroundColor(CkStyle::BgRoot())
-        [
             SNew(SVerticalBox)
 
             + SVerticalBox::Slot().AutoHeight()
-                [ BuildOverviewStrip() ]
+                [ SNew(SCkDebug_PaneHost) [ BuildOverviewStrip() ] ]
 
             + SVerticalBox::Slot().FillHeight(1.0f)
                 [
@@ -215,6 +212,8 @@ auto
 
                     + SHorizontalBox::Slot().FillWidth(1.0f)
                         [
+                            SNew(SCkDebug_PaneHost)
+                            [
                             SNew(SVerticalBox)
 
                             + SVerticalBox::Slot().AutoHeight().Padding(CkStyle::SpaceS, CkStyle::SpaceS, CkStyle::SpaceS, 0.0f)
@@ -231,6 +230,7 @@ auto
 
                             + SVerticalBox::Slot().AutoHeight()
                                 [ BuildStatusBar() ]
+                            ]
                         ]
 
                     + SHorizontalBox::Slot().AutoWidth()
@@ -241,11 +241,14 @@ auto
                             SNew(SBox)
                             .WidthOverride_Lambda([]() -> FOptionalSize
                             {
-                                return FOptionalSize{ck_object_pooling_debugger_window::Get_SeparatorThickness()};
+                                return ck::debug_axes::Get_CardOuterExtent() == 0.0f
+                                    ? FOptionalSize{ck_object_pooling_debugger_window::Get_SeparatorThickness()}
+                                    : FOptionalSize{0.0f};
                             })
                             .Visibility_Lambda([]()
                             {
-                                return ck_object_pooling_debugger_window::Get_SeparatorThickness() > 0.0f
+                                return ck::debug_axes::Get_CardOuterExtent() == 0.0f
+                                    && ck_object_pooling_debugger_window::Get_SeparatorThickness() > 0.0f
                                     ? EVisibility::Visible
                                     : EVisibility::Collapsed;
                             })
@@ -259,10 +262,9 @@ auto
                     + SHorizontalBox::Slot().AutoWidth()
                         [
                             SNew(SBox).WidthOverride(300.0f)
-                            [ BuildInspectorRail() ]
+                            [ SNew(SCkDebug_PaneHost) [ BuildInspectorRail() ] ]
                         ]
                 ]
-        ]
         ]
     ];
 

@@ -36,6 +36,7 @@
 #include "CkDebuggerCommon/Navigation/CkDebug_SelectionSync.h"
 #include "CkDebuggerCommon/Picker/CkDebug_ViewportPicker.h"
 #include "CkDebuggerCommon/Picker/SCkDebug_ViewportPickerControls.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_PaneHost.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_IconToggle.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_ToggleSurface.h"
 #include "CkDebuggerCommon/Window/SCkDebug_WindowChrome.h"
@@ -160,10 +161,13 @@ auto SCkDebuggerWindow_Main::Construct(const FArguments& InArgs) -> void
         .ToolTabId(TEXT("CkEcsDebugger"))
         .CommandGroups({
             FCkDebug_CommandGroup::Primary(TEXT("OverlayView"), FText::FromString(TEXT("Overlay view controls")), Build_MenuActions()),
-            FCkDebug_CommandGroup::Context(TEXT("Target"), FText::FromString(TEXT("Entity target controls")), Build_TargetControls()),
             FCkDebug_CommandGroup::Context(TEXT("OverlaySettings"), FText::FromString(TEXT("Overlay settings")), Build_OverlaySettingsControls()),
             FCkDebug_CommandGroup::Context(TEXT("EntityFilter"), FText::FromString(TEXT("Entity filter controls")), Build_EntityFilterControls())
         })
+        .CommonActionsContent()
+        [
+            Build_TargetControls()
+        ]
         .ShowRefreshControls(true)
         .Content()
         [
@@ -186,10 +190,13 @@ auto SCkDebuggerWindow_Main::Construct(const FArguments& InArgs) -> void
                 .Value(0.2f)
                 .MinSize(200.0f)
                 [
-                    SNew(SBox)
-                    .MaxDesiredWidth(500.0f)
+                    SNew(SCkDebug_PaneHost)
                     [
-                        Build_LeftSidebar()
+                        SNew(SBox)
+                        .MaxDesiredWidth(500.0f)
+                        [
+                            Build_LeftSidebar()
+                        ]
                     ]
                 ]
 
@@ -197,10 +204,7 @@ auto SCkDebuggerWindow_Main::Construct(const FArguments& InArgs) -> void
                 .Value(0.5f)
                 .MinSize(400.0f)
                 [
-                    SNew(SBorder)
-                    .BorderImage(FCkDebuggerStyle::Get().GetBrush("CkDebugger.Border"))
-                    .BorderBackgroundColor(CkStyle::Border())
-                    .Padding(FMargin(1.0f, 0.0f))
+                    SNew(SCkDebug_PaneHost)
                     [
                         SAssignNew(ContentAreaContainer, SBox)
                         [
@@ -213,10 +217,13 @@ auto SCkDebuggerWindow_Main::Construct(const FArguments& InArgs) -> void
                 .Value(0.3f)
                 .MinSize(250.0f)
                 [
-                    SNew(SBox)
-                    .MaxDesiredWidth(600.0f)
+                    SNew(SCkDebug_PaneHost)
                     [
-                        Build_InspectorPanel()
+                        SNew(SBox)
+                        .MaxDesiredWidth(600.0f)
+                        [
+                            Build_InspectorPanel()
+                        ]
                     ]
                 ]
             ]

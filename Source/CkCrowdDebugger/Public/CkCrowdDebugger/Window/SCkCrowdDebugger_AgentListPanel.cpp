@@ -148,8 +148,7 @@ auto SCkCrowdDebugger_AgentListPanel::Construct(const FArguments& InArgs) -> voi
 	ChildSlot
 	[
 		SNew(SBorder)
-		.BorderImage(CkStyle::GetFilledBrush())
-		.BorderBackgroundColor(FSlateColor(CkStyle::Bg1()))
+		.BorderBackgroundColor(FLinearColor::Transparent)
 		.Padding(FMargin(0))
 		[
 			SNew(SVerticalBox)

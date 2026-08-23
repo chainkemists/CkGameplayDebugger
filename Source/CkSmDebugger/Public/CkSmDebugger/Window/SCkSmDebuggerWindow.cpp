@@ -22,6 +22,7 @@
 #include "CkDebuggerCommon/Settings/CkDebuggerStyleSettings.h"
 #include "CkDebuggerCommon/Styles/CkDebuggerAxes.h"
 #include "CkDebuggerCommon/Window/SCkDebug_WindowChrome.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_PaneHost.h"
 #include "CkStateMachine/StateMachine/CkStateMachine_Fragment.h"
 
 #include "CkDebuggerCommon/Navigation/CkDebug_EntityTarget.h"
@@ -1046,16 +1047,24 @@ auto
              .WindowId(WindowId)
              .ToolTabId(TEXT("CkSmDebugger"))
              .ShowRefreshControls(true)
-             .CommandGroups({
+              .CommandGroups({
                  FCkDebug_CommandGroup::Primary(TEXT("SmView"), FText::FromString(TEXT("State machine view controls")), BuildMenuActions()),
                  FCkDebug_CommandGroup::Context(TEXT("Target"), FText::FromString(TEXT("State machine target controls")), BuildTargetCommands()),
                  FCkDebug_CommandGroup::Context(TEXT("Graph"), FText::FromString(TEXT("Graph layout controls")), BuildGraphCommands()),
                  FCkDebug_CommandGroup::Context(
                      TEXT("Playback"),
-                     FText::FromString(TEXT("State machine playback, preview, and breakpoint controls")),
-                     BuildPlaybackCommands())
-             })
-             .Content()
+                      FText::FromString(TEXT("State machine playback, preview, and breakpoint controls")),
+                      BuildPlaybackCommands())
+              })
+              .CommonActionsContent()
+              [
+                  SNew(SCkDebug_ViewportPickerControls)
+                      .Picker(_ViewportPicker)
+                      .PickTooltip(FText::FromString(TEXT(
+                          "Enter pick mode: click a state-machine entity in the viewport to inspect it.\n"
+                          "Only entities with a state machine (and their owning NPC) are shown and pickable.")))
+              ]
+              .Content()
              [
                  SNew(SVerticalBox)
 
@@ -1078,7 +1087,11 @@ auto
                         + SSplitter::Slot()
                             .Value(0.65f)
                             [
-                                _RuntimeGraph.ToSharedRef()
+                                SNew(SCkDebug_PaneHost)
+                                    .ContentMode(ECkDebugPaneContent::OpaqueRenderer)
+                                    [
+                                        _RuntimeGraph.ToSharedRef()
+                                    ]
                             ]
 
                         // Bottom area (~35%): timeline + history|details
@@ -1170,21 +1183,27 @@ auto
                                             + SSplitter::Slot()
                                                 .Value(0.6f)
                                                 [
-                                                    SAssignNew(
-                                                        _HistoryList,
-                                                        SCkSmDebugger_HistoryList,
-                                                        _ViewModel,
-                                                        TAttribute<int32>::CreateLambda([this]
-                                                        {
-                                                            return _RuntimeGraphFacade.GetLayoutParams().NameDepth;
-                                                        }))
+                                                    SNew(SCkDebug_PaneHost)
+                                                        [
+                                                            SAssignNew(
+                                                                _HistoryList,
+                                                                SCkSmDebugger_HistoryList,
+                                                                _ViewModel,
+                                                                TAttribute<int32>::CreateLambda([this]
+                                                                {
+                                                                    return _RuntimeGraphFacade.GetLayoutParams().NameDepth;
+                                                                }))
+                                                        ]
                                                 ]
 
                                             // Detail panel (right, 40%)
                                             + SSplitter::Slot()
                                                 .Value(0.4f)
                                                 [
-                                                    BuildDetailPanel()
+                                                    SNew(SCkDebug_PaneHost)
+                                                        [
+                                                            BuildDetailPanel()
+                                                        ]
                                                 ]
                                     ]
                             ]
@@ -1607,20 +1626,6 @@ auto
             [
                 SNew(SCkDebug_WorldSelector, _WorldModel)
                     .ShowHeaderLabel(false)
-            ]
-
-        // ── Viewport picker (shared) — click an SM-carrying entity ───────
-
-        + SHorizontalBox::Slot()
-            .AutoWidth()
-            .VAlign(VAlign_Center)
-            .Padding(0.0f, 0.0f, 8.0f, 0.0f)
-            [
-                SNew(SCkDebug_ViewportPickerControls)
-                    .Picker(_ViewportPicker)
-                    .PickTooltip(FText::FromString(TEXT(
-                        "Enter pick mode: click a state-machine entity in the viewport to inspect it.\n"
-                        "Only entities with a state machine (and their owning NPC) are shown and pickable.")))
             ]
 
         // ── SM Selector ──────────────────────────────────────────────────
@@ -2646,8 +2651,7 @@ auto
     BuildDetailPanel()
     -> TSharedRef<SWidget>
 {
-    return SNew(SBorder)
-        .BorderBackgroundColor(CkStyle::Bg1())
+    return SNew(SBox)
         .Padding(FMargin(8.0f))
         [
             SNew(SScrollBox)

@@ -19,6 +19,7 @@
 #include "CkCrowd/Agent/CkCrowdAgent_Fragment.h"
 
 #include "CkDebuggerCommon/Widgets/SCkDebug_WorldSelector.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_PaneHost.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_IconToggle.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_ToggleSurface.h"
 #include "CkDebuggerCommon/Lifecycle/CkDebug_SessionLifecycle.h"
@@ -140,6 +141,10 @@ auto SCkCrowdDebuggerWindow::Construct(const FArguments& InArgs) -> void
 		.WindowId(WindowId)
 		.ToolTabId(TEXT("CkCrowdDebugger"))
 		.CommandGroups(BuildCommandGroups())
+		.CommonActionsContent()
+		[
+			SNew(SCkDebug_ViewportPickerControls).Picker(_ViewportPicker).PickTooltip(FText::FromString(TEXT("Enter pick mode: click a crowd agent in the viewport to inspect it.\nOnly crowd-agent entities (and their owning NPC) are shown and pickable.")))
+		]
 		.Content()
 		[
 		SNew(SVerticalBox)
@@ -161,27 +166,27 @@ auto SCkCrowdDebuggerWindow::Construct(const FArguments& InArgs) -> void
 					.PhysicalSplitterHandleSize(ck_crowd_debugger_window::LeftRailSplitterHandleSize)
 					+ SSplitter::Slot()
 					.Value(0.22f)
-					[ _NavmeshStatusPanel.ToSharedRef() ]
+					[ SNew(SCkDebug_PaneHost) [ _NavmeshStatusPanel.ToSharedRef() ] ]
 					+ SSplitter::Slot()
 					.Value(0.46f)
-					[ _AgentListPanel.ToSharedRef() ]
+					[ SNew(SCkDebug_PaneHost) [ _AgentListPanel.ToSharedRef() ] ]
 					+ SSplitter::Slot()
 					.Value(0.14f)
-					[ _StatsPanel.ToSharedRef() ]
+					[ SNew(SCkDebug_PaneHost) [ _StatsPanel.ToSharedRef() ] ]
 					+ SSplitter::Slot()
 					.Value(0.18f)
-					[ _EventLogPanel.ToSharedRef() ]
+					[ SNew(SCkDebug_PaneHost) [ _EventLogPanel.ToSharedRef() ] ]
 				]
 			]
 			// Center: the viewport, full height (the mockup's centerpiece).
 			+ SSplitter::Slot().Value(0.52f)
 			[
-				_ViewportPanel.ToSharedRef()
+				SNew(SCkDebug_PaneHost).ContentMode(ECkDebugPaneContent::OpaqueRenderer) [ _ViewportPanel.ToSharedRef() ]
 			]
 			// Right: agent detail + tuners + diagnostics, full height (no scrolling).
 			+ SSplitter::Slot().Value(0.28f)
 			[
-				_AgentDetailPanel.ToSharedRef()
+				SNew(SCkDebug_PaneHost) [ _AgentDetailPanel.ToSharedRef() ]
 			]
 		]
 		]
@@ -759,9 +764,7 @@ auto SCkCrowdDebuggerWindow::BuildCommandGroups() -> TArray<FCkDebug_CommandGrou
 
 	const auto Target = SNew(SHorizontalBox)
 		+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0, 0, 8, 0)
-		[ SNew(SCkDebug_WorldSelector, _WorldModel).ShowHeaderLabel(false) ]
-		+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-		[ SNew(SCkDebug_ViewportPickerControls).Picker(_ViewportPicker).PickTooltip(FText::FromString(TEXT("Enter pick mode: click a crowd agent in the viewport to inspect it.\nOnly crowd-agent entities (and their owning NPC) are shown and pickable."))) ];
+		[ SNew(SCkDebug_WorldSelector, _WorldModel).ShowHeaderLabel(false) ];
 	const auto Diagnostics = SNew(SHorizontalBox)
 		+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0, 0, 8, 0)
 		[ SNew(SButton).Text(FText::FromString(TEXT("Run Health Check"))).ToolTipText(FText::FromString(TEXT("Run a synthetic FindPathSync probe (origin to +200) and surface the result in the Navmesh Status panel. Bypasses the request/processor pipeline entirely; a green probe proves the nav stack works in isolation from any gym wiring."))).OnClicked_Lambda([this]() -> FReply { if (_ViewModel.IsValid()) { _ViewModel->Run_HealthCheckProbe(); } return FReply::Handled(); }) ]

@@ -5,6 +5,7 @@
 
 #include "CkDebuggerCommon/Styles/CkDebuggerAxes.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_CategoryDot.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_PaneHost.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_Icon.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_NameDepthCycler.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_IconToggle.h"
@@ -284,10 +285,12 @@ auto
 
     // ---- History area ----
 
-    _HistoryArea =
-        SNew(SExpandableArea)
+    const auto HistoryAreaCard =
+        SNew(SCkDebug_PaneHost)
+        [
+        SAssignNew(_HistoryArea, SExpandableArea)
         .InitiallyCollapsed(true)
-        .BorderBackgroundColor(CkStyle::BgRoot())
+        .BorderBackgroundColor(FLinearColor::Transparent)
         .HeaderPadding(FMargin(CkStyle::SpaceM, CkStyle::SpaceS))
         .HeaderContent()
         [
@@ -303,6 +306,7 @@ auto
                 SNew(SScrollBox)
                 + SScrollBox::Slot() [ _HistoryListBox.ToSharedRef() ]
             ]
+        ]
         ];
 
     // ---- Root layout ----
@@ -342,9 +346,7 @@ auto
         .ShowRefreshControls(true)
         .Content()
         [
-            SNew(SBorder)
-        .BorderImage(FAppStyle::GetBrush("WhiteBrush"))
-        .BorderBackgroundColor(CkStyle::Bg1())
+            SNew(SCkDebug_PaneHost)
         [
             SNew(SVerticalBox)
 
@@ -361,8 +363,8 @@ auto
                         [ _LayerListBox.ToSharedRef() ]
                 ]
 
-            + SVerticalBox::Slot().AutoHeight().Padding(CkStyle::SpaceS)
-                [ _HistoryArea.ToSharedRef() ]
+            + SVerticalBox::Slot().AutoHeight()
+                [ HistoryAreaCard ]
         ]
         ]
     ];

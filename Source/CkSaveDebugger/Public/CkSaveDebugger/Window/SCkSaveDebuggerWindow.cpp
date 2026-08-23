@@ -21,6 +21,7 @@
 #include "CkDebuggerCommon/Styles/CkDebuggerStyle.h"
 #include "CkDebuggerCommon/Utils/CkDebug_CopyMenu_Utils.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_Card.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_PaneHost.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_CopyableContainer.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_CountBadge.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_Icon.h"
@@ -730,7 +731,9 @@ auto
                 + SSplitter::Slot()
                 .Value(0.32f)
                 [
-                    SNew(SVerticalBox)
+                    SNew(SCkDebug_PaneHost)
+                    [
+                        SNew(SVerticalBox)
 
                 + SVerticalBox::Slot()
                 .AutoHeight()
@@ -776,12 +779,15 @@ auto
                     .OnKeyDownHandler(this, &SCkSaveDebuggerWindow::DoOnTreeKeyDown)
                     .SelectionMode(ESelectionMode::Single)
                 ]
+                    ]
             ]
 
             + SSplitter::Slot()
             .Value(0.36f)
             [
-                SNew(SVerticalBox)
+                SNew(SCkDebug_PaneHost)
+                [
+                    SNew(SVerticalBox)
 
                 + SVerticalBox::Slot()
                 .FillHeight(0.6f)
@@ -844,28 +850,35 @@ auto
                     .OnContextMenuOpening(this, &SCkSaveDebuggerWindow::DoOnPayloadContextMenu)
                     .SelectionMode(ESelectionMode::Single)
                 ]
+                ]
             ]
 
             + SSplitter::Slot()
             .Value(0.32f)
             [
-                SAssignNew(_RightColumnSwitcher, SWidgetSwitcher)
-                .WidgetIndex_Lambda([this]() -> int32 { return _Model.Get_HasDiff() ? 1 : 0; })
-
-                + SWidgetSwitcher::Slot()
+                SNew(SCkDebug_PaneHost)
+                .ContentMode(ECkDebugPaneContent::OpaqueRenderer)
                 [
-                    DoCreate_BlobColumn()
-                ]
+                    SAssignNew(_RightColumnSwitcher, SWidgetSwitcher)
+                    .WidgetIndex_Lambda([this]() -> int32 { return _Model.Get_HasDiff() ? 1 : 0; })
 
-                + SWidgetSwitcher::Slot()
-                [
-                    DoCreate_DiffColumn()
+                    + SWidgetSwitcher::Slot()
+                    [
+                        DoCreate_BlobColumn()
+                    ]
+
+                    + SWidgetSwitcher::Slot()
+                    [
+                        DoCreate_DiffColumn()
+                    ]
                 ]
             ]
             ]
 
             + SSplitter::Slot()
             .Value(0.28f)
+            [
+            SNew(SCkDebug_PaneHost)
             [
             SNew(SVerticalBox)
 
@@ -979,6 +992,7 @@ auto
             .OnContextMenuOpening(this, &SCkSaveDebuggerWindow::DoOnDiagnosticContextMenu)
             .SelectionMode(ESelectionMode::Single)
         ]
+            ]
             ]
         ];
 }

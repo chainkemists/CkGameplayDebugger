@@ -34,6 +34,7 @@
 #include "CkDebuggerCommon/Picker/CkDebug_ViewportPicker.h"
 #include "CkDebuggerCommon/Picker/SCkDebug_ViewportPickerControls.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_AlertRow.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_PaneHost.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_EntityRef.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_IconToggle.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_MeterBar.h"
@@ -250,6 +251,10 @@ auto
             .WindowId(WindowId)
             .ToolTabId(TEXT("CkGoapDebugger"))
             .CommandGroups(BuildCommandGroups())
+            .CommonActionsContent()
+            [
+                SNew(SCkDebug_ViewportPickerControls).Picker(_ViewportPicker).PickTooltip(FText::FromString(TEXT("Enter pick mode: click a GOAP agent in the viewport to inspect it.\nOnly entities with GOAP (and their owning NPC) are shown and pickable.")))
+            ]
             .Content()
             [
                 SNew(SBorder)
@@ -437,9 +442,7 @@ auto SCkGoapDebuggerWindow::BuildCommandGroups() -> TArray<FCkDebug_CommandGroup
         + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.0f, 0.0f, CkStyle::SpaceS, 0.0f)
         [ SAssignNew(_PlannerPicker, STextComboBox).OptionsSource(&_PlannerPickerLabels).OnSelectionChanged(this, &SCkGoapDebuggerWindow::HandlePlannerPicked).ToolTipText(FText::FromString(TEXT("Select a top-level Planner on this agent. Sub-Planners live in the Inspector tree."))) ]
         + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.0f, 0.0f, CkStyle::SpaceS, 0.0f)
-        [ SNew(SCkDebug_EntityRef).Entity_Lambda([this]() -> FCk_Handle { return _ViewModel.IsValid() ? _ViewModel->GetSelectedEntity() : FCk_Handle{}; }) ]
-        + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-        [ SNew(SCkDebug_ViewportPickerControls).Picker(_ViewportPicker).PickTooltip(FText::FromString(TEXT("Enter pick mode: click a GOAP agent in the viewport to inspect it.\nOnly entities with GOAP (and their owning NPC) are shown and pickable."))) ];
+        [ SNew(SCkDebug_EntityRef).Entity_Lambda([this]() -> FCk_Handle { return _ViewModel.IsValid() ? _ViewModel->GetSelectedEntity() : FCk_Handle{}; }) ];
 
     const auto Playback = SNew(SHorizontalBox)
         + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.0f, 0.0f, CkStyle::SpaceXS, 0.0f)
@@ -974,6 +977,16 @@ auto
     -> TSharedRef<SWidget>
 {
     auto SidebarWidget = _Sidebar.ToSharedRef();
+    const auto WrapPane = [](
+        const TSharedRef<SWidget>& InContent,
+        const ECkDebugPaneContent InContentMode = ECkDebugPaneContent::Passive) -> TSharedRef<SWidget>
+    {
+        return SNew(SCkDebug_PaneHost)
+            .ContentMode(InContentMode)
+            [
+                InContent
+            ];
+    };
 
     return SNew(SSplitter)
         .Orientation(Orient_Vertical)
@@ -997,28 +1010,28 @@ auto
                                 + SSplitter::Slot()
                                     .Value(0.62f)
                                     [
-                                        _AgentColumn.ToSharedRef()
+                                        WrapPane(_AgentColumn.ToSharedRef())
                                     ]
 
                                 + SSplitter::Slot()
                                     .Value(0.38f)
                                     .MinSize(120.0f)
                                     [
-                                        SidebarWidget
+                                        WrapPane(SidebarWidget)
                                     ]
                         ]
 
                     + SSplitter::Slot()
                         .Value(0.49f)
                         [
-                            BuildCenterColumn()
+                            WrapPane(BuildCenterColumn(), ECkDebugPaneContent::OpaqueRenderer)
                         ]
 
                     + SSplitter::Slot()
                         .Value(0.23f)
                         .MinSize(220.0f)
                         [
-                            _WorldStateRail.ToSharedRef()
+                            WrapPane(_WorldStateRail.ToSharedRef())
                         ]
             ]
 
@@ -1026,11 +1039,15 @@ auto
             .Value(0.30f)
             .MinSize(100.0f)
             [
-                SAssignNew(_TimelineDock, SCkGoapDebugger_TimelineDock)
-                    .ViewModel(_ViewModel)
-                    .PauseOnReplan_Lambda([this]() -> bool { return _PauseOnReplan; })
-                    .PauseOnPlanFailed_Lambda([this]() -> bool { return _PauseOnPlanFailed; })
-                    .PauseExecution(FSimpleDelegate::CreateSP(this, &SCkGoapDebuggerWindow::Request_PauseExecution))
+                SNew(SCkDebug_PaneHost)
+                    .ContentMode(ECkDebugPaneContent::OpaqueRenderer)
+                    [
+                        SAssignNew(_TimelineDock, SCkGoapDebugger_TimelineDock)
+                            .ViewModel(_ViewModel)
+                            .PauseOnReplan_Lambda([this]() -> bool { return _PauseOnReplan; })
+                            .PauseOnPlanFailed_Lambda([this]() -> bool { return _PauseOnPlanFailed; })
+                            .PauseExecution(FSimpleDelegate::CreateSP(this, &SCkGoapDebuggerWindow::Request_PauseExecution))
+                    ]
             ]
     ;
 }
@@ -1084,11 +1101,7 @@ auto
     SAssignNew(_GraphPane, SCkGoapDebugger_GraphPane)
         .ViewModel(_ViewModel);
 
-    return SNew(SBorder)
-        .BorderImage(FCkGoapDebuggerStyle::Get().GetBrush(TEXT("CkGoap.Bg.Root")))
-        .Padding(FMargin(0.0f))
-        [
-            SNew(SVerticalBox)
+    return SNew(SVerticalBox)
 
                 + SVerticalBox::Slot()
                     .AutoHeight()
@@ -1126,8 +1139,7 @@ auto
                             + SWidgetSwitcher::Slot() [ _DecisionPanel.ToSharedRef() ]
                             + SWidgetSwitcher::Slot() [ _GraphPane.ToSharedRef() ]
                             + SWidgetSwitcher::Slot() [ _SearchTracePanel.ToSharedRef() ]
-                    ]
-        ];
+                    ];
 }
 
 // ====================================================================================================================

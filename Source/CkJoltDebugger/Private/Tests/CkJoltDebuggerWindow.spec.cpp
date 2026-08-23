@@ -9,6 +9,18 @@
 
 #include "CkJolt/Constraint/CkJoltConstraint_Fragment.h"
 
+namespace ck_jolt_debugger_window_tests
+{
+auto CountWidgetType(const TSharedRef<SWidget>& InWidget, const FString& InType) -> int32
+{
+    auto Count = InWidget->GetTypeAsString() == InType ? 1 : 0;
+    const auto* Children = InWidget->GetChildren();
+    for (auto Index = 0; Index < Children->Num(); ++Index)
+    { Count += CountWidgetType(ConstCastSharedRef<SWidget>(Children->GetChildAt(Index)), InType); }
+    return Count;
+}
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
     FCkJoltDebuggerWindow_ConstructsWithoutSlotAttributeEnsure,
     "Ck.JoltDebugger.Window.ConstructsWithoutSlotAttributeEnsure",
@@ -20,6 +32,8 @@ auto FCkJoltDebuggerWindow_ConstructsWithoutSlotAttributeEnsure::RunTest(const F
     Window->SlatePrepass();
 
     TestTrue(TEXT("Jolt debugger window has a non-empty layout"), Window->GetDesiredSize().Y > 0.0f);
+    TestEqual(TEXT("Jolt debugger window has exactly one Common host for each major pane"),
+        ck_jolt_debugger_window_tests::CountWidgetType(Window, TEXT("SCkDebug_PaneHost")), 4);
     return true;
 }
 

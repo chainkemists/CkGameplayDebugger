@@ -1,16 +1,14 @@
 #include "SCkDebug_ViewportPickerControls.h"
-#include "CkEditorTools/Style/CkIconStyle.h"
-
 #include "CkDebuggerCommon/Markers/CkDebug_EntityMarkers.h"
 #include "CkDebuggerCommon/Picker/CkDebug_ViewportPicker.h"
 #include "CkDebuggerCommon/Styles/CkDebuggerAxes.h"
 #include "CkDebuggerCommon/Styles/CkDebuggerStyle.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_IconButton.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_IconToggle.h"
 
 #include "CkEditorTools/Style/CkStyle.h"
 
 #include "HAL/IConsoleManager.h"
-#include "Widgets/Input/SButton.h"
 #include "Widgets/Input/SMenuAnchor.h"
 #include "Widgets/Input/SSpinBox.h"
 #include "Widgets/Layout/SBox.h"
@@ -29,11 +27,6 @@ namespace ck_debug_viewport_picker_controls
     auto Get_TinyLabelFont() -> FSlateFontInfo
     {
         return ck::debug_axes::ScaledFont("Bold", CkStyle::FontSizeSmall());
-    }
-
-    auto Get_GlyphFont() -> FSlateFontInfo
-    {
-        return ck::debug_axes::ScaledFont("Regular", CkStyle::FontSizeBody());
     }
 
     auto Make_RowLabel(const TCHAR* InLabel) -> TSharedRef<SWidget>
@@ -71,19 +64,9 @@ auto
         .VAlign(VAlign_Center)
         .Padding(FMargin(0.0f, 0.0f, FCkDebuggerStyle::Padding_Small, 0.0f))
         [
-            SNew(SButton)
-            .ButtonColorAndOpacity_Lambda([this]() -> FLinearColor
-            {
-                return _Picker.IsValid() && _Picker->IsActive()
-                    ? CkStyle::Selection()
-                    : CkStyle::Bg2();
-            })
-            .ForegroundColor_Lambda([this]() -> FSlateColor
-            {
-                return _Picker.IsValid() && _Picker->IsActive()
-                    ? FSlateColor(CkStyle::TextStrong())
-                    : FSlateColor(CkStyle::TextDim());
-            })
+            SNew(SCkDebug_IconToggle)
+            .IconId(ECk_Icon::SelectInViewport)
+            .Label(FText::FromString(TEXT("Pick entity")))
             .IsEnabled_Lambda([this]() -> bool
             {
                 if (NOT _Picker.IsValid())
@@ -94,7 +77,7 @@ auto
 
                 return _Picker->CanActivate();
             })
-            .ToolTipText_Lambda([this]() -> FText
+            .ToolTip_Lambda([this]() -> FText
             {
                 if (NOT _Picker.IsValid())
                 { return FText::GetEmpty(); }
@@ -105,11 +88,7 @@ auto
                 }
 
                 if (NOT _Picker->CanActivate())
-                {
-                    return FText::FromString(TEXT(
-                        "Pick mode unavailable — select a running PIE or Game world first.\n"
-                        "(Simulate-in-Editor is not supported.)"));
-                }
+                { return _Picker->Get_AvailabilityText(); }
 
                 if (NOT _PickTooltip.IsEmpty())
                 { return _PickTooltip; }
@@ -117,24 +96,15 @@ auto
                 return FText::FromString(TEXT(
                     "Enter pick mode: click an entity in the viewport to select it in the debugger."));
             })
-            .OnClicked_Lambda([this]() -> FReply
+            .OnStateChanged_Lambda([this](bool InShouldPick)
             {
-                if (_Picker.IsValid())
+                if (_Picker.IsValid() && _Picker->IsActive() != InShouldPick)
                 {
                     _Picker->Toggle();
                 }
-                return FReply::Handled();
             })
-            [
-                SNew(STextBlock)
-                .Text_Lambda([this]() -> FText
-                {
-                    return _Picker.IsValid() && _Picker->IsActive()
-                        ? FText::FromString(TEXT("Picking..."))
-                        : FText::FromString(TEXT("Pick"));
-                })
-                .Font_Static(&ck_debug_viewport_picker_controls::Get_BodyFont)
-            ]
+            .IsOn_Lambda([this]() { return _Picker.IsValid() && _Picker->IsActive(); })
+            .ShowLabel(true)
         ]
 
         // ---- Gear → picker settings popover ----
@@ -149,9 +119,9 @@ auto
                 return Build_SettingsPopover();
             })
             [
-                SNew(SButton)
-                .ButtonColorAndOpacity(CkStyle::Bg2())
-                .ToolTipText(FText::FromString(TEXT("Viewport picker settings")))
+                SNew(SCkDebug_IconButton)
+                .IconId(ECk_Icon::Settings)
+                .Label(FText::FromString(TEXT("Viewport picker settings")))
                 .OnClicked_Lambda([this]() -> FReply
                 {
                     if (_SettingsAnchor.IsValid())
@@ -160,11 +130,6 @@ auto
                     }
                     return FReply::Handled();
                 })
-                [
-                    SNew(SImage)
-                    .Image(FCkIconStyle::Get_Brush(ECk_Icon::Settings, ECk_Icon_BrushSize::Size_16x16))
-                    .ColorAndOpacity(FSlateColor::UseForeground())
-                ]
             ]
         ]
     ];

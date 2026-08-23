@@ -4,6 +4,7 @@
 #include "Styles/CkDebuggerLauncherStyle.h"
 
 #include "CkDebuggerCommon/Launcher/CkDebuggerToolRegistry.h"
+#include "CkDebuggerCommon/Launcher/CkDebuggerTabUtils.h"
 
 #include "CkCore/Format/CkFormat.h"
 #include "CkCore/Validation/CkIsValid.h"
@@ -31,6 +32,7 @@ bool FCkDebuggerLauncherCatalog_AllDebuggersHaveLaunchableDescriptors::RunTest(c
         TEXT("CkSchedulerDebugger"),
         TEXT("CkAStarDebugger"),
         TEXT("CkGoapDebugger"),
+        TEXT("CkAiDebugger"),
         TEXT("CkCrowdDebugger"),
         TEXT("CkEqsDebugger"),
         TEXT("CkInputDebugger"),
@@ -54,6 +56,8 @@ bool FCkDebuggerLauncherCatalog_AllDebuggersHaveLaunchableDescriptors::RunTest(c
     TestEqual(TEXT("Catalog contains every standalone debugger tab"), Tools.Num(), ExpectedTabIds.Num());
     TestTrue(TEXT("Launcher tab spawner is registered"),
         FGlobalTabmanager::Get()->HasTabSpawner(FCkDebuggerLauncherModule::LauncherTabName));
+    TestEqual(TEXT("Launcher module uses the Common launcher tab identity"),
+        FCkDebuggerLauncherModule::LauncherTabName, ck::debugger_tabs::LauncherTabId);
 
     for (const auto& Tool : Tools)
     {
@@ -200,6 +204,7 @@ bool FCkDebuggerLauncherPackaging_DevToolDescriptorsIncludeDevelopmentCookedWin6
     TestExpectedModule(TEXT("CkDebugger"), TEXT("CkSchedulerDebugger"));
     TestExpectedModule(TEXT("CkDebugger"), TEXT("CkAStarDebugger"));
     TestExpectedModule(TEXT("CkDebugger"), TEXT("CkGoapDebugger"));
+    TestExpectedModule(TEXT("CkDebugger"), TEXT("CkAiDebugger"));
     TestExpectedModule(TEXT("CkDebugger"), TEXT("CkCrowdDebugger"));
     TestExpectedModule(TEXT("CkDebugger"), TEXT("CkEqsDebugger"));
     TestExpectedModule(TEXT("CkDebugger"), TEXT("CkInputDebugger"));

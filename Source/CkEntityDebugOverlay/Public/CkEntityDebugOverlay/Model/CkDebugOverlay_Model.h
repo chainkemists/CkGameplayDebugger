@@ -86,6 +86,13 @@ struct FCk_DebugOverlay_Section
     UPROPERTY() FText  SourceName;
     UPROPERTY() uint32 SourceEntityId = 0;
     UPROPERTY() int32  SourceOrder = 0;
+
+    // Value-only position of this source in the focused entity's lifetime
+    // subtree. The root/focus source has ParentSourceEntityId = 0 and
+    // SourceDepth = 0; descendants name the exact source that discovered them.
+    // This intentionally does not retain a second FCk_Handle.
+    UPROPERTY() uint32 ParentSourceEntityId = 0;
+    UPROPERTY() int32  SourceDepth = 0;
     // Rows removed by the pre-render focus-card budget.  Slate renders this
     // explicitly instead of leaving the user to infer that clipping hid data.
     UPROPERTY() int32  OmittedRowCount = 0;
@@ -116,6 +123,65 @@ struct FCk_DebugOverlay_EntityModel
 
 namespace ck_debugoverlay
 {
+    // Value-only topology record used while collecting the focus entity's
+    // lifetime subtree and retained on each provider/source section.
+    struct FCk_DebugOverlay_SourceTopology
+    {
+        uint32 EntityId             = 0;
+        uint32 ParentSourceEntityId = 0;
+        int32  SourceDepth          = 0;
+    };
+
+    // Append unvisited lifetime dependents in their caller-provided order.
+    // The caller owns handle lookup; this helper intentionally accepts IDs only
+    // so topology tests need no world or ECS registry.
+    inline auto Append_SourceTopology(
+        uint32                         InParentEntityId,
+        int32                          InParentDepth,
+        const TArray<uint32>&          InDependentEntityIds,
+        TSet<uint32>&                  InOutVisitedEntityIds,
+        TArray<FCk_DebugOverlay_SourceTopology>& InOutTopology)
+        -> TArray<uint32>
+    {
+        auto Added = TArray<uint32>{};
+        for (const auto DependentId : InDependentEntityIds)
+        {
+            if (DependentId == 0 || InOutVisitedEntityIds.Contains(DependentId))
+            { continue; }
+
+            InOutVisitedEntityIds.Add(DependentId);
+            InOutTopology.Add({ DependentId, InParentEntityId, InParentDepth + 1 });
+            Added.Add(DependentId);
+        }
+        return Added;
+    }
+
+    // Pure breadth-first topology seam. Production collection uses the append
+    // helper above while resolving IDs back to the current lifetime handles.
+    inline auto Build_SourceTopology(
+        uint32                                InRootEntityId,
+        const TMap<uint32, TArray<uint32>>&   InDependentsByEntityId)
+        -> TArray<FCk_DebugOverlay_SourceTopology>
+    {
+        auto Result = TArray<FCk_DebugOverlay_SourceTopology>{};
+        if (InRootEntityId == 0)
+        { return Result; }
+
+        Result.Add({ InRootEntityId, 0, 0 });
+        auto Visited = TSet<uint32>{ InRootEntityId };
+        for (auto Index = 0; Index < Result.Num(); ++Index)
+        {
+            const auto& Source = Result[Index];
+            const auto* Dependents = InDependentsByEntityId.Find(Source.EntityId);
+            if (Dependents == nullptr)
+            { continue; }
+
+            Append_SourceTopology(
+                Source.EntityId, Source.SourceDepth, *Dependents, Visited, Result);
+        }
+        return Result;
+    }
+
     // Loudest of the two (Normal < Good < Warn < Bad). Whenever several rows collapse into
     // one, the survivor keeps the strongest signal — a Bad row must never be silenced by a
     // Normal duplicate that happened to be seen first.

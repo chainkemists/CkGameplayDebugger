@@ -7,6 +7,7 @@
 
 #include "Framework/Docking/TabManager.h"
 #include "Widgets/Docking/SDockTab.h"
+#include "Widgets/SNullWidget.h"
 
 // --------------------------------------------------------------------------------------------------------------------
 
@@ -48,6 +49,8 @@ namespace ck_debugger_tab_utils
 
 namespace ck::debugger_tabs
 {
+    const FName LauncherTabId = FName{TEXT("CkDebuggerLauncher")};
+
     auto
         Invoke_DebuggerTab(
             FName InTabId)
@@ -80,6 +83,28 @@ namespace ck::debugger_tabs
             AnchorTabId, InTabId, FTabManager::FLiveTabSearch{AnchorTabId}, NewTab);
 
         return NewTab;
+    }
+
+    auto
+        Release_DebuggerTab(
+            TSharedPtr<SDockTab>& InOutTab,
+            bool InRequestClose)
+        -> void
+    {
+        auto Tab = MoveTemp(InOutTab);
+        if (NOT Tab.IsValid())
+        { return; }
+
+        // The close delegate is commonly bound with CreateRaw/[this]. Clear it before either a synchronous close
+        // or module unload can invoke code whose owner is disappearing.
+        Tab->SetOnTabClosed(SDockTab::FOnTabClosedCallback{});
+
+        if (InRequestClose && NOT IsEngineExitRequested())
+        { Tab->RequestCloseTab(); }
+
+        // A global docking tree may retain the tab after the module drops its reference. Do not let it retain a
+        // module-defined widget tree (or ECS handles owned by that tree) across unload.
+        Tab->SetContent(SNullWidget::NullWidget);
     }
 }
 

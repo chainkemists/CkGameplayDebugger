@@ -3,6 +3,7 @@
 #include "CkEditorTools/Style/CkIconStyle.h"
 
 #include "CkCore/Macros/CkMacros.h"
+#include "CkDebuggerCommon/Launcher/CkDebuggerTabUtils.h"
 
 #include "Styles/CkDebuggerLauncherStyle.h"
 #include "Window/SCkDebuggerLauncher.h"
@@ -18,7 +19,7 @@
 
 #define LOCTEXT_NAMESPACE "FCkDebuggerLauncherModule"
 
-const FName FCkDebuggerLauncherModule::LauncherTabName = FName{TEXT("CkDebuggerLauncher")};
+const FName& FCkDebuggerLauncherModule::LauncherTabName = ck::debugger_tabs::LauncherTabId;
 
 // --------------------------------------------------------------------------------------------------------------------
 

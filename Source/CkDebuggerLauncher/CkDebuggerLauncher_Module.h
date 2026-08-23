@@ -22,7 +22,7 @@ public:
     auto ToggleLauncher() -> void;
     auto IsLauncherOpen() const -> bool;
 
-    static const FName LauncherTabName;
+    static const FName& LauncherTabName;
 
 private:
     auto OnSpawnLauncherTab(const FSpawnTabArgs& InArgs) -> TSharedRef<SDockTab>;

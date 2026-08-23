@@ -29,7 +29,7 @@ enum class ECkCrowdDebugger_CameraPreset : uint8
     FrameSelection
 };
 
-class SCkCrowdDebugger_3dViewport final : public SCompoundWidget
+class CKCROWDDEBUGGER_API SCkCrowdDebugger_3dViewport final : public SCompoundWidget
 {
 public:
     SLATE_BEGIN_ARGS(SCkCrowdDebugger_3dViewport) {}

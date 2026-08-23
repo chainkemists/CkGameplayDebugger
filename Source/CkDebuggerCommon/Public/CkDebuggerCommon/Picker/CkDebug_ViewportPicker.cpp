@@ -4,11 +4,17 @@
 #include "CkCore/Validation/CkIsValid.h"
 
 #include "CkEcs/OwningActor/CkOwningActor_Utils.h"
+#include "CkEcs/EntityLifetime/CkEntityLifetime_Fragment.h"
+#include "CkEcs/EntityLifetime/CkEntityLifetime_Utils.h"
+#include "CkEcs/Subsystem/CkEcsWorld_Subsystem.h"
 
+#include "CkEcsExt/Transform/CkTransform_Fragment.h"
 #include "CkIskmRenderer/Proxy/CkIskmProxy_Utils.h"
 #include "CkIsmRenderer/Proxy/CkIsmProxy_Utils.h"
+#include "CkPmg/CkPmg_Fragment.h"
 
 #include "CkDebuggerCommon/Lifecycle/CkDebug_SessionLifecycle.h"
+#include "CkDebuggerCommon/Classification/CkDebug_DepthTransparency.h"
 #include "CkDebuggerCommon/Navigation/CkDebug_Focus.h"
 #include "CkDebuggerCommon/Navigation/CkDebug_SelectionSync.h"
 #include "CkDebuggerCommon/Navigation/CkDebug_ViewportView.h"
@@ -45,6 +51,11 @@ namespace ck_debug_viewport_picker
     static constexpr auto BillboardSizeMaxPx      = 128.0f;
     static constexpr auto BillboardHoverScale     = 1.25f;
     static constexpr auto BillboardDefaultAlpha   = 0.45f;
+
+    // Keep this in lockstep with FCkDebug_EntityMarkers' bounded owner walk.
+    // It is diagnostic-only: marker gathering remains the single selection
+    // mechanism and this helper retains no handles after the current refresh.
+    static constexpr auto MaxDiagnosticOwnerWalk = 32;
 
     // Ejected-PIE discrimination + deprojection live in ck::DebugViewportView —
     // shared with the on-screen overlay and the focus-entity helper.
@@ -88,6 +99,65 @@ namespace ck_debug_viewport_picker
 
 // =====================================================================================================================
 
+namespace ck::DebugViewportPicker
+{
+    auto
+        Classify_Availability(
+            bool                      InHasTargetWorld,
+            bool                      InIsSupportedWorld,
+            const FAvailabilityCounts& InCounts)
+        -> EAvailability
+    {
+        if (NOT InHasTargetWorld)
+        { return EAvailability::NoTargetWorld; }
+
+        if (NOT InIsSupportedWorld)
+        { return EAvailability::UnsupportedWorld; }
+
+        if (InCounts.MatchingEntities == 0)
+        { return EAvailability::NoMatchingEntities; }
+
+        if (InCounts.TransformRepresentations == 0)
+        { return EAvailability::NoTransformRepresentation; }
+
+        if (InCounts.ViableCandidates > 0)
+        { return EAvailability::ViableCandidates; }
+
+        if (InCounts.IgnoredLocalPawnCandidates >= InCounts.TransformRepresentations)
+        { return EAvailability::IgnoredLocalPawn; }
+
+        return EAvailability::AllCandidatesCulledOrFiltered;
+    }
+
+    auto
+        Get_AvailabilityText(
+            EAvailability InAvailability)
+        -> FText
+    {
+        switch (InAvailability)
+        {
+        case EAvailability::NoTargetWorld:
+            return FText::FromString(TEXT("Pick mode unavailable — select a running PIE or Game world."));
+        case EAvailability::UnsupportedWorld:
+            return FText::FromString(TEXT("Pick mode is not supported in this world mode."));
+        case EAvailability::NoMatchingEntities:
+            return FText::FromString(TEXT("No entities match this debugger's picker filter."));
+        case EAvailability::NoTransformRepresentation:
+            return FText::FromString(TEXT("Matching entities have no transform-backed picker representation."));
+        case EAvailability::AllCandidatesCulledOrFiltered:
+            return FText::FromString(TEXT("All matching picker candidates are outside the cull range or filtered out."));
+        case EAvailability::IgnoredLocalPawn:
+            return FText::FromString(TEXT("All matching picker candidates belong to the local pawn and are ignored."));
+        case EAvailability::ViableCandidates:
+            return FText::FromString(TEXT("Pick an entity in the viewport to select it in the debugger."));
+        }
+
+        return FText::GetEmpty();
+    }
+}
+
+// =====================================================================================================================
+
 FCkDebug_ViewportPicker::FCkDebug_ViewportPicker() = default;
 
 FCkDebug_ViewportPicker::~FCkDebug_ViewportPicker()
@@ -105,12 +175,13 @@ auto
     _Params = MoveTemp(InParams);
 
     _MeshesFirst = UCkDebuggerSettings::Get()->PickerMeshesFirst;
+    DoRefreshWorldAvailability();
 }
 
 // =====================================================================================================================
 
 auto
-    FCkDebug_ViewportPicker::
+FCkDebug_ViewportPicker::
     Activate() -> bool
 {
     if (_IsActive)
@@ -118,11 +189,18 @@ auto
 
     auto* World = DoResolveTargetWorld();
     if (ck::Is_NOT_Valid(World))
-    { return false; }
+    {
+        DoRefreshWorldAvailability();
+        return false;
+    }
 
     auto* GVC = World->GetGameViewport();
     if (ck::Is_NOT_Valid(GVC))
-    { return false; }
+    {
+        _AvailabilityCounts = {};
+        _Availability = ck::DebugViewportPicker::EAvailability::NoTargetWorld;
+        return false;
+    }
 
     DoCaptureMouseState(World);
 
@@ -246,14 +324,49 @@ auto
 // --------------------------------------------------------------------------------------------------------------------
 
 auto
-    FCkDebug_ViewportPicker::
+FCkDebug_ViewportPicker::
     CanActivate() const -> bool
 {
     auto* World = DoResolveTargetWorld();
     if (ck::Is_NOT_Valid(World))
-    { return false; }
+    {
+        DoRefreshWorldAvailability();
+        return false;
+    }
 
-    return ck::IsValid(World->GetGameViewport());
+    const auto HasViewport = ck::IsValid(World->GetGameViewport());
+    if (NOT HasViewport)
+    {
+        _AvailabilityCounts = {};
+        _Availability = ck::DebugViewportPicker::EAvailability::NoTargetWorld;
+    }
+    return HasViewport;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    FCkDebug_ViewportPicker::
+    Get_Availability() const -> ck::DebugViewportPicker::EAvailability
+{
+    if (NOT _IsActive)
+    { DoRefreshWorldAvailability(); }
+
+    return _Availability;
+}
+
+auto
+    FCkDebug_ViewportPicker::
+    Get_AvailabilityCounts() const -> const ck::DebugViewportPicker::FAvailabilityCounts&
+{
+    return _AvailabilityCounts;
+}
+
+auto
+    FCkDebug_ViewportPicker::
+    Get_AvailabilityText() const -> FText
+{
+    return ck::DebugViewportPicker::Get_AvailabilityText(Get_Availability());
 }
 
 // =====================================================================================================================
@@ -482,7 +595,7 @@ auto
 // =====================================================================================================================
 
 auto
-    FCkDebug_ViewportPicker::
+FCkDebug_ViewportPicker::
     DoResolveTargetWorld() const -> UWorld*
 {
     if (NOT _Params.Get_TargetWorld)
@@ -500,6 +613,34 @@ auto
     { return nullptr; }
 
     return World;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    FCkDebug_ViewportPicker::
+    DoRefreshWorldAvailability() const -> void
+{
+    _AvailabilityCounts = {};
+
+    if (NOT _Params.Get_TargetWorld)
+    {
+        _Availability = ck::DebugViewportPicker::EAvailability::NoTargetWorld;
+        return;
+    }
+
+    auto* World = _Params.Get_TargetWorld();
+    if (ck::Is_NOT_Valid(World))
+    {
+        _Availability = ck::DebugViewportPicker::EAvailability::NoTargetWorld;
+        return;
+    }
+
+    const auto IsSupportedWorld =
+        World->WorldType == EWorldType::PIE ||
+        World->WorldType == EWorldType::Game;
+    _Availability = ck::DebugViewportPicker::Classify_Availability(
+        /*InHasTargetWorld=*/true, IsSupportedWorld, _AvailabilityCounts);
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -842,26 +983,37 @@ auto
 // --------------------------------------------------------------------------------------------------------------------
 
 auto
-    FCkDebug_ViewportPicker::
+FCkDebug_ViewportPicker::
     DoRefreshMarkers(
         UWorld* InWorld) -> void
 {
     auto Params = FCkDebug_EntityMarkers::FGatherParams{};
     Params.CullOrigin  = DoGet_CameraLocation(InWorld);
     Params.CullRadius  = _CullRadius;
-    Params.TargetMatch = _Params.TargetFilter;
+    auto TargetMatches = TMap<uint32, bool>{};
+    if (_Params.TargetFilter)
+    {
+        Params.TargetMatch = [this, &TargetMatches](const FCk_Handle& InHandle)
+        {
+            const auto EntityNum = static_cast<uint32>(InHandle.Get_Entity().Get_EntityNumber());
+            const auto IsMatch = _Params.TargetFilter(InHandle);
+            TargetMatches.Add(EntityNum, IsMatch);
+            return IsMatch;
+        };
+    }
     if (ck::IsValid(_FocusEntity))
     {
         Params.FullDepthRoots.Add(_FocusEntity);
     }
 
+    auto IgnoredActors = TArray<TWeakObjectPtr<const AActor>>{};
     if (_IgnoreLocalPawn)
     {
-        auto IgnoredActors = DoGet_LocalIgnoredActors(InWorld);
+        IgnoredActors = DoGet_LocalIgnoredActors(InWorld);
         if (NOT IgnoredActors.IsEmpty())
         {
             // Consumed synchronously inside Gather — `this` capture is safe.
-            Params.Filter = [this, IgnoredActors = MoveTemp(IgnoredActors)](const FCk_Handle& InHandle)
+            Params.Filter = [this, IgnoredActors](const FCk_Handle& InHandle)
             {
                 return NOT DoIsEntityOwnedByIgnoredActor(InHandle, IgnoredActors);
             };
@@ -869,6 +1021,7 @@ auto
     }
 
     _Markers.Gather(InWorld, Params);
+    DoRefreshAvailability(InWorld, IgnoredActors, TargetMatches);
 
     // One pass over the snapshot for everything geometry-related:
     //   - analytic pick volumes (ray-vs-bounds pick + hover outline), always;
@@ -889,6 +1042,120 @@ auto
         if (_MeshesFirst)
         { _MeshSuppressedNums.Add(Entry.EntityNum); }
     }
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    FCkDebug_ViewportPicker::
+    DoRefreshAvailability(
+        UWorld* InWorld,
+        const TArray<TWeakObjectPtr<const AActor>>& InIgnoredActors,
+        const TMap<uint32, bool>& InTargetMatches) -> void
+{
+    using namespace ck_debug_viewport_picker;
+
+    _AvailabilityCounts = {};
+    if (ck::Is_NOT_Valid(InWorld))
+    {
+        DoRefreshWorldAvailability();
+        return;
+    }
+
+    const auto TransientEntity = UCk_Utils_EcsWorld_Subsystem_UE::Get_TransientEntity(InWorld);
+    if (ck::Is_NOT_Valid(TransientEntity))
+    {
+        _Availability = ck::DebugViewportPicker::EAvailability::NoMatchingEntities;
+        return;
+    }
+
+    // This mirrors only the marker gather's target inclusion shape to explain
+    // an empty snapshot. It is not a second picker: `_Markers` remains the
+    // sole source of selectable entities and no handles survive this call.
+    auto IncludedByNum = TMap<uint32, FCk_Handle>{};
+    auto MutableTransient = TransientEntity;
+    MutableTransient.View<ck::FFragment_LifetimeOwner, CK_IGNORE_PENDING_KILL>().ForEach(
+        [&](FCk_Entity InEntity, const ck::FFragment_LifetimeOwner&)
+        {
+            const auto Handle = ck::MakeHandle(InEntity, TransientEntity);
+            if (ck::Is_NOT_Valid(Handle) || Handle.Has<ck::FFragment_Pmg_DebugShape_Common>())
+            { return; }
+
+            const auto EntityNum = static_cast<uint32>(Handle.Get_Entity().Get_EntityNumber());
+            const auto* CachedMatch = InTargetMatches.Find(EntityNum);
+            const auto IsMatch = NOT _Params.TargetFilter || (CachedMatch != nullptr && *CachedMatch);
+            if (NOT IsMatch)
+            { return; }
+
+            ++_AvailabilityCounts.MatchingEntities;
+
+            auto Chain = TArray<FCk_Handle>{};
+            Chain.Add(Handle);
+            auto Owner = UCk_Utils_EntityLifetime_UE::Get_LifetimeOwner(Handle);
+            auto WalkIterations = 0;
+            while (ck::IsValid(Owner) && NOT (Owner == TransientEntity) &&
+                   WalkIterations < MaxDiagnosticOwnerWalk)
+            {
+                ++WalkIterations;
+                Chain.Add(Owner);
+                Owner = UCk_Utils_EntityLifetime_UE::Get_LifetimeOwner(Owner);
+            }
+
+            // Targeted gather removes only a relay at the representative end;
+            // unfiltered gather includes the entity directly. The former is
+            // needed to count the same transform-backed candidate set.
+            if (_Params.TargetFilter)
+            {
+                while (Chain.Num() > 1 && ck::DebugDepthTransparency::Get_IsRelayEntity(Chain.Last()))
+                { Chain.Pop(); }
+            }
+            else
+            {
+                Chain.SetNum(1);
+            }
+
+            for (const auto& Node : Chain)
+            {
+                IncludedByNum.Add(
+                    static_cast<uint32>(Node.Get_Entity().Get_EntityNumber()), Node);
+            }
+        });
+
+    _AvailabilityCounts.IncludedEntities = IncludedByNum.Num();
+    const auto CullOrigin = DoGet_CameraLocation(InWorld);
+    const auto CullRadiusSq = _CullRadius * _CullRadius;
+    auto PreMarkerEligibleCount = 0;
+    for (const auto& Kvp : IncludedByNum)
+    {
+        const auto& Handle = Kvp.Value;
+        if (NOT Handle.Has<ck::FFragment_Transform>())
+        { continue; }
+
+        ++_AvailabilityCounts.TransformRepresentations;
+        const auto WorldPos = Handle.Get<ck::FFragment_Transform>().Get_Transform().GetLocation();
+        if (FVector::DistSquared(WorldPos, CullOrigin) > CullRadiusSq)
+        {
+            ++_AvailabilityCounts.CulledOrFilteredCandidates;
+            continue;
+        }
+
+        if (NOT InIgnoredActors.IsEmpty() && DoIsEntityOwnedByIgnoredActor(Handle, InIgnoredActors))
+        {
+            ++_AvailabilityCounts.IgnoredLocalPawnCandidates;
+            continue;
+        }
+
+        ++PreMarkerEligibleCount;
+    }
+
+    _AvailabilityCounts.ViableCandidates = _Markers.Get_Entries().Num();
+    // In unfiltered mode this residual includes the shared marker depth gate;
+    // in targeted mode it is normally zero. Either way it names a real gather
+    // exclusion without claiming an unverified rendering failure.
+    _AvailabilityCounts.CulledOrFilteredCandidates += FMath::Max(
+        0, PreMarkerEligibleCount - _AvailabilityCounts.ViableCandidates);
+    _Availability = ck::DebugViewportPicker::Classify_Availability(
+        /*InHasTargetWorld=*/true, /*InIsSupportedWorld=*/true, _AvailabilityCounts);
 }
 
 // --------------------------------------------------------------------------------------------------------------------

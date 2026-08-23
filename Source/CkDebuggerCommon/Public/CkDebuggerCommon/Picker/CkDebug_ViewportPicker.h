@@ -24,6 +24,44 @@ DECLARE_MULTICAST_DELEGATE_OneParam(FCkDebug_OnPickModeChanged, bool /*IsActive*
 
 // --------------------------------------------------------------------------------------------------------------------
 
+// Value-only picker availability telemetry. This deliberately describes the
+// current gather result; it retains no world or entity references across frames.
+namespace ck::DebugViewportPicker
+{
+    enum class EAvailability : uint8
+    {
+        NoTargetWorld,
+        UnsupportedWorld,
+        NoMatchingEntities,
+        NoTransformRepresentation,
+        AllCandidatesCulledOrFiltered,
+        IgnoredLocalPawn,
+        ViableCandidates,
+    };
+
+    struct FAvailabilityCounts
+    {
+        int32 MatchingEntities            = 0;
+        int32 IncludedEntities            = 0;
+        int32 TransformRepresentations    = 0;
+        int32 CulledOrFilteredCandidates  = 0;
+        int32 IgnoredLocalPawnCandidates  = 0;
+        int32 ViableCandidates             = 0;
+    };
+
+    // Pure classification so automated tests can pin the empty-state priority
+    // without requiring a live world or ECS registry.
+    CKDEBUGGERCOMMON_API auto Classify_Availability(
+        bool                     InHasTargetWorld,
+        bool                     InIsSupportedWorld,
+        const FAvailabilityCounts& InCounts) -> EAvailability;
+
+    CKDEBUGGERCOMMON_API auto Get_AvailabilityText(
+        EAvailability InAvailability) -> FText;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
 /**
  * State + policy for a debugger's "click-to-select" viewport picker mode —
  * shared across the debugger suite. Any debugger window can own an instance;
@@ -95,6 +133,18 @@ public:
 
     auto
     CanActivate() const -> bool;
+
+    // Current, value-only gather diagnosis for tooltips and empty cards. The
+    // status is refreshed while active and is also resolved on demand before
+    // activation so a disabled picker can explain why it is unavailable.
+    auto
+    Get_Availability() const -> ck::DebugViewportPicker::EAvailability;
+
+    auto
+    Get_AvailabilityCounts() const -> const ck::DebugViewportPicker::FAvailabilityCounts&;
+
+    auto
+    Get_AvailabilityText() const -> FText;
 
     // ---- Per-frame work (called by the host window's Tick) --------------
 
@@ -210,6 +260,15 @@ private:
         UWorld* InWorld) -> void;
 
     auto
+    DoRefreshAvailability(
+        UWorld* InWorld,
+        const TArray<TWeakObjectPtr<const AActor>>& InIgnoredActors,
+        const TMap<uint32, bool>& InTargetMatches) -> void;
+
+    auto
+    DoRefreshWorldAvailability() const -> void;
+
+    auto
     DoPickAtRay(
         UWorld*        InWorld,
         const FVector& InOrigin,
@@ -278,6 +337,12 @@ private:
     FVector    _LastRayOrigin    = FVector::ZeroVector;
     FVector    _LastRayDirection = FVector::ForwardVector;
     bool       _HasRay           = false;
+
+    // Value-only diagnostic state; no raw UObject or ECS-handle lifetime is
+    // extended by reporting the picker gather result.
+    mutable ck::DebugViewportPicker::EAvailability _Availability =
+        ck::DebugViewportPicker::EAvailability::NoTargetWorld;
+    mutable ck::DebugViewportPicker::FAvailabilityCounts _AvailabilityCounts;
 
     TOptional<FRestoreMouseState> _MouseStateToRestore;
 };

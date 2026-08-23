@@ -21,7 +21,19 @@ class SDockTab;
 
 namespace ck::debugger_tabs
 {
+    // Shared identity: Common owns the launcher tab id so any debugger chrome
+    // can invoke it without depending on the DeveloperTool launcher module.
+    CKDEBUGGERCOMMON_API extern const FName LauncherTabId;
+
     CKDEBUGGERCOMMON_API auto Invoke_DebuggerTab(FName InTabId) -> TSharedPtr<SDockTab>;
+
+    /**
+     * Detaches a module-owned tab from callbacks and content before releasing the final local reference.
+     * Request closing only while Slate is live; engine-exit teardown must detach without calling SharedThis.
+     */
+    CKDEBUGGERCOMMON_API auto Release_DebuggerTab(
+        TSharedPtr<SDockTab>& InOutTab,
+        bool InRequestClose) -> void;
 }
 
 // --------------------------------------------------------------------------------------------------------------------

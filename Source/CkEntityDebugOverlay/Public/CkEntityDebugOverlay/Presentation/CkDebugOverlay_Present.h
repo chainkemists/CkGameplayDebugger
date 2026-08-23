@@ -25,6 +25,16 @@ class  APlayerController;
 
 namespace ck_debugoverlay
 {
+    // Detailed consumers (for example a debugger overview) retain every
+    // provider/source section and its value-only topology. Focus cards keep
+    // the established condensed presentation by default.
+    struct FCk_DebugOverlay_EntityModelBuildOptions
+    {
+        bool bCondensePerSourceSections = true;
+        /** Preserve a provider/source section even when its current rows are empty. */
+        bool bRetainEmptySourceSections = false;
+    };
+
     // Build the focus-card model for one entity. Layout-driven providers plus the
     // always-on set (StateMachine). When InHistory is non-null, each row's value is
     // observed into it (drives the card's history trail).
@@ -33,7 +43,16 @@ namespace ck_debugoverlay
         const TArray<TSharedPtr<ICk_DebugOverlay_Provider>>& InProviders,
         const FCk_DebugOverlay_Layout&                       InLayout,
         FCk_DebugOverlay_History*                            InHistory,
-        double                                               InNow) -> FCk_DebugOverlay_EntityModel;
+        double                                               InNow,
+        FCk_DebugOverlay_EntityModelBuildOptions             InOptions = {}) -> FCk_DebugOverlay_EntityModel;
+
+    // Pure option gate used by Build_EntityModel and focused model tests.
+    inline auto Should_CondensePerSourceSections(
+        const FCk_DebugOverlay_EntityModelBuildOptions& InOptions,
+        bool                                            InMergeDuplicateRows) -> bool
+    {
+        return InOptions.bCondensePerSourceSections && InMergeDuplicateRows;
+    }
 
     // Builds the one summary row that stands in for a whole sub-source section during the
     // condense pass. Build_EntityModel routes this to the owning provider's
@@ -79,7 +98,8 @@ namespace ck_debugoverlay
     // Sections left empty by either step are dropped.
     CKENTITYDEBUGOVERLAY_API auto Prepare_FocusCardModel(
         const FCk_DebugOverlay_EntityModel& InModel,
-        bool                                InMergeDuplicateRows) -> FCk_DebugOverlay_EntityModel;
+        bool                                InMergeDuplicateRows,
+        bool                                InRetainEmptySections = false) -> FCk_DebugOverlay_EntityModel;
 
     // Build distance-scaled world tags / near-plates for the on-screen candidates
     // (B1 — scale/fade/cull + near-plate badges + co-located de-overlap). Returns

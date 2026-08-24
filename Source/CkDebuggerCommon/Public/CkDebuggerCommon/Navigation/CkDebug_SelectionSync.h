@@ -68,6 +68,13 @@ namespace ck::DebugSelectionSync
     // match. Walk is depth-capped and stops at the transient root.
     CKDEBUGGERCOMMON_API auto Is_SameLineage(const FCk_Handle& InA, const FCk_Handle& InB) -> bool;
 
+    /**
+     * Resolves an entity's conceptual gameplay target: the top-most lifetime
+     * ancestor that is neither the registry transient root nor ActorRelay
+     * plumbing. Invalid input and malformed ownership chains fail closed.
+     */
+    CKDEBUGGERCOMMON_API auto Resolve_ConceptualTarget(const FCk_Handle& InLeaf) -> FCk_Handle;
+
     /** Resolve the closest exact, ancestor, or descendant entity accepted by the predicate. */
     CKDEBUGGERCOMMON_API auto Resolve_ClosestLineageMatch(
         const FCk_Handle& InSelected,

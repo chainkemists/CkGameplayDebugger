@@ -3,7 +3,12 @@
 
 #include "CkCore/Validation/CkIsValid.h"
 
+#include "CkEcs/EntityLifetime/CkEntityLifetime_Fragment.h"
+#include "CkEcs/Registry/CkRegistry.h"
+#include "CkEcs/Registry/CkRegistry_SlotTable.h"
+
 #include "Misc/AutomationTest.h"
+#include "Misc/ScopeExit.h"
 
 // --------------------------------------------------------------------------------------------------------------------
 
@@ -15,6 +20,11 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
     FCkDebugEntityTargetRegistry_InvalidEntityRejectsWithoutCallbacks,
     "Ck.DebuggerCommon.EntityTarget.InvalidEntityRejectsWithoutCallbacks",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FCkDebugSelectionSync_ResolveConceptualTarget,
+    "Ck.DebuggerCommon.SelectionSync.ResolveConceptualTarget",
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -92,6 +102,48 @@ bool FCkDebugEntityTargetRegistry_InvalidEntityRejectsWithoutCallbacks::RunTest(
         });
     TestFalse(TEXT("invalid lineage selection cannot resolve"), ck::IsValid(Resolved));
     TestEqual(TEXT("lineage predicate not invoked for invalid selection"), ResolverCalls, 0);
+    return true;
+}
+
+bool FCkDebugSelectionSync_ResolveConceptualTarget::RunTest(const FString&)
+{
+    using namespace ck::registry_table;
+
+    auto Registry = EnttRegistryType{};
+    const auto RegistrySlot = Allocate(&Registry);
+    ON_SCOPE_EXIT { Free(RegistrySlot); };
+    auto RegistryView = FCk_Registry{RegistrySlot};
+
+    const auto TransientId = FCk_Entity{Registry.create()};
+    RegistryView.SetContext<ck::FCtx_TransientEntity>(ck::FCtx_TransientEntity{TransientId});
+    const auto Transient = FCk_Handle{TransientId, RegistrySlot};
+
+    const auto MakeChild = [&Registry, RegistrySlot, &Transient]()
+    {
+        auto Child = FCk_Handle{FCk_Entity{Registry.create()}, RegistrySlot};
+        Child.Add<ck::FFragment_LifetimeOwner>(Transient);
+        return Child;
+    };
+
+    const auto DirectSiblingA = MakeChild();
+    const auto DirectSiblingB = MakeChild();
+    TestTrue(TEXT("first direct transient child resolves to itself"),
+        ck::DebugSelectionSync::Resolve_ConceptualTarget(DirectSiblingA) == DirectSiblingA);
+    TestTrue(TEXT("second direct transient child resolves to itself"),
+        ck::DebugSelectionSync::Resolve_ConceptualTarget(DirectSiblingB) == DirectSiblingB);
+    TestTrue(TEXT("direct transient siblings remain distinct"),
+        ck::DebugSelectionSync::Resolve_ConceptualTarget(DirectSiblingA)
+        != ck::DebugSelectionSync::Resolve_ConceptualTarget(DirectSiblingB));
+
+    const auto Npc = MakeChild();
+    auto CrowdChild = FCk_Handle{FCk_Entity{Registry.create()}, RegistrySlot};
+    CrowdChild.Add<ck::FFragment_LifetimeOwner>(Npc);
+    TestTrue(TEXT("child below an NPC resolves to that NPC"),
+        ck::DebugSelectionSync::Resolve_ConceptualTarget(CrowdChild) == Npc);
+
+    TestFalse(TEXT("invalid input resolves quietly to invalid"),
+        ck::IsValid(ck::DebugSelectionSync::Resolve_ConceptualTarget(FCk_Handle{})));
+
     return true;
 }
 

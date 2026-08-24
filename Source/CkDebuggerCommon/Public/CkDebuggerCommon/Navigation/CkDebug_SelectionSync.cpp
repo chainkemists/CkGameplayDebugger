@@ -3,6 +3,8 @@
 #include "CkCore/Validation/CkIsValid.h"
 #include "CkCore/Macros/CkMacros.h"
 
+#include "CkDebuggerCommon/Classification/CkDebug_DepthTransparency.h"
+
 #include "CkEcs/EntityLifetime/CkEntityLifetime_Utils.h"
 #include "CkEcs/EntityLifetime/CkEntityLifetime_Fragment.h"
 
@@ -126,6 +128,63 @@ namespace ck::DebugSelectionSync
     {
         return Is_AncestorOrSelf_SelectionSync(InA, InB)
             || Is_AncestorOrSelf_SelectionSync(InB, InA);
+    }
+
+    auto Resolve_ConceptualTarget(const FCk_Handle& InLeaf) -> FCk_Handle
+    {
+        if (ck::Is_NOT_Valid(InLeaf))
+        { return {}; }
+
+        const auto Transient = UCk_Utils_EntityLifetime_UE::Get_TransientEntity(InLeaf);
+        auto Current = InLeaf;
+        auto ConceptualTarget = FCk_Handle{};
+
+        for (auto Depth = 0; Depth < LineageWalk_MaxDepth; ++Depth)
+        {
+            if (ck::Is_NOT_Valid(Current) || Current == Transient)
+            { return ConceptualTarget; }
+
+            if (NOT ck::DebugDepthTransparency::Get_IsRelayEntity(Current))
+            { ConceptualTarget = Current; }
+
+            const auto HasLifetimeOwner = Current.Has<ck::FFragment_LifetimeOwner>();
+            CK_ENSURE_IF_NOT(HasLifetimeOwner,
+                TEXT("Cannot resolve conceptual target for [{}]: ownership chain ended before the transient root"),
+                InLeaf)
+            {}
+            if (NOT HasLifetimeOwner)
+            { return {}; }
+
+            const auto Owner = UCk_Utils_EntityLifetime_UE::Get_LifetimeOwner(Current);
+            const auto HasValidOwner = ck::IsValid(Owner);
+            CK_ENSURE_IF_NOT(HasValidOwner,
+                TEXT("Cannot resolve conceptual target for [{}]: lifetime owner is invalid"),
+                InLeaf)
+            {}
+            if (NOT HasValidOwner)
+            { return {}; }
+
+            const auto IsNotSelfOwned = Owner != Current;
+            CK_ENSURE_IF_NOT(IsNotSelfOwned,
+                TEXT("Cannot resolve conceptual target for [{}]: lifetime ownership chain is self-referential"),
+                InLeaf)
+            {}
+            if (NOT IsNotSelfOwned)
+            { return {}; }
+
+            Current = Owner;
+        }
+
+        const auto DidReachTransientRoot = Current == Transient;
+        CK_ENSURE_IF_NOT(DidReachTransientRoot,
+            TEXT("Cannot resolve conceptual target for [{}]: lifetime ownership walk exceeded {} hops"),
+            InLeaf,
+            LineageWalk_MaxDepth)
+        {}
+        if (NOT DidReachTransientRoot)
+        { return {}; }
+
+        return ConceptualTarget;
     }
 
     auto Resolve_ClosestLineageMatch(

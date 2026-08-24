@@ -1,6 +1,7 @@
 #include "CkDebuggerCommon_Module.h"
 
 #include "CkCore/Macros/CkMacros.h"
+#include "CkCore/Validation/CkIsValid.h"
 
 #include "CkDebuggerCommon/Gallery/SCkDebuggerGallery_Window.h"
 #include "CkDebuggerCommon/Lifecycle/CkDebug_SessionLifecycle.h"
@@ -10,6 +11,8 @@
 #include "CkDebuggerCommon/Settings/CkDebuggerWindowSettings.h"
 #include "CkDebuggerCommon/Styles/CkDebuggerCommonStyle.h"
 #include "CkDebuggerCommon/Styles/CkDebuggerStyle.h"
+
+#include "Engine/World.h"
 
 #if WITH_EDITOR
 #include "Editor.h"
@@ -59,6 +62,9 @@ void FCkDebuggerCommonModule::StartupModule()
 	// debugger module — not just the ECS one — can rely on it being registered.
 	FCkDebuggerStyle::Initialize();
 
+	_WorldBeginTearDownHandle = FWorldDelegates::OnWorldBeginTearDown.AddRaw(
+		this, &FCkDebuggerCommonModule::HandleWorldBeginTearDown);
+
 #if WITH_EDITOR
 	_BeginPieHandle = FEditorDelegates::BeginPIE.AddRaw(
 		this, &FCkDebuggerCommonModule::HandlePieSessionBoundary);
@@ -76,6 +82,12 @@ void FCkDebuggerCommonModule::StartupModule()
 
 void FCkDebuggerCommonModule::ShutdownModule()
 {
+	if (_WorldBeginTearDownHandle.IsValid())
+	{
+		FWorldDelegates::OnWorldBeginTearDown.Remove(_WorldBeginTearDownHandle);
+		_WorldBeginTearDownHandle.Reset();
+	}
+
 #if WITH_EDITOR
 	if (_BeginPieHandle.IsValid())
 	{
@@ -107,6 +119,22 @@ void FCkDebuggerCommonModule::HandlePieSessionBoundary(bool)
 	// and while the old session is ending. This makes cleanup idempotent and
 	// protects consumers even if they missed a selected-world UI transition.
 	ck::DebugSessionLifecycle::Get_OnSessionInvalidated().Broadcast();
+}
+
+auto FCkDebuggerCommonModule::HandleWorldBeginTearDown(UWorld* InWorld) -> void
+{
+	const auto WorldIsValid = ck::IsValid(InWorld);
+	CK_ENSURE_IF_NOT(WorldIsValid, TEXT("Debugger session teardown requires a valid world"))
+	{}
+	if (NOT WorldIsValid)
+	{ return; }
+
+	if (NOT InWorld->IsGameWorld())
+	{ return; }
+
+	// This runtime boundary precedes world-subsystem destruction, so every debugger can
+	// synchronously release registry-backed handles before their ECS registry disappears.
+	ck::DebugSessionLifecycle::Get_OnWorldInvalidated().Broadcast(InWorld);
 }
 
 auto FCkDebuggerCommonModule::Get() -> FCkDebuggerCommonModule&

@@ -2,6 +2,7 @@
 
 #include "CkAiDebugger_Module.h"
 
+#include "CkCore/Ensure/CkEnsure.h"
 #include "CkCore/Validation/CkIsValid.h"
 #include "CkDebuggerCommon/Behavior/SCkDebug_BehaviorOverridePanel.h"
 #include "CkDebuggerCommon/Lifecycle/CkDebug_SessionLifecycle.h"
@@ -169,11 +170,15 @@ auto SCkAiDebuggerWindow::Construct(const FArguments&) -> void
             { return; }
             const auto& Agents = Pinned->_CrowdViewModel->Get_AllAgents();
             if (Agents.IsValidIndex(InAgentIndex))
-            { Pinned->Select_Entity(Agents[InAgentIndex].OwnerHandle, true); }
+            {
+                Pinned->Select_Entity(Agents[InAgentIndex].Handle, true);
+            }
         });
 
     _SessionInvalidatedHandle = ck::DebugSessionLifecycle::Get_OnSessionInvalidated().AddSP(
         this, &SCkAiDebuggerWindow::HandleSessionInvalidated);
+    _WorldInvalidatedHandle = ck::DebugSessionLifecycle::Get_OnWorldInvalidated().AddSP(
+        this, &SCkAiDebuggerWindow::HandleWorldInvalidated);
 
     ChildSlot
     [
@@ -196,6 +201,8 @@ SCkAiDebuggerWindow::~SCkAiDebuggerWindow()
 {
     if (_SessionInvalidatedHandle.IsValid())
     { ck::DebugSessionLifecycle::Get_OnSessionInvalidated().Remove(_SessionInvalidatedHandle); }
+    if (_WorldInvalidatedHandle.IsValid())
+    { ck::DebugSessionLifecycle::Get_OnWorldInvalidated().Remove(_WorldInvalidatedHandle); }
     if (_ViewportPicker.IsValid()) { _ViewportPicker->Deactivate(); }
     Clear_Diagnostics();
     // FCk_Handle is deliberately released while ECS registries still exist.
@@ -211,6 +218,8 @@ auto SCkAiDebuggerWindow::Tick(const FGeometry& InGeometry, double InNow, float 
     if (_ViewportPicker.IsValid()) { _ViewportPicker->Tick(InDeltaSeconds); }
 
     auto* World = Get_TargetWorld();
+    if (ck::IsValid(World))
+    { _ActiveWorld = World; }
     if (_CrowdViewModel.IsValid())
     {
         _CrowdViewModel->Tick(World, InDeltaSeconds);
@@ -228,7 +237,15 @@ auto SCkAiDebuggerWindow::Tick(const FGeometry& InGeometry, double InNow, float 
     if (InNow - _LastRefreshTime < ck_ai_debugger_window::RefreshInterval) { return; }
     _LastRefreshTime = InNow;
 
-    if (ck::Is_NOT_Valid(_SelectedEntity)) { return; }
+    if (ck::Is_NOT_Valid(_SelectedEntity))
+    {
+        Clear_Diagnostics();
+        _SelectedEntity = {};
+        _Model = {};
+        if (_CrowdViewModel.IsValid())
+        { _CrowdViewModel->Set_SelectedHandle({}); }
+        return;
+    }
     const auto Updated = Build_Model(_SelectedEntity, InNow);
     if (NOT Is_AiModel(Updated))
     {
@@ -262,26 +279,50 @@ auto SCkAiDebuggerWindow::OpenForEntity(const FCk_Handle& InEntity) -> void
 
 auto SCkAiDebuggerWindow::Select_Entity(const FCk_Handle& InEntity, bool InBroadcast) -> void
 {
-    if (NOT Is_AiEntity(InEntity)) { return; }
-    const auto EntityChanged = _SelectedEntity != InEntity;
+    const auto Target = ck::DebugSelectionSync::Resolve_ConceptualTarget(InEntity);
+    if (ck::Is_NOT_Valid(Target) || NOT Is_AiEntity(Target)) { return; }
+
+    auto* TargetWorld = UCk_Utils_EntityLifetime_UE::Get_WorldForEntity(Target);
+    const auto TargetWorldIsValid = ck::IsValid(TargetWorld);
+    CK_ENSURE_IF_NOT(TargetWorldIsValid,
+        TEXT("AI Overview cannot select entity [{}] without a valid owning world"),
+        Target)
+    {}
+    if (NOT TargetWorldIsValid)
+    { return; }
+
+    const auto EntityChanged = _SelectedEntity != Target;
     if (EntityChanged) { Clear_Diagnostics(); }
-    _SelectedEntity = InEntity;
+    _ActiveWorld = TargetWorld;
+    _SelectedEntity = Target;
     const auto Now = FPlatformTime::Seconds();
-    _Model = Build_Model(InEntity, Now);
-    if (NOT _TrackedRoster.ContainsByPredicate([&InEntity](const FCk_Handle& Existing) { return Existing == InEntity; }))
-    { _TrackedRoster.Insert(InEntity, 0); }
+    _Model = Build_Model(Target, Now);
+    if (NOT _TrackedRoster.ContainsByPredicate([&Target](const FCk_Handle& Existing) { return Existing == Target; }))
+    { _TrackedRoster.Insert(Target, 0); }
     if (_TrackedRoster.Num() > 24) { _TrackedRoster.SetNum(24); }
     if (_CrowdViewModel.IsValid())
     {
+        auto PreferredAgent = FCk_Handle{};
+        const auto ExistingAgent = _CrowdViewModel->Get_SelectedHandle();
         for (const auto& Agent : _CrowdViewModel->Get_AllAgents())
         {
-            if (Agent.Handle == InEntity || Agent.OwnerHandle == InEntity)
-            { _CrowdViewModel->Set_SelectedHandle(Agent.Handle); break; }
+            if (Agent.Handle == InEntity)
+            {
+                PreferredAgent = Agent.Handle;
+                break;
+            }
+            if (Agent.Handle == ExistingAgent
+                && ck::DebugSelectionSync::Resolve_ConceptualTarget(Agent.Handle) == Target)
+            { PreferredAgent = Agent.Handle; }
+            else if (ck::Is_NOT_Valid(PreferredAgent)
+                && ck::DebugSelectionSync::Resolve_ConceptualTarget(Agent.Handle) == Target)
+            { PreferredAgent = Agent.Handle; }
         }
+        _CrowdViewModel->Set_SelectedHandle(PreferredAgent);
     }
     Refresh_Roster();
     Refresh_Diagnostics(Now);
-    if (InBroadcast) { ck::DebugSelectionSync::Broadcast(InEntity, FCkAiDebuggerModule::Get_TabName()); }
+    if (InBroadcast) { ck::DebugSelectionSync::Broadcast(Target, FCkAiDebuggerModule::Get_TabName()); }
 }
 
 auto SCkAiDebuggerWindow::Is_AiModel(const FCk_DebugOverlay_EntityModel& InModel) -> bool
@@ -292,6 +333,12 @@ auto SCkAiDebuggerWindow::Is_AiModel(const FCk_DebugOverlay_EntityModel& InModel
 
 auto SCkAiDebuggerWindow::Build_Model(const FCk_Handle& InEntity, double InNow) -> FCk_DebugOverlay_EntityModel
 {
+    const auto EntityIsValid = ck::IsValid(InEntity);
+    CK_ENSURE_IF_NOT(EntityIsValid, TEXT("AI Overview cannot build a model for an invalid entity"))
+    {}
+    if (NOT EntityIsValid)
+    { return {}; }
+
     const auto Providers = FCk_DebugOverlay_Registry::Get().CreateAll();
     return ck_debugoverlay::Build_EntityModel(InEntity, Providers,
         ck_ai_debugger_window::MakeAiLayout(Providers), &_History, InNow,
@@ -527,22 +574,23 @@ auto SCkAiDebuggerWindow::Refresh_Roster() -> void
 {
     if (NOT _HealthList.IsValid() || NOT _CrowdViewModel.IsValid()) { return; }
 
-    auto SignatureParts = TArray<FString>{};
     auto Items = TArray<FCkDebug_EntityHealthItem>{};
     for (const auto& Agent : _CrowdViewModel->Get_AllAgents())
     {
-        const auto Entity = ck::IsValid(Agent.OwnerHandle) ? Agent.OwnerHandle : Agent.Handle;
-        if (ck::Is_NOT_Valid(Entity)) { continue; }
+        const auto AgentIsValid = ck::IsValid(Agent.Handle);
+        CK_ENSURE_IF_NOT(AgentIsValid, TEXT("AI Overview roster received an invalid Crowd agent"))
+        {}
+        if (NOT AgentIsValid)
+        { continue; }
 
-        SignatureParts.Add(FString::Printf(TEXT("%u:%d:%d:%d:%s:%s:%d:%.1f"),
-            Entity.Get_Entity().Get_ID(),
-            static_cast<int32>(Agent.Status),
-            Agent.HasPathTroubleEvent ? 1 : 0,
-            Agent.NeighborCount,
-            *Agent.PrimaryTag,
-            *Agent.QueueDebugName,
-            Agent.QueueRank,
-            Agent.Velocity.Size()));
+        const auto Entity = ck::DebugSelectionSync::Resolve_ConceptualTarget(Agent.Handle);
+        const auto TargetIsValid = ck::IsValid(Entity);
+        CK_ENSURE_IF_NOT(TargetIsValid,
+            TEXT("AI Overview could not resolve a conceptual target for Crowd agent [{}]"),
+            Agent.Handle)
+        {}
+        if (NOT TargetIsValid)
+        { continue; }
 
         const auto HasFailure = Agent.Status == ECkCrowdDebugger_AgentStatus::Failed;
         const auto NeedsAttention = HasFailure || Agent.HasPathTroubleEvent
@@ -566,10 +614,9 @@ auto SCkAiDebuggerWindow::Refresh_Roster() -> void
                 : FString::Printf(TEXT("queue %s · rank %d"), *Agent.QueueDebugName, Agent.QueueRank));
         }
         const auto Context = FText::FromString(FString::Join(ContextParts, TEXT(" · ")));
-        const auto DisplayName = Agent.OwnerName.IsEmpty()
-            ? FText::FromName(Entity.Get_DebugName())
-            : FText::FromString(Agent.OwnerName);
+        const auto DisplayName = FText::FromName(Entity.Get_DebugName());
         Items.Add(FCkDebug_EntityHealthItem{
+            Agent.Handle,
             Entity,
             DisplayName,
             Summary,
@@ -578,9 +625,6 @@ auto SCkAiDebuggerWindow::Refresh_Roster() -> void
             Tone});
     }
 
-    const auto Signature = FString::Join(SignatureParts, TEXT("|"));
-    if (Signature == _LastRosterSignature) { return; }
-    _LastRosterSignature = Signature;
     _HealthList->Set_Items(MoveTemp(Items));
 }
 
@@ -591,11 +635,25 @@ auto SCkAiDebuggerWindow::HandleSessionInvalidated() -> void
     _TrackedRoster.Reset();
     _Model = {};
     _History = {};
+    _ActiveWorld.Reset();
     Clear_Diagnostics();
-    _LastRosterSignature.Reset();
     if (_CrowdViewModel.IsValid()) { _CrowdViewModel->Reset_ForWorldChange(); }
     if (_SpatialViewport.IsValid()) { _SpatialViewport->Clear_VoxelNavSnapshot(); }
     if (_HealthList.IsValid()) { _HealthList->Clear_Items(); }
+}
+
+auto SCkAiDebuggerWindow::HandleWorldInvalidated(UWorld* InWorld) -> void
+{
+    const auto WorldIsValid = ck::IsValid(InWorld);
+    CK_ENSURE_IF_NOT(WorldIsValid, TEXT("AI Overview received an invalid world-teardown boundary"))
+    {}
+    if (NOT WorldIsValid)
+    { return; }
+
+    if (_ActiveWorld.Get() != InWorld)
+    { return; }
+
+    HandleSessionInvalidated();
 }
 
 auto SCkAiDebuggerWindow::Refresh_Diagnostics(double InNow) -> void

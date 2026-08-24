@@ -47,6 +47,7 @@ private:
     auto Refresh_Diagnostics(double InNow) -> void;
     auto Clear_Diagnostics() -> void;
     auto HandleSessionInvalidated() -> void;
+    auto HandleWorldInvalidated(UWorld* InWorld) -> void;
     auto Get_TargetWorld() const -> UWorld*;
 
     FCk_Handle _SelectedEntity;
@@ -62,7 +63,8 @@ private:
     TSharedPtr<SCkDebug_EvidenceList> _GoapTopologyList;
     TSharedPtr<SCkDebug_EvidenceList> _StateMachineTopologyList;
     FCkAiDebugger_EvidenceDeltaTracker _EvidenceDeltaTracker;
-    FString _LastRosterSignature;
     double _LastRefreshTime = -1.0;
     FDelegateHandle _SessionInvalidatedHandle;
+    FDelegateHandle _WorldInvalidatedHandle;
+    TWeakObjectPtr<UWorld> _ActiveWorld;
 };

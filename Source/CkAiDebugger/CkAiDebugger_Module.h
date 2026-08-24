@@ -26,6 +26,7 @@ public:
 
 private:
     auto OnSpawnDebuggerTab(const class FSpawnTabArgs& InArgs) -> TSharedRef<SDockTab>;
+    auto RollbackStartupRegistrations() -> void;
     auto HandleEnginePreExit() -> void;
     auto HandleGlobalSelection(const FCk_Handle& InEntity, FName InSource) -> void;
 
@@ -35,6 +36,7 @@ private:
     uint64 _EntityTargetRouteRegistrationId = 0;
     FDelegateHandle _SelectionSyncHandle;
     FDelegateHandle _EnginePreExitHandle;
+    bool _OwnsTabSpawner = false;
 
     static const FName _DebuggerTabName;
 };

@@ -498,8 +498,8 @@ auto
 	auto Snapshot = FCkCrowdDebugger_AgentSnapshot{};
 	Snapshot.Handle = InHandle;
 
-	// Owner NPC/player (lifetime owner of the agent feature entity) — pre-sampled
-	// so list rows can show "who this is" without walking ECS per paint.
+	// Immediate lifetime owner/transport anchor — this is not guaranteed to be the conceptual NPC.
+	// Consumers that need a selectable gameplay target must resolve the full ownership chain.
 	Snapshot.OwnerHandle = UCk_Utils_EntityLifetime_UE::Get_LifetimeOwner(InHandle);
 	if (ck::IsValid(Snapshot.OwnerHandle))
 	{

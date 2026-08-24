@@ -229,6 +229,10 @@ Right-click "Copy ..." menus go on `SListView::OnContextMenuOpening` (not on the
 
 `SListView` / `STreeView` track selection by **pointer identity**. If your refresh handler does `_Items.Reset()` + `MakeShared<FRowItem>` per item every Tick, the user's selection is destroyed every tick — they click a row and the selection vanishes by the next paint. Visible symptoms: "rows flicker", "can't click rows", "selection won't stick".
 
+`SCkDebug_EntityHealthList` keeps physical row identity separate from the conceptual selection target. Callers provide
+one valid, unique `RowIdentity` per rendered mover; several rows may share a valid `SelectionTarget`. The widget validates
+the complete batch before mutating retained rows and independently returns failure so malformed input never reaches Slate.
+
 The fix: index existing items by a stable key (entity handle, processor index, candidate index, ...) and **reuse the existing `TSharedPtr` when the key matches**. Allocate new shared pointers only for genuinely new items; drop ones for vanished items. Update displayed fields in place via `*Item = NewData`.
 
 ```cpp
@@ -619,6 +623,12 @@ If your module renders graph nodes via `SGraphEditor`, also add `GraphEditor`.
 - Resolve parent/child selections with `DebugSelectionSync::Resolve_ClosestLineageMatch`. It
   checks exact, ancestor, and descendant entities, excludes sibling branches/transient-root
   cross-matches, and uses stable entity-id tie-breaking.
+- Resolve a physical feature/agent handle to a conceptual gameplay target with
+  `DebugSelectionSync::Resolve_ConceptualTarget`. It excludes the transient root and ActorRelay plumbing, uses the raw
+  relay predicate rather than the display setting, and fails closed on malformed ownership chains.
+- Use `DebugSessionLifecycle::Get_OnSessionInvalidated()` for process-wide editor/session boundaries and
+  `Get_OnWorldInvalidated()` for packaged/runtime world teardown. World-scoped subscribers must compare against managed
+  active-world state before releasing handles, so teardown in one game world cannot clear a still-live second world.
 - `SCkDebug_WindowChrome` automatically exposes `Sync from ECS <id>` only when its tab has a registered
   route. `SCkDebug_EntityDebuggerLinks` discovers those same routes for ECS inspector `Open In`
   actions. Common pulls the primary ECS selection on demand and never retains a PIE handle.
@@ -718,8 +728,9 @@ CkFoundation/Source/CkEditorTools/Public/CkEditorTools/
   Picker availability must report the precise value-only empty-state taxonomy rather than a generic unavailable label.
 - `SCkDebug_BehaviorOverridePanel` / `Row` present generation-safe session behavior providers. Providers own gameplay
   policy; Common stores only callbacks/descriptors, observes dynamic registration, and surfaces rejected-write reasons.
-- `SCkDebug_EntityHealthList` and `SCkDebug_StageStrip` are reusable roster/pipeline surfaces. New overview-style tools
-  compose these rather than adding feature-local cards or list rows.
+- `SCkDebug_EntityHealthList` and `SCkDebug_StageStrip` are reusable roster/pipeline surfaces. Health rows keep their
+  physical `RowIdentity` distinct from their conceptual `SelectionTarget`; new overview-style tools compose these
+  rather than adding feature-local cards or list rows.
 - `SCkDebug_EvidenceList` is the canonical current-fact and lightweight hierarchy surface. Callers provide stable keys,
   source/headline/detail text, optional indent/right label, copy payload, and selection ID; the widget owns reconciliation.
 - `SCkDebug_Card` is the generic decision/panel card. It follows Style Lab's `SurfaceElevation` geometry live: Cards

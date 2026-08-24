@@ -2,6 +2,7 @@
 
 #include "CkAiDebugger/Window/SCkAiDebuggerWindow.h"
 
+#include "CkCore/Ensure/CkEnsure.h"
 #include "CkCore/Validation/CkIsValid.h"
 #include "CkDebuggerCommon/Launcher/CkDebuggerTabUtils.h"
 #include "CkDebuggerCommon/Launcher/CkDebuggerToolRegistry.h"
@@ -31,6 +32,14 @@ static FAutoConsoleCommand CmdAiDebugger(
 
 auto FCkAiDebuggerModule::StartupModule() -> void
 {
+    const auto TabIdIsAvailable = NOT FGlobalTabmanager::Get()->HasTabSpawner(_DebuggerTabName);
+    CK_ENSURE_IF_NOT(TabIdIsAvailable,
+        TEXT("AI Overview cannot register duplicate tab id [{}]"),
+        _DebuggerTabName)
+    {}
+    if (NOT TabIdIsAvailable)
+    { return; }
+
     auto& TabSpawner = FGlobalTabmanager::Get()->RegisterNomadTabSpawner(
         _DebuggerTabName, FOnSpawnTab::CreateRaw(this, &FCkAiDebuggerModule::OnSpawnDebuggerTab))
         .SetDisplayName(LOCTEXT("AiOverviewTab", "CK AI Overview"))
@@ -38,6 +47,7 @@ auto FCkAiDebuggerModule::StartupModule() -> void
 #if WITH_EDITOR
     TabSpawner.SetGroup(WorkspaceMenu::GetMenuStructure().GetDeveloperToolsDebugCategory());
 #endif
+    _OwnsTabSpawner = true;
 
     _DebuggerToolRegistrationId = FCkDebuggerToolRegistry::Get().Register(FCkDebuggerToolDescriptor{
         TEXT("CkAiDebugger"), _DebuggerTabName,
@@ -46,15 +56,49 @@ auto FCkAiDebuggerModule::StartupModule() -> void
         ECk_Icon::Diagnostics, ECkDebuggerToolCategory::Ai, 5}
         .Set_TabFactory(FCkDebuggerToolTabFactory::CreateLambda([this]
         { return OnSpawnDebuggerTab(FSpawnTabArgs{TSharedPtr<SWindow>{}, FTabId{_DebuggerTabName}}); })));
+    const auto ToolRegistrationSucceeded = _DebuggerToolRegistrationId != 0;
+    CK_ENSURE_IF_NOT(ToolRegistrationSucceeded,
+        TEXT("AI Overview failed to register its debugger-tool descriptor"))
+    {}
+    if (NOT ToolRegistrationSucceeded)
+    {
+        RollbackStartupRegistrations();
+        return;
+    }
 
     _EntityTargetRouteRegistrationId = FCkDebug_EntityTargetRegistry::Get().Register(FCkDebug_EntityTargetRoute{
         TEXT("CkAiDebugger"), _DebuggerTabName,
         [](const FCk_Handle& InEntity) { return SCkAiDebuggerWindow::Is_AiEntity(InEntity); },
         [](const FCk_Handle& InEntity) { SCkAiDebuggerWindow::OpenForEntity(InEntity); }});
+    const auto TargetRouteRegistrationSucceeded = _EntityTargetRouteRegistrationId != 0;
+    CK_ENSURE_IF_NOT(TargetRouteRegistrationSucceeded,
+        TEXT("AI Overview failed to register its entity-target route"))
+    {}
+    if (NOT TargetRouteRegistrationSucceeded)
+    {
+        RollbackStartupRegistrations();
+        return;
+    }
 
     _SelectionSyncHandle = ck::DebugSelectionSync::Get_OnSelection().AddRaw(
         this, &FCkAiDebuggerModule::HandleGlobalSelection);
+    const auto SelectionRegistrationSucceeded = _SelectionSyncHandle.IsValid();
+    CK_ENSURE_IF_NOT(SelectionRegistrationSucceeded,
+        TEXT("AI Overview failed to register its selection-sync receiver"))
+    {}
+    if (NOT SelectionRegistrationSucceeded)
+    {
+        RollbackStartupRegistrations();
+        return;
+    }
+
     _EnginePreExitHandle = FCoreDelegates::OnEnginePreExit.AddRaw(this, &FCkAiDebuggerModule::HandleEnginePreExit);
+    const auto PreExitRegistrationSucceeded = _EnginePreExitHandle.IsValid();
+    CK_ENSURE_IF_NOT(PreExitRegistrationSucceeded,
+        TEXT("AI Overview failed to register its engine pre-exit teardown"))
+    {}
+    if (NOT PreExitRegistrationSucceeded)
+    { RollbackStartupRegistrations(); }
 }
 
 auto FCkAiDebuggerModule::ShutdownModule() -> void
@@ -62,12 +106,37 @@ auto FCkAiDebuggerModule::ShutdownModule() -> void
     // Close and detach the handle-bearing Slate tree while this module and the debug registries are still live.
     ck::debugger_tabs::Release_DebuggerTab(_DebuggerTab, true);
     _DebuggerWindow.Reset();
-    if (_EnginePreExitHandle.IsValid()) { FCoreDelegates::OnEnginePreExit.Remove(_EnginePreExitHandle); }
-    if (_SelectionSyncHandle.IsValid()) { ck::DebugSelectionSync::Get_OnSelection().Remove(_SelectionSyncHandle); }
+    RollbackStartupRegistrations();
+}
+
+auto FCkAiDebuggerModule::RollbackStartupRegistrations() -> void
+{
+    if (_EnginePreExitHandle.IsValid())
+    {
+        FCoreDelegates::OnEnginePreExit.Remove(_EnginePreExitHandle);
+        _EnginePreExitHandle.Reset();
+    }
+    if (_SelectionSyncHandle.IsValid())
+    {
+        ck::DebugSelectionSync::Get_OnSelection().Remove(_SelectionSyncHandle);
+        _SelectionSyncHandle.Reset();
+    }
+
     FCkDebug_EntityTargetRegistry::Get().Unregister(_DebuggerTabName, _EntityTargetRouteRegistrationId);
+    _EntityTargetRouteRegistrationId = 0;
     FCkDebuggerToolRegistry::Get().Unregister(_DebuggerTabName, _DebuggerToolRegistrationId);
-    if (FGlobalTabmanager::Get()->HasTabSpawner(_DebuggerTabName))
-    { FGlobalTabmanager::Get()->UnregisterNomadTabSpawner(_DebuggerTabName); }
+    _DebuggerToolRegistrationId = 0;
+
+    if (_OwnsTabSpawner)
+    {
+        const auto OwnedSpawnerStillExists = FGlobalTabmanager::Get()->HasTabSpawner(_DebuggerTabName);
+        CK_ENSURE_IF_NOT(OwnedSpawnerStillExists,
+            TEXT("AI Overview lost the tab spawner it registered before rollback"))
+        {}
+        if (OwnedSpawnerStillExists)
+        { FGlobalTabmanager::Get()->UnregisterNomadTabSpawner(_DebuggerTabName); }
+        _OwnsTabSpawner = false;
+    }
 }
 
 auto FCkAiDebuggerModule::Get() -> FCkAiDebuggerModule&

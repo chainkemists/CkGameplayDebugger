@@ -15,8 +15,13 @@ Crowd, AStar, and ECS debuggers.
   consumer. The AI window is composition/layout only.
 - Use `SCkDebug_WindowChrome::CommonActionsContent` for the shared picker. World speed and launcher access are supplied
   automatically by WindowChrome.
-- Clear all `FCk_Handle` state on `DebugSessionLifecycle` invalidation and release the handle-bearing Slate tree on
-  `OnEnginePreExit` before registry/module teardown.
+- Clear all `FCk_Handle` state on process-wide `DebugSessionLifecycle` invalidation and on world-scoped runtime
+  invalidation for the window's active world. Release the handle-bearing Slate tree on `OnEnginePreExit` before
+  registry/module teardown.
+- Key roster rows by the physical Crowd agent and select
+  `DebugSelectionSync::Resolve_ConceptualTarget(Agent.Handle)`. Never key rows by `OwnerHandle`: it may be shared
+  transient/ActorRelay plumbing, and Common rejects duplicate row identities before publication. Row activation passes
+  the physical identity into the window so multiple agents under one conceptual NPC do not jump to the first sibling.
 - Keep the module `DeveloperTool`: Development/DebugGame only, not Test/Shipping.
 
 ## Common overview surfaces

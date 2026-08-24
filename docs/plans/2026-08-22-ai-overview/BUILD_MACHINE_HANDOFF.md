@@ -39,6 +39,13 @@ Do not run Test or Shipping for this debugger acceptance: DeveloperTool debugger
 4. Select `0.1x` on the listen-server host and confirm the connected client observes the slowed replicated world.
 5. Toggle `BusterBlock.Npc.SuppressStuckRecovery`; verify stuck recovery remains suppressed only for the session and starts a fresh episode after re-enable.
 6. Activate the picker and click a known visible NPC. Record its availability tooltip/counters before and after the click.
+7. In a population where multiple physical Crowd agents resolve to the same conceptual NPC/owner chain, keep AI Overview
+   open for at least three roster refreshes. Confirm every physical agent remains a distinct row and the process does not
+   emit `WidgetMapToItem`, `ItemsWithGeneratedWidgets`, `Cannot set entity health rows`, or an `SListView` assertion.
+8. Click two different physical rows that share a conceptual target. Confirm the overview stays on that conceptual NPC
+   while the spatial viewport highlights the exact physical row clicked rather than the collector's first sibling.
+9. Travel to another gameplay map with AI Overview still open. Confirm the old roster/selection clears before teardown,
+   the new world's roster repopulates, and no stale-handle, fatal, assertion, or ensure is emitted.
 
 Interpret the picker result exactly:
 
@@ -58,4 +65,6 @@ Interpret the picker result exactly:
 - Listen-server/client world-speed observation.
 - Behavior-override observation.
 - Picker taxonomy/counters plus clicked entity topology.
+- Roster row count and physical entity ids across three refreshes, plus the two clicked physical ids.
+- Map-travel log excerpt proving the old world invalidated and the new roster repopulated without a Slate invariant error.
 - A single root-cause sentence stating what failed, when it failed, and where the value/entity was lost.

@@ -95,6 +95,16 @@ remain (see Open issues).
   - Tear down handle-holding Slate on `FCoreDelegates::OnEnginePreExit`, NOT in `ShutdownModule`
     (too late — the registry's shared state is already freed). Canonical:
     `Source/CkEcsDebugger/CkEcsDebugger_Module.cpp:60-66,109-121`.
+- **No hard-fatal primitives in spec fixtures** (crash-grade; has bitten — `7b34116b`): never
+  `check()`, `checkf()`, `verify()`, `FindChecked()`, `GetChecked()` or `[]`-on-missing-key in a
+  `*.spec.cpp`, including in setup code. The suite's "never crash, even on bad input" tenet is
+  enforced by `CK_ENSURE_*`, which fails closed; these UE primitives fatal in every configuration
+  and nothing catches them. A fixture that asserts kills the editor, so every test batched into
+  that lane dies with it and the runner burns resume lanes — while a fixture that fails closed
+  costs one red line. Worse, it can silently disable the test: `CkDebugOverlay_SourceTopology.spec.cpp`
+  fataled on `FindChecked` in its own setup, so the cycle-safety guarantee it existed to prove had
+  never evaluated a single assertion. Use `FindOrAdd` / `Find` + a `TestNotNull`, so a malformed
+  fixture reports as a failure instead of taking the run down.
 - **Settings split** (commit `d607751`, packaged persistence update 2026-08-11): per-user input
   keybinds live in `UCk_DebugOverlay_InputSettings` (`Config=GameUserSettings`, still presented
   under Editor Preferences → Ck through `GetContainerName()` —

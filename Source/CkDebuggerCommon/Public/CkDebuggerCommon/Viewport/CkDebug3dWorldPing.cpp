@@ -1,5 +1,6 @@
 #include "CkDebuggerCommon/Viewport/CkDebug3dWorldPing.h"
 
+#include "CkCore/Ensure/CkEnsure.h"
 #include "CkCore/Validation/CkIsValid.h"
 #include "CkPmg/CkPmg_Utils_FlatShapes.h"
 
@@ -13,7 +14,12 @@ namespace ck::debug_3d
             const FVector& InLocation)
         -> void
     {
-        if (ck::Is_NOT_Valid(InWorld))
+        // Not a soft guard: every caller reaches this only after its command succeeded against a
+        // live entity, so a null world here is a bug worth seeing rather than a silent no-draw.
+        const auto WorldIsValid = ck::IsValid(InWorld);
+        CK_ENSURE_IF_NOT(WorldIsValid, TEXT("Cannot draw a world command ping: no valid world"))
+        {}
+        if (NOT WorldIsValid)
         { return; }
 
         UCk_Utils_Pmg_FlatShapes::DrawFilledRing(

@@ -4,6 +4,7 @@
 #include "CkCrowdDebugger/Settings/CkCrowdDebuggerSettings.h"
 
 #include "EngineGlobals.h"
+#include "Framework/Application/SlateApplication.h"
 #include "HAL/IConsoleManager.h"
 
 // These colours encode Crowd and VoxelNav state in the 3D scene. They intentionally remain local to this
@@ -452,6 +453,21 @@ auto
 
 auto
     SCkCrowdDebugger_3dViewport::
+    Set_CommandPing(const FVector& InLocation)
+    -> void
+{
+    // Matches the world PMG ping's 1.5s lifetime so the two read as one acknowledgment.
+    constexpr auto PingSeconds = 1.5;
+    _Snapshot._CommandPing._Location = InLocation;
+    _Snapshot._CommandPing._IsSet = true;
+    _CommandPingExpirySeconds = FSlateApplication::Get().GetCurrentTime() + PingSeconds;
+    _SnapshotDirty = true;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkCrowdDebugger_3dViewport::
     Apply_CameraPreset(ECkCrowdDebugger_CameraPreset InPreset)
     -> void
 {
@@ -471,6 +487,14 @@ auto
     -> void
 {
     SCompoundWidget::Tick(InAllottedGeometry, InCurrentTime, InDeltaTime);
+
+    if (_CommandPingExpirySeconds >= 0.0 && InCurrentTime >= _CommandPingExpirySeconds)
+    {
+        _CommandPingExpirySeconds = -1.0;
+        _Snapshot._CommandPing = {};
+        _SnapshotDirty = true;
+    }
+
     if (_SnapshotDirty && _PreviewAdapter.IsValid())
     {
         TRACE_CPUPROFILER_EVENT_SCOPE(CkCrowdDbg_ViewportReconcile);

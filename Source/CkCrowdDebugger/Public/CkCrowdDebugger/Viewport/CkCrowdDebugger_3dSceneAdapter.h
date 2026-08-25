@@ -206,6 +206,9 @@ class FCkCrowdDebugger_3dSceneAdapter
     TMap<ECkCrowdDebugger_3dSceneRole, int32> _NonItemRoleCounts;
     TMap<uint64, FCk_DebugScene_Appearance> _Appearances;
     TMap<ECkCrowdDebugger_3dSceneRole, FCk_DebugScene_Appearance> _RoleAppearances;
+    // Per-bucket content stamp of the navmesh mesh, so a Recast rebake rebuilds only the buckets
+    // whose geometry moved instead of the whole map.
+    TMap<uint64, uint32> _RecastBucketSignatures;
     int32 _RecastTriangleCount = 0;
     int32 _RecastRenderedTriangleCount = 0;
     TArray<int32> _RibbonTriangleCounts;

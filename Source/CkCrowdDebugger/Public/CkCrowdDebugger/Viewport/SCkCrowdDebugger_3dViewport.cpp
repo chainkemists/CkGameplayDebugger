@@ -1,4 +1,5 @@
 #include "CkCrowdDebugger/Viewport/SCkCrowdDebugger_3dViewport.h"
+#include "ProfilingDebugging/CpuProfilerTrace.h"
 
 #include "CkCrowdDebugger/Settings/CkCrowdDebuggerSettings.h"
 
@@ -141,6 +142,7 @@ auto
     -> void
 {
     _Snapshot._WorldEpoch = _WorldEpoch;
+    _HasVoxelSnapshot = true;
     _Snapshot._Voxel = {};
     _Snapshot._Voxel._Revision = InSnapshot._Generation != 0
         ? InSnapshot._Generation
@@ -202,11 +204,39 @@ auto
     Clear_VoxelNavSnapshot()
     -> void
 {
+    // Idempotent, and deliberately does NOT touch the world epoch.
+    //
+    // A map with no VoxelNav volume calls this from the window's voxel refresh forever. This used
+    // to bump _WorldEpoch unconditionally, which the scene adapter reads as "the world changed" and
+    // answers with Reset_ForWorldChange — dropping _RecastRevision, _RibbonRevision and every cached
+    // static instance. The next reconcile therefore rebuilt the navmesh mesh AND every path-network
+    // ribbon mesh from scratch, ~313ms, and left the frame slow enough that the refresh's own 0.25s
+    // throttle had always elapsed by the next frame. It fired every frame and could not recover.
+    //
+    // Clearing voxel data is not a world change. The voxel section is revision-gated on its own, so
+    // emptying the snapshot is enough for the adapter to drop the voxel items and leave the navmesh
+    // and ribbons — which are static — cached exactly as they should be.
+    if (NOT _HasVoxelSnapshot)
+    { return; }
+
+    _HasVoxelSnapshot = false;
+    _Snapshot._Voxel = {};
+    _SnapshotDirty = true;
+}
+
+auto
+    SCkCrowdDebugger_3dViewport::
+    Notify_WorldChanged()
+    -> void
+{
+    // The real world-change signal, split out from Clear_VoxelNavSnapshot so that "this map has no
+    // voxel volume" can no longer masquerade as "the world was replaced". Item keys and every
+    // revision cache in the adapter are keyed to the epoch, so a genuine world change must bump it
+    // even when there was no voxel data to clear.
     ++_WorldEpoch;
     _Snapshot._WorldEpoch = _WorldEpoch;
     _Snapshot._Voxel = {};
-    // A new world invalidates the stamps: identical values across a world change must still force
-    // a reconcile, because the adapter resets its item keys on the epoch bump.
+    _HasVoxelSnapshot = false;
     _AgentRevision = 0;
     _QueueSignature = 0;
     _SnapshotDirty = true;
@@ -219,6 +249,7 @@ auto
         const FCk_Handle& InSelectedHandle)
     -> void
 {
+    TRACE_CPUPROFILER_EVENT_SCOPE(CkCrowdDbg_SetAgentSnapshots);
     _Snapshot._WorldEpoch = _WorldEpoch;
     _Snapshot._Agents.Reset(InAgents.Num());
     _Snapshot._SelectedIdentity.Reset();
@@ -290,6 +321,7 @@ auto
         uint64 InGeometryRevision)
     -> void
 {
+    TRACE_CPUPROFILER_EVENT_SCOPE(CkCrowdDbg_SetNavmeshTriangles);
     if (_Snapshot._Recast._Revision == InGeometryRevision)
     {
         return;
@@ -305,6 +337,7 @@ auto
         const TArray<FCkCrowdDebugger_PathNetworkRibbonSnapshot>& InRibbons)
     -> void
 {
+    TRACE_CPUPROFILER_EVENT_SCOPE(CkCrowdDbg_SetPathNetworkRibbons);
     const auto* Settings = GetDefault<UCkCrowdDebuggerSettings>();
     const auto Opacity = Settings != nullptr
         ? FMath::Clamp(Settings->PathNetworkOpacity, 0.0f, 1.0f)
@@ -353,6 +386,7 @@ auto
     Set_QueueSnapshots(const TArray<FCkCrowdDebugger_QueueSnapshot>& InQueues)
     -> void
 {
+    TRACE_CPUPROFILER_EVENT_SCOPE(CkCrowdDbg_SetQueueSnapshots);
     // Gated the same way Set_PathNetworkRibbons already is. This setter used to mark the snapshot
     // dirty unconditionally on every frame, which on its own forced a full scene reconcile even
     // when no queue had moved — and would have defeated the agent gate below it. The stamp covers
@@ -433,6 +467,7 @@ auto
     SCompoundWidget::Tick(InAllottedGeometry, InCurrentTime, InDeltaTime);
     if (_SnapshotDirty && _PreviewAdapter.IsValid())
     {
+        TRACE_CPUPROFILER_EVENT_SCOPE(CkCrowdDbg_ViewportReconcile);
         _SnapshotDirty = NOT _PreviewAdapter->Reconcile(_Snapshot);
     }
 }

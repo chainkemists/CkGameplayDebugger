@@ -61,6 +61,8 @@ private:
 	TArray<FVector> _NavTriVerts;
 	TArray<FCkCrowdDebugger_PathNetworkRibbonSnapshot> _PathNetworkRibbons;
 	TArray<FCkCrowdDebugger_QueueSnapshot> _Queues;
+	// Content stamp of the last pulled navmesh geometry; the revision only bumps when it moves.
+	uint32 _NavGeomSignature = 0;
 	double _NavGeomLastPullTime = -1.0;
 	uint64 _NavGeometryRevision = 0;
 

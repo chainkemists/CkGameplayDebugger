@@ -44,6 +44,9 @@ public:
     auto
     Set_VoxelNavSnapshot(const ck::voxelnav::FDebugSnapshot& InSnapshot) -> void;
     auto
+    Notify_WorldChanged() -> void;
+
+    auto
     Clear_VoxelNavSnapshot() -> void;
     auto
     Set_AgentSnapshots(
@@ -98,6 +101,9 @@ private:
 
     // Change stamp over queue identity, revision, state and reservation geometry.
     uint32 _QueueSignature = 0;
+
+    // Whether there is voxel data to clear; keeps Clear_VoxelNavSnapshot idempotent.
+    bool _HasVoxelSnapshot = false;
 };
 
 // --------------------------------------------------------------------------------------------------------------------

@@ -216,6 +216,16 @@ auto FCk_DebugOverlay_Provider_Goap::Collect(
         Row.Severity = PlanClasses.Num() > 0
                         ? ECk_DebugOverlay_Severity::Good
                         : ECk_DebugOverlay_Severity::Normal;
+
+        // Value is a capped one-line summary sized for the focus card. Consumers that can render
+        // the whole plan (the AI Overview hierarchy) need the steps the cap dropped, so the full
+        // ordered chain rides along as the row's explicit trail — one entry per step.
+        for (const auto& PlanClass : PlanClasses)
+        {
+            Row.ExplicitHistory.Add(FText::FromString(
+                PlanClass != nullptr ? PlanClass->GetName() : FString{TEXT("?")}));
+        }
+
         Out.Rows.Add(MoveTemp(Row));
     }
 
@@ -270,8 +280,14 @@ auto FCk_DebugOverlay_Provider_Goap::Get_CondensedSourceRow(
     Row.Value = FText::FromString(ck::Format_UE(TEXT("{}: {} — {}"), InSourceName, Status, ActiveText));
 
     // The plan is this planner's "how did it get here"; the card renders ExplicitHistory as
-    // the muted breadcrumb under the row, and a row carrying one never merges away.
-    if (NOT Plan.IsEmpty())
+    // the muted breadcrumb under the row, and a row carrying one never merges away. The plan
+    // row's own trail is the untruncated chain, so it is preferred over the capped summary.
+    const auto* PlanRow = InRows.FindByPredicate([](const FCk_DebugOverlay_Row& InRow)
+    { return InRow.FieldTag == FieldTag_Plan(); });
+
+    if (PlanRow != nullptr && NOT PlanRow->ExplicitHistory.IsEmpty())
+    { Row.ExplicitHistory = PlanRow->ExplicitHistory; }
+    else if (NOT Plan.IsEmpty())
     { Row.ExplicitHistory.Add(FText::FromString(Plan)); }
 
     return Row;

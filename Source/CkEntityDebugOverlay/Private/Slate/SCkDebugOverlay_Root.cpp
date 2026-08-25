@@ -8,7 +8,7 @@
 #include "CkEntityDebugOverlay/Style/CkDebugOverlay_RenderStyle.h"
 #include "CkEntityDebugOverlay/History/CkDebugOverlay_History.h"
 
-#include "CkCore/Debug/CkDebugDraw_Utils.h"
+#include "CkCore/Diagnostics/CkDiagnosticVisibility.h"
 
 #include "CkDebuggerCommon/Settings/CkDebuggerStyleSettings.h"
 #include "CkDebuggerCommon/Styles/CkDebuggerAxes.h"
@@ -100,7 +100,7 @@ auto
 {
     SetVisibility(TAttribute<EVisibility>::CreateLambda([]() -> EVisibility
     {
-        return ck::debug_draw::Is_SuppressedForStreamerMode()
+        return ck::diagnostic_visibility::Is_HiddenForStreamerMode()
             ? EVisibility::Collapsed
             : EVisibility::HitTestInvisible;
     }));

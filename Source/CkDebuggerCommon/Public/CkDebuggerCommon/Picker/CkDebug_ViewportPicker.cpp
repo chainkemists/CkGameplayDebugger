@@ -1,6 +1,6 @@
 #include "CkDebug_ViewportPicker.h"
 
-#include "CkCore/Debug/CkDebugDraw_Utils.h"
+#include "CkCore/Diagnostics/CkDiagnosticVisibility.h"
 #include "CkCore/Validation/CkIsValid.h"
 
 #include "CkEcs/OwningActor/CkOwningActor_Utils.h"
@@ -469,7 +469,7 @@ auto
     // the one-frame dashed parent→child links. Billboard rendering is driven by the
     // UDebugDrawService callback (DoDrawBillboards) off this snapshot.
     DoRefreshMarkers(World);
-    const auto bSuppressVisuals = ck::debug_draw::Is_SuppressedForStreamerMode();
+    const auto bSuppressVisuals = ck::diagnostic_visibility::Is_HiddenForStreamerMode();
     if (NOT bSuppressVisuals)
     {
         _Markers.DrawLinks(World);
@@ -1171,7 +1171,7 @@ auto
     if (NOT _IsActive)
     { return; }
 
-    if (ck::debug_draw::Is_SuppressedForStreamerMode())
+    if (ck::diagnostic_visibility::Is_HiddenForStreamerMode())
     { return; }
 
     if (InCanvas == nullptr)

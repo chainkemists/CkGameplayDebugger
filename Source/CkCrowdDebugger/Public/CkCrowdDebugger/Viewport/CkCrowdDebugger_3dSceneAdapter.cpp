@@ -1,4 +1,7 @@
 #include "CkCrowdDebugger/Viewport/CkCrowdDebugger_3dSceneAdapter.h"
+
+#include "CkDebugScene/CkDebugScene_ShapeBuilder.h"
+#include "CkDebugScene/CkDebugScene_Shapes.h"
 #include "ProfilingDebugging/CpuProfilerTrace.h"
 
 #include "CkCore/Ensure/CkEnsure.h"
@@ -20,38 +23,6 @@ auto
 IsFinite(const FVector& InValue) -> bool
 {
     return FMath::IsFinite(InValue.X) && FMath::IsFinite(InValue.Y) && FMath::IsFinite(InValue.Z);
-}
-
-auto
-AddBoxTriangles(const FBox& InBox, TArray<FCk_DebugScene_Triangle>& Out) -> void
-{
-    if (InBox.IsValid == 0)
-    {
-        return;
-    }
-    const auto A = FVector{InBox.Min.X, InBox.Min.Y, InBox.Min.Z};
-    const auto B = FVector{InBox.Max.X, InBox.Min.Y, InBox.Min.Z};
-    const auto C = FVector{InBox.Max.X, InBox.Max.Y, InBox.Min.Z};
-    const auto D = FVector{InBox.Min.X, InBox.Max.Y, InBox.Min.Z};
-    const auto E = FVector{InBox.Min.X, InBox.Min.Y, InBox.Max.Z};
-    const auto F = FVector{InBox.Max.X, InBox.Min.Y, InBox.Max.Z};
-    const auto G = FVector{InBox.Max.X, InBox.Max.Y, InBox.Max.Z};
-    const auto H = FVector{InBox.Min.X, InBox.Max.Y, InBox.Max.Z};
-    for (const auto& T : {FCk_DebugScene_Triangle{A, C, B},
-                          {A, D, C},
-                          {E, F, G},
-                          {E, G, H},
-                          {A, B, F},
-                          {A, F, E},
-                          {B, C, G},
-                          {B, G, F},
-                          {C, D, H},
-                          {C, H, G},
-                          {D, A, E},
-                          {D, E, H}})
-    {
-        Out.Add(T);
-    }
 }
 
 auto
@@ -236,55 +207,6 @@ auto
         .Set_DepthPriority(InDepthPriority)
         .Set_TranslucencySortPriority(InTranslucencySortPriority);
 }
-auto
-    FCkCrowdDebugger_3dSceneAdapter::
-    GetOrCreateCapsuleMesh()
-    -> TSharedPtr<FCk_DebugScene_Mesh>
-{
-    if (_CapsuleMesh.IsValid())
-    {
-        return _CapsuleMesh;
-    }
-    auto Triangles = TArray<FCk_DebugScene_Triangle>{};
-    constexpr auto Sides = 8;
-    const auto RingPoint = [](int32 InSide, float InZ, float InRadius) -> FVector
-    {
-        constexpr auto RingSides = 8;
-        const auto Angle = 2.0f * PI * static_cast<float>(InSide) / static_cast<float>(RingSides);
-        return FVector{FMath::Cos(Angle) * InRadius, FMath::Sin(Angle) * InRadius, InZ};
-    };
-    // Four rings approximate a unit capsule: hemispherical caps at z=0 and z=1, with a cylindrical middle.
-    for (auto Side = 0; Side < Sides; ++Side)
-    {
-        const auto Next = (Side + 1) % Sides;
-        const auto Bottom = FVector{0.0f, 0.0f, 0.0f};
-        const auto Top = FVector{0.0f, 0.0f, 1.0f};
-        const auto LowerA = RingPoint(Side, 0.15f, 1.0f);
-        const auto LowerB = RingPoint(Next, 0.15f, 1.0f);
-        const auto UpperA = RingPoint(Side, 0.85f, 1.0f);
-        const auto UpperB = RingPoint(Next, 0.85f, 1.0f);
-        Triangles.Append(
-            {{Bottom, LowerB, LowerA}, {LowerA, LowerB, UpperB}, {LowerA, UpperB, UpperA}, {UpperA, UpperB, Top}});
-    }
-    _CapsuleMesh = FCk_DebugScene_Mesh::Create_FromTriangles(MoveTemp(Triangles));
-    return _CapsuleMesh;
-}
-
-auto
-    FCkCrowdDebugger_3dSceneAdapter::
-    GetOrCreateBoxMesh()
-    -> TSharedPtr<FCk_DebugScene_Mesh>
-{
-    if (_BoxMesh.IsValid())
-    {
-        return _BoxMesh;
-    }
-    auto Triangles = TArray<FCk_DebugScene_Triangle>{};
-    ck_crowd_debugger_3d_scene_adapter::AddBoxTriangles(FBox{FVector{-0.5}, FVector{0.5}}, Triangles);
-    _BoxMesh = FCk_DebugScene_Mesh::Create_FromTriangles(MoveTemp(Triangles));
-    return _BoxMesh;
-}
-
 auto
     FCkCrowdDebugger_3dSceneAdapter::
     SubmitLines(const FCkCrowdDebugger_3dSceneSnapshot& InSnapshot,
@@ -499,12 +421,6 @@ auto
                          MakeAppearance(FLinearColor{0.0f, 0.8f, 0.9f, InSnapshot._PathNetwork._Opacity},
                                         ck_crowd_debugger_3d_scene_adapter::IsTransparent));
     InTarget.Begin_Reconcile();
-    const auto Capsule = GetOrCreateCapsuleMesh();
-    if (NOT Capsule.IsValid())
-    {
-        InTarget.Abort_Reconcile();
-        return RestoreAndFail();
-    }
     for (auto Index = 0; Index < InSnapshot._Agents.Num(); ++Index)
     {
         const auto& Agent = InSnapshot._Agents[Index];
@@ -530,8 +446,23 @@ auto
         }
         const auto Key = MakeItemKey(ECkCrowdDebugger_3dSceneRole::AgentCapsule, Agent._Identity);
         const auto Appearance = MakeAppearance(Agent._StatusColor);
-        const auto Transform =
-            FTransform{FQuat::Identity, Agent._Position, FVector{Agent._Radius, Agent._Radius, Agent._Height}};
+
+        // A true capsule inscribed in the agent's radius and height: hemispherical caps of the
+        // agent radius at both ends, straight barrel between. The proportion lives in the mesh
+        // (cached per ratio) and the instance scales UNIFORMLY -- scaling Z alone would stretch
+        // the caps into ellipsoids. _Position is the agent's FEET, hence the half-height lift.
+        // A squat agent (height below twice the radius) collapses to a sphere of the agent radius,
+        // overshooting the height slightly; humanoid crowd agents never reach that.
+        const auto SegmentHeight = FMath::Max(Agent._Height - 2.0f * Agent._Radius, 0.0f);
+        const auto Capsule = ck::debug_scene::shapes::Get_Capsule(SegmentHeight / Agent._Radius);
+        if (NOT Capsule.IsValid())
+        {
+            InTarget.Abort_Reconcile();
+            return RestoreAndFail();
+        }
+        const auto Transform = FTransform{FQuat::Identity,
+                                          Agent._Position + FVector{0.0, 0.0, Agent._Height * 0.5},
+                                          FVector{Agent._Radius}};
         auto Instances = TArray<FCk_DebugScene_Instance>{FCk_DebugScene_Instance{}
                                                              .Set_Mesh(Capsule)
                                                              .Set_Transform(Transform)
@@ -604,7 +535,7 @@ auto
             if (NOT ck_crowd_debugger_3d_scene_adapter::IsFinite(Origin._From))
             { InTarget.Abort_Reconcile(); return RestoreAndFail(); }
             if (NOT SubmitStatic(ECkCrowdDebugger_3dSceneRole::QueueOrigin,
-                     HashCombineFast(GetTypeHash(Queue._Identity), GetTypeHash(OriginIndex)), GetOrCreateBoxMesh(), Color,
+                     HashCombineFast(GetTypeHash(Queue._Identity), GetTypeHash(OriginIndex)), ck::debug_scene::shapes::Get_Box(), Color,
                      ck_crowd_debugger_3d_scene_adapter::IsTransparent,
                      FTransform{FQuat::Identity, Origin._From, FVector{70.0f, 70.0f, 140.0f}}))
             { InTarget.Abort_Reconcile(); return RestoreAndFail(); }
@@ -621,7 +552,7 @@ auto
             const auto Rotation = Member._ReservationForward.IsNearlyZero()
                 ? FQuat::Identity : FRotationMatrix::MakeFromX(Member._ReservationForward.GetSafeNormal()).ToQuat();
             if (NOT SubmitStatic(ECkCrowdDebugger_3dSceneRole::QueueReservation, Member._SlotIdentity,
-                    GetOrCreateBoxMesh(), FLinearColor{Color.R, Color.G, Color.B, 0.55f},
+                    ck::debug_scene::shapes::Get_Box(), FLinearColor{Color.R, Color.G, Color.B, 0.55f},
                     ck_crowd_debugger_3d_scene_adapter::IsTransparent,
                     FTransform{Rotation, Member._ReservationLocation, FVector{60.0f, 32.0f, 12.0f}}))
             { InTarget.Abort_Reconcile(); return RestoreAndFail(); }
@@ -846,7 +777,7 @@ auto
             for (auto Index = 0; Index < FMath::Min(InCells.Num(), InCap); ++Index)
             {
                 const auto& Bounds = InCells[Index];
-                if (NOT SubmitStatic(InRole, Index + 1, GetOrCreateBoxMesh(), Color,
+                if (NOT SubmitStatic(InRole, Index + 1, ck::debug_scene::shapes::Get_Box(), Color,
                                      ck_crowd_debugger_3d_scene_adapter::IsTransparent,
                                      FTransform{FQuat::Identity, Bounds.GetCenter(), Bounds.GetSize()}))
                 {
@@ -877,7 +808,7 @@ auto
         const auto& VoxelBounds = InSnapshot._Voxel._NavigationBounds.IsValid != 0 ? InSnapshot._Voxel._NavigationBounds
                                                                                    : InSnapshot._Voxel._AuthoredBounds;
         if (VoxelBounds.IsValid != 0 &&
-            NOT SubmitStatic(ECkCrowdDebugger_3dSceneRole::VoxelChunk, 0, GetOrCreateBoxMesh(),
+            NOT SubmitStatic(ECkCrowdDebugger_3dSceneRole::VoxelChunk, 0, ck::debug_scene::shapes::Get_Box(),
                              InSnapshot._Voxel._NavigationBoundsColor,
                              ck_crowd_debugger_3d_scene_adapter::IsTransparent,
                              FTransform{FQuat::Identity, VoxelBounds.GetCenter(), VoxelBounds.GetSize()}))
@@ -889,7 +820,7 @@ auto
              ++Index)
         {
             const auto& Chunk = InSnapshot._Voxel._Chunks[Index];
-            if (NOT SubmitStatic(ECkCrowdDebugger_3dSceneRole::VoxelChunk, GetTypeHash(Chunk.Min), GetOrCreateBoxMesh(),
+            if (NOT SubmitStatic(ECkCrowdDebugger_3dSceneRole::VoxelChunk, GetTypeHash(Chunk.Min), ck::debug_scene::shapes::Get_Box(),
                                  InSnapshot._Voxel._ChunkColor,
                                  ck_crowd_debugger_3d_scene_adapter::IsTransparent,
                                  FTransform{FQuat::Identity, Chunk.GetCenter(), Chunk.GetSize()}))
@@ -903,7 +834,7 @@ auto
         {
             const auto& Segment = InSnapshot._Voxel._Portals[Index];
             const auto Bounds = FBox{Segment._From, Segment._To}.ExpandBy(2.0f);
-            if (NOT SubmitStatic(ECkCrowdDebugger_3dSceneRole::VoxelPortal, Index + 1, GetOrCreateBoxMesh(),
+            if (NOT SubmitStatic(ECkCrowdDebugger_3dSceneRole::VoxelPortal, Index + 1, ck::debug_scene::shapes::Get_Box(),
                                  InSnapshot._Voxel._PortalColor,
                                  ck_crowd_debugger_3d_scene_adapter::IsTransparent,
                                  FTransform{FQuat::Identity, Bounds.GetCenter(), Bounds.GetSize()}))
@@ -917,7 +848,7 @@ auto
         {
             const auto& Segment = InSnapshot._Voxel._RepairLinks[Index];
             const auto Bounds = FBox{Segment._From, Segment._To}.ExpandBy(2.0f);
-            if (NOT SubmitStatic(ECkCrowdDebugger_3dSceneRole::VoxelRepair, Index + 1, GetOrCreateBoxMesh(),
+            if (NOT SubmitStatic(ECkCrowdDebugger_3dSceneRole::VoxelRepair, Index + 1, ck::debug_scene::shapes::Get_Box(),
                                  InSnapshot._Voxel._RepairColor,
                                  ck_crowd_debugger_3d_scene_adapter::IsTransparent,
                                  FTransform{FQuat::Identity, Bounds.GetCenter(), Bounds.GetSize()}))
@@ -927,6 +858,32 @@ auto
             }
         }
     }
+    if (InSnapshot._CommandPing._IsSet)
+    {
+        // Filled ring plus a stalk. The ring alone reads as a thin sliver from a low camera, which
+        // is the angle a crowd destination is usually inspected from.
+        const auto& Ping = InSnapshot._CommandPing;
+        constexpr auto OuterRadius = 60.0f;
+        constexpr auto InnerRatio = 0.75f;
+        constexpr auto StalkHeight = 120.0f;
+        constexpr auto StalkRadius = 2.5f;
+        // Lifted so the ring does not z-fight the navmesh it sits on.
+        const auto Base = Ping._Location + FVector{0.0, 0.0, 4.0};
+
+        auto Shapes = FCk_DebugScene_ShapeBuilder{};
+        Shapes.Set_Color(Ping._Color);
+        Shapes.Add_Ring(Base, OuterRadius, InnerRatio);
+        Shapes.Add_Bar(Base, Base + FVector{0.0, 0.0, StalkHeight}, StalkRadius);
+
+        const auto PingKey = MakeItemKey(ECkCrowdDebugger_3dSceneRole::CommandPing, 1);
+        if (NOT InTarget.Upsert_Item(PingKey, Shapes.Get_Instances()))
+        {
+            InTarget.Abort_Reconcile();
+            return RestoreAndFail();
+        }
+        _RoleItems.FindOrAdd(ECkCrowdDebugger_3dSceneRole::CommandPing).Add(PingKey);
+    }
+
     if (NOT SubmitLines(InSnapshot, InTarget))
     {
         InTarget.Abort_Reconcile();

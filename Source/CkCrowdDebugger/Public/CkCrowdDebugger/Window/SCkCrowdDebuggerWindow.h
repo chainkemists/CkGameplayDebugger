@@ -65,6 +65,7 @@ private:
 	auto Get_VoxelSourceLabel() const -> FText;
 	auto HandleWorldChanged(UWorld* InWorld) -> void;
 	auto HandleSessionInvalidated() -> void;
+	auto HandleFrameSelectedAgentRequested() -> void;
 
 private:
 	TSharedPtr<FCkCrowdDebugger_ViewModel> _ViewModel;
@@ -97,6 +98,7 @@ private:
 	TOptional<FCk_Entity> _PendingTarget;
 	FDelegateHandle _WorldChangedHandle;
 	FDelegateHandle _SessionInvalidatedHandle;
+	FDelegateHandle _FrameSelectedAgentHandle;
 };
 
 // --------------------------------------------------------------------------------------------------------------------

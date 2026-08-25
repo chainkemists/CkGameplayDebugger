@@ -10,7 +10,9 @@
 #include "CkCore/Macros/CkMacros.h"
 
 #include "Components/Viewport.h"
+#include "Engine/Engine.h"
 #include "Engine/LocalPlayer.h"
+#include "Engine/World.h"
 #include "SceneView.h"
 #include "Slate/SceneViewport.h"
 #include "Styling/AppStyle.h"
@@ -77,6 +79,25 @@ GetPresetRotation(ECkDebug3dCameraPreset InPreset) -> FRotator
         return DefaultRotation;
     }
 }
+// TRUE while any world's UWorld::Tick is on the current call stack. Preview scenes register a world
+// context of their own, so this sees them too -- harmless, since world ticks never overlap on the
+// game thread and bInTick is therefore only set for a world that really is below us on the stack.
+auto
+    Is_AnyWorldMidTick() -> bool
+{
+    if (GEngine == nullptr)
+    { return false; }
+
+    for (const auto& Context : GEngine->GetWorldContexts())
+    {
+        const auto* World = Context.World();
+
+        if (World != nullptr && World->bInTick)
+        { return true; }
+    }
+
+    return false;
+}
 } // namespace ck_debug_3d_preview_viewport
 
 class FCkDebug3dPreviewViewportClient final : public FUMGViewportClient
@@ -107,6 +128,25 @@ class FCkDebug3dPreviewViewportClient final : public FUMGViewportClient
         SetViewRotation(ck_debug_3d_preview_viewport::DefaultRotation);
         _OrbitDistance = ck_debug_3d_preview_viewport::DefaultOrbitDistance;
         ResyncLookAt();
+    }
+    // FUMGViewportClient::Tick drives a full UWorld::Tick on the preview scene, and
+    // FTickTaskSequencer is a game-thread SINGLETON shared by every world. Ticking a second world
+    // while another world's tick is in flight trips its "the task arrays are empty" checks and
+    // Resets the outer world's pending tick tasks -- corruption that usually goes unnoticed only
+    // because the frame it eats is a loading frame.
+    //
+    // Slate normally ticks at the top of the frame, outside any world tick. The loading screen
+    // breaks that: it pumps FSlateApplication synchronously from inside FTickableGameObject::
+    // TickObjects so the screen paints while the game thread is blocked, which lands this widget's
+    // paint-time Tick inside UWorld::Tick. Skipping is the correct answer there, not a dodge -- a
+    // preview world advancing one frame underneath a loading screen means nothing.
+    virtual auto
+    Tick(float InDeltaTime) -> void override
+    {
+        if (ck_debug_3d_preview_viewport::Is_AnyWorldMidTick())
+        { return; }
+
+        FUMGViewportClient::Tick(InDeltaTime);
     }
     auto
     SetViewport(const TSharedRef<FSceneViewport>& InViewport) -> void

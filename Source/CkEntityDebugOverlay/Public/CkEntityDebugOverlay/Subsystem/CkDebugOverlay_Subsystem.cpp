@@ -16,7 +16,7 @@
 #include "CkEntityDebugOverlay/Slate/SCkDebugOverlay_Root.h"
 #include "CkEntityDebugOverlay/Slate/SCkDebugOverlay_FocusCard.h"
 
-#include "CkCore/Debug/CkDebugDraw_Utils.h"
+#include "CkCore/Diagnostics/CkDiagnosticVisibility.h"
 #include "CkCore/Validation/CkIsValid.h"
 
 #include "CkEcs/Handle/CkHandle_Utils.h"
@@ -1033,7 +1033,7 @@ auto
         double                                               InNow)
     -> void
 {
-    if (ck::debug_draw::Is_SuppressedForStreamerMode())
+    if (ck::diagnostic_visibility::Is_HiddenForStreamerMode())
     { return; }
 
     if (NOT _RootWidget.IsValid())
@@ -1182,7 +1182,7 @@ auto
         APlayerController* InPC)
     -> void
 {
-    if (ck::debug_draw::Is_SuppressedForStreamerMode())
+    if (ck::diagnostic_visibility::Is_HiddenForStreamerMode())
     { return; }
 
     if (NOT _RootWidget.IsValid())

@@ -6,6 +6,7 @@
 #include "CkGameplayDebugger/Category/CkDebugger_Category.h"
 #include "CkGameplayDebugger/Profile/CkDebugger_Profile.h"
 
+#include <Components/Widget.h>
 #include <GameFramework/Actor.h>
 #include <GameFramework/Info.h>
 
@@ -23,6 +24,8 @@ public:
 
 public:
     ACk_GameplayDebugger_DebugBridge_UE();
+
+    auto Tick(float InDeltaSeconds) -> void override;
 
 public:
     auto LoadNewDebugProfile(class UCk_GameplayDebugger_DebugProfile_PDA* InDebugProfile) -> void;
@@ -49,6 +52,7 @@ private:
 private:
     auto DoActivateCurrentlySelectedFilter() const -> void;
     auto DoDeactivateCurrentlySelectedFilter() const -> void;
+    auto DoUpdateDebugWidgetDiagnosticVisibility() -> void;
 
     auto DoApplyDisplaySettings(
         FGameplayDebuggerCanvasContext* InCanvasContext,
@@ -114,6 +118,8 @@ private:
     int32 _CurrentWorldToUseIndex = 0;
 
     TWeakObjectPtr<AActor> _PreviouslySelectedActor;
+
+    TOptional<ESlateVisibility> _DebugWidgetVisibilityBeforeDiagnosticSuppression;
 };
 
 // --------------------------------------------------------------------------------------------------------------------

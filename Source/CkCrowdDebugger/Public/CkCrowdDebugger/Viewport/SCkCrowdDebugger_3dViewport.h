@@ -63,6 +63,9 @@ public:
         const TArray<FCkCrowdDebugger_PathNetworkRibbonSnapshot>& InRibbons) -> void;
     auto
     Set_QueueSnapshots(const TArray<FCkCrowdDebugger_QueueSnapshot>& InQueues) -> void;
+    /** Acknowledge a right-click command at a world point. Self-expires; no caller owns it. */
+    auto
+    Set_CommandPing(const FVector& InLocation) -> void;
     auto
     Apply_CameraPreset(
         ECkCrowdDebugger_CameraPreset InPreset) -> void;
@@ -107,6 +110,9 @@ private:
 
     // Whether there is voxel data to clear; keeps Clear_VoxelNavSnapshot idempotent.
     bool _HasVoxelSnapshot = false;
+
+    // Slate time at which the command ping stops drawing. Negative = no ping pending.
+    double _CommandPingExpirySeconds = -1.0;
 };
 
 // --------------------------------------------------------------------------------------------------------------------

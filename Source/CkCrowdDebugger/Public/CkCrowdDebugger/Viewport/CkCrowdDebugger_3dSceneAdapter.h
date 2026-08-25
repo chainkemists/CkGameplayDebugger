@@ -17,7 +17,8 @@ enum class ECkCrowdDebugger_3dSceneRole : uint8
     VoxelPortal,
     VoxelRepair,
     QueueOrigin,
-    QueueReservation
+    QueueReservation,
+    CommandPing
 };
 
 enum class ECkCrowdDebugger_3dVoxelLayer : uint8
@@ -115,6 +116,16 @@ struct FCkCrowdDebugger_3dQueueSnapshot
     TArray<FCkCrowdDebugger_3dSegmentSnapshot> _Origins;
     TArray<FCkCrowdDebugger_3dQueueMemberSnapshot> _Members;
 };
+// Acknowledgment for a right-click command, drawn IN the debugger viewport. The world-space PMG
+// ping cannot appear here: this scene renders into the viewport's own preview world, never the
+// game world, so a game-world actor is structurally absent from it.
+struct FCkCrowdDebugger_3dCommandPing
+{
+    FVector _Location = FVector::ZeroVector;
+    FLinearColor _Color = FLinearColor{0.15f, 1.0f, 0.35f, 1.0f};
+    bool _IsSet = false;
+};
+
 struct FCkCrowdDebugger_3dSceneSnapshot
 {
     uint64 _WorldEpoch = 0;
@@ -124,6 +135,7 @@ struct FCkCrowdDebugger_3dSceneSnapshot
     FCkCrowdDebugger_3dRecastSnapshot _Recast;
     FCkCrowdDebugger_3dPathNetworkSnapshot _PathNetwork;
     TArray<FCkCrowdDebugger_3dQueueSnapshot> _Queues;
+    FCkCrowdDebugger_3dCommandPing _CommandPing;
 };
 
 struct FCkCrowdDebugger_3dPickResolution
@@ -183,10 +195,6 @@ class FCkCrowdDebugger_3dSceneAdapter
                    ECk_DebugScene_DepthPriority InDepthPriority = ECk_DebugScene_DepthPriority::World,
                    int32 InTranslucencySortPriority = 0) const -> FCk_DebugScene_Appearance;
     auto
-    GetOrCreateCapsuleMesh() -> TSharedPtr<FCk_DebugScene_Mesh>;
-    auto
-    GetOrCreateBoxMesh() -> TSharedPtr<FCk_DebugScene_Mesh>;
-    auto
     SubmitLines(const FCkCrowdDebugger_3dSceneSnapshot& InSnapshot, FCk_DebugScene_Target& InTarget) const -> bool;
 
   private:
@@ -214,6 +222,4 @@ class FCkCrowdDebugger_3dSceneAdapter
     TArray<int32> _RibbonTriangleCounts;
     TArray<int32> _RibbonRenderedTriangleCounts;
     TArray<int32> _RibbonOutlinePointCounts;
-    TSharedPtr<FCk_DebugScene_Mesh> _CapsuleMesh;
-    TSharedPtr<FCk_DebugScene_Mesh> _BoxMesh;
 };

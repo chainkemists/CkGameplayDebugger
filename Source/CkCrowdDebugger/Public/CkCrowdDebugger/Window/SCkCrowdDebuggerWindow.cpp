@@ -140,7 +140,7 @@ auto SCkCrowdDebuggerWindow::Construct(const FArguments& InArgs) -> void
 		})
 		// RTS-style command: right-click a destination to drive the selected agent there.
 		// Commanding auto-arms the debug override, so no separate "Take Control" click is needed.
-		.OnWorldCommanded_Lambda([WeakViewModel](const FVector& InDestination)
+		.OnWorldCommanded_Lambda([this, WeakViewModel](const FVector& InDestination)
 		{
 			const auto ViewModel = WeakViewModel.Pin();
 			if (NOT ViewModel.IsValid())
@@ -154,6 +154,12 @@ auto SCkCrowdDebuggerWindow::Construct(const FArguments& InArgs) -> void
 			auto Destination = FVector{};
 			if (NOT ck::crowd_debugger::Try_IssueManualMove(Agent, InDestination, Destination))
 			{ return; }
+
+			// Both surfaces: the viewport ping is where the click happened, the world ping is for
+			// whoever is watching the game. Neither can substitute for the other -- the viewport
+			// renders its own preview world and never shows game-world actors.
+			if (_ViewportPanel.IsValid())
+			{ _ViewportPanel->Set_CommandPing(Destination); }
 
 			ck::debug_3d::Draw_WorldCommandPing(
 				UCk_Utils_EntityLifetime_UE::Get_WorldForEntity(Agent), Destination);

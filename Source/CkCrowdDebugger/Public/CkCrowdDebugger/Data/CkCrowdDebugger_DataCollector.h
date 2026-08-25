@@ -13,7 +13,9 @@ class UWorld;
 class FCkCrowdDebugger_DataCollector
 {
 public:
-	auto Collect(UWorld* InWorld) -> void;
+	// InSelectedAgent decides which agent's planned-path POINTS are carried; every agent still
+	// reports its point count. Pass an invalid handle to carry none.
+	auto Collect(UWorld* InWorld, const FCk_Handle& InSelectedAgent) -> void;
 	auto Reset_ForWorldChange() -> void;
 
 	// Run a synthetic FindPathSync probe (origin → origin+200 in world space) and
@@ -50,7 +52,7 @@ public:
 	auto Get_PlayerPawnValid() const -> bool { return _PlayerPawnValid; }
 
 private:
-	auto SampleAgent(FCk_Handle InHandle) -> void;
+	auto SampleAgent(FCk_Handle InHandle, const FCk_Handle& InSelectedAgent) -> void;
 
 private:
 	TArray<FCkCrowdDebugger_AgentSnapshot> _Agents;

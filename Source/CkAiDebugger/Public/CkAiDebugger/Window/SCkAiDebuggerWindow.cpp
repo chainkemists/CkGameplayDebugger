@@ -663,7 +663,7 @@ auto SCkAiDebuggerWindow::Refresh_Roster() -> void
                 FText::AsNumber(FMath::RoundToInt(Agent.Velocity.Size())),
                 FText::AsNumber(FMath::RoundToInt(Agent.MaxSpeed)),
                 FText::AsNumber(Agent.NeighborCount),
-                FText::AsNumber(Agent.PlannedPath.Num()))
+                FText::AsNumber(Agent.PlannedPathPointCount))
             : FText::FromString(Agent.PathTroubleSummary);
         auto ContextParts = TArray<FString>{
             FString::Printf(TEXT("entity #%u"), Entity.Get_Entity().Get_ID())};

@@ -246,7 +246,7 @@ auto SCkCrowdDebugger_AgentDetailPanel::Construct(const FArguments& InArgs) -> v
 						SNew(SButton)
 						.IsEnabled_Lambda([this]{ return _HasSelection; })
 						.OnClicked(this, &SCkCrowdDebugger_AgentDetailPanel::Toggle_DebugOverride)
-						.ToolTipText(FText::FromString(TEXT("Take manual control: the NPC AI stops issuing its own MoveTo for this agent. Right-click a destination on the 2D map to command it — commanding auto-takes control, so this button mostly matters for releasing back to the AI.")))
+						.ToolTipText(FText::FromString(TEXT("Take manual control: the NPC AI stops issuing its own MoveTo for this agent. Right-click a destination in the viewport to command it — commanding auto-takes control, so this button mostly matters for releasing back to the AI.")))
 						[
 							SNew(STextBlock).Text_Lambda([this]{ return Get_OverrideButtonText(); })
 						]

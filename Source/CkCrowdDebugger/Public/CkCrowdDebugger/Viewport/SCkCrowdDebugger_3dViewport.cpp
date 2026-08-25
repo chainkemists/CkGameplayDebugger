@@ -122,6 +122,12 @@ auto
         }
     });
 
+    _OnWorldCommanded = InArgs._OnWorldCommanded;
+    _PreviewAdapter->Set_OnCommandAtPoint([Callback = _OnWorldCommanded](const FVector& InDestination)
+    {
+        Callback.ExecuteIfBound(InDestination);
+    });
+
     auto Descriptor = FCkDebug3dPreviewDescriptor{};
     Descriptor._PreviewPolicy._DefaultLighting = false;
     Descriptor._PreviewPolicy._Lighting = false;

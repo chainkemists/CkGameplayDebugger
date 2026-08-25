@@ -310,6 +310,22 @@ class FCkDebug3dPreviewViewportClient final : public FUMGViewportClient
                                                              Ray);
             }
         }
+        if (InKey == EKeys::RightMouseButton && _InteractionRouter.IsValid())
+        {
+            auto ScreenPosition = FVector2D::ZeroVector;
+            auto Ray = FCkDebug3dCursorRay{};
+            TryGetPointerContext(InViewport, ScreenPosition, Ray);
+            // Fire-and-forget: the router never claims RMB on press, so the camera keeps its
+            // free-look/pan gesture. Only a release that never moved reaches the adapter.
+            if (Pressed && NOT _AltDown && NOT _LeftMouseDown && NOT _MiddleMouseDown)
+            {
+                _InteractionRouter->OnPointerPressed(ECkDebug3dPointerButton::Right, ScreenPosition, Modifiers, Ray);
+            }
+            else if (Released)
+            {
+                _InteractionRouter->OnPointerReleased(ECkDebug3dPointerButton::Right, ScreenPosition, Modifiers, Ray);
+            }
+        }
         return InKey == EKeys::LeftMouseButton || InKey == EKeys::RightMouseButton || InKey == EKeys::MiddleMouseButton;
     }
     auto
@@ -336,6 +352,10 @@ class FCkDebug3dPreviewViewportClient final : public FUMGViewportClient
         }
         if (_RightMouseDown)
         {
+            if (_InteractionRouter.IsValid())
+            {
+                _InteractionRouter->OnPointerMovement(InDelta);
+            }
             if (ViewInfo.ProjectionMode == ECameraProjectionMode::Perspective)
             {
                 Look(Horizontal, InDelta);

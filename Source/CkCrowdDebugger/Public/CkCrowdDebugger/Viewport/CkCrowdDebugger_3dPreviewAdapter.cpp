@@ -55,6 +55,36 @@ auto
 
 auto
     FCkCrowdDebugger_3dPreviewAdapter::
+    Set_OnCommandAtPoint(FOnCommandAtPoint InOnCommand)
+    -> void
+{
+    _OnCommandAtPoint = MoveTemp(InOnCommand);
+}
+
+auto
+    FCkCrowdDebugger_3dPreviewAdapter::
+    Command_AtRay(const FCkDebug3dCursorRay& InRay)
+    -> void
+{
+    if (NOT _Target.IsValid() || NOT _OnCommandAtPoint)
+    {
+        return;
+    }
+
+    // Deliberately the RAW pick, not TryHit: TryHit resolves to an agent identity and drops
+    // everything else, but a move-to destination is precisely the geometry that is NOT an agent
+    // (navmesh, ribbons). The surface point is the destination; projecting it onto the navmesh is
+    // the command's job, not the viewport's.
+    const auto Pick = _Target->TryPick(InRay._Origin, InRay._Direction);
+    if (NOT Pick.IsSet())
+    {
+        return;
+    }
+    _OnCommandAtPoint(Pick->Get_HitPoint());
+}
+
+auto
+    FCkCrowdDebugger_3dPreviewAdapter::
     Get_FrameBounds(ECkDebug3dFrameTarget InTarget) const
     -> FBox
 {

@@ -28,6 +28,14 @@ auto
 
 auto
     FCkDebug3dInteractionConfig::
+    Get_ClickMovementThresholdPixels() const
+    -> float
+{
+    return _ClickMovementThresholdPixels;
+}
+
+auto
+    FCkDebug3dInteractionConfig::
     Get_HoverThrottleSeconds() const
     -> double
 {
@@ -47,6 +55,15 @@ auto
         const FCkDebug3dCursorRay& InRay)
     -> bool
 {
+    if (InButton == ECkDebug3dPointerButton::Right)
+    {
+        // The camera owns RMB-drag (free-look in perspective, pan in ortho). Record the press and
+        // deliberately do NOT claim the event -- only a release that never moved becomes a command.
+        _PendingRightPress = InScreenPosition;
+        _RightPressMovement = 0.0;
+        return false;
+    }
+
     if (InButton != ECkDebug3dPointerButton::Left)
     {
         return false;
@@ -70,6 +87,26 @@ auto
         const FCkDebug3dCursorRay& InRay)
     -> bool
 {
+    if (InButton == ECkDebug3dPointerButton::Right)
+    {
+        // Accumulated movement, not press-vs-release position: a perspective free-look recentres the
+        // cursor, so the two endpoints can match after a large gesture. Axis deltas cannot lie.
+        const auto WasClick = _PendingRightPress.IsSet() &&
+                              _RightPressMovement <= _Config.Get_ClickMovementThresholdPixels();
+        _PendingRightPress.Reset();
+        _RightPressMovement = 0.0;
+
+        if (NOT WasClick)
+        {
+            return false;
+        }
+        if (const auto Adapter = _Adapter.Pin())
+        {
+            Adapter->Command_AtRay(InRay);
+        }
+        return true;
+    }
+
     if (InButton != ECkDebug3dPointerButton::Left)
     {
         return false;
@@ -95,6 +132,18 @@ auto
     _PendingLeftPress.Reset();
     _ControlGesture = false;
     return true;
+}
+
+auto
+    FCkDebug3dInteractionRouter::
+    OnPointerMovement(float InDeltaPixels)
+    -> void
+{
+    if (NOT _PendingRightPress.IsSet())
+    {
+        return;
+    }
+    _RightPressMovement += FMath::Abs(InDeltaPixels);
 }
 
 auto
@@ -206,6 +255,8 @@ auto
     _DragActive = false;
     _ControlGesture = false;
     _PendingLeftPress.Reset();
+    _PendingRightPress.Reset();
+    _RightPressMovement = 0.0;
 
     if (const auto Adapter = _Adapter.Pin())
     {

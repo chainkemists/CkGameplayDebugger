@@ -9,6 +9,8 @@ class CKCROWDDEBUGGER_API FCkCrowdDebugger_3dPreviewAdapter final : public ICkDe
 {
   public:
     using FOnSelected = TFunction<void(TOptional<int32>)>;
+    /** A right-click that landed on scene geometry, reported as the world-space hit point. */
+    using FOnCommandAtPoint = TFunction<void(const FVector&)>;
     auto
     Set_Target(TSharedPtr<FCk_DebugScene_Target> InTarget) -> void;
     auto
@@ -17,6 +19,8 @@ class CKCROWDDEBUGGER_API FCkCrowdDebugger_3dPreviewAdapter final : public ICkDe
     Reset_World() -> void;
     auto
     Set_OnSelected(FOnSelected InOnSelected) -> void;
+    auto
+    Set_OnCommandAtPoint(FOnCommandAtPoint InOnCommand) -> void;
     virtual auto
     Get_FrameBounds(ECkDebug3dFrameTarget InTarget) const -> FBox override;
     virtual auto
@@ -25,6 +29,8 @@ class CKCROWDDEBUGGER_API FCkCrowdDebugger_3dPreviewAdapter final : public ICkDe
     Get_Capabilities() const -> ECkDebug3dViewportCapability override;
     virtual auto
     On_Pick(const FCkDebug3dCursorRay& InRay) -> void override;
+    virtual auto
+    Command_AtRay(const FCkDebug3dCursorRay& InRay) -> void override;
     virtual auto
     TryHit(const FCkDebug3dCursorRay& InRay) -> TOptional<FCkDebug3dInteractionHit> override;
     virtual auto
@@ -51,6 +57,7 @@ class CKCROWDDEBUGGER_API FCkCrowdDebugger_3dPreviewAdapter final : public ICkDe
     TSharedPtr<FCk_DebugScene_Target> _Target;
     FCkCrowdDebugger_3dSceneAdapter _Scene;
     FOnSelected _OnSelected;
+    FOnCommandAtPoint _OnCommandAtPoint;
     ECkDebug3dRenderMode _RenderMode = ECkDebug3dRenderMode::None;
     TOptional<uint64> _SelectedIdentity;
     TOptional<FCkCrowdDebugger_3dSceneSnapshot> _LastSnapshot;

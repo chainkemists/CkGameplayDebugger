@@ -15,6 +15,8 @@
 #include "CkDebuggerCommon/Widgets/SCkDebug_EventLog.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_EntityHealthList.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_EvidenceList.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_NameDepthCycler.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_NameLabel.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_Card.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_SectionHeader.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_SelectableLabel.h"
@@ -132,6 +134,26 @@ namespace ck_ai_debugger_window
         }
     }
 
+    /**
+     * The AI subset of the provider registry.
+     *
+     * Only Get_ProviderTag() and CanProvide() are called through the result, and both are const on
+     * ICk_DebugOverlay_Provider — the mutating Collect() path keeps building a fresh CreateAll().
+     * The picker asks this question for every candidate entity on every marker gather, which a
+     * per-candidate CreateAll() (~25 shared allocations plus a sort) cannot absorb. The window owns
+     * the instances so they never outlive the module that supplied their vtables.
+     */
+    auto Collect_AiProviders() -> TArray<TSharedPtr<ICk_DebugOverlay_Provider>>
+    {
+        auto Result = TArray<TSharedPtr<ICk_DebugOverlay_Provider>>{};
+        for (const auto& Provider : FCk_DebugOverlay_Registry::Get().CreateAll())
+        {
+            if (Provider.IsValid() && IsAiProvider(Provider->Get_ProviderTag()))
+            { Result.Add(Provider); }
+        }
+        return Result;
+    }
+
     auto GetCrowdStatus(ECkCrowdDebugger_AgentStatus InStatus) -> FText
     {
         switch (InStatus)
@@ -151,11 +173,14 @@ auto SCkAiDebuggerWindow::Construct(const FArguments&) -> void
 {
     Register_WithGate();
 
+    _AiProviders = ck_ai_debugger_window::Collect_AiProviders();
+
     _ViewportPicker = MakeShared<FCkDebug_ViewportPicker>();
     auto PickerParams = FCkDebug_ViewportPicker::FParams{};
     PickerParams.Get_TargetWorld = [WeakThis = TWeakPtr<SCkAiDebuggerWindow>(SharedThis(this))]() -> UWorld*
     { const auto Pinned = WeakThis.Pin(); return Pinned.IsValid() ? Pinned->Get_TargetWorld() : nullptr; };
-    PickerParams.TargetFilter = [](const FCk_Handle& InEntity) { return Is_AiEntity(InEntity); };
+    PickerParams.TargetFilter = [WeakThis = TWeakPtr<SCkAiDebuggerWindow>(SharedThis(this))](const FCk_Handle& InEntity)
+    { const auto Pinned = WeakThis.Pin(); return Pinned.IsValid() && Pinned->Is_AiPickCandidate(InEntity); };
     PickerParams.OnEntityPicked = [WeakThis = TWeakPtr<SCkAiDebuggerWindow>(SharedThis(this))](const FCk_Handle& InEntity)
     { if (const auto Pinned = WeakThis.Pin()) { Pinned->Select_Entity(InEntity, true); } };
     _ViewportPicker->Construct(MoveTemp(PickerParams));
@@ -189,9 +214,21 @@ auto SCkAiDebuggerWindow::Construct(const FArguments&) -> void
             .ShowRefreshControls(true)
             .CommonActionsContent()
             [
-                SNew(SCkDebug_ViewportPickerControls)
-                    .Picker(_ViewportPicker)
-                    .PickTooltip(LOCTEXT("PickAiTooltip", "Pick an entity that has GOAP, State Machine, Crowd, or navigation evidence."))
+                SNew(SHorizontalBox)
+                + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+                [
+                    SNew(SCkDebug_ViewportPickerControls)
+                        .Picker(_ViewportPicker)
+                        .PickTooltip(LOCTEXT("PickAiTooltip", "Pick an entity that has GOAP, State Machine, Crowd, or navigation evidence."))
+                ]
+                + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(CkStyle::SpaceS, 0.0f, 0.0f, 0.0f)
+                [
+                    SNew(SCkDebug_NameDepthCycler)
+                        .Depth_Lambda([this]() { return _NameDepth; })
+                        .MaxDepth_Lambda([this]() { return Get_MaxNameDepth(); })
+                        .OnDepthChanged(FOnCkDebug_NameDepthChanged::CreateLambda([this](int32 InDepth)
+                        { _NameDepth = InDepth; }))
+                ]
             ]
             .Content()[Build_Body()]
     ];
@@ -204,6 +241,7 @@ SCkAiDebuggerWindow::~SCkAiDebuggerWindow()
     if (_WorldInvalidatedHandle.IsValid())
     { ck::DebugSessionLifecycle::Get_OnWorldInvalidated().Remove(_WorldInvalidatedHandle); }
     if (_ViewportPicker.IsValid()) { _ViewportPicker->Deactivate(); }
+    _AiProviders.Reset();
     Clear_Diagnostics();
     // FCk_Handle is deliberately released while ECS registries still exist.
     _SelectedEntity = FCk_Handle{};
@@ -266,6 +304,18 @@ auto SCkAiDebuggerWindow::Is_AiEntity(const FCk_Handle& InEntity) -> bool
     return Is_AiModel(ck_debugoverlay::Build_EntityModel(InEntity, Providers,
         ck_ai_debugger_window::MakeAiLayout(Providers), nullptr, FPlatformTime::Seconds(),
         ck_ai_debugger_window::MakeAiBuildOptions()));
+}
+
+auto SCkAiDebuggerWindow::Is_AiPickCandidate(const FCk_Handle& InEntity) const -> bool
+{
+    if (ck::Is_NOT_Valid(InEntity)) { return false; }
+
+    for (const auto& Provider : _AiProviders)
+    {
+        if (Provider.IsValid() && Provider->CanProvide(InEntity))
+        { return true; }
+    }
+    return false;
 }
 
 auto SCkAiDebuggerWindow::OpenForEntity(const FCk_Handle& InEntity) -> void
@@ -570,6 +620,18 @@ auto SCkAiDebuggerWindow::Get_StatusText() const -> FText
         : LOCTEXT("NoSelected", "Pick an AI entity or select one in a linked debugger.");
 }
 
+auto SCkAiDebuggerWindow::Get_MaxNameDepth() const -> int32
+{
+    return FMath::Max(1, _MaxNameDepth);
+}
+
+auto SCkAiDebuggerWindow::Get_ShortName(const FString& InFullName) const -> FString
+{
+    // Get_ShortName is the suite's one shortener; depth 0 means "leave it alone", which is exactly
+    // what the cycler's Full setting should do.
+    return _NameDepth <= 0 ? InFullName : SCkDebug_NameLabel::Get_ShortName(InFullName, _NameDepth);
+}
+
 auto SCkAiDebuggerWindow::Refresh_Roster() -> void
 {
     if (NOT _HealthList.IsValid() || NOT _CrowdViewModel.IsValid()) { return; }
@@ -680,7 +742,27 @@ auto SCkAiDebuggerWindow::Refresh_Diagnostics(double InNow) -> void
     }
 
     const auto Topology = ck::ai_debugger::evidence::NormalizeTopology(_Model);
-    const auto ReconcileTopology = [](const TArray<FCkAiDebugger_TopologyNode>& InNodes,
+
+    // The cycler's ceiling follows the content: it is the longest name the two hierarchies
+    // currently hold, so cycling past it always wraps to Full rather than to a dead depth.
+    _MaxNameDepth = 1;
+    const auto WidenMaxDepth = [this](const TArray<FCkAiDebugger_TopologyNode>& InNodes)
+    {
+        for (const auto& Node : InNodes)
+        {
+            _MaxNameDepth = FMath::Max(_MaxNameDepth, SCkDebug_NameLabel::Get_SegmentCount(Node.Name));
+            _MaxNameDepth = FMath::Max(_MaxNameDepth, SCkDebug_NameLabel::Get_SegmentCount(Node.Headline));
+            for (const auto& Step : Node.Chain)
+            { _MaxNameDepth = FMath::Max(_MaxNameDepth, SCkDebug_NameLabel::Get_SegmentCount(Step)); }
+        }
+    };
+    WidenMaxDepth(Topology.Goaps);
+    WidenMaxDepth(Topology.StateMachines);
+
+    // One scannable line plus, at most, the chain. Entity ids, parent links, depth, and the raw
+    // un-shortened names are deliberately NOT on screen — they live in the row's copy text, which
+    // is one right-click away and is what a bug report actually needs.
+    const auto ReconcileTopology = [this](const TArray<FCkAiDebugger_TopologyNode>& InNodes,
         const TCHAR* InCategory, const TSharedPtr<SCkDebug_EvidenceList>& InList)
     {
         if (NOT InList.IsValid()) { return; }
@@ -688,20 +770,34 @@ auto SCkAiDebuggerWindow::Refresh_Diagnostics(double InNow) -> void
         Items.Reserve(InNodes.Num());
         for (const auto& Node : InNodes)
         {
+            auto Headline = Get_ShortName(Node.Name);
+            if (NOT Node.Headline.IsEmpty())
+            { Headline += FString::Printf(TEXT("  ▸  %s"), *Get_ShortName(Node.Headline)); }
+
+            auto ShortChain = TArray<FString>{};
+            ShortChain.Reserve(Node.Chain.Num());
+            for (const auto& Step : Node.Chain) { ShortChain.Add(Get_ShortName(Step)); }
+
+            const auto Detail = ShortChain.IsEmpty()
+                ? FString{}
+                : FString::Printf(TEXT("%s: %s"), *Node.ChainLabel, *FString::Join(ShortChain, TEXT(" → ")));
+
             auto Relation = Node.ParentSourceEntityId == 0
                 ? FString{TEXT("Root instance")}
                 : FString::Printf(TEXT("Child of entity #%u"), Node.ParentSourceEntityId);
-            if (NOT Node.Detail.IsEmpty()) { Relation += TEXT(" · ") + Node.Detail; }
-            const auto CopyText = FString::Printf(TEXT("[%s] %s (#%u)\n%s\nsource order: %d · depth: %d"),
-                InCategory, *Node.Name, Node.SourceEntityId, *Relation, Node.SourceOrder, Node.Depth);
+            const auto CopyText = FString::Printf(
+                TEXT("[%s] %s (#%u)\n%s\n%s\nsource order: %d · depth: %d · chain level: %d"),
+                InCategory, *Node.Name, Node.SourceEntityId, *Relation, *Node.Detail,
+                Node.SourceOrder, Node.Depth, Node.ChainLevel);
+
             Items.Add(FCkDebug_EvidenceItem{
                 Node.StableKey,
                 Node.Tone,
                 FText::FromString(InCategory),
-                FText::FromString(Node.Name),
-                FText::FromString(Relation),
+                FText::FromString(Headline),
+                FText::FromString(Detail),
                 Node.Depth,
-                FText::FromString(Node.State),
+                FText::FromString(Node.Status),
                 CopyText,
                 INDEX_NONE});
         }

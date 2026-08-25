@@ -138,4 +138,109 @@ bool FCkAiDebuggerEvidence_DeltaLifecycle::RunTest(const FString&)
     TestEqual(TEXT("reset re-seeds without stale events"), Tracker.Observe(ck::ai_debugger::evidence::Normalize(Model), 6.0).Num(), 0);
     return true;
 }
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCkAiDebuggerEvidence_TopologyExpandsStateMachineChain,
+    "Ck.AiDebugger.Evidence.TopologyExpandsStateMachineChain", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCkAiDebuggerEvidence_TopologyExpandsStateMachineChain::RunTest(const FString&)
+{
+    // The provider emits one "> "-prefixed State row per nested sub-state-machine level. Each level
+    // must surface as its own indented node, not as a fragment of the parent's detail string.
+    FCk_DebugOverlay_EntityModel Model;
+    auto Sm = ck_ai_debugger_evidence_spec::Section(TEXT("Ck.OnScreenDebugger.Provider.StateMachine"), 42, 3, TEXT("Body_SM"));
+    Sm.SourceDepth = 2;
+    Sm.ParentSourceEntityId = 7;
+    Sm.Rows.Add(ck_ai_debugger_evidence_spec::Row(TEXT("Ck.OnScreenDebugger.Provider.StateMachine.State"), TEXT("Awake"), ECk_DebugOverlay_Severity::Good));
+    Sm.Rows.Add(ck_ai_debugger_evidence_spec::Row(TEXT("Ck.OnScreenDebugger.Provider.StateMachine.State"), TEXT("> Locomotion"), ECk_DebugOverlay_Severity::Good));
+    Sm.Rows.Add(ck_ai_debugger_evidence_spec::Row(TEXT("Ck.OnScreenDebugger.Provider.StateMachine.State"), TEXT("> > Walking")));
+    auto Trail = ck_ai_debugger_evidence_spec::Row(TEXT("Ck.OnScreenDebugger.Provider.StateMachine.History"), TEXT("(2 entries)"));
+    Trail.ExplicitHistory = {FText::FromString(TEXT("Idle -> Awake")), FText::FromString(TEXT("Awake -> Locomotion"))};
+    Sm.Rows.Add(Trail);
+    Model.Sections = {Sm};
+
+    const auto Topology = ck::ai_debugger::evidence::NormalizeTopology(Model);
+    TestEqual(TEXT("every nested level becomes its own node"), Topology.StateMachines.Num(), 3);
+    TestEqual(TEXT("top level keeps the source depth"), Topology.StateMachines[0].Depth, 2);
+    TestEqual(TEXT("first nested level indents one further"), Topology.StateMachines[1].Depth, 3);
+    TestEqual(TEXT("second nested level indents two further"), Topology.StateMachines[2].Depth, 4);
+    TestEqual(TEXT("the current state is the node headline"), Topology.StateMachines[1].Headline, FString(TEXT("Locomotion")));
+    TestFalse(TEXT("the chain prefix is consumed, not rendered"), Topology.StateMachines[2].Headline.Contains(TEXT(">")));
+    TestEqual(TEXT("run status is the right-hand label"), Topology.StateMachines[0].Status, FString(TEXT("running")));
+    TestEqual(TEXT("the transition trail hangs off the entity's own level"), Topology.StateMachines[0].Chain.Num(), 2);
+    TestEqual(TEXT("nested levels do not repeat the trail"), Topology.StateMachines[1].Chain.Num(), 0);
+    TestNotEqual(TEXT("levels of one source keep distinct keys"), Topology.StateMachines[0].StableKey, Topology.StateMachines[1].StableKey);
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCkAiDebuggerEvidence_TopologyNamesUnnamedSources,
+    "Ck.AiDebugger.Evidence.TopologyNamesUnnamedSources", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCkAiDebuggerEvidence_TopologyNamesUnnamedSources::RunTest(const FString&)
+{
+    // Sub-state-machine and sub-planner entities are never renamed, so they arrive carrying the
+    // "NO NAME" sentinel. Two such siblings must still be distinguishable in the hierarchy.
+    FCk_DebugOverlay_EntityModel Model;
+    auto First = ck_ai_debugger_evidence_spec::Section(TEXT("Ck.OnScreenDebugger.Provider.StateMachine"), 91, 0, TEXT("NO NAME"));
+    First.Rows.Add(ck_ai_debugger_evidence_spec::Row(TEXT("Ck.OnScreenDebugger.Provider.StateMachine.State"), TEXT("Alive")));
+    auto Second = ck_ai_debugger_evidence_spec::Section(TEXT("Ck.OnScreenDebugger.Provider.StateMachine"), 92, 1, TEXT("NO NAME"));
+    Second.Rows.Add(ck_ai_debugger_evidence_spec::Row(TEXT("Ck.OnScreenDebugger.Provider.StateMachine.State"), TEXT("Awake")));
+    Model.Sections = {First, Second};
+
+    const auto Topology = ck::ai_debugger::evidence::NormalizeTopology(Model);
+    TestEqual(TEXT("both unnamed sources survive"), Topology.StateMachines.Num(), 2);
+    TestFalse(TEXT("the placeholder name never reaches the row"), Topology.StateMachines[0].Name.Contains(TEXT("NO NAME")));
+    TestTrue(TEXT("an unnamed source is identified by its entity"), Topology.StateMachines[0].Name.Contains(TEXT("#91")));
+    TestNotEqual(TEXT("unnamed siblings are distinguishable"), Topology.StateMachines[0].Name, Topology.StateMachines[1].Name);
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCkAiDebuggerEvidence_TopologyKeepsFullPlan,
+    "Ck.AiDebugger.Evidence.TopologyKeepsFullPlan", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCkAiDebuggerEvidence_TopologyKeepsFullPlan::RunTest(const FString&)
+{
+    // The Plan row's VALUE is a capped focus-card summary; its explicit trail is the whole chain.
+    // The hierarchy renders the plan, so it must read the trail and never the capped summary.
+    FCk_DebugOverlay_EntityModel Model;
+    auto Goap = ck_ai_debugger_evidence_spec::Section(TEXT("Ck.OnScreenDebugger.Provider.Goap"), 20, 0, TEXT("Shop_GOAP"));
+    Goap.Rows.Add(ck_ai_debugger_evidence_spec::Row(TEXT("Ck.OnScreenDebugger.Provider.Goap.Status"), TEXT("PlanFound"), ECk_DebugOverlay_Severity::Good));
+    Goap.Rows.Add(ck_ai_debugger_evidence_spec::Row(TEXT("Ck.OnScreenDebugger.Provider.Goap.Active"), TEXT("PickGenreShelf")));
+    Goap.Rows.Add(ck_ai_debugger_evidence_spec::Row(TEXT("Ck.OnScreenDebugger.Provider.Goap.Cost"), TEXT("4")));
+    auto Plan = ck_ai_debugger_evidence_spec::Row(TEXT("Ck.OnScreenDebugger.Provider.Goap.Plan"), TEXT("A > B > C +2"));
+    Plan.ExplicitHistory = {
+        FText::FromString(TEXT("A")), FText::FromString(TEXT("B")), FText::FromString(TEXT("C")),
+        FText::FromString(TEXT("D")), FText::FromString(TEXT("E"))};
+    Goap.Rows.Add(Plan);
+    Model.Sections = {Goap};
+
+    const auto Topology = ck::ai_debugger::evidence::NormalizeTopology(Model);
+    TestEqual(TEXT("one node per planner source"), Topology.Goaps.Num(), 1);
+    TestEqual(TEXT("the whole plan survives the card's cap"), Topology.Goaps[0].Chain.Num(), 5);
+    TestEqual(TEXT("the plan keeps its order"), Topology.Goaps[0].Chain.Last(), FString(TEXT("E")));
+    TestEqual(TEXT("the executing action is the headline"), Topology.Goaps[0].Headline, FString(TEXT("PickGenreShelf")));
+    TestTrue(TEXT("status carries the plan cost"), Topology.Goaps[0].Status.Contains(TEXT("PlanFound")) && Topology.Goaps[0].Status.Contains(TEXT("4")));
+    TestEqual(TEXT("the chain is labelled for the reader"), Topology.Goaps[0].ChainLabel, FString(TEXT("Plan")));
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCkAiDebuggerEvidence_TopologyIdlePlannerHasNoChain,
+    "Ck.AiDebugger.Evidence.TopologyIdlePlannerHasNoChain", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCkAiDebuggerEvidence_TopologyIdlePlannerHasNoChain::RunTest(const FString&)
+{
+    // An idle planner is the noise the hierarchy exists to suppress: it must collapse to a single
+    // line with no detail row at all.
+    FCk_DebugOverlay_EntityModel Model;
+    auto Goap = ck_ai_debugger_evidence_spec::Section(TEXT("Ck.OnScreenDebugger.Provider.Goap"), 30, 0, TEXT("Roam_GOAP"));
+    Goap.Rows.Add(ck_ai_debugger_evidence_spec::Row(TEXT("Ck.OnScreenDebugger.Provider.Goap.Status"), TEXT("Idle")));
+    Goap.Rows.Add(ck_ai_debugger_evidence_spec::Row(TEXT("Ck.OnScreenDebugger.Provider.Goap.Active"), TEXT("(none)")));
+    Goap.Rows.Add(ck_ai_debugger_evidence_spec::Row(TEXT("Ck.OnScreenDebugger.Provider.Goap.Plan"), TEXT("(no plan)")));
+    Model.Sections = {Goap};
+
+    const auto Topology = ck::ai_debugger::evidence::NormalizeTopology(Model);
+    TestEqual(TEXT("an idle planner has nothing to chain"), Topology.Goaps[0].Chain.Num(), 0);
+    TestTrue(TEXT("an idle planner has no headline action"), Topology.Goaps[0].Headline.IsEmpty());
+    TestEqual(TEXT("an idle planner still reports its status"), Topology.Goaps[0].Status, FString(TEXT("Idle")));
+    return true;
+}
 #endif

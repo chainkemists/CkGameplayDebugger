@@ -6,6 +6,7 @@
 #include "CkEntityDebugOverlay/History/CkDebugOverlay_History.h"
 #include "CkEntityDebugOverlay/Model/CkDebugOverlay_Model.h"
 
+class ICk_DebugOverlay_Provider;
 class FCkDebug_ViewportPicker;
 class FCkCrowdDebugger_ViewModel;
 class SCkDebug_EventLog;
@@ -30,6 +31,17 @@ public:
     virtual auto Get_WindowDisplayName() const -> FText override { return FText::FromString(TEXT("AI Overview")); }
 
     static auto Is_AiEntity(const FCk_Handle& InEntity) -> bool;
+
+    /**
+     * Whether this exact entity carries AI evidence of its own — no lifetime-subtree walk.
+     *
+     * This is the picker's filter, matching how the Crowd, GOAP, and State Machine debuggers scope
+     * theirs. The picker itself widens a match to its owner chain up to the conceptual NPC, so
+     * matching the subtree here instead would make every ancestor of every AI sub-entity pickable
+     * (and would rebuild a full entity model per candidate per gather).
+     */
+    auto Is_AiPickCandidate(const FCk_Handle& InEntity) const -> bool;
+
     static auto OpenForEntity(const FCk_Handle& InEntity) -> void;
     auto Select_Entity(const FCk_Handle& InEntity, bool InBroadcast) -> void;
 
@@ -43,6 +55,8 @@ private:
     auto Build_IdentityPanel() -> TSharedRef<SWidget>;
     auto Build_StagePanel() -> TSharedRef<SWidget>;
     auto Get_StatusText() const -> FText;
+    auto Get_MaxNameDepth() const -> int32;
+    auto Get_ShortName(const FString& InFullName) const -> FString;
     auto Refresh_Roster() -> void;
     auto Refresh_Diagnostics(double InNow) -> void;
     auto Clear_Diagnostics() -> void;
@@ -55,6 +69,7 @@ private:
     FCk_DebugOverlay_EntityModel _Model;
     FCk_DebugOverlay_History _History;
     TSharedPtr<FCkDebug_ViewportPicker> _ViewportPicker;
+    TArray<TSharedPtr<ICk_DebugOverlay_Provider>> _AiProviders;
     TSharedPtr<FCkCrowdDebugger_ViewModel> _CrowdViewModel;
     TSharedPtr<SCkCrowdDebugger_3dViewport> _SpatialViewport;
     TSharedPtr<SCkDebug_EventLog> _EventLog;
@@ -63,6 +78,13 @@ private:
     TSharedPtr<SCkDebug_EvidenceList> _GoapTopologyList;
     TSharedPtr<SCkDebug_EvidenceList> _StateMachineTopologyList;
     FCkAiDebugger_EvidenceDeltaTracker _EvidenceDeltaTracker;
+
+    /** Display-name verbosity shared by every name this window renders. 0 = full name. */
+    int32 _NameDepth = 1;
+
+    /** Largest segment count across the current topology, recomputed each diagnostics refresh. */
+    int32 _MaxNameDepth = 1;
+
     double _LastRefreshTime = -1.0;
     FDelegateHandle _SessionInvalidatedHandle;
     FDelegateHandle _WorldInvalidatedHandle;

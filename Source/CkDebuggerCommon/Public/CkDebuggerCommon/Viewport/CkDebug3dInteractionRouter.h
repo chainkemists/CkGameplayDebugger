@@ -86,6 +86,12 @@ class CKDEBUGGERCOMMON_API ICkDebug3dInteractionAdapter
     Command(ECkDebug3dNeutralCommand InCommand) -> void
     {
     }
+    /** A right-click that never became a camera gesture, delivered at the cursor ray. Debuggers that
+     * command the world from the viewport (Crowd's move-to) implement this; everything else no-ops. */
+    virtual auto
+    Command_AtRay(const FCkDebug3dCursorRay& InRay) -> void
+    {
+    }
 };
 
 class CKDEBUGGERCOMMON_API FCkDebug3dInteractionConfig
@@ -97,6 +103,8 @@ class CKDEBUGGERCOMMON_API FCkDebug3dInteractionConfig
     Set_HoverThrottleSeconds(double InSeconds) -> FCkDebug3dInteractionConfig&;
     auto
     Get_ClickMovementThresholdSquared() const -> double;
+    auto
+    Get_ClickMovementThresholdPixels() const -> float;
     auto
     Get_HoverThrottleSeconds() const -> double;
 
@@ -119,6 +127,10 @@ class CKDEBUGGERCOMMON_API FCkDebug3dInteractionRouter final
                       const FCkDebug3dInteractionModifiers& InModifiers, const FCkDebug3dCursorRay& InRay = {}) -> bool;
     auto
     OnDragRay(const FCkDebug3dCursorRay& InRay) -> void;
+    /** Pixel movement reported while a button is held. Accumulated only while a right press is
+     * pending, so the release can tell a click apart from a free-look that recentred the cursor. */
+    auto
+    OnPointerMovement(float InDeltaPixels) -> void;
     auto
     OnWheel(float InDelta, const FCkDebug3dInteractionModifiers& InModifiers) -> bool;
     auto
@@ -140,6 +152,8 @@ class CKDEBUGGERCOMMON_API FCkDebug3dInteractionRouter final
     TWeakPtr<ICkDebug3dInteractionAdapter> _Adapter;
     FCkDebug3dInteractionConfig _Config;
     TOptional<FVector2D> _PendingLeftPress;
+    TOptional<FVector2D> _PendingRightPress;
+    double _RightPressMovement = 0.0;
     TOptional<uint64> _HoverIdentity;
     double _LastHoverQueryTime = -TNumericLimits<double>::Max();
     bool _ControlGesture = false;

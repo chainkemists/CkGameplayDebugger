@@ -56,6 +56,11 @@ struct FFakeAdapter final : ICkDebug3dInteractionAdapter
     {
         _Commands.Add(InCommand);
     }
+    virtual auto
+    Command_AtRay(const FCkDebug3dCursorRay& InRay) -> void override
+    {
+        _RayCommands.Add(InRay._Origin);
+    }
 
     TOptional<FCkDebug3dInteractionHit> _NextHit = FCkDebug3dInteractionHit{101, FVector{10.0, 0.0, 0.0}, 25.0f};
     int32 _HitQueries = 0;
@@ -68,6 +73,7 @@ struct FFakeAdapter final : ICkDebug3dInteractionAdapter
     TArray<TPair<uint64, bool>> _Selections;
     TArray<float> _PlaneShifts;
     TArray<ECkDebug3dNeutralCommand> _Commands;
+    TArray<FVector> _RayCommands;
 };
 
 auto
@@ -153,6 +159,104 @@ auto
     TestEqual(TEXT("hover suppresses during gesture"), Adapter->_HitQueries, 1);
     Router.OnFocusLost();
     TestFalse(TEXT("focus loss clears hover"), Adapter->_Hover.IsSet());
+    return true;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCkDebug3dInteractionRouter_RightClickCommands,
+                                 "Ck.DebuggerCommon.Viewport3d.Interaction.RightClickCommands",
+                                 ck_debug_3d_interaction_router_spec::TestFlags)
+auto
+    FCkDebug3dInteractionRouter_RightClickCommands::
+    RunTest(const FString&)
+    -> bool
+{
+    using namespace ck_debug_3d_interaction_router_spec;
+    const auto Adapter = MakeShared<FFakeAdapter>();
+    auto Router = MakeRouter(Adapter);
+
+    auto Ray = FCkDebug3dCursorRay{};
+    Ray._Origin = FVector{7.0, 8.0, 9.0};
+
+    // A press must never claim the button -- the camera owns RMB-drag.
+    TestFalse(TEXT("right press leaves the gesture to the camera"),
+              Router.OnPointerPressed(ECkDebug3dPointerButton::Right, FVector2D{10, 10}, {}, Ray));
+    TestTrue(TEXT("motionless right release commands"),
+             Router.OnPointerReleased(ECkDebug3dPointerButton::Right, FVector2D{10, 10}, {}, Ray));
+    TestEqual(TEXT("command delivered once"), Adapter->_RayCommands.Num(), 1);
+    TestEqual(TEXT("command carries the cursor ray"), Adapter->_RayCommands[0], FVector{7.0, 8.0, 9.0});
+    TestEqual(TEXT("a command is not a selection"), Adapter->_Selections.Num(), 0);
+
+    // A free-look recentres the cursor, so press and release positions can match after a large
+    // gesture. Accumulated axis movement is the only honest discriminator.
+    Router.OnPointerPressed(ECkDebug3dPointerButton::Right, FVector2D{10, 10}, {}, Ray);
+    Router.OnPointerMovement(6.0f);
+    TestFalse(TEXT("a look gesture is not a command even when the cursor returns"),
+              Router.OnPointerReleased(ECkDebug3dPointerButton::Right, FVector2D{10, 10}, {}, Ray));
+    TestEqual(TEXT("look gesture issued no command"), Adapter->_RayCommands.Num(), 1);
+
+    // Sub-threshold jitter still counts as a click.
+    Router.OnPointerPressed(ECkDebug3dPointerButton::Right, FVector2D{10, 10}, {}, Ray);
+    Router.OnPointerMovement(1.0f);
+    Router.OnPointerMovement(-1.0f);
+    TestTrue(TEXT("jitter under the threshold still commands"),
+             Router.OnPointerReleased(ECkDebug3dPointerButton::Right, FVector2D{10, 10}, {}, Ray));
+    TestEqual(TEXT("jittered click commanded"), Adapter->_RayCommands.Num(), 2);
+
+    // Losing focus mid-press must not leave a command armed.
+    Router.OnPointerPressed(ECkDebug3dPointerButton::Right, FVector2D{10, 10}, {}, Ray);
+    Router.OnFocusLost();
+    TestFalse(TEXT("focus loss disarms the pending command"),
+              Router.OnPointerReleased(ECkDebug3dPointerButton::Right, FVector2D{10, 10}, {}, Ray));
+    TestEqual(TEXT("no command after focus loss"), Adapter->_RayCommands.Num(), 2);
+
+    // A release with no press at all (button already down when the viewport gained focus).
+    TestFalse(TEXT("unpaired right release is inert"),
+              Router.OnPointerReleased(ECkDebug3dPointerButton::Right, FVector2D{99, 99}, {}, Ray));
+    TestEqual(TEXT("unpaired release issued no command"), Adapter->_RayCommands.Num(), 2);
+    return true;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCkDebug3dInteractionRouter_RightClickDefaultsInert,
+                                 "Ck.DebuggerCommon.Viewport3d.Interaction.RightClickDefaultsInert",
+                                 ck_debug_3d_interaction_router_spec::TestFlags)
+auto
+    FCkDebug3dInteractionRouter_RightClickDefaultsInert::
+    RunTest(const FString&)
+    -> bool
+{
+    using namespace ck_debug_3d_interaction_router_spec;
+
+    // Every debugger except Crowd leaves Command_AtRay defaulted. Right-click must stay a pure
+    // camera gesture for them -- no selection, no hit query, no behaviour change.
+    struct FDefaultAdapter final : ICkDebug3dInteractionAdapter
+    {
+        virtual auto
+        TryHit(const FCkDebug3dCursorRay&) -> TOptional<FCkDebug3dInteractionHit> override
+        {
+            ++_HitQueries;
+            return {};
+        }
+        virtual auto
+        Select(uint64, bool) -> void override
+        {
+            ++_Selections;
+        }
+        int32 _HitQueries = 0;
+        int32 _Selections = 0;
+    };
+
+    const auto Adapter = MakeShared<FDefaultAdapter>();
+    auto Router = FCkDebug3dInteractionRouter{
+        Adapter, FCkDebug3dInteractionConfig{}.Set_ClickMovementThresholdPixels(4.0f)};
+
+    Router.OnPointerPressed(ECkDebug3dPointerButton::Right, FVector2D{10, 10}, {});
+    Router.OnPointerReleased(ECkDebug3dPointerButton::Right, FVector2D{10, 10}, {});
+    TestEqual(TEXT("default adapter is never hit-queried by a right click"), Adapter->_HitQueries, 0);
+    TestEqual(TEXT("default adapter selection is untouched"), Adapter->_Selections, 0);
     return true;
 }
 

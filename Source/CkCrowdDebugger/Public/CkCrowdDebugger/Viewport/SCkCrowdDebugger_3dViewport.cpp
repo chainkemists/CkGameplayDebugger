@@ -205,6 +205,10 @@ auto
     ++_WorldEpoch;
     _Snapshot._WorldEpoch = _WorldEpoch;
     _Snapshot._Voxel = {};
+    // A new world invalidates the stamps: identical values across a world change must still force
+    // a reconcile, because the adapter resets its item keys on the epoch bump.
+    _AgentRevision = 0;
+    _QueueSignature = 0;
     _SnapshotDirty = true;
 }
 
@@ -245,6 +249,37 @@ auto
             ? TArray<uint64>{*_Snapshot._SelectedIdentity}
             : TArray<uint64>{});
     }
+
+    // Only mark dirty when something the scene actually renders has changed. Set_NavmeshTriangles
+    // already gates on a revision; agents did not, so "dirty" meant "a frame happened" and a full
+    // reconcile ran unconditionally. The stamp covers exactly the fields copied into the snapshot
+    // above, so nothing the scene draws can go stale behind it.
+    // Unqualified GetTypeHash throughout: FVector is UE::Math::TVector<double>, so its overload
+    // lives in UE::Math and is reached by ADL — a ::-qualified call does not find it.
+    auto Revision = GetTypeHash(_Snapshot._Agents.Num());
+    Revision = HashCombineFast(Revision, _Snapshot._SelectedIdentity.IsSet()
+        ? GetTypeHash(*_Snapshot._SelectedIdentity) : 0u);
+    for (const auto& Agent : _Snapshot._Agents)
+    {
+        Revision = HashCombineFast(Revision, GetTypeHash(Agent._Identity));
+        Revision = HashCombineFast(Revision, GetTypeHash(Agent._Position));
+        Revision = HashCombineFast(Revision, GetTypeHash(Agent._Velocity));
+        Revision = HashCombineFast(Revision, GetTypeHash(Agent._Radius));
+        Revision = HashCombineFast(Revision, GetTypeHash(Agent._Height));
+        // FLinearColor has no GetTypeHash overload; its components do.
+        Revision = HashCombineFast(Revision, GetTypeHash(Agent._StatusColor.R));
+        Revision = HashCombineFast(Revision, GetTypeHash(Agent._StatusColor.G));
+        Revision = HashCombineFast(Revision, GetTypeHash(Agent._StatusColor.B));
+        Revision = HashCombineFast(Revision, GetTypeHash(Agent._StatusColor.A));
+        Revision = HashCombineFast(Revision, GetTypeHash(Agent._PlannedPath.Num()));
+        for (const auto& Point : Agent._PlannedPath)
+        { Revision = HashCombineFast(Revision, GetTypeHash(Point)); }
+    }
+
+    if (Revision == _AgentRevision)
+    { return; }
+
+    _AgentRevision = Revision;
     _SnapshotDirty = true;
 }
 
@@ -318,6 +353,36 @@ auto
     Set_QueueSnapshots(const TArray<FCkCrowdDebugger_QueueSnapshot>& InQueues)
     -> void
 {
+    // Gated the same way Set_PathNetworkRibbons already is. This setter used to mark the snapshot
+    // dirty unconditionally on every frame, which on its own forced a full scene reconcile even
+    // when no queue had moved — and would have defeated the agent gate below it. The stamp covers
+    // the reservation geometry too, not just the queue Revision, so a rank change cannot go stale
+    // behind a producer that forgot to bump.
+    auto Signature = GetTypeHash(InQueues.Num());
+    for (const auto& Queue : InQueues)
+    {
+        Signature = HashCombineFast(Signature, GetTypeHash(Queue.Identity));
+        Signature = HashCombineFast(Signature, GetTypeHash(Queue.Revision));
+        Signature = HashCombineFast(Signature, GetTypeHash(Queue.State));
+        for (const auto& Origin : Queue.Origins)
+        {
+            Signature = HashCombineFast(Signature, GetTypeHash(Origin.Location));
+            Signature = HashCombineFast(Signature, GetTypeHash(Origin.Forward));
+        }
+        for (const auto& Member : Queue.Members)
+        {
+            Signature = HashCombineFast(Signature, GetTypeHash(Member.AgentIdentity));
+            Signature = HashCombineFast(Signature, GetTypeHash(Member.OriginIndex));
+            Signature = HashCombineFast(Signature, GetTypeHash(Member.Rank));
+            Signature = HashCombineFast(Signature, GetTypeHash(Member.ReservationLocation));
+            Signature = HashCombineFast(Signature, GetTypeHash(Member.ReservationForward));
+            Signature = HashCombineFast(Signature, GetTypeHash(Member.HasReservation ? 1 : 0));
+        }
+    }
+    if (Signature == _QueueSignature)
+    { return; }
+    _QueueSignature = Signature;
+
     auto Queues = TArray<FCkCrowdDebugger_3dQueueSnapshot>{};
     Queues.Reserve(InQueues.Num());
     for (const auto& Queue : InQueues)

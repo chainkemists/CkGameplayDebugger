@@ -92,6 +92,12 @@ private:
     uint64 _PathNetworkRevision = 1;
     uint32 _PathNetworkSignature = 0;
     bool _SnapshotDirty = true;
+
+    // Change stamp over the agent fields the scene consumes. 0 = never stamped.
+    uint32 _AgentRevision = 0;
+
+    // Change stamp over queue identity, revision, state and reservation geometry.
+    uint32 _QueueSignature = 0;
 };
 
 // --------------------------------------------------------------------------------------------------------------------

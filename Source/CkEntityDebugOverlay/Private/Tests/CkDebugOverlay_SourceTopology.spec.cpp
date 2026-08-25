@@ -36,8 +36,12 @@ bool FCkDebugOverlay_SourceTopology_BreadthFirstAndCycleSafe::RunTest(const FStr
     auto Dependents = ck_debugoverlay_source_topology_spec::MakeDependents();
     // A malformed revisit must not duplicate the root or move it behind a
     // descendant. The valid sibling order remains the input discovery order.
-    Dependents.FindChecked(500).Add(100);
-    Dependents.FindChecked(300).Add(200);
+    // FindOrAdd, not FindChecked: 500 is a leaf here — it appears as a VALUE under 300 and was
+    // never added as a key, so FindChecked fataled before this test reached its subject. A fixture
+    // that asserts takes the whole editor (and every test batched into its lane) down with it;
+    // a fixture that fails closed costs one red line.
+    Dependents.FindOrAdd(500).Add(100);
+    Dependents.FindOrAdd(300).Add(200);
 
     const auto Topology = Build_SourceTopology(100, Dependents);
     TestEqual(TEXT("root plus four unique descendants"), Topology.Num(), 5);

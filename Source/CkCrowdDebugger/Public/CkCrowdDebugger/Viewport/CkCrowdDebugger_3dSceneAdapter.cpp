@@ -149,6 +149,42 @@ AddRibbonTriangles(const FCkCrowdDebugger_3dRibbonSnapshot& InRibbon, TArray<FCk
     return true;
 }
 
+// Spatial bucket a navmesh triangle belongs to, from its centroid.
+//
+// 50m cells. The navmesh mesh is rebuilt whenever Recast rebakes ANY tile, and on a city-sized
+// map that was one ~194ms full-mesh rebuild for a change that touched a few metres. Bucketing
+// makes the rebuild proportional to the area that actually moved. The cell is a compromise: finer
+// cells localize better but each becomes its own static mesh and ISM component, and the ribbon
+// layer already shows that a few hundred cached static items sit at ~1ms once built.
+constexpr auto RecastBucketCellSize = 5000.0;
+
+auto
+Get_RecastBucketKey(
+    const FCk_DebugScene_Triangle& InTriangle) -> uint64
+{
+    const auto Centroid = (InTriangle._A + InTriangle._B + InTriangle._C) / 3.0;
+    const auto CellX = static_cast<int32>(FMath::FloorToInt(Centroid.X / RecastBucketCellSize));
+    const auto CellY = static_cast<int32>(FMath::FloorToInt(Centroid.Y / RecastBucketCellSize));
+
+    // Identity 0 is the "no item" sentinel elsewhere in this adapter, so bias off it.
+    return (static_cast<uint64>(static_cast<uint32>(CellX)) << 32)
+         | static_cast<uint64>(static_cast<uint32>(CellY)) | 0x1ull << 63;
+}
+
+auto
+Get_RecastBucketSignature(
+    const TArray<FCk_DebugScene_Triangle>& InTriangles) -> uint32
+{
+    auto Signature = GetTypeHash(InTriangles.Num());
+    for (const auto& Triangle : InTriangles)
+    {
+        Signature = HashCombineFast(Signature, GetTypeHash(Triangle._A));
+        Signature = HashCombineFast(Signature, GetTypeHash(Triangle._B));
+        Signature = HashCombineFast(Signature, GetTypeHash(Triangle._C));
+    }
+    return Signature;
+}
+
 auto
 AppendTwoSidedTriangle(
     const FCk_DebugScene_Triangle& InTriangle,
@@ -596,38 +632,90 @@ auto
         // Scope opens BEFORE the assembly loop so the trace attributes it here rather than to the
         // enclosing reconcile.
         TRACE_CPUPROFILER_EVENT_SCOPE(CkCrowdDbg_AdapterRecastMeshBuild);
-        auto Triangles = TArray<FCk_DebugScene_Triangle>{};
+        auto TrianglesByBucket = TMap<uint64, TArray<FCk_DebugScene_Triangle>>{};
         auto LogicalTriangleCount = 0;
         for (auto Index = 0; Index + 2 < InSnapshot._Recast._Triangles.Num(); Index += 3)
         {
             const auto SourceTriangle =
                 FCk_DebugScene_Triangle{InSnapshot._Recast._Triangles[Index], InSnapshot._Recast._Triangles[Index + 1],
                                          InSnapshot._Recast._Triangles[Index + 2]};
-            if (ck_crowd_debugger_3d_scene_adapter::AppendTwoSidedTriangle(SourceTriangle, Triangles))
+            const auto BucketKey = ck_crowd_debugger_3d_scene_adapter::Get_RecastBucketKey(SourceTriangle);
+            if (ck_crowd_debugger_3d_scene_adapter::AppendTwoSidedTriangle(
+                    SourceTriangle, TrianglesByBucket.FindOrAdd(BucketKey)))
             {
                 ++LogicalTriangleCount;
             }
         }
-        _StaticInstances.Remove(MakeItemKey(ECkCrowdDebugger_3dSceneRole::Recast, 1));
-        const auto RenderedTriangleCount = Triangles.Num();
-        if (NOT Triangles.IsEmpty() && NOT SubmitStatic(ECkCrowdDebugger_3dSceneRole::Recast, 1,
-                                                        FCk_DebugScene_Mesh::Create_FromTriangles(MoveTemp(Triangles)),
-                                                        FLinearColor{0.27f, 0.78f, 0.43f, 0.15f},
-                                                        ck_crowd_debugger_3d_scene_adapter::IsTransparent,
-                                                        FTransform::Identity, ECk_DebugScene_DepthPriority::World))
+        // Rebuild only the buckets whose geometry actually moved. Recast rebakes tiles constantly on
+        // a live map, and the revision cannot say WHICH part changed — so this hashes each bucket
+        // and rebuilds the ones that differ, re-submitting the rest from cache. A tile rebake used
+        // to cost a full-city mesh build.
+        auto RenderedTriangleCount = 0;
+        auto LiveBuckets = TSet<uint64>{};
+        for (auto& Bucket : TrianglesByBucket)
         {
-            InTarget.Abort_Reconcile();
-            return RestoreAndFail();
+            auto& BucketTriangles = Bucket.Value;
+            if (BucketTriangles.IsEmpty())
+            { continue; }
+
+            RenderedTriangleCount += BucketTriangles.Num();
+            LiveBuckets.Add(Bucket.Key);
+
+            const auto ItemKey = MakeItemKey(ECkCrowdDebugger_3dSceneRole::Recast, Bucket.Key);
+            const auto Signature = ck_crowd_debugger_3d_scene_adapter::Get_RecastBucketSignature(BucketTriangles);
+            const auto* CachedSignature = _RecastBucketSignatures.Find(Bucket.Key);
+            if (CachedSignature != nullptr && *CachedSignature == Signature)
+            {
+                if (const auto* Instances = _StaticInstances.Find(ItemKey))
+                {
+                    InTarget.Upsert_Item(ItemKey, *Instances);
+                    _RoleItems.FindOrAdd(ECkCrowdDebugger_3dSceneRole::Recast).Add(ItemKey);
+                    continue;
+                }
+            }
+
+            _StaticInstances.Remove(ItemKey);
+            if (NOT SubmitStatic(ECkCrowdDebugger_3dSceneRole::Recast, Bucket.Key,
+                                 FCk_DebugScene_Mesh::Create_FromTriangles(MoveTemp(BucketTriangles)),
+                                 FLinearColor{0.27f, 0.78f, 0.43f, 0.15f},
+                                 ck_crowd_debugger_3d_scene_adapter::IsTransparent,
+                                 FTransform::Identity, ECk_DebugScene_DepthPriority::World))
+            {
+                InTarget.Abort_Reconcile();
+                return RestoreAndFail();
+            }
+            _RecastBucketSignatures.Add(Bucket.Key, Signature);
         }
+
+        // Buckets that emptied out are dropped, including their interned item key, so neither map
+        // grows without bound as the navmesh reshapes.
+        for (auto It = _RecastBucketSignatures.CreateIterator(); It; ++It)
+        {
+            if (LiveBuckets.Contains(It.Key()))
+            { continue; }
+
+            _StaticInstances.Remove(MakeItemKey(ECkCrowdDebugger_3dSceneRole::Recast, It.Key()));
+            _InternalItemKeys.Remove(
+                FString::Printf(TEXT("%d:%llu"), static_cast<int32>(ECkCrowdDebugger_3dSceneRole::Recast),
+                                static_cast<unsigned long long>(It.Key())));
+            It.RemoveCurrent();
+        }
+
         _RecastRevision = InSnapshot._Recast._Revision;
         _RecastTriangleCount = LogicalTriangleCount;
         _RecastRenderedTriangleCount = RenderedTriangleCount;
     }
-    else if (const auto* Instances = _StaticInstances.Find(MakeItemKey(ECkCrowdDebugger_3dSceneRole::Recast, 1)))
+    else
     {
-        InTarget.Upsert_Item(MakeItemKey(ECkCrowdDebugger_3dSceneRole::Recast, 1), *Instances);
-        _RoleItems.FindOrAdd(ECkCrowdDebugger_3dSceneRole::Recast)
-            .Add(MakeItemKey(ECkCrowdDebugger_3dSceneRole::Recast, 1));
+        for (const auto& Bucket : _RecastBucketSignatures)
+        {
+            const auto ItemKey = MakeItemKey(ECkCrowdDebugger_3dSceneRole::Recast, Bucket.Key);
+            if (const auto* Instances = _StaticInstances.Find(ItemKey))
+            {
+                InTarget.Upsert_Item(ItemKey, *Instances);
+                _RoleItems.FindOrAdd(ECkCrowdDebugger_3dSceneRole::Recast).Add(ItemKey);
+            }
+        }
     }
     if (InSnapshot._PathNetwork._Revision == _RibbonRevision)
     {
@@ -875,6 +963,7 @@ auto
     _NonItemRoleCounts.Reset();
     _Appearances.Reset();
     _RoleAppearances.Reset();
+    _RecastBucketSignatures.Reset();
     _RecastTriangleCount = 0;
     _RecastRenderedTriangleCount = 0;
     _RibbonTriangleCounts.Reset();

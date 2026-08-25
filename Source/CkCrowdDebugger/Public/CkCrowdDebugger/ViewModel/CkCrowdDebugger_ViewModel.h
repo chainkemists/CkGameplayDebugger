@@ -68,18 +68,6 @@ public:
 	auto Get_Queues() const -> const TArray<FCkCrowdDebugger_QueueSnapshot>&
 	{ return _DataCollector.Get_Queues(); }
 
-	// Viewport camera orientation
-	auto Get_ViewYawDegrees() const -> float { return _DataCollector.Get_ViewYawDegrees(); }
-	auto Get_ViewYawValid() const -> bool { return _DataCollector.Get_ViewYawValid(); }
-
-	// View camera + player pawn pose. Forwarders only -- nothing reads these since the viewport
-	// became 3D; see the note on the collector's matching accessors.
-	auto Get_ViewCameraPosition() const -> FVector { return _DataCollector.Get_ViewCameraPosition(); }
-	auto Get_ViewCameraValid() const -> bool { return _DataCollector.Get_ViewCameraValid(); }
-	auto Get_PlayerPawnPosition() const -> FVector { return _DataCollector.Get_PlayerPawnPosition(); }
-	auto Get_PlayerPawnYawDegrees() const -> float { return _DataCollector.Get_PlayerPawnYawDegrees(); }
-	auto Get_PlayerPawnValid() const -> bool { return _DataCollector.Get_PlayerPawnValid(); }
-
 	// Pause
 	auto Set_Paused(bool InPaused) -> void;
 	auto Get_Paused() const -> bool { return _IsPaused; }

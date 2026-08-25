@@ -397,10 +397,41 @@ auto
         FCk_DebugScene_Target& InTarget)
     -> bool
 {
+    // Rollback state for the transactional reconcile below.
+    //
+    // This was `const auto PreviousState = *this;` — a member-wise deep copy of nine TMaps, three
+    // of them with heap-allocating values and several sized by agent count, executed on EVERY
+    // reconcile (i.e. every frame) and thrown away on the success path. TMap copy is not a memcpy:
+    // it allocates and re-inserts per element, so the undo buffer alone cost on the order of one
+    // allocation per agent per frame.
+    //
+    // CAREFUL: PreviousState is NOT only a rollback buffer. It is also read on the SUCCESS path as
+    // the previous-frame lookup — `PreviousState._RoleItems` and `PreviousState._RoleAppearances`
+    // are how an unchanged static layer re-registers its item keys and appearance. Those two must
+    // therefore still be COPIED; emptying them silently drops a static item from the reconcile and
+    // the target removes it (caught by Viewport3d.AllBoundsUnionAndStaticLayerChurn).
+    //
+    // The five per-agent maps are never read from PreviousState — only Reset() and re-Add()ed —
+    // so they are MOVED aside. A move leaves the member empty, which is exactly what the Reset()
+    // calls below want, and costs a pointer swap instead of one allocation per agent. That covers
+    // the expensive ones, including _AgentInstances, whose values are per-agent heap arrays.
+    auto PreviousAgentIndices      = MoveTemp(_AgentIndices);
+    auto PreviousAgentItemKeys     = MoveTemp(_AgentItemKeys);
+    auto PreviousAgentInstances    = MoveTemp(_AgentInstances);
+    auto PreviousNonItemRoleCounts = MoveTemp(_NonItemRoleCounts);
+    auto PreviousAppearances       = MoveTemp(_Appearances);
     const auto PreviousState = *this;
-    const auto RestoreAndFail = [this, &PreviousState]() -> bool
+    // Every failure site is a `return RestoreAndFail();`, so the moved-out state is consumed at
+    // most once per reconcile.
+    const auto RestoreAndFail = [&]() -> bool
     {
+        // _RoleItems / _RoleAppearances ride along in PreviousState; the moved-out five come back here.
         *this = PreviousState;
+        _AgentIndices      = MoveTemp(PreviousAgentIndices);
+        _AgentItemKeys     = MoveTemp(PreviousAgentItemKeys);
+        _AgentInstances    = MoveTemp(PreviousAgentInstances);
+        _NonItemRoleCounts = MoveTemp(PreviousNonItemRoleCounts);
+        _Appearances       = MoveTemp(PreviousAppearances);
         return false;
     };
     const auto InputsValid = InSnapshot._WorldEpoch != 0;
@@ -416,6 +447,8 @@ auto
         Reset_ForWorldChange(InTarget);
     }
     _WorldEpoch = InSnapshot._WorldEpoch;
+    // Free on the maps moved out above; retained so the cleared-state invariant does not depend
+    // on TMap's moved-from guarantees, and so the world-change path above stays correct.
     _AgentIndices.Reset();
     _AgentItemKeys.Reset();
     _AgentInstances.Reset();

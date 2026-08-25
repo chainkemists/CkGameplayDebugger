@@ -25,7 +25,7 @@ auto SCkDebug_EntityDebuggerLinks::Construct(const FArguments& InArgs) -> void
 
     ChildSlot
     [
-        SNew(SBorder)
+        SAssignNew(_Root, SBorder)
             .BorderImage(CkStyle::GetRoundedBrush())
             .BorderBackgroundColor(CkStyle::Bg2())
             .Padding(FMargin{CkStyle::SpaceS})
@@ -46,6 +46,19 @@ SCkDebug_EntityDebuggerLinks::~SCkDebug_EntityDebuggerLinks()
     { FCkDebuggerToolRegistry::Get().Get_OnChanged().Remove(_ToolChangedHandle); }
 }
 
+auto SCkDebug_EntityDebuggerLinks::Tick(
+    const FGeometry& InAllottedGeometry,
+    double           InCurrentTime,
+    float            InDeltaTime) -> void
+{
+    SCompoundWidget::Tick(InAllottedGeometry, InCurrentTime, InDeltaTime);
+
+    if (_Entity.Get() == _BuiltForEntity)
+    { return; }
+
+    Rebuild();
+}
+
 auto SCkDebug_EntityDebuggerLinks::Rebuild() -> void
 {
     if (NOT _Links.IsValid())
@@ -54,12 +67,13 @@ auto SCkDebug_EntityDebuggerLinks::Rebuild() -> void
     _Links->ClearChildren();
 
     const auto Entity = _Entity.Get();
+    _BuiltForEntity = Entity;
     auto TargetableTabs = TSet<FName>{};
     for (const auto TabId : FCkDebug_EntityTargetRegistry::Get().Get_TargetableTabs(Entity))
     { TargetableTabs.Add(TabId); }
     if (TargetableTabs.IsEmpty())
     {
-        SetVisibility(EVisibility::Collapsed);
+        if (_Root.IsValid()) { _Root->SetVisibility(EVisibility::Collapsed); }
         return;
     }
 
@@ -99,7 +113,8 @@ auto SCkDebug_EntityDebuggerLinks::Rebuild() -> void
         ++AddedCount;
     }
 
-    SetVisibility(AddedCount > 0 ? EVisibility::Visible : EVisibility::Collapsed);
+    if (_Root.IsValid())
+    { _Root->SetVisibility(AddedCount > 0 ? EVisibility::Visible : EVisibility::Collapsed); }
 }
 
 auto SCkDebug_EntityDebuggerLinks::OnOpenInClicked(FName InTabId) -> FReply

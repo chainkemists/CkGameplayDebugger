@@ -99,6 +99,77 @@ namespace ck_ai_debugger_evidence
         return TEXT("observed");
     }
 
+    // Request_CreateEntity stamps every entity with this sentinel until something renames it.
+    // Sub-state-machine and sub-planner entities are never renamed, so the sentinel reaches the
+    // hierarchy as a row title that identifies nothing.
+    auto Is_UnnamedSource(const FString& InSourceName) -> bool
+    {
+        return InSourceName.IsEmpty() || InSourceName.StartsWith(TEXT("NO NAME"));
+    }
+
+    auto Get_InstanceName(
+        const FCk_DebugOverlay_Section& InSection,
+        const TCHAR*                    InUnnamedKind) -> FString
+    {
+        const auto SourceName = InSection.SourceName.ToString();
+        if (NOT Is_UnnamedSource(SourceName))
+        { return SourceName; }
+
+        // The entity id is the only thing that distinguishes two unnamed siblings, so it is
+        // promoted into the visible title rather than left in the copy text.
+        return FString::Printf(TEXT("%s #%u"), InUnnamedKind, InSection.SourceEntityId);
+    }
+
+    auto Find_Row(
+        const FCk_DebugOverlay_Section& InSection,
+        const TCHAR*                    InFieldLeaf) -> const FCk_DebugOverlay_Row*
+    {
+        return InSection.Rows.FindByPredicate([InFieldLeaf](const FCk_DebugOverlay_Row& InRow)
+        { return Get_Leaf(InRow.FieldTag.ToString()) == InFieldLeaf; });
+    }
+
+    auto Get_RowValue(
+        const FCk_DebugOverlay_Section& InSection,
+        const TCHAR*                    InFieldLeaf) -> FString
+    {
+        const auto* Row = Find_Row(InSection, InFieldLeaf);
+        return Row != nullptr ? Row->Value.ToString() : FString{};
+    }
+
+    // A chain level is emitted by the State Machine provider as a "> "-prefixed State row. The
+    // prefix count IS the nesting level, so it is consumed here rather than rendered.
+    auto Split_ChainPrefix(const FString& InValue, int32& OutLevel) -> FString
+    {
+        auto Remaining = InValue;
+        OutLevel = 0;
+        while (Remaining.StartsWith(TEXT("> ")))
+        {
+            ++OutLevel;
+            Remaining = Remaining.RightChop(2);
+        }
+        return Remaining;
+    }
+
+    auto Get_ChainFromRow(const FCk_DebugOverlay_Row* InRow) -> TArray<FString>
+    {
+        auto Chain = TArray<FString>{};
+        if (InRow == nullptr)
+        { return Chain; }
+
+        // ExplicitHistory is the untruncated form when the provider supplies one; the value
+        // string is a display summary that may have been capped.
+        if (NOT InRow->ExplicitHistory.IsEmpty())
+        {
+            for (const auto& Entry : InRow->ExplicitHistory) { Chain.Add(Entry.ToString()); }
+            return Chain;
+        }
+
+        const auto Value = InRow->Value.ToString();
+        if (Value.IsEmpty()) { return Chain; }
+        Value.ParseIntoArray(Chain, TEXT(" > "), true);
+        return Chain;
+    }
+
     auto Compose_TopologyDetail(const FCk_DebugOverlay_Section& InSection) -> FString
     {
         auto Rows = TArray<FString>{};
@@ -203,24 +274,110 @@ auto ck::ai_debugger::evidence::Normalize(const FCk_DebugOverlay_EntityModel& In
 
 auto ck::ai_debugger::evidence::NormalizeTopology(const FCk_DebugOverlay_EntityModel& InModel) -> FCkAiDebugger_Topology
 {
+    using namespace ck_ai_debugger_evidence;
+
     auto Result = FCkAiDebugger_Topology{};
+
+    const auto Make_BaseNode = [](const FCk_DebugOverlay_Section& InSection) -> FCkAiDebugger_TopologyNode
+    {
+        auto Node = FCkAiDebugger_TopologyNode{};
+        Node.SourceEntityId = InSection.SourceEntityId;
+        Node.ParentSourceEntityId = InSection.ParentSourceEntityId;
+        Node.Depth = InSection.SourceDepth;
+        Node.SourceOrder = InSection.SourceOrder;
+        Node.Detail = Compose_TopologyDetail(InSection);
+        Node.Tone = To_Tone(ck_debugoverlay::Get_MaxSeverity(InSection.Rows));
+        return Node;
+    };
+
     for (const auto& Section : InModel.Sections)
     {
-        const auto Category = ck_ai_debugger_evidence::Get_Category(Section.ProviderTag.ToString());
+        const auto Category = Get_Category(Section.ProviderTag.ToString());
         if (Category != TEXT("GOAP") && Category != TEXT("STATE")) { continue; }
 
-        auto Node = FCkAiDebugger_TopologyNode{};
-        Node.SourceEntityId = Section.SourceEntityId;
-        Node.ParentSourceEntityId = Section.ParentSourceEntityId;
-        Node.Depth = Section.SourceDepth;
-        Node.SourceOrder = Section.SourceOrder;
-        Node.Name = Section.SourceName.IsEmpty() ? ck_ai_debugger_evidence::Get_Leaf(Section.ProviderTag.ToString()) : Section.SourceName.ToString();
-        Node.Detail = ck_ai_debugger_evidence::Compose_TopologyDetail(Section);
-        Node.Tone = ck_ai_debugger_evidence::To_Tone(ck_debugoverlay::Get_MaxSeverity(Section.Rows));
-        Node.State = ck_ai_debugger_evidence::Get_TopologyState(Node.Tone);
-        Node.StableKey = FString::Printf(TEXT("%s|%u|%u|%d"), *Section.ProviderTag.ToString(), Node.SourceEntityId, Node.ParentSourceEntityId, Node.Depth);
-        if (Category == TEXT("GOAP")) { Result.Goaps.Add(MoveTemp(Node)); }
-        else { Result.StateMachines.Add(MoveTemp(Node)); }
+        if (Category == TEXT("GOAP"))
+        {
+            auto Node = Make_BaseNode(Section);
+            Node.Name = Get_InstanceName(Section, TEXT("Planner"));
+
+            // Active is what the planner is DOING. The status word alone reads the same for a
+            // planner mid-plan and one that has nothing to run, so the action is the headline.
+            const auto Active = Get_RowValue(Section, TEXT("Active"));
+            Node.Headline = Active == TEXT("(none)") ? FString{} : Active;
+
+            const auto Status = Get_RowValue(Section, TEXT("Status"));
+            const auto Cost = Get_RowValue(Section, TEXT("Cost"));
+            Node.Status = Status;
+            if (NOT Node.Status.IsEmpty() && NOT Cost.IsEmpty())
+            { Node.Status += FString::Printf(TEXT(" · cost %s"), *Cost); }
+
+            const auto* PlanRow = Find_Row(Section, TEXT("Plan"));
+            auto Plan = Get_ChainFromRow(PlanRow);
+            if (Plan.Num() == 1 && Plan[0] == TEXT("(no plan)")) { Plan.Reset(); }
+            if (NOT Plan.IsEmpty())
+            {
+                Node.Chain = MoveTemp(Plan);
+                Node.ChainLabel = TEXT("Plan");
+            }
+
+            Node.StableKey = FString::Printf(TEXT("%s|%u|%u|%d"),
+                *Section.ProviderTag.ToString(), Node.SourceEntityId, Node.ParentSourceEntityId, Node.Depth);
+            Result.Goaps.Add(MoveTemp(Node));
+            continue;
+        }
+
+        // ---- State Machine: one node per nested level of this source's chain ----
+        // The provider walks into every live sub-state-machine and emits a "> "-prefixed State row
+        // per level. Collapsing that into one node is what hid the nesting; each level becomes its
+        // own row, indented by the level it was found at.
+        const auto InstanceName = Get_InstanceName(Section, TEXT("State machine"));
+        const auto* TrailRow = Find_Row(Section, TEXT("History"));
+        const auto Trail = Get_ChainFromRow(TrailRow);
+
+        auto EmittedLevels = 0;
+        for (const auto& Row : Section.Rows)
+        {
+            if (Get_Leaf(Row.FieldTag.ToString()) != TEXT("State")) { continue; }
+
+            auto ChainLevel = 0;
+            const auto StateName = Split_ChainPrefix(Row.Value.ToString(), ChainLevel);
+
+            auto Node = Make_BaseNode(Section);
+            Node.ChainLevel = ChainLevel;
+            Node.Depth = Section.SourceDepth + ChainLevel;
+            Node.Name = ChainLevel == 0
+                ? InstanceName
+                : FString::Printf(TEXT("%s ▸ sub"), *InstanceName);
+            Node.Headline = StateName;
+            Node.Tone = To_Tone(Row.Severity);
+            Node.Status = Get_TopologyState(Node.Tone);
+
+            // The transition trail belongs to the source entity as a whole, so it hangs off the
+            // level that IS that entity rather than repeating down every nested level.
+            if (ChainLevel == 0 && NOT Trail.IsEmpty())
+            {
+                Node.Chain = Trail;
+                Node.ChainLabel = TEXT("Trail");
+            }
+
+            Node.StableKey = FString::Printf(TEXT("%s|%u|%u|%d|%d"),
+                *Section.ProviderTag.ToString(), Node.SourceEntityId, Node.ParentSourceEntityId,
+                Node.Depth, EmittedLevels);
+            Result.StateMachines.Add(MoveTemp(Node));
+            ++EmittedLevels;
+        }
+
+        // A source that collected no State row is still a live instance; retaining it is the
+        // contract that keeps every nested runtime instance visible.
+        if (EmittedLevels == 0)
+        {
+            auto Node = Make_BaseNode(Section);
+            Node.Name = InstanceName;
+            Node.Status = Get_TopologyState(Node.Tone);
+            Node.StableKey = FString::Printf(TEXT("%s|%u|%u|%d|0"),
+                *Section.ProviderTag.ToString(), Node.SourceEntityId, Node.ParentSourceEntityId, Node.Depth);
+            Result.StateMachines.Add(MoveTemp(Node));
+        }
     }
 
     const auto SortNodes = [](TArray<FCkAiDebugger_TopologyNode>& InNodes)
@@ -228,6 +385,7 @@ auto ck::ai_debugger::evidence::NormalizeTopology(const FCk_DebugOverlay_EntityM
         InNodes.Sort([](const auto& InLeft, const auto& InRight)
         {
             if (InLeft.SourceOrder != InRight.SourceOrder) { return InLeft.SourceOrder < InRight.SourceOrder; }
+            if (InLeft.ChainLevel != InRight.ChainLevel) { return InLeft.ChainLevel < InRight.ChainLevel; }
             return InLeft.StableKey < InRight.StableKey;
         });
     };

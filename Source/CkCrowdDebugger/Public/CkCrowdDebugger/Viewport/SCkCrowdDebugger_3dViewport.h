@@ -10,6 +10,7 @@
 #include "Widgets/SCompoundWidget.h"
 
 DECLARE_DELEGATE_OneParam(FOnCkCrowdDebugger_AgentPicked, int32 /*AgentIndex*/);
+DECLARE_DELEGATE_OneParam(FOnCkCrowdDebugger_WorldCommanded, const FVector& /*WorldDestination*/);
 
 // --------------------------------------------------------------------------------------------------------------------
 // A deliberately isolated 3D inspection surface. It renders value-only Unreal navmesh, VoxelNav, path-network, and
@@ -34,6 +35,7 @@ class CKCROWDDEBUGGER_API SCkCrowdDebugger_3dViewport final : public SCompoundWi
 public:
     SLATE_BEGIN_ARGS(SCkCrowdDebugger_3dViewport) {}
         SLATE_EVENT(FOnCkCrowdDebugger_AgentPicked, OnAgentPicked)
+        SLATE_EVENT(FOnCkCrowdDebugger_WorldCommanded, OnWorldCommanded)
     SLATE_END_ARGS()
 
     auto
@@ -91,6 +93,7 @@ private:
     FCkCrowdDebugger_3dSceneSnapshot _Snapshot;
 
     FOnCkCrowdDebugger_AgentPicked _OnAgentPicked;
+    FOnCkCrowdDebugger_WorldCommanded _OnWorldCommanded;
     uint64 _WorldEpoch = 1;
     uint64 _PathNetworkRevision = 1;
     uint32 _PathNetworkSignature = 0;

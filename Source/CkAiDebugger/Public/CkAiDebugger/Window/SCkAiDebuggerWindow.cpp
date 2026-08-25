@@ -37,6 +37,7 @@
 #include "Engine/Engine.h"
 #include "Engine/World.h"
 #include "HAL/PlatformTime.h"
+#include "ProfilingDebugging/CpuProfilerTrace.h"
 #include "Misc/App.h"
 #include "Widgets/Layout/SSplitter.h"
 #include "Widgets/SBoxPanel.h"
@@ -252,6 +253,7 @@ SCkAiDebuggerWindow::~SCkAiDebuggerWindow()
 
 auto SCkAiDebuggerWindow::Tick(const FGeometry& InGeometry, double InNow, float InDeltaSeconds) -> void
 {
+    TRACE_CPUPROFILER_EVENT_SCOPE(CkAiDbg_WindowTick);
     SCkDebugger_WindowBase::Tick(InGeometry, InNow, InDeltaSeconds);
     if (_ViewportPicker.IsValid()) { _ViewportPicker->Tick(InDeltaSeconds); }
 
@@ -260,7 +262,10 @@ auto SCkAiDebuggerWindow::Tick(const FGeometry& InGeometry, double InNow, float 
     { _ActiveWorld = World; }
     if (_CrowdViewModel.IsValid())
     {
-        _CrowdViewModel->Tick(World, InDeltaSeconds);
+        {
+            TRACE_CPUPROFILER_EVENT_SCOPE(CkAiDbg_CrowdViewModelTick);
+            _CrowdViewModel->Tick(World, InDeltaSeconds);
+        }
         if (_SpatialViewport.IsValid())
         {
             _SpatialViewport->Set_NavmeshTriangles(
@@ -270,7 +275,10 @@ auto SCkAiDebuggerWindow::Tick(const FGeometry& InGeometry, double InNow, float 
             _SpatialViewport->Set_PathNetworkRibbons(_CrowdViewModel->Get_PathNetworkRibbons());
             _SpatialViewport->Set_QueueSnapshots(_CrowdViewModel->Get_Queues());
         }
-        Refresh_Roster();
+        {
+            TRACE_CPUPROFILER_EVENT_SCOPE(CkAiDbg_RefreshRoster);
+            Refresh_Roster();
+        }
     }
     if (InNow - _LastRefreshTime < ck_ai_debugger_window::RefreshInterval) { return; }
     _LastRefreshTime = InNow;
@@ -383,6 +391,7 @@ auto SCkAiDebuggerWindow::Is_AiModel(const FCk_DebugOverlay_EntityModel& InModel
 
 auto SCkAiDebuggerWindow::Build_Model(const FCk_Handle& InEntity, double InNow) -> FCk_DebugOverlay_EntityModel
 {
+    TRACE_CPUPROFILER_EVENT_SCOPE(CkAiDbg_BuildModel);
     const auto EntityIsValid = ck::IsValid(InEntity);
     CK_ENSURE_IF_NOT(EntityIsValid, TEXT("AI Overview cannot build a model for an invalid entity"))
     {}
@@ -700,7 +709,7 @@ auto SCkAiDebuggerWindow::HandleSessionInvalidated() -> void
     _ActiveWorld.Reset();
     Clear_Diagnostics();
     if (_CrowdViewModel.IsValid()) { _CrowdViewModel->Reset_ForWorldChange(); }
-    if (_SpatialViewport.IsValid()) { _SpatialViewport->Clear_VoxelNavSnapshot(); }
+    if (_SpatialViewport.IsValid()) { _SpatialViewport->Notify_WorldChanged(); }
     if (_HealthList.IsValid()) { _HealthList->Clear_Items(); }
 }
 
@@ -720,6 +729,7 @@ auto SCkAiDebuggerWindow::HandleWorldInvalidated(UWorld* InWorld) -> void
 
 auto SCkAiDebuggerWindow::Refresh_Diagnostics(double InNow) -> void
 {
+    TRACE_CPUPROFILER_EVENT_SCOPE(CkAiDbg_RefreshDiagnostics);
     const auto Facts = ck::ai_debugger::evidence::Normalize(_Model);
     if (_CurrentEvidenceList.IsValid())
     {

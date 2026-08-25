@@ -1,4 +1,5 @@
 #include "CkCrowdDebugger/Viewport/CkCrowdDebugger_3dSceneAdapter.h"
+#include "ProfilingDebugging/CpuProfilerTrace.h"
 
 #include "CkCore/Ensure/CkEnsure.h"
 #include "CkDebugScene/CkDebugScene_Materials.h"
@@ -397,6 +398,7 @@ auto
         FCk_DebugScene_Target& InTarget)
     -> bool
 {
+    TRACE_CPUPROFILER_EVENT_SCOPE(CkCrowdDbg_AdapterReconcile);
     // Rollback state for the transactional reconcile below.
     //
     // This was `const auto PreviousState = *this;` — a member-wise deep copy of nine TMaps, three
@@ -603,6 +605,9 @@ auto
                 ++LogicalTriangleCount;
             }
         }
+        // Rebuilds the ENTIRE navmesh mesh and re-submits it. Runs whenever the recast revision
+        // changes — which the collector currently bumps once a second regardless of change.
+        TRACE_CPUPROFILER_EVENT_SCOPE(CkCrowdDbg_AdapterRecastMeshBuild);
         _StaticInstances.Remove(MakeItemKey(ECkCrowdDebugger_3dSceneRole::Recast, 1));
         const auto RenderedTriangleCount = Triangles.Num();
         if (NOT Triangles.IsEmpty() && NOT SubmitStatic(ECkCrowdDebugger_3dSceneRole::Recast, 1,

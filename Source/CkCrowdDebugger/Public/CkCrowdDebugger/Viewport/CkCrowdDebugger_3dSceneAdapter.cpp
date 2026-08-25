@@ -593,6 +593,9 @@ auto
     }
     if (InSnapshot._Recast._Revision != _RecastRevision)
     {
+        // Scope opens BEFORE the assembly loop so the trace attributes it here rather than to the
+        // enclosing reconcile.
+        TRACE_CPUPROFILER_EVENT_SCOPE(CkCrowdDbg_AdapterRecastMeshBuild);
         auto Triangles = TArray<FCk_DebugScene_Triangle>{};
         auto LogicalTriangleCount = 0;
         for (auto Index = 0; Index + 2 < InSnapshot._Recast._Triangles.Num(); Index += 3)
@@ -605,9 +608,6 @@ auto
                 ++LogicalTriangleCount;
             }
         }
-        // Rebuilds the ENTIRE navmesh mesh and re-submits it. Runs whenever the recast revision
-        // changes — which the collector currently bumps once a second regardless of change.
-        TRACE_CPUPROFILER_EVENT_SCOPE(CkCrowdDbg_AdapterRecastMeshBuild);
         _StaticInstances.Remove(MakeItemKey(ECkCrowdDebugger_3dSceneRole::Recast, 1));
         const auto RenderedTriangleCount = Triangles.Num();
         if (NOT Triangles.IsEmpty() && NOT SubmitStatic(ECkCrowdDebugger_3dSceneRole::Recast, 1,

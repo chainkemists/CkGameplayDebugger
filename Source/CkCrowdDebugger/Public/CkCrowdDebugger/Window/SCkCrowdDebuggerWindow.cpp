@@ -202,7 +202,7 @@ auto SCkCrowdDebuggerWindow::HandleWorldChanged(UWorld*) -> void
 	if (_ViewModel.IsValid())
 	{ _ViewModel->Reset_ForWorldChange(); }
 	if (_ViewportPanel.IsValid())
-	{ _ViewportPanel->Clear_VoxelNavSnapshot(); }
+	{ _ViewportPanel->Notify_WorldChanged(); }
 	_VoxelRefreshRequested = true;
 }
 

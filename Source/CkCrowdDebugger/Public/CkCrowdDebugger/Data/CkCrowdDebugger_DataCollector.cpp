@@ -1,6 +1,7 @@
 #include "CkCrowdDebugger/Data/CkCrowdDebugger_DataCollector.h"
 
 #include "CkCore/Macros/CkMacros.h"
+#include "ProfilingDebugging/CpuProfilerTrace.h"
 
 #include "CkEcs/EntityLifetime/CkEntityLifetime_Utils.h"
 #include "CkEcs/EntityLifetime/CkEntityLifetime_Fragment.h"
@@ -109,6 +110,7 @@ auto FCkCrowdDebugger_DataCollector::Reset_ForWorldChange() -> void
 	_PathNetworkRibbons.Reset();
 	_Queues.Reset();
 	_NavGeomLastPullTime = -1.0;
+	_NavGeomSignature = 0;
 	_ViewYawValid = false;
 	_ViewCameraValid = false;
 	_PlayerPawnValid = false;
@@ -122,6 +124,7 @@ auto
 	Collect(UWorld* InWorld, const FCk_Handle& InSelectedAgent)
 	-> void
 {
+	TRACE_CPUPROFILER_EVENT_SCOPE(CkCrowdDbg_Collect);
 	_Agents.Reset();
 	_PathNetworkRibbons.Reset();
 	_Queues.Reset();
@@ -242,23 +245,40 @@ auto
 				const auto Now = FPlatformTime::Seconds();
 				if (_NavGeomLastPullTime < 0.0 || (Now - _NavGeomLastPullTime) > 1.0)
 				{
+					// Prime suspect: gathers EVERY navmesh tile, then unconditionally bumps the
+					// revision so the whole mesh is re-copied, rebuilt and re-uploaded downstream.
+					TRACE_CPUPROFILER_EVENT_SCOPE(CkCrowdDbg_NavmeshGeometryPull);
 					_NavGeomLastPullTime = Now;
-					_NavTriVerts.Reset();
 
 					auto Geom = FRecastDebugGeometry{};
 					NavData->GetDebugGeometryForTile(Geom, FNavTileRef{}); // invalid TileRef = gather all tiles
 
+					auto PulledVerts = TArray<FVector>{};
 					for (auto Area = 0; Area < RECAST_MAX_AREAS; ++Area)
 					{
 						const auto& Indices = Geom.AreaIndices[Area];
-						_NavTriVerts.Reserve(_NavTriVerts.Num() + Indices.Num());
+						PulledVerts.Reserve(PulledVerts.Num() + Indices.Num());
 						for (const auto Idx : Indices)
 						{
 							if (Geom.MeshVerts.IsValidIndex(Idx))
-							{ _NavTriVerts.Add(Geom.MeshVerts[Idx]); }
+							{ PulledVerts.Add(Geom.MeshVerts[Idx]); }
 						}
 					}
-					++_NavGeometryRevision;
+
+					// Bump the revision only when the geometry ACTUALLY changed. This used to bump
+					// on every pull, i.e. once a second forever, and the revision is what makes the
+					// scene adapter rebuild the whole navmesh static mesh — a ~245ms job on a real
+					// map. A navmesh that never rebakes must never pay that more than once.
+					auto Signature = GetTypeHash(PulledVerts.Num());
+					for (const auto& Vert : PulledVerts)
+					{ Signature = HashCombineFast(Signature, GetTypeHash(Vert)); }
+
+					if (Signature != _NavGeomSignature)
+					{
+						_NavGeomSignature = Signature;
+						_NavTriVerts = MoveTemp(PulledVerts);
+						++_NavGeometryRevision;
+					}
 				}
 			}
 			else
@@ -308,6 +328,7 @@ auto
 	auto TransientEntity = UCk_Utils_EcsWorld_Subsystem_UE::Get_TransientEntity(InWorld);
 	if (ck::IsValid(TransientEntity))
 	{
+		TRACE_CPUPROFILER_EVENT_SCOPE(CkCrowdDbg_PathNetworkRibbons_Ecs);
 		// Runtime-created networks, including the Path Network gym, have no actor. Authority-side
 		// actor networks are bridged into the same ECS representation at BeginPlay.
 		const auto WorldRibbons = UCk_Utils_PathNetwork_UE::Get_AllRibbonsInWorld(TransientEntity);
@@ -367,6 +388,8 @@ auto
 
 	// The path-network actor deliberately constructs ECS state on authority only. Preserve the
 	// previous actor-authored debugger view on clients without duplicating authority-side ribbons.
+	{
+	TRACE_CPUPROFILER_EVENT_SCOPE(CkCrowdDbg_PathNetworkRibbons_ActorIterator);
 	for (TActorIterator<ACk_PathNetwork_UE> It(InWorld); It; ++It)
 	{
 		const auto* NetworkActor = *It;
@@ -377,20 +400,26 @@ auto
 
 		AppendPathNetworkRibbons(NetworkActor->Get_WorldRibbons());
 	}
+	}
 
 	if (NOT ck::IsValid(TransientEntity))
 	{ return; }
 
+	{
+	TRACE_CPUPROFILER_EVENT_SCOPE(CkCrowdDbg_SampleAllAgents);
 	TransientEntity.View<ck::FFragment_CrowdAgent_Params>().ForEach(
 		[this, &TransientEntity, &InSelectedAgent](FCk_Entity InEntity, const ck::FFragment_CrowdAgent_Params&)
 		{
 			auto Handle = ck::MakeHandle(InEntity, TransientEntity);
 			SampleAgent(Handle, InSelectedAgent);
 		});
+	}
 
 	// Queue is collected as a detached runtime DTO then projected into debugger-local values.  The
 	// resulting Crowd snapshot contains no queue fragment, handle or registry reference, and stays
 	// safe after PIE teardown exactly like existing path/network rows.
+	{
+	TRACE_CPUPROFILER_EVENT_SCOPE(CkCrowdDbg_QueueProjection);
 	for (const auto& Queue : UCk_Utils_Queue_UE::Get_DebugSnapshots(TransientEntity))
 	{
 		auto QueueCopy = FCkCrowdDebugger_QueueSnapshot{};
@@ -419,6 +448,7 @@ auto
 			}
 		}
 		_Queues.Add(MoveTemp(QueueCopy));
+	}
 	}
 
 	// Note: per-tick Collect does NOT clear _HealthCheckRun fields — they're sticky
@@ -492,6 +522,7 @@ auto
 	SampleAgent(FCk_Handle InHandle, const FCk_Handle& InSelectedAgent)
 	-> void
 {
+	TRACE_CPUPROFILER_EVENT_SCOPE(CkCrowdDbg_SampleAgent);
 	if (NOT ck::IsValid(InHandle))
 	{ return; }
 

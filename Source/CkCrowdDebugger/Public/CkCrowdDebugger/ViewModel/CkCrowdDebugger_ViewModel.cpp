@@ -1,6 +1,7 @@
 #include "CkCrowdDebugger/ViewModel/CkCrowdDebugger_ViewModel.h"
 
 #include "CkCore/Macros/CkMacros.h"
+#include "ProfilingDebugging/CpuProfilerTrace.h"
 
 #include "EngineGlobals.h"
 #include "HAL/IConsoleManager.h"
@@ -29,6 +30,7 @@ auto
 	Tick(UWorld* InWorld, float InDeltaTime)
 	-> void
 {
+	TRACE_CPUPROFILER_EVENT_SCOPE(CkCrowdDbg_ViewModelTick);
 	_LastWorld = InWorld;
 
 	if (_IsPaused)
@@ -54,7 +56,11 @@ auto
 	// stuck at 0 even after NeighborSync populated the cache). The AgentListPanel already
 	// restores selection by handle after rebuild (see OnAgentListChanged), so per-frame
 	// broadcast is safe; cost is rebuilding ~N TSharedPtr items per tick at typical N≤150.
-	OnAgentListChanged.Broadcast(_DataCollector.Get_AllAgents());
+	{
+		// Rebuilds/refreshes the agent list rows every frame.
+		TRACE_CPUPROFILER_EVENT_SCOPE(CkCrowdDbg_BroadcastAgentList);
+		OnAgentListChanged.Broadcast(_DataCollector.Get_AllAgents());
+	}
 	_LastAgentCount = _DataCollector.Get_AgentCount();
 
 	if (ck::IsValid(_SelectedHandle))

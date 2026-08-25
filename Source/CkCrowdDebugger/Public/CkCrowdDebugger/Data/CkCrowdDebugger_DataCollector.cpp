@@ -38,10 +38,6 @@
 #include "HAL/PlatformTime.h"
 #include "HAL/IConsoleManager.h"
 
-#if WITH_EDITOR
-#include "Editor.h"
-#include "LevelEditorViewport.h"
-#endif
 #include "NavigationSystem.h"
 #include "NavMesh/RecastNavMesh.h"
 #include "NavFilters/NavigationQueryFilter.h"
@@ -111,9 +107,6 @@ auto FCkCrowdDebugger_DataCollector::Reset_ForWorldChange() -> void
 	_Queues.Reset();
 	_NavGeomLastPullTime = -1.0;
 	_NavGeomSignature = 0;
-	_ViewYawValid = false;
-	_ViewCameraValid = false;
-	_PlayerPawnValid = false;
 	_PlayerPawnEntity = FCk_Handle{};
 }
 
@@ -138,7 +131,6 @@ auto
 	_NavmeshStatus._SupportedAgents = 0;
 	_NavmeshStatus._LastRegenTimestamp = -1.0;
 	_NavmeshStatus._NavBoundsValid = false;
-	_ViewYawValid = false;
 
 	// Per CkDebuggerCommon convention: guard on world validity AND HasBegunPlay
 	// (worlds appear in GEngine->GetWorldContexts before BeginPlay).
@@ -148,37 +140,8 @@ auto
 	if (NOT InWorld->HasBegunPlay())
 	{ return; }
 
-	// Sample the view yaw so the viewport can orient to the camera.
-	auto GotView = false;
-
-#if WITH_EDITOR
-	// When ejected from PIE (F8) the live camera is the editor's perspective viewport, NOT any PIE
-	// player controller (whose view freezes on the abandoned pawn). GEditor->bIsSimulatingInEditor is
-	// true in that ejected/Simulate state, so pull the yaw straight from the level-editor viewport.
-	if (GEditor != nullptr && GEditor->bIsSimulatingInEditor)
-	{
-		auto* ViewportClient = GCurrentLevelEditingViewportClient;
-		if (ViewportClient == nullptr || NOT ViewportClient->IsPerspective())
-		{
-			for (auto* Client : GEditor->GetLevelViewportClients())
-			{
-				if (Client != nullptr && Client->IsPerspective())
-				{ ViewportClient = Client; break; }
-			}
-		}
-		if (ViewportClient != nullptr)
-		{
-			_ViewYawDegrees = ViewportClient->GetViewRotation().Yaw;
-			_ViewYawValid = true;
-			_ViewCameraPosition = ViewportClient->GetViewLocation();
-			_ViewCameraValid = true;
-			GotView = true;
-		}
-	}
-#endif
-
-	// Local player's CURRENT controller (not GetFirstPlayerController, which can
-	// return a stale PC) — view yaw source while possessed, pawn pose always.
+	// Local player's CURRENT controller (not GetFirstPlayerController, which can return a stale PC).
+	// Resolved solely to reach the pawn's entity for PlayerProxy row tagging.
 	auto* ViewPC = static_cast<APlayerController*>(nullptr);
 	{
 		if (GEngine != nullptr)
@@ -190,32 +153,12 @@ auto
 		{ ViewPC = InWorld->GetFirstPlayerController(); }
 	}
 
-	if (NOT GotView && ViewPC != nullptr)
-	{
-		auto ViewLocation = FVector::ZeroVector;
-		auto ViewRotation = FRotator::ZeroRotator;
-		ViewPC->GetPlayerViewPoint(ViewLocation, ViewRotation);
-		_ViewYawDegrees = ViewRotation.Yaw;
-		_ViewYawValid = true;
-		_ViewCameraPosition = ViewLocation;
-		_ViewCameraValid = true;
-	}
-
-	// Player pawn pose — the pawn keeps existing while ejected, so the map can
-	// always show where the player body is.
-	_PlayerPawnValid  = false;
+	// The pawn keeps existing while ejected, so the proxy row stays tagged either way.
 	_PlayerPawnEntity = FCk_Handle{};
 	if (ViewPC != nullptr)
 	{
 		if (auto* Pawn = ViewPC->GetPawn().Get(); IsValid(Pawn))
-		{
-			_PlayerPawnPosition   = Pawn->GetActorLocation();
-			// Aim yaw, not body yaw: orient-to-movement characters keep their actor
-			// rotation while the camera looks elsewhere — the chevron read frozen.
-			_PlayerPawnYawDegrees = Pawn->GetBaseAimRotation().Yaw;
-			_PlayerPawnValid      = true;
-			_PlayerPawnEntity     = UCk_Utils_OwningActor_UE::TryGet_ActorEntityHandle(Pawn);
-		}
+		{ _PlayerPawnEntity = UCk_Utils_OwningActor_UE::TryGet_ActorEntityHandle(Pawn); }
 	}
 
 	// Sample navmesh state once per tick.

@@ -36,22 +36,6 @@ public:
 	{ return _PathNetworkRibbons; }
 	auto Get_Queues() const -> const TArray<FCkCrowdDebugger_QueueSnapshot>& { return _Queues; }
 
-	// Local-player view and pose. Every accessor below is still collected each refresh but has had
-	// NO reader since the viewport became 3D (d2a71bd): the 2D map oriented itself to the view yaw
-	// and drew the FOV wedge and player chevron. The 3D camera is user-driven and draws neither.
-	// (_PlayerPawnEntity is not part of this -- it is live; see its own note below.)
-	auto Get_ViewYawDegrees() const -> float { return _ViewYawDegrees; }
-	auto Get_ViewYawValid() const -> bool { return _ViewYawValid; }
-
-	// View camera position: the level-editor camera while ejected, else the possessed view point.
-	auto Get_ViewCameraPosition() const -> FVector { return _ViewCameraPosition; }
-	auto Get_ViewCameraValid() const -> bool { return _ViewCameraValid; }
-
-	// Player pawn pose. Stays valid while ejected (the pawn is still in the world, just not driven).
-	auto Get_PlayerPawnPosition() const -> FVector { return _PlayerPawnPosition; }
-	auto Get_PlayerPawnYawDegrees() const -> float { return _PlayerPawnYawDegrees; }
-	auto Get_PlayerPawnValid() const -> bool { return _PlayerPawnValid; }
-
 private:
 	auto SampleAgent(FCk_Handle InHandle, const FCk_Handle& InSelectedAgent) -> void;
 
@@ -67,18 +51,8 @@ private:
 	double _NavGeomLastPullTime = -1.0;
 	uint64 _NavGeometryRevision = 0;
 
-	float _ViewYawDegrees = 0.0f;
-	bool  _ViewYawValid = false;
-
-	FVector _ViewCameraPosition = FVector::ZeroVector;
-	bool    _ViewCameraValid = false;
-
-	FVector _PlayerPawnPosition = FVector::ZeroVector;
-	float   _PlayerPawnYawDegrees = 0.0f;
-	bool    _PlayerPawnValid = false;
-
 	// The player pawn's entity (when the pawn is ECS-bridged) -- SampleAgent marks the matching
-	// agent row as PlayerProxy. LIVE, unlike the pose fields above.
+	// agent row as PlayerProxy. This is the only reason the collector still resolves the pawn.
 	FCk_Handle _PlayerPawnEntity;
 };
 

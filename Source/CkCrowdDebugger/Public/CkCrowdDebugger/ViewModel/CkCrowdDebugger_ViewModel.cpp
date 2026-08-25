@@ -34,7 +34,7 @@ auto
 	if (_IsPaused)
 	{ return; }
 
-	_DataCollector.Collect(InWorld);
+	_DataCollector.Collect(InWorld, _SelectedHandle);
 
 	static const auto* PathNetworkTraceCVar = IConsoleManager::Get().FindConsoleVariable(TEXT("ck.CrowdDebugger.PathNetworkTrace"));
 	if (PathNetworkTraceCVar != nullptr && PathNetworkTraceCVar->GetInt() != 0)

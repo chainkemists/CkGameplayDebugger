@@ -89,7 +89,15 @@ struct FCkCrowdDebugger_AgentSnapshot
 	FString                  PathTroubleSummary;
 
 	// Remaining nav waypoints (world space) — drawn as the planned-path polyline in the viewport.
+	// POPULATED FOR THE SELECTED AGENT ONLY. The scene adapter gates the planned-path polyline on
+	// the selected identity, so carrying every agent's waypoints meant deep-copying them three
+	// times per frame (collector -> list item -> 3d snapshot) plus a full finite-validation pass,
+	// to draw exactly one line. Rows that just need the length read PlannedPathPointCount.
 	TArray<FVector>          PlannedPath;
+
+	// Waypoint count for EVERY agent, including those whose points are not carried. This is what
+	// roster rows display, and it stays correct regardless of selection.
+	int32                    PlannedPathPointCount = 0;
 
 	// Gate 0 minimum — these are enough for the agent list to render
 	float                    Radius = 0.0f;

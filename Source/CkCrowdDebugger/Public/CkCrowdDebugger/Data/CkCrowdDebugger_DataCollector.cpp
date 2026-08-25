@@ -119,7 +119,7 @@ auto FCkCrowdDebugger_DataCollector::Reset_ForWorldChange() -> void
 
 auto
 	FCkCrowdDebugger_DataCollector::
-	Collect(UWorld* InWorld)
+	Collect(UWorld* InWorld, const FCk_Handle& InSelectedAgent)
 	-> void
 {
 	_Agents.Reset();
@@ -382,10 +382,10 @@ auto
 	{ return; }
 
 	TransientEntity.View<ck::FFragment_CrowdAgent_Params>().ForEach(
-		[this, &TransientEntity](FCk_Entity InEntity, const ck::FFragment_CrowdAgent_Params&)
+		[this, &TransientEntity, &InSelectedAgent](FCk_Entity InEntity, const ck::FFragment_CrowdAgent_Params&)
 		{
 			auto Handle = ck::MakeHandle(InEntity, TransientEntity);
-			SampleAgent(Handle);
+			SampleAgent(Handle, InSelectedAgent);
 		});
 
 	// Queue is collected as a detached runtime DTO then projected into debugger-local values.  The
@@ -489,7 +489,7 @@ auto
 
 auto
 	FCkCrowdDebugger_DataCollector::
-	SampleAgent(FCk_Handle InHandle)
+	SampleAgent(FCk_Handle InHandle, const FCk_Handle& InSelectedAgent)
 	-> void
 {
 	if (NOT ck::IsValid(InHandle))
@@ -542,7 +542,13 @@ auto
 	}
 	if (InHandle.Has<ck::FFragment_Nav_PathResult>())
 	{
-		Snapshot.PlannedPath = InHandle.Get<ck::FFragment_Nav_PathResult>().Get_Waypoints();
+		const auto& Waypoints = InHandle.Get<ck::FFragment_Nav_PathResult>().Get_Waypoints();
+		Snapshot.PlannedPathPointCount = Waypoints.Num();
+
+		// Only the selected agent's polyline is ever drawn, and only the count is ever displayed
+		// for the rest. Copying every agent's waypoints here fed three deep copies per frame.
+		if (ck::IsValid(InSelectedAgent) && InHandle == InSelectedAgent)
+		{ Snapshot.PlannedPath = Waypoints; }
 	}
 	if (InHandle.Has<ck::FFragment_CrowdAgent_PathFollow>())
 	{

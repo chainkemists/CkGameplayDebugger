@@ -17,6 +17,10 @@
 #include "CkCore/Validation/CkIsValid.h"
 
 #include "CkCrowd/Agent/CkCrowdAgent_Fragment.h"
+#include "CkCrowd/Agent/CkCrowdAgent_Utils.h"
+#include "CkCrowdDebugger/Commands/CkCrowdDebugger_PathNetworkCommand.h"
+#include "CkDebuggerCommon/Viewport/CkDebug3dWorldPing.h"
+#include "CkEcs/EntityLifetime/CkEntityLifetime_Utils.h"
 
 #include "CkDebuggerCommon/Widgets/SCkDebug_WorldSelector.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_PaneHost.h"
@@ -133,7 +137,32 @@ auto SCkCrowdDebuggerWindow::Construct(const FArguments& InArgs) -> void
 
 			ViewModel->Set_SelectedHandle(SelectedHandle);
 			ck::DebugSelectionSync::Broadcast(SelectedHandle, TEXT("CrowdDebugger"));
+		})
+		// RTS-style command: right-click a destination to drive the selected agent there.
+		// Commanding auto-arms the debug override, so no separate "Take Control" click is needed.
+		.OnWorldCommanded_Lambda([WeakViewModel](const FVector& InDestination)
+		{
+			const auto ViewModel = WeakViewModel.Pin();
+			if (NOT ViewModel.IsValid())
+			{ return; }
+
+			auto SelectedHandle = ViewModel->Get_SelectedHandle();
+			auto Agent = UCk_Utils_CrowdAgent_UE::Cast(SelectedHandle);
+			if (ck::Is_NOT_Valid(Agent))
+			{ return; }
+
+			auto Destination = FVector{};
+			if (NOT ck::crowd_debugger::Try_IssueManualMove(Agent, InDestination, Destination))
+			{ return; }
+
+			ck::debug_3d::Draw_WorldCommandPing(
+				UCk_Utils_EntityLifetime_UE::Get_WorldForEntity(Agent), Destination);
 		});
+
+	// The agent list broadcasts this to frame the picked agent. The 2D panel used to be the only
+	// listener, so the request went nowhere once the viewport became 3D.
+	_FrameSelectedAgentHandle = _ViewModel->OnFrameSelectedAgentRequested.AddSP(
+		this, &SCkCrowdDebuggerWindow::HandleFrameSelectedAgentRequested);
 
 	ChildSlot
 	[
@@ -805,6 +834,17 @@ auto SCkCrowdDebuggerWindow::BuildMenuActions() -> TSharedRef<SWidget>
 
 // --------------------------------------------------------------------------------------------------------------------
 
+auto
+	SCkCrowdDebuggerWindow::
+	HandleFrameSelectedAgentRequested()
+	-> void
+{
+	if (_ViewportPanel.IsValid())
+	{ _ViewportPanel->Apply_CameraPreset(ECkCrowdDebugger_CameraPreset::FrameSelection); }
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
 SCkCrowdDebuggerWindow::~SCkCrowdDebuggerWindow()
 {
 	if (_WorldModel.IsValid() && _WorldChangedHandle.IsValid())
@@ -812,6 +852,9 @@ SCkCrowdDebuggerWindow::~SCkCrowdDebuggerWindow()
 
 	if (_SessionInvalidatedHandle.IsValid())
 	{ ck::DebugSessionLifecycle::Get_OnSessionInvalidated().Remove(_SessionInvalidatedHandle); }
+
+	if (_ViewModel.IsValid() && _FrameSelectedAgentHandle.IsValid())
+	{ _ViewModel->OnFrameSelectedAgentRequested.Remove(_FrameSelectedAgentHandle); }
 
 	_ViewModel.Reset();
 }

@@ -1,6 +1,6 @@
 #include "CkDebug_PmgGizmoSet.h"
 
-#include "CkCore/Debug/CkDebugDraw_Utils.h"
+#include "CkCore/Diagnostics/CkDiagnosticVisibility.h"
 #include "CkCore/Validation/CkIsValid.h"
 
 #include "CkEcs/EntityLifetime/CkEntityLifetime_Utils.h"
@@ -60,7 +60,7 @@ auto
         const FCk_Handle& InKey,
         const FTransform& InTransform) -> void
 {
-    if (ck::debug_draw::Is_SuppressedForStreamerMode())
+    if (ck::diagnostic_visibility::Is_HiddenForStreamerMode())
     {
         Reset();
         return;

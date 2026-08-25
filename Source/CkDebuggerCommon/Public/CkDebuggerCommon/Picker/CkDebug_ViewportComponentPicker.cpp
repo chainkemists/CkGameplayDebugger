@@ -1,6 +1,6 @@
 #include "CkDebug_ViewportComponentPicker.h"
 
-#include "CkCore/Debug/CkDebugDraw_Utils.h"
+#include "CkCore/Diagnostics/CkDiagnosticVisibility.h"
 #include "CkCore/Validation/CkIsValid.h"
 
 #include "CkDebuggerCommon/Lifecycle/CkDebug_SessionLifecycle.h"
@@ -175,7 +175,7 @@ auto
     }
 
     if (auto* Component = _HoveredResult.Component.Get();
-        NOT ck::debug_draw::Is_SuppressedForStreamerMode() && ck::IsValid(Component))
+        NOT ck::diagnostic_visibility::Is_HiddenForStreamerMode() && ck::IsValid(Component))
     {
         constexpr auto PersistentLines = false;
         DrawDebugBox(

@@ -4,7 +4,7 @@
 
 #include "CkDebuggerCommon/Styles/CkDebuggerAxes.h"
 
-#include "CkCore/Debug/CkDebugDraw_Utils.h"
+#include "CkCore/Diagnostics/CkDiagnosticVisibility.h"
 #include "CkCore/Macros/CkMacros.h"
 
 #include <Editor.h>
@@ -130,7 +130,7 @@ auto
 
     // Debug drawing is globally suppressible, and a performance overlay is exactly the kind of thing a streamer
     // does not want on screen.
-    if (ck::debug_draw::Is_SuppressedForStreamerMode())
+    if (ck::diagnostic_visibility::Is_HiddenForStreamerMode())
     {
         return;
     }

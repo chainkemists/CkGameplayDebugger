@@ -5,6 +5,7 @@
 #endif
 
 #include "CkCore/Algorithms/CkAlgorithms.h"
+#include "CkCore/Diagnostics/CkDiagnosticVisibility.h"
 #include "CkCore/Ensure/CkEnsure.h"
 #include "CkCore/Math/Arithmetic/CkArithmetic_Utils.h"
 #include "CkCore/Object/CkObject_Utils.h"
@@ -25,6 +26,8 @@
 ACk_GameplayDebugger_DebugBridge_UE::
     ACk_GameplayDebugger_DebugBridge_UE()
 {
+    PrimaryActorTick.bCanEverTick = true;
+
 #if WITH_GAMEPLAY_DEBUGGER
     const auto& GameplayDebugger = FCk_GameplayDebugger_Category::Get_Instance();
 
@@ -35,6 +38,46 @@ ACk_GameplayDebugger_DebugBridge_UE::
     GameplayDebugger->_OnDeactivatedDelegate.BindDynamic(this, &ThisType::OnGameplayDebugger_Deactivated);
     GameplayDebugger->_OnCollectDataDelegate.BindDynamic(this, &ThisType::OnGameplayDebugger_CollectData);
     GameplayDebugger->_OnDrawDataDelegate.BindDynamic(this, &ThisType::OnGameplayDebugger_DrawData);
+#endif
+}
+
+auto
+    ACk_GameplayDebugger_DebugBridge_UE::
+    Tick(float InDeltaSeconds)
+    -> void
+{
+    Super::Tick(InDeltaSeconds);
+    DoUpdateDebugWidgetDiagnosticVisibility();
+}
+
+auto
+    ACk_GameplayDebugger_DebugBridge_UE::
+    DoUpdateDebugWidgetDiagnosticVisibility()
+    -> void
+{
+#if WITH_GAMEPLAY_DEBUGGER
+    if (ck::Is_NOT_Valid(_DebugWidget))
+    {
+        _DebugWidgetVisibilityBeforeDiagnosticSuppression.Reset();
+        return;
+    }
+
+    if (ck::diagnostic_visibility::Is_HiddenForStreamerMode())
+    {
+        if (NOT _DebugWidgetVisibilityBeforeDiagnosticSuppression.IsSet())
+        {
+            _DebugWidgetVisibilityBeforeDiagnosticSuppression = _DebugWidget->GetVisibility();
+        }
+
+        _DebugWidget->SetVisibility(ESlateVisibility::Collapsed);
+        return;
+    }
+
+    if (_DebugWidgetVisibilityBeforeDiagnosticSuppression.IsSet())
+    {
+        _DebugWidget->SetVisibility(_DebugWidgetVisibilityBeforeDiagnosticSuppression.GetValue());
+        _DebugWidgetVisibilityBeforeDiagnosticSuppression.Reset();
+    }
 #endif
 }
 
@@ -71,6 +114,7 @@ auto
         _DebugWidget->RemoveFromParent();
         _DebugWidget = nullptr;
     }
+    _DebugWidgetVisibilityBeforeDiagnosticSuppression.Reset();
 
     _CurrentlyLoadedDebugProfile = nullptr;
 #endif
@@ -99,6 +143,7 @@ auto
         {
             static constexpr auto ZOrder = 9999;
             _DebugWidget->AddToViewport(ZOrder);
+            DoUpdateDebugWidgetDiagnosticVisibility();
         }
     }
 
@@ -135,6 +180,7 @@ auto
         _DebugWidget->RemoveFromParent();
         _DebugWidget = nullptr;
     }
+    _DebugWidgetVisibilityBeforeDiagnosticSuppression.Reset();
 
     // Deactivate all debug submenus
     ck::algo::ForEachIsValid(_CurrentlyLoadedDebugProfile->Get_Submenus(),
@@ -171,6 +217,9 @@ auto
     -> void
 {
 #if WITH_GAMEPLAY_DEBUGGER
+    if (ck::diagnostic_visibility::Is_HiddenForStreamerMode())
+    { return; }
+
     if (ck::Is_NOT_Valid(_CurrentlyLoadedDebugProfile))
     { return; }
 

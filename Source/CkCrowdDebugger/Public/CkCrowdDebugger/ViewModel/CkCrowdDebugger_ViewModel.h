@@ -45,8 +45,8 @@ public:
 	auto Get_SelectedHandle() const -> FCk_Handle { return _SelectedHandle; }
 	auto Get_SelectedSnapshot() const -> const FCkCrowdDebugger_AgentSnapshot*;
 
-	// One-shot "center the 2D map on the selected agent" request (e.g. a
-	// cross-debugger sync resolved to an agent). The viewport panel listens.
+	// One-shot "frame the selected agent" request (e.g. a cross-debugger sync resolved to an
+	// agent). The window listens and applies the viewport's FrameSelection camera preset.
 	auto Request_FrameSelectedAgent() -> void { OnFrameSelectedAgentRequested.Broadcast(); }
 
 	// All agents
@@ -72,7 +72,8 @@ public:
 	auto Get_ViewYawDegrees() const -> float { return _DataCollector.Get_ViewYawDegrees(); }
 	auto Get_ViewYawValid() const -> bool { return _DataCollector.Get_ViewYawValid(); }
 
-	// View camera + player pawn pose (2D-map player marker)
+	// View camera + player pawn pose. Forwarders only -- nothing reads these since the viewport
+	// became 3D; see the note on the collector's matching accessors.
 	auto Get_ViewCameraPosition() const -> FVector { return _DataCollector.Get_ViewCameraPosition(); }
 	auto Get_ViewCameraValid() const -> bool { return _DataCollector.Get_ViewCameraValid(); }
 	auto Get_PlayerPawnPosition() const -> FVector { return _DataCollector.Get_PlayerPawnPosition(); }

@@ -371,13 +371,13 @@ auto
 		QueueCopy.DebugName = Queue.Get_QueueDebugName().ToString();
 		QueueCopy.Category = Queue.Get_Category().ToString();
 		QueueCopy.State = StaticEnum<ECk_Queue_State>()->GetNameStringByValue(static_cast<int64>(Queue.Get_State()));
-		for (const auto& Origin : Queue.Get_OriginWorldTransforms())
-		{ QueueCopy.Origins.Add({Origin.GetLocation(), Origin.GetRotation().GetForwardVector()}); }
+		QueueCopy.OwnerTargetLocation = Queue.Get_OwnerWorldTransform().GetLocation();
+		QueueCopy.OwnerTargetForward = Queue.Get_OwnerWorldTransform().GetRotation().GetForwardVector();
 		for (const auto& Member : Queue.Get_Members())
 		{
 			const auto AgentIdentity = static_cast<uint64>(Member.Get_MoverIdentity());
 			const auto HasReservation = Member.Get_Rank() != INDEX_NONE;
-			QueueCopy.Members.Add({AgentIdentity, Member.Get_OriginIndex(), Member.Get_Rank(), Member.Get_TargetWorldTransform().GetLocation(),
+			QueueCopy.Members.Add({AgentIdentity, Member.Get_Rank(), Member.Get_TargetWorldTransform().GetLocation(),
 				Member.Get_TargetWorldTransform().GetRotation().GetForwardVector(), HasReservation});
 			for (auto& Agent : _Agents)
 			{

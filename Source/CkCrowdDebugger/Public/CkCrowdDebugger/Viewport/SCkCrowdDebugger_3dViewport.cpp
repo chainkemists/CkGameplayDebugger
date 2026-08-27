@@ -405,15 +405,11 @@ auto
         Signature = HashCombineFast(Signature, GetTypeHash(Queue.Identity));
         Signature = HashCombineFast(Signature, GetTypeHash(Queue.Revision));
         Signature = HashCombineFast(Signature, GetTypeHash(Queue.State));
-        for (const auto& Origin : Queue.Origins)
-        {
-            Signature = HashCombineFast(Signature, GetTypeHash(Origin.Location));
-            Signature = HashCombineFast(Signature, GetTypeHash(Origin.Forward));
-        }
+        Signature = HashCombineFast(Signature, GetTypeHash(Queue.OwnerTargetLocation));
+        Signature = HashCombineFast(Signature, GetTypeHash(Queue.OwnerTargetForward));
         for (const auto& Member : Queue.Members)
         {
             Signature = HashCombineFast(Signature, GetTypeHash(Member.AgentIdentity));
-            Signature = HashCombineFast(Signature, GetTypeHash(Member.OriginIndex));
             Signature = HashCombineFast(Signature, GetTypeHash(Member.Rank));
             Signature = HashCombineFast(Signature, GetTypeHash(Member.ReservationLocation));
             Signature = HashCombineFast(Signature, GetTypeHash(Member.ReservationForward));
@@ -434,17 +430,18 @@ auto
         Copy._DebugName = Queue.DebugName;
         Copy._Category = Queue.Category;
         Copy._State = Queue.State;
-        for (const auto& Origin : Queue.Origins)
-        {
-            Copy._Origins.Add({Origin.Location, Origin.Location + Origin.Forward.GetSafeNormal() * 100.0f});
-        }
+        Copy._OwnerTarget = {Queue.OwnerTargetLocation,
+            Queue.OwnerTargetLocation + Queue.OwnerTargetForward.GetSafeNormal() * 100.0f};
         for (const auto& Member : Queue.Members)
         {
-            const auto SlotWithinQueue = HashCombineFast(GetTypeHash(Member.OriginIndex), GetTypeHash(Member.Rank));
             Copy._Members.Add({Member.AgentIdentity,
-                HashCombineFast(GetTypeHash(Queue.Identity), SlotWithinQueue), Member.OriginIndex, Member.Rank,
+                HashCombineFast(GetTypeHash(Queue.Identity), GetTypeHash(Member.Rank)), Member.Rank,
                 Member.ReservationLocation, Member.ReservationForward, Member.HasReservation});
         }
+        Copy._Members.Sort([](const auto& InLeft, const auto& InRight)
+        {
+            return InLeft._Rank < InRight._Rank;
+        });
         Queues.Add(MoveTemp(Copy));
     }
     _Snapshot._Queues = MoveTemp(Queues);

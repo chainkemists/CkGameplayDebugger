@@ -16,7 +16,7 @@ enum class ECkCrowdDebugger_3dSceneRole : uint8
     VoxelChunk,
     VoxelPortal,
     VoxelRepair,
-    QueueOrigin,
+    QueueOwnerTarget,
     QueueReservation,
     CommandPing
 };
@@ -100,7 +100,6 @@ struct FCkCrowdDebugger_3dQueueMemberSnapshot
 {
     uint64 _AgentIdentity = 0;
     uint64 _SlotIdentity = 0;
-    int32 _OriginIndex = INDEX_NONE;
     int32 _Rank = INDEX_NONE;
     FVector _ReservationLocation = FVector::ZeroVector;
     FVector _ReservationForward = FVector::ForwardVector;
@@ -113,7 +112,7 @@ struct FCkCrowdDebugger_3dQueueSnapshot
     FString _DebugName;
     FString _Category;
     FString _State;
-    TArray<FCkCrowdDebugger_3dSegmentSnapshot> _Origins;
+    FCkCrowdDebugger_3dSegmentSnapshot _OwnerTarget;
     TArray<FCkCrowdDebugger_3dQueueMemberSnapshot> _Members;
 };
 // Acknowledgment for a right-click command, drawn IN the debugger viewport. The world-space PMG

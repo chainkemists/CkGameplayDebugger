@@ -74,6 +74,8 @@ UCk_DebugOverlay_Settings::UCk_DebugOverlay_Settings()
                 TEXT("Ck.OnScreenDebugger.Provider.VectorAttributes"),
                 TEXT("Ck.OnScreenDebugger.Provider.RotatorAttributes"),
                 TEXT("Ck.OnScreenDebugger.Provider.Crowd"),
+                TEXT("Ck.OnScreenDebugger.Provider.VisualLod"),
+                TEXT("Ck.OnScreenDebugger.Provider.VisualLodArbiter"),
                 TEXT("Ck.OnScreenDebugger.Provider.PathNetworkFollower"),
                 TEXT("Ck.OnScreenDebugger.Provider.Inventory"),
                 TEXT("Ck.OnScreenDebugger.Provider.InteractTarget"),

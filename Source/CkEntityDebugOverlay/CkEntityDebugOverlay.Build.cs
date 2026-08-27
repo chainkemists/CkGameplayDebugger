@@ -24,7 +24,9 @@ public class CkEntityDebugOverlay : CkModuleRules
             "CkAttribute", "CkLabel",
             // Curated feature pill providers:
             "CkInventory", "CkInteraction", "CkAggro", "CkRelationship", "CkObjective",
-            "CkTagSet", "CkEntityCollection", "CkTimer", "CkVariables",
+            // CkIskmRenderer is dragged in by CkVisualLod's headers (IskmProxy handle + signal
+            // payload types instantiate AS thunks in this module's TUs) — link it directly:
+            "CkTagSet", "CkEntityCollection", "CkTimer", "CkVariables", "CkVisualLod", "CkIskmRenderer",
             // B2 — in-world diamond markers:
             "CkPmg"
         });

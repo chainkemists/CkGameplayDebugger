@@ -15,7 +15,7 @@ constexpr auto PathNetworkSortPriority = 100;
 const auto PathChannel = FName{TEXT("CrowdSelectedPath")};
 const auto VelocityChannel = FName{TEXT("CrowdVelocity")};
 const auto RibbonOutlineChannel = FName{TEXT("CrowdPathNetworkOutlines")};
-const auto QueueOriginChannel = FName{TEXT("CrowdQueues.Origins")};
+const auto QueueOwnerTargetChannel = FName{TEXT("CrowdQueues.OwnerTarget")};
 const auto QueueFormationChannel = FName{TEXT("CrowdQueues.Formation")};
 const auto QueueMemberLinkChannel = FName{TEXT("CrowdQueues.MemberLinks")};
 
@@ -217,7 +217,7 @@ auto
     auto Velocities = TArray<FCk_DebugScene_Vector>{};
     auto RibbonOutlines = TArray<FCk_DebugScene_Line>{};
     auto VoxelLines = TArray<FCk_DebugScene_Line>{};
-    auto QueueOriginLines = TArray<FCk_DebugScene_Line>{};
+    auto QueueOwnerTargetLines = TArray<FCk_DebugScene_Line>{};
     auto QueueFormationLines = TArray<FCk_DebugScene_Line>{};
     auto QueueMemberLinks = TArray<FCk_DebugScene_Line>{};
     const auto AddBox = [&VoxelLines](const FBox& InBounds, const FLinearColor& InColor, float InThickness)
@@ -260,24 +260,22 @@ auto
     { AgentLocations.Add(Agent._Identity, Agent._Position); }
     for (const auto& Queue : InSnapshot._Queues)
     {
-        for (const auto& Origin : Queue._Origins)
-        {
-            const auto Color = FLinearColor{0.15f, 0.9f, 1.0f, 0.95f};
-            QueueOriginLines.Add({Origin._From, Origin._To, Color, 4.0f});
-            QueueOriginLines.Add({Origin._From - FVector{70.0f, 0.0f, 0.0f},
-                                  Origin._From + FVector{70.0f, 0.0f, 0.0f}, Color, 4.0f});
-            QueueOriginLines.Add({Origin._From - FVector{0.0f, 70.0f, 0.0f},
-                                  Origin._From + FVector{0.0f, 70.0f, 0.0f}, Color, 4.0f});
-            QueueOriginLines.Add({Origin._From, Origin._From + FVector{0.0f, 0.0f, 140.0f}, Color, 4.0f});
-        }
-        auto PreviousByOrigin = TMap<int32, FVector>{};
+        const auto Color = FLinearColor{0.15f, 0.9f, 1.0f, 0.95f};
+        QueueOwnerTargetLines.Add({Queue._OwnerTarget._From, Queue._OwnerTarget._To, Color, 4.0f});
+        QueueOwnerTargetLines.Add({Queue._OwnerTarget._From - FVector{70.0f, 0.0f, 0.0f},
+                                   Queue._OwnerTarget._From + FVector{70.0f, 0.0f, 0.0f}, Color, 4.0f});
+        QueueOwnerTargetLines.Add({Queue._OwnerTarget._From - FVector{0.0f, 70.0f, 0.0f},
+                                   Queue._OwnerTarget._From + FVector{0.0f, 70.0f, 0.0f}, Color, 4.0f});
+        QueueOwnerTargetLines.Add({Queue._OwnerTarget._From,
+                                   Queue._OwnerTarget._From + FVector{0.0f, 0.0f, 140.0f}, Color, 4.0f});
+        auto PreviousReservation = TOptional<FVector>{};
         for (const auto& Member : Queue._Members)
         {
             if (NOT Member._HasReservation)
             { continue; }
-            if (const auto* Previous = PreviousByOrigin.Find(Member._OriginIndex))
-            { QueueFormationLines.Add({*Previous, Member._ReservationLocation, FLinearColor{0.92f, 0.30f, 1.0f, 0.9f}, 3.0f}); }
-            PreviousByOrigin.Add(Member._OriginIndex, Member._ReservationLocation);
+            if (PreviousReservation.IsSet())
+            { QueueFormationLines.Add({*PreviousReservation, Member._ReservationLocation, FLinearColor{0.92f, 0.30f, 1.0f, 0.9f}, 3.0f}); }
+            PreviousReservation = Member._ReservationLocation;
             if (const auto* AgentLocation = AgentLocations.Find(Member._AgentIdentity))
             { QueueMemberLinks.Add({*AgentLocation, Member._ReservationLocation, FLinearColor{0.2f, 0.95f, 1.0f, 0.75f}, 1.5f}); }
         }
@@ -345,7 +343,7 @@ auto
            InTarget.Set_LineChannel(ck_crowd_debugger_3d_scene_adapter::RibbonOutlineChannel,
                                     MoveTemp(RibbonOutlines)) &&
            InTarget.Set_LineChannel(FName{TEXT("CkCrowd.Voxel")}, MoveTemp(VoxelLines)) &&
-           InTarget.Set_LineChannel(ck_crowd_debugger_3d_scene_adapter::QueueOriginChannel, MoveTemp(QueueOriginLines)) &&
+           InTarget.Set_LineChannel(ck_crowd_debugger_3d_scene_adapter::QueueOwnerTargetChannel, MoveTemp(QueueOwnerTargetLines)) &&
            InTarget.Set_LineChannel(ck_crowd_debugger_3d_scene_adapter::QueueFormationChannel, MoveTemp(QueueFormationLines)) &&
            InTarget.Set_LineChannel(ck_crowd_debugger_3d_scene_adapter::QueueMemberLinkChannel, MoveTemp(QueueMemberLinks));
 }
@@ -511,9 +509,9 @@ auto
         return true;
     };
     // Queue geometry is source-owned and transactional just like navmesh and voxel snapshots.  Reservation slots
-    // use a small oriented box; origin boxes plus formation/member link channels make queue structure legible even
+    // use a small oriented box; the owner target plus formation/member link channels make queue structure legible even
     // when agents overlap during arrival.
-    for (const auto Role : {ECkCrowdDebugger_3dSceneRole::QueueOrigin, ECkCrowdDebugger_3dSceneRole::QueueReservation})
+    for (const auto Role : {ECkCrowdDebugger_3dSceneRole::QueueOwnerTarget, ECkCrowdDebugger_3dSceneRole::QueueReservation})
     {
         if (const auto* PreviousKeys = PreviousState._RoleItems.Find(Role))
         {
@@ -529,17 +527,13 @@ auto
         { InTarget.Abort_Reconcile(); return RestoreAndFail(); }
         const auto Hue = static_cast<float>(GetTypeHash(Queue._Category)) / static_cast<float>(MAX_uint32);
         const auto Color = FLinearColor::MakeFromHSV8(static_cast<uint8>(Hue * 255.0f), 170, 255);
-        for (auto OriginIndex = 0; OriginIndex < Queue._Origins.Num(); ++OriginIndex)
-        {
-            const auto& Origin = Queue._Origins[OriginIndex];
-            if (NOT ck_crowd_debugger_3d_scene_adapter::IsFinite(Origin._From))
-            { InTarget.Abort_Reconcile(); return RestoreAndFail(); }
-            if (NOT SubmitStatic(ECkCrowdDebugger_3dSceneRole::QueueOrigin,
-                     HashCombineFast(GetTypeHash(Queue._Identity), GetTypeHash(OriginIndex)), ck::debug_scene::shapes::Get_Box(), Color,
-                     ck_crowd_debugger_3d_scene_adapter::IsTransparent,
-                     FTransform{FQuat::Identity, Origin._From, FVector{70.0f, 70.0f, 140.0f}}))
-            { InTarget.Abort_Reconcile(); return RestoreAndFail(); }
-        }
+        if (NOT ck_crowd_debugger_3d_scene_adapter::IsFinite(Queue._OwnerTarget._From))
+        { InTarget.Abort_Reconcile(); return RestoreAndFail(); }
+        if (NOT SubmitStatic(ECkCrowdDebugger_3dSceneRole::QueueOwnerTarget,
+                 GetTypeHash(Queue._Identity), ck::debug_scene::shapes::Get_Box(), Color,
+                 ck_crowd_debugger_3d_scene_adapter::IsTransparent,
+                 FTransform{FQuat::Identity, Queue._OwnerTarget._From, FVector{70.0f, 70.0f, 140.0f}}))
+        { InTarget.Abort_Reconcile(); return RestoreAndFail(); }
         for (const auto& Member : Queue._Members)
         {
             if (NOT Member._HasReservation)

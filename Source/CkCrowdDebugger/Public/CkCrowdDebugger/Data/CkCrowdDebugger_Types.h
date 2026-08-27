@@ -177,16 +177,9 @@ inline auto CkCrowdDebugger_MakePendingLabel(ECk_CrowdAgent_PathProvider InProvi
 // crowd-agent rows: a queue is a first-class spatial structure with its own
 // identity, category and reservation geometry.  Nothing in this type retains an
 // ECS handle, registry or producer-owned array.
-struct FCkCrowdDebugger_QueueOriginSnapshot
-{
-	FVector Location = FVector::ZeroVector;
-	FVector Forward = FVector::ForwardVector;
-};
-
 struct FCkCrowdDebugger_QueueMemberSnapshot
 {
 	uint64 AgentIdentity = 0;
-	int32 OriginIndex = INDEX_NONE;
 	int32 Rank = INDEX_NONE;
 	FVector ReservationLocation = FVector::ZeroVector;
 	FVector ReservationForward = FVector::ForwardVector;
@@ -200,7 +193,8 @@ struct FCkCrowdDebugger_QueueSnapshot
 	FString DebugName;
 	FString Category;
 	FString State;
-	TArray<FCkCrowdDebugger_QueueOriginSnapshot> Origins;
+	FVector OwnerTargetLocation = FVector::ZeroVector;
+	FVector OwnerTargetForward = FVector::ForwardVector;
 	TArray<FCkCrowdDebugger_QueueMemberSnapshot> Members;
 };
 

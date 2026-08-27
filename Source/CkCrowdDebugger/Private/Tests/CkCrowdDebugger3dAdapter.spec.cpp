@@ -604,19 +604,23 @@ auto FCkCrowdDebugger3dAdapter_QueueReservationsAreRetained::RunTest(const FStri
     auto Queue = FCkCrowdDebugger_3dQueueSnapshot{};
     Queue._Identity = 9001;
     Queue._Revision = 1;
-    Queue._Origins.Add({FVector{100.0f, 0.0f, 0.0f}, FVector{200.0f, 0.0f, 0.0f}});
-    Queue._Members.Add({AgentA, 1, 0, 0, FVector{0.0f, 100.0f, 0.0f}, FVector::ForwardVector, true});
-    Queue._Members.Add({AgentB, 2, 0, 1, FVector{0.0f, 220.0f, 0.0f}, FVector::ForwardVector, true});
-    Queue._Members.Add({0, 3, 1, 0, FVector{120.0f, 100.0f, 0.0f}, FVector::RightVector, true});
+    Queue._OwnerTarget = {FVector{100.0f, 0.0f, 0.0f}, FVector{200.0f, 0.0f, 0.0f}};
+    const auto SlotAtRank0 = HashCombineFast(GetTypeHash(Queue._Identity), GetTypeHash(0));
+    const auto SlotAtRank1 = HashCombineFast(GetTypeHash(Queue._Identity), GetTypeHash(1));
+    const auto SlotAtRank2 = HashCombineFast(GetTypeHash(Queue._Identity), GetTypeHash(2));
+    Queue._Members.Add({AgentA, SlotAtRank0, 0, FVector{0.0f, 100.0f, 0.0f}, FVector::ForwardVector, true});
+    Queue._Members.Add({AgentB, SlotAtRank1, 1, FVector{0.0f, 220.0f, 0.0f}, FVector::ForwardVector, true});
+    Queue._Members.Add({0, SlotAtRank2, 2, FVector{120.0f, 100.0f, 0.0f}, FVector::RightVector, true});
     Snapshot._Queues.Add(Queue);
     auto Adapter = FCkCrowdDebugger_3dSceneAdapter{};
     TestTrue(TEXT("queue reservations reconcile"), Adapter.Reconcile(Snapshot, *Fixture._Target));
-    TestTrue(TEXT("queue origins have a dedicated scene role"), Adapter.Has_Role(ECkCrowdDebugger_3dSceneRole::QueueOrigin));
-    TestEqual(TEXT("same-rank reservations on different origins retain distinct items"),
+    TestTrue(TEXT("queue owner target has a dedicated scene role"), Adapter.Has_Role(ECkCrowdDebugger_3dSceneRole::QueueOwnerTarget));
+    TestNotEqual(TEXT("queue identity plus rank produces distinct slot identities"), SlotAtRank0, SlotAtRank1);
+    TestEqual(TEXT("ranked reservations retain distinct items"),
         Adapter.Get_ItemCount(ECkCrowdDebugger_3dSceneRole::QueueReservation), 3);
     Snapshot._Queues.Reset();
     TestTrue(TEXT("empty queue snapshot removes retained queue geometry"), Adapter.Reconcile(Snapshot, *Fixture._Target));
-    TestFalse(TEXT("empty queue snapshot removes origins"), Adapter.Has_Role(ECkCrowdDebugger_3dSceneRole::QueueOrigin));
+    TestFalse(TEXT("empty queue snapshot removes owner target"), Adapter.Has_Role(ECkCrowdDebugger_3dSceneRole::QueueOwnerTarget));
     TestFalse(TEXT("empty queue snapshot removes reservations"), Adapter.Has_Role(ECkCrowdDebugger_3dSceneRole::QueueReservation));
     return true;
 }

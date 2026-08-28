@@ -60,3 +60,52 @@ auto
     Settings->PathNetworkOpacity = OriginalOpacity;
     return true;
 }
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCkCrowdDebugger3dPreviewAdapter_AvoidanceVolumeCopyAndSignature,
+                                 "Ck.CrowdDebugger.Viewport3dPreviewAdapter.AvoidanceVolumeCopyAndSignature",
+                                 EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+auto FCkCrowdDebugger3dPreviewAdapter_AvoidanceVolumeCopyAndSignature::RunTest(const FString&) -> bool
+{
+    auto Viewport = SNew(SCkCrowdDebugger_3dViewport);
+    auto Source = TArray<FCkCrowdDebugger_AvoidanceVolumeSnapshot>{};
+    auto Volume = FCkCrowdDebugger_AvoidanceVolumeSnapshot{};
+    Volume.Identity = 7001;
+    Volume.YawWorldTransform = FTransform{FRotator{0.0f, 35.0f, 0.0f}, FVector{100.0f, 200.0f, 0.0f}};
+    Volume.PhysicalWorldHalfExtents = FVector{100.0f, 60.0f, 80.0f};
+    Volume.InfluenceWorldHalfExtents = FVector{160.0f, 120.0f, 80.0f};
+    Volume.PaintedWorldHalfExtents = FVector{220.0f, 180.0f, 80.0f};
+    Volume.State = ECkCrowdDebugger_AvoidanceVolumeState::Confirmed;
+	Volume.TraversalPolicy = ECkCrowdDebugger_AvoidanceVolumeTraversalPolicy::AvoidIfPossible;
+    Volume.HasValidGeometry = true;
+    Source.Add(Volume);
+
+    Viewport->Set_AvoidanceVolumeSnapshots(Source);
+    const auto FirstRevision = Viewport->Get_AvoidanceVolumeRevision_ForTests();
+    TestEqual(TEXT("viewport keeps a copied avoidance-volume count"),
+        Viewport->Get_AvoidanceVolumeCount_ForTests(), 1);
+    Source.Reset();
+    TestEqual(TEXT("clearing producer data cannot clear the viewport copy"),
+        Viewport->Get_AvoidanceVolumeCount_ForTests(), 1);
+
+    Viewport->Set_AvoidanceVolumeSnapshots(TArray<FCkCrowdDebugger_AvoidanceVolumeSnapshot>{Volume});
+    TestEqual(TEXT("identical avoidance input preserves its publication revision"),
+        Viewport->Get_AvoidanceVolumeRevision_ForTests(), FirstRevision);
+
+    Volume.State = ECkCrowdDebugger_AvoidanceVolumeState::Pending;
+    Viewport->Set_AvoidanceVolumeSnapshots(TArray<FCkCrowdDebugger_AvoidanceVolumeSnapshot>{Volume});
+    TestTrue(TEXT("state-only changes invalidate retained avoidance presentation"),
+        Viewport->Get_AvoidanceVolumeRevision_ForTests() > FirstRevision);
+
+	const auto StateRevision = Viewport->Get_AvoidanceVolumeRevision_ForTests();
+	Volume.TraversalPolicy = ECkCrowdDebugger_AvoidanceVolumeTraversalPolicy::HardExclude;
+	Viewport->Set_AvoidanceVolumeSnapshots(TArray<FCkCrowdDebugger_AvoidanceVolumeSnapshot>{Volume});
+	TestTrue(TEXT("policy-only changes invalidate retained avoidance presentation"),
+		Viewport->Get_AvoidanceVolumeRevision_ForTests() > StateRevision);
+
+    Viewport->Notify_WorldChanged();
+    TestEqual(TEXT("world change clears copied avoidance volumes"),
+        Viewport->Get_AvoidanceVolumeCount_ForTests(), 0);
+    TestEqual(TEXT("world change resets the avoidance publication revision"),
+        Viewport->Get_AvoidanceVolumeRevision_ForTests(), uint64{0});
+    return true;
+}

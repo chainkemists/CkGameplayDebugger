@@ -243,9 +243,12 @@ auto
     ++_WorldEpoch;
     _Snapshot._WorldEpoch = _WorldEpoch;
     _Snapshot._Voxel = {};
+    _Snapshot._AvoidanceVolumes.Reset();
     _HasVoxelSnapshot = false;
     _AgentRevision = 0;
     _QueueSignature = 0;
+    _AvoidanceVolumeSignature = 0;
+    _AvoidanceVolumeRevision = 0;
     _SnapshotDirty = true;
 }
 
@@ -445,6 +448,48 @@ auto
         Queues.Add(MoveTemp(Copy));
     }
     _Snapshot._Queues = MoveTemp(Queues);
+    _SnapshotDirty = true;
+}
+
+auto
+    SCkCrowdDebugger_3dViewport::
+    Set_AvoidanceVolumeSnapshots(const TArray<FCkCrowdDebugger_AvoidanceVolumeSnapshot>& InVolumes)
+    -> void
+{
+    TRACE_CPUPROFILER_EVENT_SCOPE(CkCrowdDbg_SetAvoidanceVolumeSnapshots);
+    auto Signature = GetTypeHash(InVolumes.Num());
+    for (const auto& Volume : InVolumes)
+    {
+        Signature = HashCombineFast(Signature, GetTypeHash(Volume.Identity));
+        Signature = HashCombineFast(Signature, GetTypeHash(Volume.Revision));
+        Signature = HashCombineFast(Signature, GetTypeHash(Volume.YawWorldTransform.GetLocation()));
+        const auto Rotation = Volume.YawWorldTransform.GetRotation();
+        Signature = HashCombineFast(Signature, GetTypeHash(Rotation.X));
+        Signature = HashCombineFast(Signature, GetTypeHash(Rotation.Y));
+        Signature = HashCombineFast(Signature, GetTypeHash(Rotation.Z));
+        Signature = HashCombineFast(Signature, GetTypeHash(Rotation.W));
+        Signature = HashCombineFast(Signature, GetTypeHash(Volume.YawWorldTransform.GetScale3D()));
+        Signature = HashCombineFast(Signature, GetTypeHash(Volume.PhysicalWorldHalfExtents));
+        Signature = HashCombineFast(Signature, GetTypeHash(Volume.InfluenceWorldHalfExtents));
+        Signature = HashCombineFast(Signature, GetTypeHash(Volume.PaintedWorldHalfExtents));
+        Signature = HashCombineFast(Signature, GetTypeHash(static_cast<uint8>(Volume.State)));
+		Signature = HashCombineFast(Signature, GetTypeHash(static_cast<uint8>(Volume.TraversalPolicy)));
+        Signature = HashCombineFast(Signature, GetTypeHash(Volume.HasValidGeometry ? 1 : 0));
+    }
+    if (Signature == _AvoidanceVolumeSignature)
+    { return; }
+    _AvoidanceVolumeSignature = Signature;
+    ++_AvoidanceVolumeRevision;
+
+    auto Volumes = TArray<FCkCrowdDebugger_3dAvoidanceVolumeSnapshot>{};
+    Volumes.Reserve(InVolumes.Num());
+    for (const auto& Volume : InVolumes)
+    {
+        Volumes.Add({Volume.Identity, Volume.Revision, Volume.YawWorldTransform,
+            Volume.PhysicalWorldHalfExtents, Volume.InfluenceWorldHalfExtents,
+			Volume.PaintedWorldHalfExtents, Volume.State, Volume.TraversalPolicy, Volume.HasValidGeometry});
+    }
+    _Snapshot._AvoidanceVolumes = MoveTemp(Volumes);
     _SnapshotDirty = true;
 }
 

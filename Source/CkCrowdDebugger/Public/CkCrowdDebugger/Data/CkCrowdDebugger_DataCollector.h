@@ -35,6 +35,8 @@ public:
 	auto Get_PathNetworkRibbons() const -> const TArray<FCkCrowdDebugger_PathNetworkRibbonSnapshot>&
 	{ return _PathNetworkRibbons; }
 	auto Get_Queues() const -> const TArray<FCkCrowdDebugger_QueueSnapshot>& { return _Queues; }
+	auto Get_AvoidanceVolumes() const -> const TArray<FCkCrowdDebugger_AvoidanceVolumeSnapshot>&
+	{ return _AvoidanceVolumes; }
 
 private:
 	auto SampleAgent(FCk_Handle InHandle, const FCk_Handle& InSelectedAgent) -> void;
@@ -46,6 +48,7 @@ private:
 	TArray<FVector> _NavTriVerts;
 	TArray<FCkCrowdDebugger_PathNetworkRibbonSnapshot> _PathNetworkRibbons;
 	TArray<FCkCrowdDebugger_QueueSnapshot> _Queues;
+	TArray<FCkCrowdDebugger_AvoidanceVolumeSnapshot> _AvoidanceVolumes;
 	// Content stamp of the last pulled navmesh geometry; the revision only bumps when it moves.
 	uint32 _NavGeomSignature = 0;
 	double _NavGeomLastPullTime = -1.0;

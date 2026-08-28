@@ -16,6 +16,7 @@
 #include "CkCrowd/Agent/CkCrowdAgent_Fragment.h"
 #include "CkCrowd/Agent/CkCrowdAgent_Fragment_Data.h"
 #include "CkCrowd/Agent/CkCrowdAgent_Neighbors_Fragment.h"
+#include "CkCrowd/AvoidanceVolume/CkCrowdAvoidanceVolume_Utils.h"
 
 #include "CkEcsExt/Transform/CkTransform_Utils.h"
 
@@ -105,6 +106,7 @@ auto FCkCrowdDebugger_DataCollector::Reset_ForWorldChange() -> void
 	++_NavGeometryRevision;
 	_PathNetworkRibbons.Reset();
 	_Queues.Reset();
+	_AvoidanceVolumes.Reset();
 	_NavGeomLastPullTime = -1.0;
 	_NavGeomSignature = 0;
 	_PlayerPawnEntity = FCk_Handle{};
@@ -121,6 +123,7 @@ auto
 	_Agents.Reset();
 	_PathNetworkRibbons.Reset();
 	_Queues.Reset();
+	_AvoidanceVolumes.Reset();
 
 	// Reset only the per-tick-sampled fields. Health-check fields are sticky across
 	// ticks (set explicitly by Run_HealthCheckProbe; not derived from the live world).
@@ -391,6 +394,56 @@ auto
 			}
 		}
 		_Queues.Add(MoveTemp(QueueCopy));
+	}
+	}
+
+	// CkCrowd owns this public detached-debug surface. Project it once here so all UI and retained
+	// preview layers consume values only, even after the producer world/registry has gone away.
+	{
+	TRACE_CPUPROFILER_EVENT_SCOPE(CkCrowdDbg_AvoidanceVolumeProjection);
+	for (const auto& Volume : UCk_Utils_CrowdAvoidanceVolume_UE::Get_DebugSnapshots(TransientEntity))
+	{
+		auto Copy = FCkCrowdDebugger_AvoidanceVolumeSnapshot{};
+		Copy.Identity = static_cast<uint64>(Volume.Get_VolumeIdentity());
+		Copy.Revision = Volume.Get_ConfirmationSerial();
+		Copy.DebugName = Volume.Get_VolumeDebugName().ToString();
+		Copy.YawWorldTransform = Volume.Get_YawWorldTransform();
+		Copy.PhysicalWorldHalfExtents = Volume.Get_PhysicalWorldHalfExtents();
+		Copy.InfluenceWorldHalfExtents = Volume.Get_InfluenceWorldHalfExtents();
+		Copy.PaintedWorldHalfExtents = Volume.Get_PaintedWorldHalfExtents();
+		Copy.SecondsSincePaint = Volume.Get_SecondsSincePaint();
+		Copy.NavigationRevisionAtUnregister = Volume.Get_NavigationRevisionAtUnregister();
+		Copy.HasValidGeometry = Volume.Get_HasValidGeometry();
+		switch (Volume.Get_TraversalPolicy())
+		{
+		case ECk_CrowdAvoidanceVolume_TraversalPolicy::HardExclude:
+			Copy.TraversalPolicy = ECkCrowdDebugger_AvoidanceVolumeTraversalPolicy::HardExclude;
+			break;
+		case ECk_CrowdAvoidanceVolume_TraversalPolicy::CostOnly:
+			Copy.TraversalPolicy = ECkCrowdDebugger_AvoidanceVolumeTraversalPolicy::CostOnly;
+			break;
+		case ECk_CrowdAvoidanceVolume_TraversalPolicy::AvoidIfPossible:
+		default:
+			Copy.TraversalPolicy = ECkCrowdDebugger_AvoidanceVolumeTraversalPolicy::AvoidIfPossible;
+			break;
+		}
+		switch (Volume.Get_State())
+		{
+		case ECk_CrowdAvoidanceVolume_DebugState::Confirmed:
+			Copy.State = ECkCrowdDebugger_AvoidanceVolumeState::Confirmed;
+			break;
+		case ECk_CrowdAvoidanceVolume_DebugState::Invalid:
+			Copy.State = ECkCrowdDebugger_AvoidanceVolumeState::Invalid;
+			break;
+		case ECk_CrowdAvoidanceVolume_DebugState::Retiring:
+			Copy.State = ECkCrowdDebugger_AvoidanceVolumeState::Retiring;
+			break;
+		case ECk_CrowdAvoidanceVolume_DebugState::PendingSetup:
+		default:
+			Copy.State = ECkCrowdDebugger_AvoidanceVolumeState::Pending;
+			break;
+		}
+		_AvoidanceVolumes.Add(MoveTemp(Copy));
 	}
 	}
 

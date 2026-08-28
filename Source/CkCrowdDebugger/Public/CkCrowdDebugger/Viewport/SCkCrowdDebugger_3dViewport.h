@@ -63,6 +63,8 @@ public:
         const TArray<FCkCrowdDebugger_PathNetworkRibbonSnapshot>& InRibbons) -> void;
     auto
     Set_QueueSnapshots(const TArray<FCkCrowdDebugger_QueueSnapshot>& InQueues) -> void;
+    auto
+    Set_AvoidanceVolumeSnapshots(const TArray<FCkCrowdDebugger_AvoidanceVolumeSnapshot>& InVolumes) -> void;
     /** Acknowledge a right-click command at a world point. Self-expires; no caller owns it. */
     auto
     Set_CommandPing(const FVector& InLocation) -> void;
@@ -88,6 +90,16 @@ public:
     {
         return _Snapshot._PathNetwork._Revision;
     }
+    auto
+    Get_AvoidanceVolumeRevision_ForTests() const -> uint64
+    {
+        return _AvoidanceVolumeRevision;
+    }
+    auto
+    Get_AvoidanceVolumeCount_ForTests() const -> int32
+    {
+        return _Snapshot._AvoidanceVolumes.Num();
+    }
 #endif
 
 private:
@@ -107,6 +119,8 @@ private:
 
     // Change stamp over queue identity, revision, state and reservation geometry.
     uint32 _QueueSignature = 0;
+    uint32 _AvoidanceVolumeSignature = 0;
+    uint64 _AvoidanceVolumeRevision = 0;
 
     // Whether there is voxel data to clear; keeps Clear_VoxelNavSnapshot idempotent.
     bool _HasVoxelSnapshot = false;

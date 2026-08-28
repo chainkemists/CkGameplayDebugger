@@ -158,6 +158,43 @@ struct FCkCrowdDebugger_PathNetworkRibbonSnapshot
 
 // --------------------------------------------------------------------------------------------------------------------
 
+// Detached avoidance-volume projection. This remains debugger-local so no Slate or retained scene code
+// depends on CkCrowd fragments, handles, nav-area markup, or producer-owned arrays.
+enum class ECkCrowdDebugger_AvoidanceVolumeState : uint8
+{
+	Pending,
+	Confirmed,
+	Invalid,
+	Retiring,
+};
+
+// Policy is copied from CkCrowd rather than exposing its fragment/enum to Slate or retained-scene code.
+enum class ECkCrowdDebugger_AvoidanceVolumeTraversalPolicy : uint8
+{
+	AvoidIfPossible,
+	HardExclude,
+	CostOnly,
+};
+
+struct FCkCrowdDebugger_AvoidanceVolumeSnapshot
+{
+	uint64 Identity = 0;
+	uint64 Revision = 0;
+	FString DebugName;
+	FTransform YawWorldTransform = FTransform::Identity;
+	FVector PhysicalWorldHalfExtents = FVector::ZeroVector;
+	FVector InfluenceWorldHalfExtents = FVector::ZeroVector;
+	FVector PaintedWorldHalfExtents = FVector::ZeroVector;
+	float SecondsSincePaint = 0.0f;
+	uint64 NavigationRevisionAtUnregister = 0;
+	ECkCrowdDebugger_AvoidanceVolumeState State = ECkCrowdDebugger_AvoidanceVolumeState::Pending;
+	ECkCrowdDebugger_AvoidanceVolumeTraversalPolicy TraversalPolicy =
+		ECkCrowdDebugger_AvoidanceVolumeTraversalPolicy::AvoidIfPossible;
+	bool HasValidGeometry = false;
+};
+
+// --------------------------------------------------------------------------------------------------------------------
+
 // Every provider parks the SAME nav-path slot, so a pending label that hard-codes CkNavigation
 // reports a stalled sidewalk or volumetric route as an Unreal-navmesh problem. One definition,
 // shared by the overlay-facing summary and both panels, so they cannot drift into disagreeing.

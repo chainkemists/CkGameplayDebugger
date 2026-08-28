@@ -1,4 +1,4 @@
-﻿#include "CkCrowdDebugger/Window/SCkCrowdDebuggerWindow.h"
+#include "CkCrowdDebugger/Window/SCkCrowdDebuggerWindow.h"
 
 #include "CkCrowdDebugger/ViewModel/CkCrowdDebugger_ViewModel.h"
 #include "CkCrowdDebugger/Settings/CkCrowdDebuggerSettings.h"
@@ -298,6 +298,8 @@ auto SCkCrowdDebuggerWindow::Tick(const FGeometry& AllottedGeometry, double InCu
 			_ViewModel->Get_SelectedHandle());
 		_ViewportPanel->Set_PathNetworkRibbons(_ViewModel->Get_PathNetworkRibbons());
 		_ViewportPanel->Set_QueueSnapshots(_ShowQueues ? _ViewModel->Get_Queues() : TArray<FCkCrowdDebugger_QueueSnapshot>{});
+		_ViewportPanel->Set_AvoidanceVolumeSnapshots(
+			_ShowAvoidanceVolumes ? _ViewModel->Get_AvoidanceVolumes() : TArray<FCkCrowdDebugger_AvoidanceVolumeSnapshot>{});
 	}
 
 	if (_VoxelRefreshRequested || InCurrentTime >= _NextVoxelRefreshTime)
@@ -766,6 +768,15 @@ auto SCkCrowdDebuggerWindow::BuildCommandGroups() -> TArray<FCkDebug_CommandGrou
 		.IsOn_Lambda([this]() { return _ShowQueues; })
 		.OnStateChanged_Lambda([this](bool InIsOn) { _ShowQueues = InIsOn; })
 		[ SNew(STextBlock).Text(FText::FromString(TEXT("Queue Reservations"))) ];
+	const auto AvoidanceVolumeMenu = SNew(SCkDebug_ToggleSurface)
+		.ToolTipText(FText::FromString(TEXT("Show physical, steering-influence, and Recast-painted Crowd avoidance volumes. Painted color shows pending/confirmed/invalid/retiring state; physical color shows traversal policy: blue Avoid If Possible, red Hard Exclude, gold Cost Only.")))
+		.IsOn_Lambda([this]() { return _ShowAvoidanceVolumes; })
+		.OnStateChanged_Lambda([this](bool InIsOn) { _ShowAvoidanceVolumes = InIsOn; })
+		[ SNew(STextBlock).Text_Lambda([this]() -> FText
+		{
+			const auto Count = _ViewModel.IsValid() ? _ViewModel->Get_AvoidanceVolumes().Num() : 0;
+			return FText::FromString(FString::Printf(TEXT("Avoidance Volumes (%d)"), Count));
+		}) ];
 
 	const auto DiagnosticsMenu = SNew(SVerticalBox)
 		+ SVerticalBox::Slot().AutoHeight()
@@ -813,7 +824,9 @@ auto SCkCrowdDebuggerWindow::BuildCommandGroups() -> TArray<FCkDebug_CommandGrou
 		+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(4, 0)
 		[ SNew(SComboButton).ToolTipText(FText::FromString(TEXT("Crowd display settings."))).ButtonContent()[SNew(STextBlock).Text(FText::FromString(TEXT("Crowd")))].MenuContent()[CrowdMenu] ]
 		+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(4, 0)
-		[ SNew(SComboButton).ToolTipText(FText::FromString(TEXT("Queue reservation and formation display settings."))).ButtonContent()[SNew(STextBlock).Text(FText::FromString(TEXT("Queues")))].MenuContent()[QueueMenu] ];
+		[ SNew(SComboButton).ToolTipText(FText::FromString(TEXT("Queue reservation and formation display settings."))).ButtonContent()[SNew(STextBlock).Text(FText::FromString(TEXT("Queues")))].MenuContent()[QueueMenu] ]
+		+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(4, 0)
+		[ SNew(SComboButton).ToolTipText(FText::FromString(TEXT("Crowd avoidance-volume display settings."))).ButtonContent()[SNew(STextBlock).Text(FText::FromString(TEXT("Avoidance")))].MenuContent()[AvoidanceVolumeMenu] ];
 	const auto Telemetry = SNew(SHorizontalBox)
 		+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0, 0, 8, 0)[ SNew(STextBlock).Text_Lambda([this]() { return FText::FromString(_VoxelSourceStatus); }).ColorAndOpacity(FSlateColor(CkStyle::Info())) ]
 		+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)[ SNew(STextBlock).Text_Lambda([this]() -> FText { return _ViewModel.IsValid() ? FText::FromString(FString::Printf(TEXT("Agents: %d"), _ViewModel->Get_AgentCount())) : FText::FromString(TEXT("(no view-model)")); }) ];

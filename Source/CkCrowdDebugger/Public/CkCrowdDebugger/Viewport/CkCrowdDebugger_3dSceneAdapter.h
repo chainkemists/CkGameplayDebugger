@@ -1,5 +1,6 @@
 #pragma once
 
+#include "CkCrowdDebugger/Data/CkCrowdDebugger_Types.h"
 #include "CkDebugScene/CkDebugScene_Target.h"
 
 #include <CoreMinimal.h>
@@ -18,6 +19,9 @@ enum class ECkCrowdDebugger_3dSceneRole : uint8
     VoxelRepair,
     QueueOwnerTarget,
     QueueReservation,
+    AvoidanceVolumePhysical,
+    AvoidanceVolumeInfluence,
+    AvoidanceVolumePainted,
     CommandPing
 };
 
@@ -115,6 +119,19 @@ struct FCkCrowdDebugger_3dQueueSnapshot
     FCkCrowdDebugger_3dSegmentSnapshot _OwnerTarget;
     TArray<FCkCrowdDebugger_3dQueueMemberSnapshot> _Members;
 };
+struct FCkCrowdDebugger_3dAvoidanceVolumeSnapshot
+{
+    uint64 _Identity = 0;
+    uint64 _Revision = 0;
+    FTransform _YawWorldTransform = FTransform::Identity;
+    FVector _PhysicalWorldHalfExtents = FVector::ZeroVector;
+    FVector _InfluenceWorldHalfExtents = FVector::ZeroVector;
+    FVector _PaintedWorldHalfExtents = FVector::ZeroVector;
+    ECkCrowdDebugger_AvoidanceVolumeState _State = ECkCrowdDebugger_AvoidanceVolumeState::Pending;
+    ECkCrowdDebugger_AvoidanceVolumeTraversalPolicy _TraversalPolicy =
+        ECkCrowdDebugger_AvoidanceVolumeTraversalPolicy::AvoidIfPossible;
+    bool _HasValidGeometry = false;
+};
 // Acknowledgment for a right-click command, drawn IN the debugger viewport. The world-space PMG
 // ping cannot appear here: this scene renders into the viewport's own preview world, never the
 // game world, so a game-world actor is structurally absent from it.
@@ -134,6 +151,7 @@ struct FCkCrowdDebugger_3dSceneSnapshot
     FCkCrowdDebugger_3dRecastSnapshot _Recast;
     FCkCrowdDebugger_3dPathNetworkSnapshot _PathNetwork;
     TArray<FCkCrowdDebugger_3dQueueSnapshot> _Queues;
+    TArray<FCkCrowdDebugger_3dAvoidanceVolumeSnapshot> _AvoidanceVolumes;
     FCkCrowdDebugger_3dCommandPing _CommandPing;
 };
 

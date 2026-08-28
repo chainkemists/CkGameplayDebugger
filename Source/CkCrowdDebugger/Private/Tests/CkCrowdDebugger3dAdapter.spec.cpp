@@ -64,6 +64,22 @@ MakeSnapshot() -> FCkCrowdDebugger_3dSceneSnapshot
     Snapshot._Agents = {MakeAgent(AgentA, FVector::ZeroVector), MakeAgent(AgentB, FVector{400.0f, 0.0f, 0.0f})};
     return Snapshot;
 }
+
+auto
+MakeAvoidanceVolume(uint64 InIdentity, const FVector& InLocation = FVector::ZeroVector)
+    -> FCkCrowdDebugger_3dAvoidanceVolumeSnapshot
+{
+    auto Volume = FCkCrowdDebugger_3dAvoidanceVolumeSnapshot{};
+    Volume._Identity = InIdentity;
+    Volume._YawWorldTransform = FTransform{FRotator{0.0f, 35.0f, 0.0f}, InLocation};
+    Volume._PhysicalWorldHalfExtents = FVector{100.0f, 60.0f, 80.0f};
+    Volume._InfluenceWorldHalfExtents = FVector{160.0f, 120.0f, 80.0f};
+    Volume._PaintedWorldHalfExtents = FVector{220.0f, 180.0f, 80.0f};
+    Volume._State = ECkCrowdDebugger_AvoidanceVolumeState::Confirmed;
+	Volume._TraversalPolicy = ECkCrowdDebugger_AvoidanceVolumeTraversalPolicy::AvoidIfPossible;
+    Volume._HasValidGeometry = true;
+    return Volume;
+}
 } // namespace ck_crowd_debugger_3d_adapter_spec
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -622,6 +638,174 @@ auto FCkCrowdDebugger3dAdapter_QueueReservationsAreRetained::RunTest(const FStri
     TestTrue(TEXT("empty queue snapshot removes retained queue geometry"), Adapter.Reconcile(Snapshot, *Fixture._Target));
     TestFalse(TEXT("empty queue snapshot removes owner target"), Adapter.Has_Role(ECkCrowdDebugger_3dSceneRole::QueueOwnerTarget));
     TestFalse(TEXT("empty queue snapshot removes reservations"), Adapter.Has_Role(ECkCrowdDebugger_3dSceneRole::QueueReservation));
+    return true;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCkCrowdDebugger3dAdapter_AvoidanceVolumesRetainDistinctRoles,
+    "Ck.CrowdDebugger.Viewport3d.AvoidanceVolumesRetainDistinctRoles",
+    ck_crowd_debugger_3d_adapter_spec::TestFlags)
+
+auto FCkCrowdDebugger3dAdapter_AvoidanceVolumesRetainDistinctRoles::RunTest(const FString&) -> bool
+{
+    using namespace ck_crowd_debugger_3d_adapter_spec;
+    auto Fixture = FScopedTarget{};
+    auto Producer = MakeSnapshot();
+    Producer._AvoidanceVolumes = {MakeAvoidanceVolume(7001)};
+    const auto CopiedSnapshot = Producer;
+    Producer = {};
+
+    auto Adapter = FCkCrowdDebugger_3dSceneAdapter{};
+    TestTrue(TEXT("a copied avoidance-volume snapshot outlives its producer"),
+        Adapter.Reconcile(CopiedSnapshot, *Fixture._Target));
+    TestEqual(TEXT("physical footprint has one retained item"),
+        Adapter.Get_ItemCount(ECkCrowdDebugger_3dSceneRole::AvoidanceVolumePhysical), 1);
+    TestEqual(TEXT("influence footprint has one retained item"),
+        Adapter.Get_ItemCount(ECkCrowdDebugger_3dSceneRole::AvoidanceVolumeInfluence), 1);
+    TestEqual(TEXT("painted footprint has one retained item"),
+        Adapter.Get_ItemCount(ECkCrowdDebugger_3dSceneRole::AvoidanceVolumePainted), 1);
+
+    const auto Physical = Adapter.Get_RoleAppearance(ECkCrowdDebugger_3dSceneRole::AvoidanceVolumePhysical);
+    const auto Influence = Adapter.Get_RoleAppearance(ECkCrowdDebugger_3dSceneRole::AvoidanceVolumeInfluence);
+    const auto Painted = Adapter.Get_RoleAppearance(ECkCrowdDebugger_3dSceneRole::AvoidanceVolumePainted);
+    TestNotEqual(TEXT("physical and influence roles remain visually distinct"), Physical.Get_Color(), Influence.Get_Color());
+    TestNotEqual(TEXT("influence and painted roles remain visually distinct"), Influence.Get_Color(), Painted.Get_Color());
+
+	// Physical geometry carries traversal policy while painted geometry continues to carry runtime state.
+	const auto AvoidIfPossiblePhysical = Physical.Get_Color();
+	auto HardExclude = CopiedSnapshot;
+	HardExclude._AvoidanceVolumes[0]._TraversalPolicy = ECkCrowdDebugger_AvoidanceVolumeTraversalPolicy::HardExclude;
+	TestTrue(TEXT("hard-exclude policy reconciles"), Adapter.Reconcile(HardExclude, *Fixture._Target));
+	TestNotEqual(TEXT("hard-exclude policy has a distinct physical color"),
+		Adapter.Get_RoleAppearance(ECkCrowdDebugger_3dSceneRole::AvoidanceVolumePhysical).Get_Color(), AvoidIfPossiblePhysical);
+
+    auto WithUnrenderableInvalid = CopiedSnapshot;
+    auto InvalidVolume = FCkCrowdDebugger_3dAvoidanceVolumeSnapshot{};
+    InvalidVolume._Identity = 7002;
+    InvalidVolume._State = ECkCrowdDebugger_AvoidanceVolumeState::Invalid;
+    WithUnrenderableInvalid._AvoidanceVolumes.Add(InvalidVolume);
+    TestTrue(TEXT("an intentionally geometry-less invalid volume does not poison the scene"),
+        Adapter.Reconcile(WithUnrenderableInvalid, *Fixture._Target));
+    TestEqual(TEXT("geometry-less invalid volume adds no misleading physical item"),
+        Adapter.Get_ItemCount(ECkCrowdDebugger_3dSceneRole::AvoidanceVolumePhysical), 1);
+
+    Fixture._Target->Reset_FrameStats();
+    TestTrue(TEXT("unchanged avoidance volumes reconcile"), Adapter.Reconcile(WithUnrenderableInvalid, *Fixture._Target));
+    const auto& SteadyStats = Fixture._Target->Get_Stats();
+    TestEqual(TEXT("unchanged avoidance volumes add no instances"), SteadyStats.Get_InstancesAdded(), 0);
+    TestEqual(TEXT("unchanged avoidance volumes update no instances"), SteadyStats.Get_InstancesUpdated(), 0);
+    TestEqual(TEXT("unchanged avoidance volumes remove no instances"), SteadyStats.Get_InstancesRemoved(), 0);
+    return true;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCkCrowdDebugger3dAdapter_AvoidanceVolumesReconcileLifecycle,
+    "Ck.CrowdDebugger.Viewport3d.AvoidanceVolumesReconcileLifecycle",
+    ck_crowd_debugger_3d_adapter_spec::TestFlags)
+
+auto FCkCrowdDebugger3dAdapter_AvoidanceVolumesReconcileLifecycle::RunTest(const FString&) -> bool
+{
+    using namespace ck_crowd_debugger_3d_adapter_spec;
+    auto Fixture = FScopedTarget{};
+    auto Snapshot = MakeSnapshot();
+    Snapshot._AvoidanceVolumes = {MakeAvoidanceVolume(7001), MakeAvoidanceVolume(7002, FVector{500.0f, 0.0f, 0.0f})};
+
+    auto Adapter = FCkCrowdDebugger_3dSceneAdapter{};
+    TestTrue(TEXT("initial avoidance volumes reconcile"), Adapter.Reconcile(Snapshot, *Fixture._Target));
+    Fixture._Target->Reset_FrameStats();
+
+    auto Reordered = Snapshot;
+    Swap(Reordered._AvoidanceVolumes[0], Reordered._AvoidanceVolumes[1]);
+    TestTrue(TEXT("reordered avoidance volumes reconcile"), Adapter.Reconcile(Reordered, *Fixture._Target));
+    TestEqual(TEXT("reorder preserves retained identities without additions"), Fixture._Target->Get_Stats().Get_InstancesAdded(), 0);
+    TestEqual(TEXT("reorder preserves retained identities without removals"), Fixture._Target->Get_Stats().Get_InstancesRemoved(), 0);
+
+    const auto PaintedItemBefore = Adapter.Get_TargetItemId(
+        ECkCrowdDebugger_3dSceneRole::AvoidanceVolumePainted, 0);
+    if (NOT TestTrue(TEXT("updated volume has a retained painted item"), PaintedItemBefore.IsSet()))
+    { return false; }
+    const auto PaintedBoundsBefore = Fixture._Target->Get_ItemBounds(*PaintedItemBefore);
+    if (NOT TestTrue(TEXT("updated volume has painted bounds before mutation"), PaintedBoundsBefore.IsSet()))
+    { return false; }
+
+    auto Updated = Reordered;
+    Updated._AvoidanceVolumes[0]._PaintedWorldHalfExtents.X += 50.0f;
+    Updated._AvoidanceVolumes[0]._State = ECkCrowdDebugger_AvoidanceVolumeState::Pending;
+	Updated._AvoidanceVolumes[0]._TraversalPolicy = ECkCrowdDebugger_AvoidanceVolumeTraversalPolicy::CostOnly;
+    Fixture._Target->Reset_FrameStats();
+    TestTrue(TEXT("geometry and state update reconcile"), Adapter.Reconcile(Updated, *Fixture._Target));
+    const auto PaintedItemAfter = Adapter.Get_TargetItemId(
+        ECkCrowdDebugger_3dSceneRole::AvoidanceVolumePainted, 0);
+    TestTrue(TEXT("geometry/state change preserves the retained painted identity"),
+        PaintedItemAfter.IsSet() && *PaintedItemAfter == *PaintedItemBefore);
+    const auto PaintedBoundsAfter = PaintedItemAfter.IsSet()
+        ? Fixture._Target->Get_ItemBounds(*PaintedItemAfter) : TOptional<FBox>{};
+    TestTrue(TEXT("geometry change updates the retained painted bounds"),
+        PaintedBoundsAfter.IsSet() && NOT PaintedBoundsAfter->Equals(*PaintedBoundsBefore));
+
+    auto Retiring = Updated;
+    Retiring._AvoidanceVolumes[0]._State = ECkCrowdDebugger_AvoidanceVolumeState::Retiring;
+    TestTrue(TEXT("retiring avoidance volume reconciles"), Adapter.Reconcile(Retiring, *Fixture._Target));
+    TestEqual(TEXT("retiring volume omits its no-longer-live influence region"),
+        Adapter.Get_ItemCount(ECkCrowdDebugger_3dSceneRole::AvoidanceVolumeInfluence), 1);
+
+    Retiring._AvoidanceVolumes.Reset();
+    TestTrue(TEXT("empty avoidance snapshot reconciles"), Adapter.Reconcile(Retiring, *Fixture._Target));
+    TestFalse(TEXT("empty avoidance snapshot removes physical geometry"),
+        Adapter.Has_Role(ECkCrowdDebugger_3dSceneRole::AvoidanceVolumePhysical));
+    TestFalse(TEXT("empty avoidance snapshot removes influence geometry"),
+        Adapter.Has_Role(ECkCrowdDebugger_3dSceneRole::AvoidanceVolumeInfluence));
+    TestFalse(TEXT("empty avoidance snapshot removes painted geometry"),
+        Adapter.Has_Role(ECkCrowdDebugger_3dSceneRole::AvoidanceVolumePainted));
+    return true;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCkCrowdDebugger3dAdapter_AvoidanceVolumesFailClosedAcrossWorldChange,
+    "Ck.CrowdDebugger.Viewport3d.AvoidanceVolumesFailClosedAcrossWorldChange",
+    ck_crowd_debugger_3d_adapter_spec::TestFlags)
+
+auto FCkCrowdDebugger3dAdapter_AvoidanceVolumesFailClosedAcrossWorldChange::RunTest(const FString&) -> bool
+{
+    using namespace ck_crowd_debugger_3d_adapter_spec;
+    auto Fixture = FScopedTarget{};
+    auto Snapshot = MakeSnapshot();
+    Snapshot._AvoidanceVolumes = {MakeAvoidanceVolume(7001)};
+    auto Adapter = FCkCrowdDebugger_3dSceneAdapter{};
+    TestTrue(TEXT("baseline avoidance geometry commits"), Adapter.Reconcile(Snapshot, *Fixture._Target));
+    const auto PhysicalItem = Adapter.Get_TargetItemId(ECkCrowdDebugger_3dSceneRole::AvoidanceVolumePhysical, 0);
+    TestTrue(TEXT("baseline physical item exists"), PhysicalItem.IsSet());
+    if (NOT PhysicalItem.IsSet())
+    {
+        return false;
+    }
+    const auto BeforeBounds = Fixture._Target->Get_ContentBounds();
+    const auto BeforeItems = Fixture._Target->Get_Stats().Get_ItemCount();
+
+    auto Invalid = Snapshot;
+    auto MalformedGeometry = FCkCrowdDebugger_3dAvoidanceVolumeSnapshot{};
+    MalformedGeometry._Identity = 7002;
+    MalformedGeometry._HasValidGeometry = true;
+    Invalid._AvoidanceVolumes.Add(MalformedGeometry);
+    AddExpectedError(TEXT("Crowd debug-scene adapter rejected"), EAutomationExpectedErrorFlags::Contains, 2);
+    TestFalse(TEXT("a later invalid avoidance volume aborts the target transaction"),
+        Adapter.Reconcile(Invalid, *Fixture._Target));
+    TestTrue(TEXT("failed transaction preserves prior physical item"),
+        Fixture._Target->Get_ItemBounds(*PhysicalItem).IsSet());
+    TestTrue(TEXT("failed transaction preserves prior bounds"), Fixture._Target->Get_ContentBounds().Equals(BeforeBounds));
+    TestEqual(TEXT("failed transaction preserves prior item count"), Fixture._Target->Get_Stats().Get_ItemCount(), BeforeItems);
+
+    Adapter.Reset_ForWorldChange(*Fixture._Target);
+    TestEqual(TEXT("world reset removes retained avoidance geometry"), Fixture._Target->Get_Stats().Get_ItemCount(), 0);
+    TestFalse(TEXT("world reset clears avoidance physical role"),
+        Adapter.Has_Role(ECkCrowdDebugger_3dSceneRole::AvoidanceVolumePhysical));
+    TestFalse(TEXT("world reset clears avoidance influence role"),
+        Adapter.Has_Role(ECkCrowdDebugger_3dSceneRole::AvoidanceVolumeInfluence));
+    TestFalse(TEXT("world reset clears avoidance painted role"),
+        Adapter.Has_Role(ECkCrowdDebugger_3dSceneRole::AvoidanceVolumePainted));
     return true;
 }
 

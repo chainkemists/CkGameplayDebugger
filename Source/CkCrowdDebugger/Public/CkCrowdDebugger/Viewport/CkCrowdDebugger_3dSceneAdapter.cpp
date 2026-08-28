@@ -26,6 +26,42 @@ IsFinite(const FVector& InValue) -> bool
 }
 
 auto
+IsFinitePositive(const FVector& InValue) -> bool
+{
+    return IsFinite(InValue) && InValue.X > 0.0f && InValue.Y > 0.0f && InValue.Z > 0.0f;
+}
+
+auto
+IsFiniteTransform(const FTransform& InValue) -> bool
+{
+    return NOT InValue.ContainsNaN() && IsFinite(InValue.GetLocation()) &&
+        IsFinite(InValue.GetScale3D());
+}
+
+auto
+GetAvoidanceVolumeColor(ECkCrowdDebugger_AvoidanceVolumeState InState) -> FLinearColor
+{
+    switch (InState)
+    {
+    case ECkCrowdDebugger_AvoidanceVolumeState::Confirmed: return FLinearColor{0.2f, 0.95f, 0.35f, 0.30f};
+    case ECkCrowdDebugger_AvoidanceVolumeState::Invalid: return FLinearColor{1.0f, 0.15f, 0.12f, 0.40f};
+    case ECkCrowdDebugger_AvoidanceVolumeState::Retiring: return FLinearColor{0.62f, 0.38f, 0.85f, 0.30f};
+    default: return FLinearColor{1.0f, 0.68f, 0.12f, 0.35f};
+    }
+}
+
+auto
+GetAvoidanceVolumePolicyColor(ECkCrowdDebugger_AvoidanceVolumeTraversalPolicy InPolicy) -> FLinearColor
+{
+    switch (InPolicy)
+    {
+    case ECkCrowdDebugger_AvoidanceVolumeTraversalPolicy::HardExclude: return FLinearColor{1.0f, 0.30f, 0.30f, 0.28f};
+    case ECkCrowdDebugger_AvoidanceVolumeTraversalPolicy::CostOnly: return FLinearColor{0.98f, 0.75f, 0.18f, 0.22f};
+    default: return FLinearColor{0.20f, 0.78f, 1.0f, 0.20f};
+    }
+}
+
+auto
 Get_RibbonSegmentLateral(const FVector& InFrom, const FVector& InTo) -> FVector
 {
     const auto Tangent = (InTo - InFrom).GetSafeNormal();
@@ -518,6 +554,55 @@ auto
             for (const auto Key : *PreviousKeys)
             { _StaticInstances.Remove(Key); }
         }
+    }
+
+    for (const auto Role : {ECkCrowdDebugger_3dSceneRole::AvoidanceVolumePhysical,
+                            ECkCrowdDebugger_3dSceneRole::AvoidanceVolumeInfluence,
+                            ECkCrowdDebugger_3dSceneRole::AvoidanceVolumePainted})
+    {
+        if (const auto* PreviousKeys = PreviousState._RoleItems.Find(Role))
+        {
+            for (const auto Key : *PreviousKeys)
+            { _StaticInstances.Remove(Key); }
+        }
+    }
+    for (const auto& Volume : InSnapshot._AvoidanceVolumes)
+    {
+        // A producer can deliberately publish an invalid volume with no safe geometry so the UI
+        // can still count/report it. It contributes no scene item, but it must not poison every
+        // other retained layer or repeatedly fire an ensure during normal fail-closed diagnostics.
+        if (NOT Volume._HasValidGeometry)
+        { continue; }
+
+        const auto GeometryValid = Volume._Identity != 0 &&
+            ck_crowd_debugger_3d_scene_adapter::IsFiniteTransform(Volume._YawWorldTransform) &&
+            ck_crowd_debugger_3d_scene_adapter::IsFinitePositive(Volume._PhysicalWorldHalfExtents) &&
+            ck_crowd_debugger_3d_scene_adapter::IsFinitePositive(Volume._PaintedWorldHalfExtents) &&
+            (Volume._State == ECkCrowdDebugger_AvoidanceVolumeState::Retiring ||
+             ck_crowd_debugger_3d_scene_adapter::IsFinitePositive(Volume._InfluenceWorldHalfExtents));
+        CK_ENSURE_IF_NOT(GeometryValid, TEXT("Crowd debug-scene adapter rejected invalid avoidance-volume geometry")) {}
+        if (NOT GeometryValid)
+        { InTarget.Abort_Reconcile(); return RestoreAndFail(); }
+
+        const auto TransformFor = [&Volume](const FVector& InHalfExtents) -> FTransform
+        { return FTransform{Volume._YawWorldTransform.GetRotation(), Volume._YawWorldTransform.GetLocation(), InHalfExtents * 2.0f}; };
+        const auto PaintedColor = ck_crowd_debugger_3d_scene_adapter::GetAvoidanceVolumeColor(Volume._State);
+		const auto PhysicalColor = ck_crowd_debugger_3d_scene_adapter::GetAvoidanceVolumePolicyColor(Volume._TraversalPolicy);
+        if (NOT SubmitStatic(ECkCrowdDebugger_3dSceneRole::AvoidanceVolumePhysical, Volume._Identity,
+				ck::debug_scene::shapes::Get_Box(), PhysicalColor,
+                ck_crowd_debugger_3d_scene_adapter::IsTransparent, TransformFor(Volume._PhysicalWorldHalfExtents)) ||
+            NOT SubmitStatic(ECkCrowdDebugger_3dSceneRole::AvoidanceVolumePainted, Volume._Identity,
+                ck::debug_scene::shapes::Get_Box(), PaintedColor,
+                ck_crowd_debugger_3d_scene_adapter::IsTransparent, TransformFor(Volume._PaintedWorldHalfExtents)))
+        { InTarget.Abort_Reconcile(); return RestoreAndFail(); }
+
+        // Retiring means its query probe has been removed; leave the historical paint visible but never
+        // depict it as an active influence field.
+        if (Volume._State != ECkCrowdDebugger_AvoidanceVolumeState::Retiring &&
+            NOT SubmitStatic(ECkCrowdDebugger_3dSceneRole::AvoidanceVolumeInfluence, Volume._Identity,
+                ck::debug_scene::shapes::Get_Box(), FLinearColor{0.1f, 0.85f, 1.0f, 0.14f},
+                ck_crowd_debugger_3d_scene_adapter::IsTransparent, TransformFor(Volume._InfluenceWorldHalfExtents)))
+        { InTarget.Abort_Reconcile(); return RestoreAndFail(); }
     }
     for (const auto& Queue : InSnapshot._Queues)
     {

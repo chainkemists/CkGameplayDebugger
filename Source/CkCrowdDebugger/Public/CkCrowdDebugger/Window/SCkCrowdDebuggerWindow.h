@@ -95,6 +95,7 @@ private:
 	bool _ShowVoxelPortals = true;
 	bool _ShowVoxelDirtyRepair = true;
 	bool _ShowQueues = true;
+	bool _ShowAvoidanceVolumes = true;
 	TOptional<FCk_Entity> _PendingTarget;
 	FDelegateHandle _WorldChangedHandle;
 	FDelegateHandle _SessionInvalidatedHandle;

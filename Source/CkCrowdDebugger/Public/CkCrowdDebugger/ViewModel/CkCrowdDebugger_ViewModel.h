@@ -67,6 +67,8 @@ public:
 	{ return _DataCollector.Get_PathNetworkRibbons(); }
 	auto Get_Queues() const -> const TArray<FCkCrowdDebugger_QueueSnapshot>&
 	{ return _DataCollector.Get_Queues(); }
+	auto Get_AvoidanceVolumes() const -> const TArray<FCkCrowdDebugger_AvoidanceVolumeSnapshot>&
+	{ return _DataCollector.Get_AvoidanceVolumes(); }
 
 	// Pause
 	auto Set_Paused(bool InPaused) -> void;

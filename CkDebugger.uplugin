@@ -87,6 +87,16 @@
 			]
 		},
 		{
+			"Name": "CkVisualLodDebugger",
+			"Type": "DeveloperTool",
+			"LoadingPhase": "Default",
+			"WhitelistPlatforms": [
+				"Win64",
+				"Mac",
+				"Linux"
+			]
+		},
+		{
 			"Name": "CkSaveDebugger",
 			"Type": "DeveloperTool",
 			"LoadingPhase": "Default",

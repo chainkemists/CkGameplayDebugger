@@ -315,6 +315,16 @@
 				"Mac",
 				"Linux"
 			]
+		},
+		{
+			"Name": "CkNavmeshDebugDraw",
+			"Type": "Runtime",
+			"LoadingPhase": "Default",
+			"WhitelistPlatforms": [
+				"Win64",
+				"Mac",
+				"Linux"
+			]
 		}
 	],
 	"Plugins": [

@@ -49,6 +49,8 @@ private:
     auto Refresh_FilterBadgeStrip() -> void;
     auto Build_LeftSidebar() -> TSharedRef<SWidget>;
     auto Build_ContentArea() -> TSharedRef<SWidget>;
+    auto Build_PageTabs() -> TSharedRef<SWidget>;
+    auto Build_PageContent() -> TSharedRef<SWidget>;
     auto Build_InspectorPanel() -> TSharedRef<SWidget>;
 
     auto OnPageSelected(int32 InPageIndex) -> void;
@@ -61,9 +63,13 @@ private:
     TSharedPtr<FCkDebug_ViewportPicker> ViewportPicker;
     TSharedPtr<FCkDebuggerModel_InspectorFilter> FilterModel;
     TArray<TSharedPtr<ICkDebuggerPage_Base>> Pages;
+    /** Parallel to Pages -- the tab id the shared strip knows each page by. */
+    TArray<FName> PageTabIds;
     int32 ActivePageIndex = 0;
 
     TSharedPtr<SBox> ContentAreaContainer;
+    /** Only the page BODY is rebuilt on selection; the tab strip is built once and binds its active state. */
+    TSharedPtr<SBox> PageContentContainer;
     TSharedPtr<SCkDebuggerPanel_EntityList> EntityListPanel;
     TSharedPtr<SCkDebuggerPanel_Inspector> InspectorPanel;
 

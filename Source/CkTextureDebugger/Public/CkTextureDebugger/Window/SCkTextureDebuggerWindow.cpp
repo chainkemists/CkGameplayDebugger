@@ -206,13 +206,22 @@ auto
                 SNew(SHorizontalBox)
                 + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0, 0, CkStyle::SpaceM, 0)[SNew(SCkDebug_WorldSelector, _WorldModel).ShowHeaderLabel(false)]
                 + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0, 0, CkStyle::SpaceM, 0)[SNew(SCkDebug_ViewportComponentPickerControls).Picker(_ComponentPicker).PickTooltip(LOCTEXT("PickTip", "Pick a mesh component in the active Editor, PIE, or game world. Collisionless meshes use bounds fallback; no hit section is guessed as a material slot."))]
-                + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)[SNew(SButton).Text(LOCTEXT("Refresh", "Refresh")).OnClicked(this, &SCkTextureDebuggerWindow::OnRefreshRequested)]),
-            FCkDebug_CommandGroup::Context(TEXT("TexturePages"), LOCTEXT("PagesTip", "Texture debugger pages"),
-                SNew(SCkDebug_UnderlineTabs).Tabs(Pages).ActiveTabId_Lambda([this] { return _ActivePageId; }).OnTabSelected(this, &SCkTextureDebuggerWindow::OnPageSelected))
+                + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)[SNew(SButton).Text(LOCTEXT("Refresh", "Refresh")).OnClicked(this, &SCkTextureDebuggerWindow::OnRefreshRequested)])
         })
         .Content()
         [
             SNew(SVerticalBox)
+            // Page tabs own a strip row of their own -- below the chrome, above the switcher --
+            // exactly where the Optimization debugger puts its pages. As a command-bar Context
+            // group they sat inside a horizontally scrolling lane whose scrollbar is collapsed,
+            // so a page past the available width was invisible AND undiscoverable.
+            + SVerticalBox::Slot().AutoHeight().Padding(CkStyle::SpaceM, 0.0f)
+            [
+                SNew(SCkDebug_UnderlineTabs)
+                .Tabs(Pages)
+                .ActiveTabId_Lambda([this] { return _ActivePageId; })
+                .OnTabSelected(this, &SCkTextureDebuggerWindow::OnPageSelected)
+            ]
             + SVerticalBox::Slot().AutoHeight()[Build_ContextStrip()]
             + SVerticalBox::Slot().FillHeight(1.0f)[_PageSwitcher.ToSharedRef()]
         ]

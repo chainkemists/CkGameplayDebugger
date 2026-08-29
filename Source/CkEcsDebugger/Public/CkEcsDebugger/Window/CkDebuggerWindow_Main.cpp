@@ -38,6 +38,7 @@
 #include "CkDebuggerCommon/Picker/SCkDebug_ViewportPickerControls.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_PaneHost.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_IconToggle.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_UnderlineTabs.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_ToggleSurface.h"
 #include "CkDebuggerCommon/Window/SCkDebug_WindowChrome.h"
 #include "CkEcsDebugger/Panels/CkDebuggerPanel_EntityList.h"
@@ -74,7 +75,7 @@ namespace ck_debugger_window_main
     auto Get_BodyFont() -> FSlateFontInfo
     { return ck::debug_axes::ScaledFont("Regular", CkStyle::FontSizeBody()); }
 
-    // Sub-micro: the toolbar's tiny popover heading and the tab-strip unseen-count badge.
+    // Sub-micro: the toolbar's tiny popover heading.
     auto Get_TinyLabelFont() -> FSlateFontInfo
     { return ck::debug_axes::ScaledFont("Bold", 7); }
 
@@ -1202,85 +1203,102 @@ auto SCkDebuggerWindow_Main::Build_LeftSidebar() -> TSharedRef<SWidget>
 
 auto SCkDebuggerWindow_Main::Build_ContentArea() -> TSharedRef<SWidget>
 {
-    // Tab row
-    auto TabRow = SNew(SHorizontalBox);
+    // Built ONCE. Page selection rebuilds only the body below it: the strip reads the active page
+    // through an ActiveTabId attribute instead of baking it, so a click no longer reconstructs the
+    // whole tab row (and no longer loses the shared widget's measured overflow partition).
+    return SNew(SBorder)
+        .BorderImage(FCkDebuggerStyle::Get().GetBrush("CkDebugger.Background.Dark"))
+        .Padding(0.0f)
+        [
+            SNew(SVerticalBox)
+            + SVerticalBox::Slot()
+                .AutoHeight()
+                .Padding(FCkDebuggerStyle::Padding_Small)
+                [
+                    Build_PageTabs()
+                ]
+            + SVerticalBox::Slot()
+                .FillHeight(1.0f)
+                .Padding(FCkDebuggerStyle::Padding_Small)
+                [
+                    SAssignNew(PageContentContainer, SBox)
+                    [
+                        Build_PageContent()
+                    ]
+                ]
+        ];
+}
 
-    for (auto i = 0; i < Pages.Num(); ++i)
+auto SCkDebuggerWindow_Main::Build_PageTabs() -> TSharedRef<SWidget>
+{
+    PageTabIds.Reset();
+    PageTabIds.Reserve(Pages.Num());
+
+    auto Tabs = TArray<FCkDebug_UnderlineTabDesc>{};
+    Tabs.Reserve(Pages.Num());
+
+    for (auto PageIndex = 0; PageIndex < Pages.Num(); ++PageIndex)
     {
-        if (NOT Pages[i].IsValid())
-        { continue; }
+        if (NOT Pages[PageIndex].IsValid())
+        {
+            // Kept parallel to Pages so ActivePageIndex stays a valid lookup into PageTabIds.
+            PageTabIds.Add(NAME_None);
+            continue;
+        }
 
-        auto PageIndex = i;
-        auto IsActive = (i == ActivePageIndex);
+        const auto TabId = FName{*ck::Format_UE(TEXT("EcsPage{}"), PageIndex)};
+        PageTabIds.Add(TabId);
+
+        auto Tab = FCkDebug_UnderlineTabDesc{};
+        Tab.Id = TabId;
+        Tab.Label = Pages[PageIndex]->Get_PageName();
 
         // Weak page ref: the unseen badge polls live so events arriving while another
         // tab is active surface without a tab-strip rebuild.
-        const auto WeakPage = TWeakPtr<ICkDebuggerPage_Base>(Pages[i]);
+        const auto WeakPage = TWeakPtr<ICkDebuggerPage_Base>(Pages[PageIndex]);
 
-        TabRow->AddSlot()
-            .AutoWidth()
-            .Padding(1.0f, 0.0f)
-            [
-                SNew(SButton)
-                    .ButtonColorAndOpacity(IsActive
-                        ? CkStyle::Selection()
-                        : CkStyle::Bg2())
-                    .ForegroundColor(IsActive
-                        ? CkStyle::TextStrong()
-                        : CkStyle::TextDim())
-                    .OnClicked_Lambda([this, PageIndex]()
-                    {
-                        OnPageSelected(PageIndex);
-                        return FReply::Handled();
-                    })
-                    [
-                        SNew(SHorizontalBox)
+        Tab.CountText = TAttribute<FText>::CreateLambda([WeakPage]() -> FText
+        {
+            const auto Pinned = WeakPage.Pin();
+            const auto Count = Pinned.IsValid() ? Pinned->Get_BadgeCount() : 0;
 
-                        + SHorizontalBox::Slot()
-                        .AutoWidth()
-                        .VAlign(VAlign_Center)
-                        [
-                            SNew(STextBlock)
-                                .Text(Pages[i]->Get_PageName())
-                                .Font_Lambda([IsActive]() -> FSlateFontInfo
-                                {
-                                    return ck::debug_axes::ScaledFont(
-                                        IsActive ? "Bold" : "Regular", CkStyle::FontSizeH4());
-                                })
-                        ]
+            return Count > 0 ? FText::AsNumber(Count) : FText::GetEmpty();
+        });
 
-                        + SHorizontalBox::Slot()
-                        .AutoWidth()
-                        .VAlign(VAlign_Center)
-                        .Padding(3.0f, 0.0f, 0.0f, 0.0f)
-                        [
-                            SNew(SBorder)
-                            .BorderImage(FCkDebuggerStyle::Get().GetBrush("CkDebugger.Badge.Rounded"))
-                            .BorderBackgroundColor(FSlateColor{CkStyle::Err()})
-                            .Padding(FMargin{3.0f, 0.0f})
-                            .Visibility_Lambda([WeakPage]()
-                            {
-                                const auto Pinned = WeakPage.Pin();
-                                return Pinned.IsValid() && Pinned->Get_BadgeCount() > 0
-                                    ? EVisibility::Visible
-                                    : EVisibility::Collapsed;
-                            })
-                            [
-                                SNew(STextBlock)
-                                .Font_Static(&ck_debugger_window_main::Get_TinyLabelFont)
-                                .ColorAndOpacity(FLinearColor::White)
-                                .Text_Lambda([WeakPage]()
-                                {
-                                    const auto Pinned = WeakPage.Pin();
-                                    return FText::AsNumber(Pinned.IsValid() ? Pinned->Get_BadgeCount() : 0);
-                                })
-                            ]
-                        ]
-                    ]
-            ];
+        Tabs.Add(MoveTemp(Tab));
     }
 
-    // Page content
+    const auto WeakWindow = TWeakPtr<SCkDebuggerWindow_Main>(SharedThis(this));
+
+    return SNew(SCkDebug_UnderlineTabs)
+        .Tabs(Tabs)
+        .ActiveTabId_Lambda([WeakWindow]() -> FName
+        {
+            const auto Pinned = WeakWindow.Pin();
+
+            if (NOT Pinned.IsValid() || NOT Pinned->PageTabIds.IsValidIndex(Pinned->ActivePageIndex))
+            { return NAME_None; }
+
+            return Pinned->PageTabIds[Pinned->ActivePageIndex];
+        })
+        .OnTabSelected_Lambda([WeakWindow](FName InTabId)
+        {
+            const auto Pinned = WeakWindow.Pin();
+
+            if (NOT Pinned.IsValid())
+            { return; }
+
+            const auto PageIndex = Pinned->PageTabIds.IndexOfByKey(InTabId);
+
+            if (PageIndex == INDEX_NONE)
+            { return; }
+
+            Pinned->OnPageSelected(PageIndex);
+        });
+}
+
+auto SCkDebuggerWindow_Main::Build_PageContent() -> TSharedRef<SWidget>
+{
     TSharedRef<SWidget> PageContent = SNew(SBox)
         .HAlign(HAlign_Center)
         .VAlign(VAlign_Center)
@@ -1298,14 +1316,14 @@ auto SCkDebuggerWindow_Main::Build_ContentArea() -> TSharedRef<SWidget>
             SelectionModel,
             WorldModel,
             FilterModel,
-            // Archetype-card click-through → the entity list's Filter bar.
+            // Archetype-card click-through -> the entity list's Filter bar.
             [WeakSelf = TWeakPtr<SCkDebuggerWindow_Main>(SharedThis(this))](const FString& InFilter)
             {
                 const auto Pinned = WeakSelf.Pin();
                 if (Pinned.IsValid() && Pinned->EntityListPanel.IsValid())
                 { Pinned->EntityListPanel->Set_FilterText(InFilter); }
             },
-            // Filter-bar readback — cards derive their toggled state from the live text.
+            // Filter-bar readback -- cards derive their toggled state from the live text.
             [WeakSelf = TWeakPtr<SCkDebuggerWindow_Main>(SharedThis(this))]() -> FString
             {
                 const auto Pinned = WeakSelf.Pin();
@@ -1318,24 +1336,7 @@ auto SCkDebuggerWindow_Main::Build_ContentArea() -> TSharedRef<SWidget>
         PageContent = Pages[ActivePageIndex]->Build_Content(Context);
     }
 
-    return SNew(SBorder)
-        .BorderImage(FCkDebuggerStyle::Get().GetBrush("CkDebugger.Background.Dark"))
-        .Padding(0.0f)
-        [
-            SNew(SVerticalBox)
-            + SVerticalBox::Slot()
-                .AutoHeight()
-                .Padding(FCkDebuggerStyle::Padding_Small)
-                [
-                    TabRow
-                ]
-            + SVerticalBox::Slot()
-                .FillHeight(1.0f)
-                .Padding(FCkDebuggerStyle::Padding_Small)
-                [
-                    PageContent
-                ]
-        ];
+    return PageContent;
 }
 
 auto SCkDebuggerWindow_Main::Build_InspectorPanel() -> TSharedRef<SWidget>
@@ -1365,9 +1366,11 @@ auto SCkDebuggerWindow_Main::OnPageSelected(int32 InPageIndex) -> void
 
 auto SCkDebuggerWindow_Main::RebuildContentArea() -> void
 {
-    if (ContentAreaContainer.IsValid())
+    // Only the BODY. Rebuilding the strip here was what forced the active state to be baked at
+    // construction, and it is the reason a page click used to reconstruct every tab button.
+    if (PageContentContainer.IsValid())
     {
-        ContentAreaContainer->SetContent(Build_ContentArea());
+        PageContentContainer->SetContent(Build_PageContent());
     }
 }
 

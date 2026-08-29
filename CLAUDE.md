@@ -5,20 +5,21 @@ record for style, macros, ECS patterns, and collaboration protocol; nothing from
 here. Full extension runbooks live in the `ck-gameplaydebugger-extension` skill (this plugin's
 `.claude/skills/`, authored in Phase 2 of the doc campaign).
 
-## Identity (verified 2026-07-14)
+## Identity (verified 2026-08-28)
 
 - **Naming surprise, up front:** the repo/folder is `CkGameplayDebugger`, but the plugin it ships
   is **`CkDebugger.uplugin`** (FriendlyName "Ck Gameplay Debugger"). One *module* inside also
   carries the repo name — that module is the legacy generation, not the plugin.
-- **26-module debugger suite** for the CkFoundation ECS: 4 Runtime (`CkGameplayDebugger`,
-  `CkDebuggerCommon`, `CkEntityDebugOverlay`, `CkInputHudOverlay`) + 21 DeveloperTool (`CkEcsDebugger`, `CkSmDebugger`,
-  `CkSchedulerDebugger`, `CkGoapDebugger`, `CkDialogDebugger`,
-  `CkAggroDebugger`, `CkUIDebugger`, `CkAStarDebugger`, `CkCrowdDebugger`, `CkEqsDebugger`, `CkInputDebugger`,
-  `CkObjectPoolingDebugger`, `CkJoltDebugger`, `CkMapDebugger`, `CkInsightsDebugger`,
-  `CkAudioDebugger`, `CkStyleLabDebugger`, `CkSaveDebugger`, `CkOptimizationDebugger`, `CkIntentDebugger`, `CkDebuggerLauncher`) + 1 Editor companion
-  (`CkSaveDebuggerEditor`). Plugin dependency: **CkFoundation only**. The Runtime type on overlay + common is load-bearing — they
-  declare native gameplay tags (commit `a4de221`).
-- **Packaged-module contract (2026-08-11):** all 21 DeveloperTool modules are included in
+- **31-module debugger suite** for the CkFoundation ECS: 5 Runtime (`CkGameplayDebugger`,
+  `CkDebuggerCommon`, `CkEntityDebugOverlay`, `CkInputHudOverlay`, `CkNavmeshDebugDraw`) + 24 DeveloperTool
+  (`CkEcsDebugger`, `CkSmDebugger`, `CkDialogDebugger`, `CkAudioDebugger`, `CkAggroDebugger`,
+  `CkSaveDebugger`, `CkOptimizationDebugger`, `CkPerfLab`, `CkTextureDebugger`, `CkUIDebugger`,
+  `CkSchedulerDebugger`, `CkAStarDebugger`, `CkGoapDebugger`, `CkAiDebugger`, `CkCrowdDebugger`,
+  `CkEqsDebugger`, `CkInputDebugger`, `CkIntentDebugger`, `CkObjectPoolingDebugger`, `CkJoltDebugger`,
+  `CkMapDebugger`, `CkInsightsDebugger`, `CkStyleLabDebugger`, `CkDebuggerLauncher`) + 2 Editor companions
+  (`CkSaveDebuggerEditor`, `CkOptimizationDebuggerEditor`). Plugin dependency: **CkFoundation only**.
+  The Runtime types are load-bearing for packaged in-world tooling; each feature compiles its behavior out of Shipping.
+- **Packaged-module contract (2026-08-28):** all 24 DeveloperTool modules are included in
   Development/DebugGame and excluded from Test/Shipping. ECS, State Machine, Scheduler, and GOAP
   use the same runtime-Slate graph canvases in editor and packaged targets; native GraphEditor
   adapters remain editor-only and must never become a Game-target dependency.
@@ -33,8 +34,8 @@ here. Full extension runbooks live in the `ck-gameplaydebugger-extension` skill 
 | Gen | Module(s) | Type | What it is | Status |
 |---|---|---|---|---|
 | 1 (2023) | `CkGameplayDebugger` | Runtime | Single UE-GameplayDebugger category: DebugProfile data assets, Blueprint Filters/Submenus/Actions, canvas draw. Compiles out of Shipping via self-defined `WITH_GAMEPLAY_DEBUGGER` (`CkGameplayDebugger.Build.cs:33-39`). | Frozen since early 2024 — **maintenance-only; do not add new features here** (deprecation not proclaimed; maintainer's call). |
-| 2 (2025→) | 20 packaged feature debugger modules + `CkDebuggerLauncher` | 21 DeveloperTool | Slate debugger tabs on the shared `CkDebuggerCommon` widget base, plus the discovery/launch rail. Editor targets dock them under Tools > Debug; packaged Development/DebugGame targets open DeveloperTool windows as floating Slate windows. Test/Shipping exclude DeveloperTool modules. | **Extend when you need a standalone analysis tool. Preserve packaged support.** |
-| 3 (2026, current flagship) | `CkEntityDebugOverlay` | Runtime | In-game on-screen overlay: `ULocalPlayerSubsystem` (`Subsystem/CkDebugOverlay_Subsystem.h:48`), self-registering providers, focus card + world pills + diamond markers. Compiled under `WITH_CK_DEBUG_OVERLAY`, non-Shipping only (`CkEntityDebugOverlay.Build.cs:36-39`); driven by `ck.DebugOverlay*` cvars/commands (`Subsystem/CkDebugOverlay_Subsystem.cpp:159-213`). | **Extend when you need in-game/on-screen debug info.** |
+| 2 (2025→) | 23 packaged feature debugger modules + `CkDebuggerLauncher` | 24 DeveloperTool | Slate debugger tabs on the shared `CkDebuggerCommon` widget base, plus the discovery/launch rail. Editor targets dock them under Tools > Debug; packaged Development/DebugGame targets open DeveloperTool windows as floating Slate windows. Test/Shipping exclude DeveloperTool modules. | **Extend when you need a standalone analysis tool. Preserve packaged support.** |
+| 3 (2026, current flagship) | `CkEntityDebugOverlay`, `CkNavmeshDebugDraw` | Runtime | In-game debug surfaces. The entity overlay provides focus cards, pills, and markers; navmesh draw owns a retained, time-budgeted in-world Recast surface. Both are non-Shipping and command-driven. | **Extend when you need in-game/on-screen debug info.** |
 
 The 2024-2025 Cog-based EcsDebugger era is dead — removed from `Source/`; only stale traces
 remain (see Open issues).

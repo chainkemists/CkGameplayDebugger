@@ -13,14 +13,42 @@
 
 namespace ck_debugger_tab_utils
 {
+    // A tab id that is not in the catalog (the launcher's own tab, the suite host) has no category,
+    // which is exactly the answer that keeps it out of every anchoring decision below.
+    auto
+        Get_ToolCategory(
+            const TArray<FCkDebuggerToolDescriptor>& InTools,
+            FName InTabId)
+        -> ECkDebuggerToolCategory
+    {
+        for (const auto& Tool : InTools)
+        {
+            if (Tool.Get_TabId() == InTabId)
+            { return Tool.Get_Category(); }
+        }
+
+        return ECkDebuggerToolCategory::Invalid;
+    }
+
+    // Anchor ONLY next to a live tab of the SAME category. There is deliberately no cross-category
+    // fallback: piling every tool into whichever well happened to be open first is what turns one
+    // SDockingTabWell into a horizontally scrolling strip of 22 tabs.
     auto
         TryGet_LiveAnchorTabId(
-            FName InTabIdToOpen)
+            const TArray<FCkDebuggerToolDescriptor>& InTools,
+            FName InTabIdToOpen,
+            ECkDebuggerToolCategory InCategory)
         -> FName
     {
-        for (const auto& Tool : FCkDebuggerToolRegistry::Get().Get_Tools())
+        if (InCategory == ECkDebuggerToolCategory::Invalid)
+        { return NAME_None; }
+
+        for (const auto& Tool : InTools)
         {
             if (Tool.Get_TabId() == InTabIdToOpen)
+            { continue; }
+
+            if (Tool.Get_Category() != InCategory)
             { continue; }
 
             if (FGlobalTabmanager::Get()->FindExistingLiveTab(FTabId{Tool.Get_TabId()}).IsValid())
@@ -32,10 +60,11 @@ namespace ck_debugger_tab_utils
 
     auto
         TryGet_TabFactory(
+            const TArray<FCkDebuggerToolDescriptor>& InTools,
             FName InTabId)
         -> FCkDebuggerToolTabFactory
     {
-        for (const auto& Tool : FCkDebuggerToolRegistry::Get().Get_Tools())
+        for (const auto& Tool : InTools)
         {
             if (Tool.Get_TabId() == InTabId)
             { return Tool.Get_TabFactory(); }
@@ -50,6 +79,7 @@ namespace ck_debugger_tab_utils
 namespace ck::debugger_tabs
 {
     const FName LauncherTabId = FName{TEXT("CkDebuggerLauncher")};
+    const FName SuiteTabId = FName{TEXT("CkDebuggerSuite")};
 
     auto
         Invoke_DebuggerTab(
@@ -72,8 +102,10 @@ namespace ck::debugger_tabs
         if (NOT DockIntoExisting)
         { return GlobalTabManager->TryInvokeTab(FTabId{InTabId}); }
 
-        const auto AnchorTabId = ck_debugger_tab_utils::TryGet_LiveAnchorTabId(InTabId);
-        const auto TabFactory = ck_debugger_tab_utils::TryGet_TabFactory(InTabId);
+        const auto Tools = FCkDebuggerToolRegistry::Get().Get_Tools();
+        const auto Category = ck_debugger_tab_utils::Get_ToolCategory(Tools, InTabId);
+        const auto AnchorTabId = ck_debugger_tab_utils::TryGet_LiveAnchorTabId(Tools, InTabId, Category);
+        const auto TabFactory = ck_debugger_tab_utils::TryGet_TabFactory(Tools, InTabId);
 
         if (AnchorTabId.IsNone() || NOT TabFactory.IsBound())
         { return GlobalTabManager->TryInvokeTab(FTabId{InTabId}); }

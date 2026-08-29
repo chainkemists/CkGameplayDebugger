@@ -64,7 +64,9 @@ auto FCkOptimizationDebuggerModule::StartupModule() -> void
         // Tools/40 — the Tools category already uses 10 (Insights Analyzer), 20 (Style Lab) and 30 (Save). The launcher
         // census spec asserts every category/order slot is unique, so this must stay distinct.
         ECkDebuggerToolCategory::Tools,
-        40});
+        40}
+        .Set_TabFactory(FCkDebuggerToolTabFactory::CreateLambda([this]
+        { return OnSpawnDebuggerTab(FSpawnTabArgs{TSharedPtr<SWindow>{}, FTabId{_DebuggerTabName}}); })));
 }
 
 auto FCkOptimizationDebuggerModule::ShutdownModule() -> void

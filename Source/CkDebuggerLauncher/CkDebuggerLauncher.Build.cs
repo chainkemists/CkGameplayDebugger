@@ -8,6 +8,9 @@ public class CkDebuggerLauncher : CkModuleRules
         PublicDependencyModuleNames.AddRange(new string[]
         {
             "Core",
+            // EKeys:: in the rail's OnKeyDown — a direct symbol reference, so the
+            // dependency is declared here rather than inherited through Slate.
+            "InputCore",
             "Projects",
             "Slate",
             "SlateCore",

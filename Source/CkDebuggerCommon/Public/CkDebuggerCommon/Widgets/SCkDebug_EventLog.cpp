@@ -176,8 +176,11 @@ auto
     _ListView->RequestListRefresh();
     Do_RestoreSelection();
 
+    // ScrollIntoView, NEVER RequestNavigateToItem: navigate scrolls AND moves keyboard focus onto
+    // the list, so a log that streams entries while the user plays steals the game's input on
+    // every append (the VisualLod debugger's Recent Activity pane, live incident)
     if (InScrollToEnd && NOT _Entries.IsEmpty())
-    { _ListView->RequestNavigateToItem(_Entries.Last()); }
+    { _ListView->RequestScrollIntoView(_Entries.Last()); }
 }
 
 auto

@@ -596,8 +596,20 @@ If your module renders graph nodes via `SGraphEditor`, also add `GraphEditor`.
   debugger name; Chrome must not repeat a title or identity icon. Chrome owns the directly visible
   semantic command lanes, the right-anchored Tools switcher, body boundary, and trailing utilities.
   Primary and context lanes each remain one physical line and scroll horizontally when narrow;
-  controls and icon actions never wrap into additional rows. `CkInsightsDebugger` follows the same
+  controls and icon actions never wrap into additional rows. Because each lane's scrollbar is
+  collapsed, every lane overlays a leading and a trailing edge fade that appears only while content
+  is actually clipped in that direction — hit-test invisible, dissolving into the lane's own
+  surface tint. That pair is the sole clipped-content affordance;
+  `Ck.DebuggerCommon.CommandBar.LanesSignalClippedContent` pins it. `CkInsightsDebugger` follows the same
   contract while consuming UI-free trace analysis and report APIs from CkFoundation.
+- **Page tab strips are `SCkDebug_UnderlineTabs`, never a command-bar lane and never a bespoke
+  `SHorizontalBox`.** The strip is one physical line that never wraps; past the allotted width the
+  tabs that do not fit move into a trailing overflow menu, the active tab always stays on the line,
+  and the partition is a pure function (`FCkDebug_UnderlineTabLayout::Compute`) pinned by
+  `Ck.DebuggerCommon.UnderlineTabs.*`. A tab strip inside a horizontally scrolling lane (clipped,
+  scrollbar collapsed) was the "page past the window edge is invisible AND undiscoverable" defect —
+  the Texture debugger shipped it. Overflow only engages when the strip's slot grants more width
+  than desired: host it in a fill-width slot, never `AutoWidth`.
 - Feature modules never construct `SCheckBox` directly. Use `SCkDebug_IconToggle` or
   `SCkDebug_IconToolbar` for a fixed icon-backed boolean, `SCkDebug_ToggleSurface` when a contextual
   card/chip owns rich content, and engine `SSegmentedControl` for short exclusive choices. The
@@ -696,6 +708,7 @@ CkDebuggerCommon/
 │   ├── SCkDebug_NumericEditor.h      (THE numeric entry field — commit on enter/lost focus, float + int)
 │   ├── SCkDebug_SectionHeader.h      (uppercase section header)
 │   ├── SCkDebug_StatusPill.h         (toned status label)
+│   ├── SCkDebug_UnderlineTabs.h      (THE page tab strip — one line, width-aware overflow menu, active tab always visible; optional per-tab icon + sort order)
 │   ├── SCkDebug_HistoryRow.h         (history/timeline row + opt-in CopyText)
 │   ├── SCkDebug_FrameStrip.h         (scrubbable per-frame heat columns)
 │   ├── SCkDebug_ScrubTimeline.h      (segment track + scrub cursor + marks)

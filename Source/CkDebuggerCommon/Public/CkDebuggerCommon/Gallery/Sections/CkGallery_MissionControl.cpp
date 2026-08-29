@@ -234,9 +234,9 @@ public:
             + SVerticalBox::Slot().AutoHeight() [ Pad(
                 SNew(SCkDebug_UnderlineTabs)
                     .Tabs({
-                        FCkDebug_UnderlineTabDesc{FName{TEXT("Squad")},     FText::FromString(TEXT("Squad")), FText::FromString(TEXT("6")), false},
+                        FCkDebug_UnderlineTabDesc{FName{TEXT("Squad")},     FText::FromString(TEXT("Squad")), ECk_Icon::None, 0, FText::FromString(TEXT("6")), false},
                         FCkDebug_UnderlineTabDesc{FName{TEXT("Inspector")}, FText::FromString(TEXT("Agent Inspector"))},
-                        FCkDebug_UnderlineTabDesc{FName{TEXT("Catalog")},   FText::FromString(TEXT("Catalog Audit")), TAttribute<FText>{}, true},
+                        FCkDebug_UnderlineTabDesc{FName{TEXT("Catalog")},   FText::FromString(TEXT("Catalog Audit")), ECk_Icon::None, 0, TAttribute<FText>{}, true},
                     })
                     .ActiveTabId_Lambda([this] { return _ActiveTab; })
                     .OnTabSelected_Lambda([this](FName InTab) { _ActiveTab = InTab; })) ]

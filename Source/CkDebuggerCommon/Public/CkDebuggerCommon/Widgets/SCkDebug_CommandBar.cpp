@@ -7,12 +7,48 @@
 #include "CkDebuggerCommon/Settings/CkDebuggerStyleSettings.h"
 #include "CkEditorTools/Style/CkStyle.h"
 
+#include "Widgets/Colors/SComplexGradient.h"
 #include "Widgets/Images/SImage.h"
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/Layout/SScrollBox.h"
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/SNullWidget.h"
+#include "Widgets/SOverlay.h"
+
+// ====================================================================================================================
+
+namespace ck_debug_command_bar
+{
+    // Width of the dissolve at each lane edge. Wide enough that a clipped control is visibly cut
+    // rather than merely truncated, narrow enough that it never hides a whole control.
+    constexpr auto EdgeFadeWidth = CkStyle::SpaceXXL;
+
+    // A scroller resting within a pixel of an end IS at that end: the offset is a float that lands
+    // on fractional values after inertial scrolling and DPI-scaled layout, so an exact comparison
+    // would leave a hairline fade permanently lit at both extremes.
+    constexpr auto EdgeFadeEpsilon = 1.0f;
+
+    auto LeftFade_IsVisible(const TWeakPtr<SScrollBox>& InLane) -> bool
+    {
+        const auto Lane = InLane.Pin();
+        if (NOT Lane.IsValid())
+        { return false; }
+
+        return Lane->GetScrollOffset() > EdgeFadeEpsilon;
+    }
+
+    auto RightFade_IsVisible(const TWeakPtr<SScrollBox>& InLane) -> bool
+    {
+        const auto Lane = InLane.Pin();
+        if (NOT Lane.IsValid())
+        { return false; }
+
+        // GetScrollOffsetOfEnd is max(0, content - viewport), so content that fits reports 0 and
+        // both fades stay collapsed without a separate "is scrollable at all" question.
+        return Lane->GetScrollOffset() < Lane->GetScrollOffsetOfEnd() - EdgeFadeEpsilon;
+    }
+}
 
 // ====================================================================================================================
 
@@ -149,7 +185,7 @@ auto
                 .HAlign(HAlign_Fill)
                 .VAlign(VAlign_Center)
                 [
-                    Build_Lane(_Layout.PrimaryGroupIndices)
+                    Build_Lane(_Layout.PrimaryGroupIndices, 1)
                 ]
 
                 + SHorizontalBox::Slot()
@@ -174,7 +210,7 @@ auto
             .BorderBackgroundColor_Lambda([]{ return FSlateColor{ck::debug_axes::Get_SurfaceTint(0)}; })
             .Padding(FMargin{CkStyle::SpaceM, CkStyle::SpaceXS})
             [
-                Build_Lane(_Layout.ContextGroupIndices)
+                Build_Lane(_Layout.ContextGroupIndices, 0)
             ]
         ]
     ];
@@ -182,7 +218,7 @@ auto
 
 auto
     SCkDebug_CommandBar::
-    Build_Lane(const TArray<int32>& InGroupIndices) const
+    Build_Lane(const TArray<int32>& InGroupIndices, int32 InSurfaceDepth) const
     -> TSharedRef<SWidget>
 {
     auto Row = SNew(SHorizontalBox);
@@ -198,7 +234,11 @@ auto
         ];
     }
 
-    return SNew(SScrollBox)
+    // The lane stays ONE physical line that scrolls horizontally — the scrollbar stays collapsed
+    // because a bar under a two-lane chrome strip costs more vertical space than the strip has.
+    // What the collapsed bar removed was the affordance, not the scrolling, so the overlay below
+    // puts the affordance back without reserving any layout at all.
+    const auto Lane = SNew(SScrollBox)
         .Orientation(Orient_Horizontal)
         .ScrollBarVisibility(EVisibility::Collapsed)
         .ConsumeMouseWheel(EConsumeMouseWheel::WhenScrollingPossible)
@@ -206,6 +246,67 @@ auto
         + SScrollBox::Slot()
         [
             Row
+        ];
+
+    return SNew(SOverlay)
+
+        + SOverlay::Slot()
+        .HAlign(HAlign_Fill)
+        .VAlign(VAlign_Fill)
+        [
+            Lane
+        ]
+
+        + SOverlay::Slot()
+        .HAlign(HAlign_Left)
+        .VAlign(VAlign_Fill)
+        [
+            Build_EdgeFade(Lane, true, InSurfaceDepth)
+        ]
+
+        + SOverlay::Slot()
+        .HAlign(HAlign_Right)
+        .VAlign(VAlign_Fill)
+        [
+            Build_EdgeFade(Lane, false, InSurfaceDepth)
+        ];
+}
+
+auto
+    SCkDebug_CommandBar::
+    Build_EdgeFade(const TSharedRef<SScrollBox>& InLane, bool InIsLeftEdge, int32 InSurfaceDepth) const
+    -> TSharedRef<SWidget>
+{
+    return SNew(SBox)
+        .WidthOverride(ck_debug_command_bar::EdgeFadeWidth)
+        .Visibility_Lambda([LaneWeak = TWeakPtr<SScrollBox>{InLane}, InIsLeftEdge]()
+        {
+            const auto FadeIsWarranted = InIsLeftEdge
+                ? ck_debug_command_bar::LeftFade_IsVisible(LaneWeak)
+                : ck_debug_command_bar::RightFade_IsVisible(LaneWeak);
+
+            // HitTestInvisible rather than merely Hidden: the fade lies ON TOP of live controls,
+            // so a hit-testable layer would swallow clicks on the very buttons it points at.
+            return FadeIsWarranted ? EVisibility::HitTestInvisible : EVisibility::Collapsed;
+        })
+        [
+            SNew(SComplexGradient)
+            .Visibility(EVisibility::HitTestInvisible)
+            // Orient_Vertical means the STOPS are vertical lines, i.e. the color sweeps left to
+            // right. A horizontal fade therefore asks for Orient_Vertical — see the gradient
+            // branch of FSlateElementBatcher::AddGradientElement.
+            .Orientation(Orient_Vertical)
+            .GradientColors_Lambda([InIsLeftEdge, InSurfaceDepth]()
+            {
+                // Read live so a Style Lab palette or SurfaceElevation flip moves the fade with
+                // the border it dissolves into, without rebuilding the bar (axes R1).
+                const auto Surface = ck::debug_axes::Get_SurfaceTint(InSurfaceDepth);
+                const auto Clear = Surface.CopyWithNewOpacity(0.0f);
+
+                return InIsLeftEdge
+                    ? TArray<FLinearColor>{Surface, Clear}
+                    : TArray<FLinearColor>{Clear, Surface};
+            })
         ];
 }
 

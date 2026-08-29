@@ -57,6 +57,7 @@ auto
     -> void
 {
     _OnSearchTextChanged = InArgs._OnSearchTextChanged;
+    _OnSearchTextCommitted = InArgs._OnSearchTextCommitted;
     _DebounceDelay = FMath::Max(0.0f, InArgs._DebounceDelay);
 
     ChildSlot
@@ -205,6 +206,10 @@ auto
 {
     _SearchText = InText;
     Do_ProcessDebouncedSearch();
+
+    // Deliberately last: the filter pass above has already run, so a commit handler that acts on
+    // the resulting list (Enter → top match) never reads a stale one.
+    _OnSearchTextCommitted.ExecuteIfBound(_SearchText.ToString(), InCommitType);
 }
 
 auto

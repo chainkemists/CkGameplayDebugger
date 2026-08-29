@@ -3,6 +3,8 @@
 #include "CoreMinimal.h"
 #include "Widgets/SCompoundWidget.h"
 
+class SScrollBox;
+
 // ====================================================================================================================
 
 enum class ECkDebug_CommandBarLane : uint8
@@ -61,6 +63,12 @@ struct CKDEBUGGERCOMMON_API FCkDebug_CommandBarLayout
  * only when present. Both lanes remain single-line and scroll horizontally at
  * constrained widths. Utilities remain at the stable trailing edge of the
  * primary row. The owning tab is the sole debugger identity surface.
+ *
+ * A lane's scrollbar is deliberately collapsed, so the ONLY thing that says
+ * "there are more controls past this edge" is the pair of edge fades every lane
+ * layers over its scroller. Each fade appears solely while that direction is
+ * actually scrollable and is hit-test invisible, so it never intercepts a click
+ * on the controls it sits over.
  */
 class CKDEBUGGERCOMMON_API SCkDebug_CommandBar : public SCompoundWidget
 {
@@ -74,7 +82,12 @@ public:
     auto Construct(const FArguments& InArgs) -> void;
 
 private:
-    auto Build_Lane(const TArray<int32>& InGroupIndices) const -> TSharedRef<SWidget>;
+    // InSurfaceDepth is the SurfaceElevation depth of the border this lane sits on — the edge
+    // fades dissolve INTO that exact fill, so a lane on a different depth must say so.
+    auto Build_Lane(const TArray<int32>& InGroupIndices, int32 InSurfaceDepth) const
+        -> TSharedRef<SWidget>;
+    auto Build_EdgeFade(const TSharedRef<SScrollBox>& InLane, bool InIsLeftEdge, int32 InSurfaceDepth) const
+        -> TSharedRef<SWidget>;
     auto Build_Group(const FCkDebug_CommandGroup& InGroup, bool InHasLeadingSeparator) const
         -> TSharedRef<SWidget>;
     auto Build_Separator() const -> TSharedRef<SWidget>;

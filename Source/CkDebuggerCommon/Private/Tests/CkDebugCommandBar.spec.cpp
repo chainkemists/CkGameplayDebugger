@@ -30,6 +30,20 @@ namespace ck_debug_command_bar_tests
         { Count += CountWidgetType(Children->GetChildAt(Index), InType); }
         return Count;
     }
+
+    auto CollectWidgetType(
+        const TSharedRef<SWidget>& InWidget,
+        const FString& InType,
+        TArray<TSharedRef<SWidget>>& OutFound)
+        -> void
+    {
+        if (InWidget->GetTypeAsString() == InType)
+        { OutFound.Add(InWidget); }
+
+        auto* Children = InWidget->GetChildren();
+        for (auto Index = 0; Index < Children->Num(); ++Index)
+        { CollectWidgetType(Children->GetChildAt(Index), InType, OutFound); }
+    }
 }
 
 // ====================================================================================================================
@@ -93,6 +107,54 @@ bool FCkDebugCommandBar_LanesNeverWrap::RunTest(const FString& Parameters)
         TEXT("Command bar hierarchy contains no wrapping lane"),
         CountWidgetType(Bar, TEXT("SWrapBox")),
         0);
+
+    return true;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FCkDebugCommandBar_LanesSignalClippedContent,
+    "Ck.DebuggerCommon.CommandBar.LanesSignalClippedContent",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCkDebugCommandBar_LanesSignalClippedContent::RunTest(const FString& Parameters)
+{
+    using namespace ck_debug_command_bar_tests;
+
+    const auto Bar = SNew(SCkDebug_CommandBar)
+        .Groups({
+            MakeGroup(TEXT("View")),
+            MakeGroup(TEXT("Capture")),
+            MakeGroup(TEXT("Target"), ECkDebug_CommandBarLane::Context),
+            MakeGroup(TEXT("Playback"), ECkDebug_CommandBarLane::Context)})
+        .UtilityContent()
+        [
+            SNew(SBox)
+        ];
+
+    auto Fades = TArray<TSharedRef<SWidget>>{};
+    CollectWidgetType(Bar, TEXT("SComplexGradient"), Fades);
+
+    // A lane's scrollbar is collapsed by doctrine, so these gradients are the ONLY thing telling
+    // the user that controls continue past an edge. Two lanes, one fade per edge.
+    TestEqual(
+        TEXT("Every lane carries a leading and a trailing clipped-content fade"),
+        Fades.Num(),
+        4);
+
+    auto EveryFadePassesClicksThrough = true;
+    for (const auto& Fade : Fades)
+    {
+        if (Fade->GetVisibility().IsHitTestVisible())
+        { EveryFadePassesClicksThrough = false; }
+    }
+
+    // The fades lie on top of live controls; a hit-testable one would swallow clicks on the very
+    // buttons it exists to point at.
+    TestTrue(
+        TEXT("Edge fades never intercept a click on the controls beneath them"),
+        EveryFadePassesClicksThrough);
 
     return true;
 }

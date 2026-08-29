@@ -1,0 +1,845 @@
+<title>CkVisualLod Debugger</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&family=Roboto+Mono:wght@400;500;700&display=swap">
+<style>
+/* ============================================================
+   CkStyle tokens — mirrors CkStyleSettings.h defaults exactly.
+   Single-theme by design: this mocks the dark Slate debugger.
+   ============================================================ */
+:root{
+  --bg-root:#10141b; --bg-1:#14181f; --bg-2:#171c25; --bg-3:#1b212b;
+  --border:#222937; --border-strong:#2a3240;
+  --text:#e9edf4; --text-dim:#94a0b3; --text-mute:#5d6980; --text-strong:#f2f2f2;
+  --accent:#54c6ff; --ok:#46d08d; --err:#f0637a; --warn:#f2b33d; --info:#5fb3d4;
+  --accent-dim:#1b3448; --ok-dim:#12362a; --err-dim:#3b1b24; --warn-dim:#3a2e12; --info-dim:#14303c; --neutral-dim:#10141b;
+  --pane-heading:#8a92a4;
+  --selection:rgba(51,102,204,0.22); --selection-hover:rgba(51,102,204,0.30);
+  --row-even:#14181f; --row-odd:#171c25;
+  --radius-s:3px; --radius-m:6px; --radius-l:8px; --radius-pill:99px;
+  --sp-xs:2px; --sp-s:4px; --sp-m:8px; --sp-l:12px; --sp-xl:16px;
+  --f-body:12.5px; --f-small:11.5px; --f-micro:10.5px; --f-h3:13.5px; --f-h2:16px;
+  --mono:'Roboto Mono',ui-monospace,Consolas,monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{
+  background:var(--bg-root); color:var(--text);
+  font-family:'Roboto',system-ui,sans-serif; font-size:var(--f-body);
+  overflow:hidden; display:flex; flex-direction:column;
+}
+button{font:inherit;color:inherit;background:none;border:none;cursor:pointer}
+input{font:inherit}
+.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.dim{color:var(--text-dim)} .mute{color:var(--text-mute)}
+
+/* ---------- dock tab strip ---------- */
+.tabstrip{display:flex;align-items:flex-end;background:var(--bg-root);padding:6px 10px 0;gap:2px;flex:none}
+.docktab{display:flex;align-items:center;gap:7px;background:var(--bg-2);border:1px solid var(--border);border-bottom:none;
+  border-radius:var(--radius-m) var(--radius-m) 0 0;padding:6px 14px 7px;font-size:var(--f-small);color:var(--text-strong);font-weight:500}
+.docktab svg{width:14px;height:14px;fill:var(--accent)}
+.docktab.ghost{background:transparent;color:var(--text-mute);border-color:transparent;font-weight:400}
+.mockup-note{margin-left:auto;font-size:var(--f-micro);color:var(--text-mute);padding-bottom:6px}
+.mockup-note b{color:var(--warn);font-weight:500}
+
+/* ---------- window chrome / command bar ---------- */
+.chrome{display:flex;align-items:center;gap:var(--sp-m);background:var(--bg-1);border-top:1px solid var(--border);
+  border-bottom:1px solid var(--border);padding:6px 10px;flex:none;flex-wrap:nowrap;overflow-x:auto}
+.cmdgroup{display:flex;align-items:center;gap:6px;padding-right:var(--sp-m);border-right:1px solid var(--border)}
+.cmdgroup:last-child{border-right:none}
+.selector{display:flex;align-items:center;gap:6px;background:var(--bg-3);border:1px solid var(--border);border-radius:var(--radius-m);
+  padding:4px 10px;font-size:var(--f-small);color:var(--text)}
+.selector .caret{color:var(--text-mute);font-size:9px}
+.iconbtn{display:flex;align-items:center;gap:6px;background:var(--bg-3);border:1px solid var(--border);border-radius:var(--radius-m);
+  padding:4px 10px;font-size:var(--f-small);color:var(--text-dim)}
+.iconbtn:hover{border-color:var(--border-strong);color:var(--text)}
+.iconbtn.on{background:var(--accent-dim);border-color:var(--accent);color:var(--accent)}
+.iconbtn svg{width:13px;height:13px;fill:currentColor}
+.search{display:flex;align-items:center;gap:0;border:1px solid var(--border);border-radius:var(--radius-m);overflow:hidden;background:var(--bg-3)}
+.search input{background:transparent;border:none;outline:none;color:var(--text);padding:4px 10px;font-size:var(--f-small);width:130px}
+.search input::placeholder{color:var(--text-mute)}
+.search .divider{width:1px;align-self:stretch;background:var(--border)}
+.chrome .spring{flex:1}
+.scenarios{display:flex;gap:6px;align-items:center}
+.scenarios .lbl{font-size:var(--f-micro);color:var(--text-mute);text-transform:uppercase;letter-spacing:.06em;margin-right:2px}
+
+/* ---------- alert lane ---------- */
+.alerts{flex:none;display:flex;flex-direction:column;gap:1px;background:var(--bg-root)}
+.alert{display:flex;align-items:center;gap:10px;padding:7px 12px;font-size:var(--f-small);border-left:3px solid}
+.alert .glyph{font-family:var(--mono);font-weight:700;font-size:12px}
+.alert .fix{margin-left:auto;font-size:var(--f-micro);color:var(--text-dim)}
+.alert.warn{background:var(--warn-dim);border-color:var(--warn)} .alert.warn .glyph{color:var(--warn)}
+.alert.err{background:var(--err-dim);border-color:var(--err)} .alert.err .glyph{color:var(--err)}
+.alert b{font-weight:500}
+
+/* ---------- main layout ---------- */
+.main{flex:1;display:flex;min-height:0;background:var(--bg-root)}
+.left{flex:1;display:flex;flex-direction:column;min-width:0;min-height:0}
+.vsplit{width:5px;flex:none;background:var(--bg-root);border-left:1px solid var(--border);cursor:col-resize}
+.rail{width:340px;flex:none;display:flex;flex-direction:column;min-height:0;background:var(--bg-1);overflow-y:auto}
+
+/* ---------- panes & sections ---------- */
+.pane{background:var(--bg-2);border:1px solid var(--border);border-radius:var(--radius-l);margin:var(--sp-m);overflow:hidden}
+.pane.grow{flex:1;display:flex;flex-direction:column;min-height:0;margin-top:0}
+.pane-head{display:flex;align-items:center;gap:8px;padding:7px 12px;border-bottom:1px solid var(--border);background:var(--bg-1)}
+.pane-title{font-size:var(--f-micro);font-weight:700;color:var(--pane-heading);text-transform:uppercase;letter-spacing:.08em}
+.count-badge{font-family:var(--mono);font-size:var(--f-micro);background:var(--bg-3);border:1px solid var(--border);
+  border-radius:var(--radius-s);padding:1px 6px;color:var(--text-dim)}
+.pane-head .right{margin-left:auto;display:flex;gap:8px;align-items:center}
+
+/* ---------- domain tabs (SCkDebug_UnderlineTabs) ---------- */
+.utabs{display:flex;gap:2px;padding:0 12px;background:var(--bg-1);border-bottom:1px solid var(--border);flex:none}
+.utab{padding:8px 12px 7px;font-size:var(--f-small);color:var(--text-mute);border-bottom:2px solid transparent}
+.utab .cb{margin-left:6px}
+.utab.active{color:var(--text-strong);border-bottom-color:var(--accent)}
+.utab:hover:not(.active){color:var(--text-dim)}
+
+/* ---------- status pill ---------- */
+.pill{display:inline-flex;align-items:center;gap:6px;border-radius:var(--radius-pill);padding:2px 10px;font-size:var(--f-micro);font-weight:500;border:1px solid transparent}
+.pill .dot{width:6px;height:6px;border-radius:50%;background:currentColor}
+.pill.ok{background:var(--ok-dim);color:var(--ok)}
+.pill.warn{background:var(--warn-dim);color:var(--warn)}
+.pill.err{background:var(--err-dim);color:var(--err)}
+.pill.info{background:var(--info-dim);color:var(--info)}
+.pill.neutral{background:var(--neutral-dim);color:var(--text-dim);border-color:var(--border)}
+
+/* ---------- stat strip (SCkDebug_StageStrip / StatPair) ---------- */
+.statstrip{display:flex;gap:var(--sp-m);padding:var(--sp-m) var(--sp-l);overflow-x:auto}
+.stat{flex:1;min-width:86px;background:var(--bg-3);border:1px solid var(--border);border-radius:var(--radius-m);padding:8px 10px 7px;position:relative}
+.stat .v{font-family:var(--mono);font-size:20px;font-weight:700;line-height:1.1;color:var(--text-strong)}
+.stat .l{font-size:var(--f-micro);color:var(--text-dim);margin-top:2px}
+.stat .meta{font-family:var(--mono);font-size:var(--f-micro);color:var(--text-mute);margin-top:3px}
+.stat.tone-accent .v{color:var(--accent)} .stat.tone-ok .v{color:var(--ok)}
+.stat.tone-warn .v{color:var(--warn)} .stat.tone-err .v{color:var(--err)} .stat.tone-info .v{color:var(--info)}
+.stat .stripe{position:absolute;left:0;top:6px;bottom:6px;width:3px;border-radius:2px}
+
+/* ---------- overview grid ---------- */
+.ovgrid{display:grid;grid-template-columns:1.15fr 1fr 1fr;gap:var(--sp-m);padding:0 var(--sp-l) var(--sp-l)}
+@media (max-width:1100px){.ovgrid{grid-template-columns:1fr 1fr}}
+.subpane{background:var(--bg-3);border:1px solid var(--border);border-radius:var(--radius-m);padding:9px 11px;min-width:0}
+.subpane h4{font-size:var(--f-micro);font-weight:700;color:var(--pane-heading);text-transform:uppercase;letter-spacing:.08em;
+  margin-bottom:8px;display:flex;align-items:center;gap:8px}
+.subpane h4 .right{margin-left:auto;font-weight:400;letter-spacing:0;text-transform:none}
+
+/* meter bars (SCkDebug_MeterBar) */
+.meter-row{display:flex;align-items:center;gap:8px;margin-bottom:7px}
+.meter-row:last-child{margin-bottom:0}
+.meter-row .k{width:74px;flex:none;font-size:var(--f-micro);color:var(--text-dim)}
+.meter{flex:1;height:8px;background:var(--bg-root);border-radius:var(--radius-s);overflow:hidden;position:relative}
+.meter .fill{position:absolute;left:0;top:0;bottom:0;border-radius:var(--radius-s);transition:width .18s linear}
+.meter .tick{position:absolute;top:-1px;bottom:-1px;width:1.5px;background:var(--text-mute);opacity:.7}
+.meter-row .n{width:64px;flex:none;text-align:right;font-family:var(--mono);font-size:var(--f-micro);color:var(--text)}
+
+/* key-value rows (SCkDebug_KeyValueRow) */
+.kv{display:flex;align-items:center;gap:8px;padding:3px 0;font-size:var(--f-small)}
+.kv .k{color:var(--text-dim);flex:none;width:96px}
+.kv .v{font-family:var(--mono);color:var(--text);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.kv .marker{width:6px;height:6px;border-radius:50%;flex:none}
+
+/* sparkline block */
+.sparkrow{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+.sparkrow:last-child{margin-bottom:0}
+.sparkrow .k{width:74px;flex:none;font-size:var(--f-micro);color:var(--text-dim)}
+.sparkrow canvas{flex:1;height:24px;min-width:0}
+.sparkrow .n{width:30px;flex:none;text-align:right;font-family:var(--mono);font-size:var(--f-small);color:var(--text-strong)}
+
+/* ---------- roster table ---------- */
+.tablewrap{flex:1;overflow:auto;min-height:0}
+table{width:100%;border-collapse:collapse;font-size:var(--f-small)}
+thead th{position:sticky;top:0;background:var(--bg-1);color:var(--text-dim);font-weight:500;text-align:left;
+  padding:6px 10px;border-bottom:1px solid var(--border-strong);font-size:var(--f-micro);text-transform:uppercase;
+  letter-spacing:.05em;cursor:pointer;user-select:none;white-space:nowrap;z-index:2}
+thead th:hover{color:var(--text)}
+thead th .arrow{font-size:9px;color:var(--accent);margin-left:3px}
+tbody td{padding:4px 10px;white-space:nowrap;vertical-align:middle}
+tbody tr{cursor:pointer}
+tbody tr:nth-child(even){background:var(--row-even)}
+tbody tr:nth-child(odd){background:var(--row-odd)}
+tbody tr:hover{background:rgba(15,15,20,0.55)}
+tbody tr.sel{background:var(--selection)!important;outline:1px solid rgba(51,102,204,.45);outline-offset:-1px}
+tbody tr.hl td:first-child{box-shadow:inset 3px 0 0 var(--accent)}
+tbody tr.hiddenrow{opacity:.45}
+.entref{display:inline-flex;align-items:center;gap:6px;background:var(--bg-3);border:1px solid var(--border);
+  border-radius:var(--radius-pill);padding:1px 9px 1px 5px;font-size:var(--f-micro)}
+.entref .id{font-family:var(--mono);color:var(--accent)}
+.entref .nm{color:var(--text)}
+.repchip{display:inline-flex;align-items:center;gap:5px;border-radius:var(--radius-m);padding:1px 8px;font-size:var(--f-micro);font-weight:500}
+.repchip .d{width:6px;height:6px;border-radius:50%;background:currentColor}
+.rep-P{background:var(--accent-dim);color:var(--accent)}
+.rep-F{background:var(--ok-dim);color:var(--ok)}
+.rep-N{background:var(--neutral-dim);color:var(--text-mute);border:1px solid var(--border)}
+.viewdot{display:inline-block;width:7px;height:7px;border-radius:50%}
+.fadecell{display:inline-flex;align-items:center;gap:7px}
+.fadecell .bar{width:52px;height:6px;background:var(--bg-root);border-radius:3px;overflow:hidden}
+.fadecell .bar i{display:block;height:100%;background:var(--info);border-radius:3px}
+.flag{display:inline-block;border-radius:var(--radius-s);padding:0 5px;font-size:10px;font-family:var(--mono);font-weight:500;margin-right:3px}
+.flag.lock{background:var(--warn-dim);color:var(--warn)}
+.flag.unbud{background:var(--err-dim);color:var(--err)}
+.flag.preempt{background:var(--info-dim);color:var(--info)}
+.flag.hidden{background:var(--neutral-dim);color:var(--text-mute);border:1px solid var(--border)}
+td .mono{color:var(--text)} td .mono.far{color:var(--text-mute)}
+
+/* ---------- detail rail ---------- */
+.rail .pane{margin:var(--sp-m)}
+.rail .pane + .pane{margin-top:0}
+.detail-empty{padding:26px 16px;color:var(--text-mute);font-size:var(--f-small);text-align:center}
+.detail-body{padding:10px 12px}
+.detail-head{display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap}
+.sect{margin-top:10px;padding-top:8px;border-top:1px solid var(--border)}
+.sect:first-child{margin-top:0;padding-top:0;border-top:none}
+.sect h5{font-size:var(--f-micro);font-weight:700;color:var(--pane-heading);text-transform:uppercase;letter-spacing:.08em;margin-bottom:5px}
+.bigmeter{height:10px;background:var(--bg-root);border-radius:var(--radius-s);overflow:hidden;margin:6px 0 4px}
+.bigmeter i{display:block;height:100%;background:var(--info);border-radius:var(--radius-s);transition:width .1s linear}
+
+/* mock switch (planned far shadow/light disable) */
+.mocksw{position:relative;width:24px;height:13px;border-radius:var(--radius-pill);background:var(--bg-root);border:1px solid var(--border);vertical-align:middle;padding:0}
+.mocksw i{position:absolute;top:1px;left:1px;width:9px;height:9px;border-radius:50%;background:var(--text-mute);transition:left .12s,background .12s}
+.mocksw.on{background:var(--accent-dim);border-color:var(--accent)}
+.mocksw.on i{left:12px;background:var(--accent)}
+
+/* world markers canvas */
+#worldCanvas{width:100%;height:200px;display:block;background:var(--bg-root)}
+.legend{display:flex;gap:14px;align-items:center;font-size:var(--f-micro);color:var(--text-dim)}
+.legend .sw{display:inline-block;width:8px;height:8px;margin-right:5px;vertical-align:-1px}
+
+/* event log */
+.evlog{max-height:230px;overflow-y:auto;padding:4px 0}
+.ev{display:flex;align-items:baseline;gap:8px;padding:3px 12px;font-size:var(--f-micro)}
+.ev:nth-child(odd){background:var(--row-odd)}
+.ev .t{font-family:var(--mono);color:var(--text-mute);flex:none;width:44px}
+.ev .d{width:6px;height:6px;border-radius:50%;flex:none;align-self:center}
+.ev .msg{color:var(--text-dim);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ev .msg b{color:var(--text);font-weight:500}
+
+/* ---------- footer / slate mapping ---------- */
+.footer{flex:none;background:var(--bg-1);border-top:1px solid var(--border)}
+.footer .bar{display:flex;align-items:center;gap:14px;padding:5px 12px;font-size:var(--f-micro);color:var(--text-mute)}
+.footer .bar .toggle{color:var(--text-dim);text-decoration:underline dotted;text-underline-offset:3px}
+.footer .bar .toggle:hover{color:var(--text)}
+.mapping{display:none;padding:4px 12px 10px;column-count:3;column-gap:24px}
+.mapping.open{display:block}
+.mapping div{font-size:var(--f-micro);color:var(--text-mute);padding:2px 0;break-inside:avoid}
+.mapping b{color:var(--text-dim);font-weight:500;font-family:var(--mono)}
+@media (max-width:1100px){.mapping{column-count:2}}
+</style>
+
+<!-- ══════════════ dock tab strip ══════════════ -->
+<div class="tabstrip">
+  <div class="docktab">
+    <svg viewBox="0 0 16 16"><path d="M2 12h3v2H2zM2 8h6v2H2zM2 4h9v2H2zM13 3l2 2-2 2V5.8h-1.5V4.2H13z"/><circle cx="13.5" cy="11.5" r="2.5"/></svg>
+    Visual LOD
+  </div>
+  <div class="docktab ghost">ECS Debugger</div>
+  <div class="docktab ghost">Crowd</div>
+  <div class="mockup-note"><b>HTML MOCKUP</b> — live simulated data · click rows · try scenario toggles →</div>
+</div>
+
+<!-- ══════════════ window chrome (SCkDebug_WindowChrome + command bar) ══════════════ -->
+<div class="chrome">
+  <div class="cmdgroup">
+    <div class="selector"><span class="dim">World</span> <b>PIE · CkVisualLod Gym</b> <span class="caret">▼</span></div>
+  </div>
+  <div class="cmdgroup">
+    <button class="iconbtn" id="pickBtn" title="Viewport picker — pick a VisualLod member in the level viewport (SCkDebug_ViewportPickerControls)">
+      <svg viewBox="0 0 16 16"><path d="M8 1v3M8 12v3M1 8h3M12 8h3" stroke="currentColor" stroke-width="1.6" fill="none"/><circle cx="8" cy="8" r="2.4"/></svg>
+      Pick
+    </button>
+    <button class="iconbtn" id="freezeBtn" title="Freeze arbitration — the arbiter stops promoting/demoting so you can eject and inspect the current LOD assignment. In-flight fades finish, then everything holds.">
+      <svg viewBox="0 0 16 16"><path d="M8 1v14M2.5 4l11 8M13.5 4l-11 8M8 1l-2 2M8 1l2 2M8 15l-2-2M8 15l2-2" stroke="currentColor" stroke-width="1.3" fill="none"/></svg>
+      Freeze
+    </button>
+    <button class="iconbtn" id="shapesBtn" title="Draw CkPmg marker shapes in the world, colored by representation — diamonds over near skel meshes, dots over GPU crowd members. Toggle also opens the top-down preview here.">
+      <svg viewBox="0 0 16 16"><path d="M8 2l5 6-5 6-5-6z" stroke="currentColor" stroke-width="1.4" fill="none"/></svg>
+      Markers
+    </button>
+  </div>
+  <div class="cmdgroup">
+    <div class="search" title="SCkDebug_DualSearchBar — filter narrows the roster, highlight marks matches">
+      <input id="filterBox" placeholder="Filter members…">
+      <div class="divider"></div>
+      <input id="hlBox" placeholder="Highlight…">
+    </div>
+  </div>
+  <div class="spring"></div>
+  <div class="scenarios" title="Mockup-only: fault-state scenarios so the alert lane and degraded readouts can be reviewed">
+    <span class="lbl">Simulate</span>
+    <button class="iconbtn" id="scView">View invalid</button>
+    <button class="iconbtn" id="scPool">Pool exhausted</button>
+    <button class="iconbtn" id="scLook">No dissolve look</button>
+  </div>
+  <div class="cmdgroup" style="border-right:none;padding-right:0;border-left:1px solid var(--border);padding-left:8px">
+    <button class="iconbtn on" id="pauseBtn" title="Refresh gate (mockup pauses the simulation)">
+      <svg viewBox="0 0 16 16"><path d="M4 3h3v10H4zM9 3h3v10H9z"/></svg>
+      <span id="pauseLbl">Live · 10 Hz</span>
+    </button>
+  </div>
+</div>
+
+<!-- ══════════════ alert lane (SCkDebug_AlertRow) ══════════════ -->
+<div class="alerts" id="alerts"></div>
+
+<!-- ══════════════ main ══════════════ -->
+<div class="main">
+  <div class="left">
+
+    <!-- arbiter overview pane -->
+    <div class="pane" style="flex:none;display:flex;flex-direction:column">
+      <div class="utabs">
+        <div class="utab active">Gym.VisualLod.Domain <span class="count-badge cb" id="tabCount">40</span></div>
+        <div class="utab">Game.City.Npc <span class="count-badge cb">0</span></div>
+      </div>
+      <div class="pane-head">
+        <span class="pane-title">Arbiter</span>
+        <span class="pill neutral mono" style="font-size:10px" title="SCkDebug_EntityRef — click navigates to the ECS debugger">#1042 · VisualLodArbiter</span>
+        <span id="arbPill" class="pill ok"><span class="dot"></span><span id="arbPillText">Arbitrating</span></span>
+        <div class="right">
+          <span class="dim" style="font-size:var(--f-micro)" id="tickInfo">tick 0</span>
+        </div>
+      </div>
+
+      <!-- stat strip -->
+      <div class="statstrip" id="statstrip"></div>
+
+      <!-- budgets / pools / view / activity -->
+      <div class="ovgrid">
+        <div class="subpane" title="Budget meters — SCkDebug_MeterBar with target ticks">
+          <h4>Budgets <span class="right dim" id="budgetHeadroom"></span></h4>
+          <div class="meter-row"><span class="k">Near</span>
+            <div class="meter"><div class="fill" id="mNear" style="background:var(--accent)"></div></div>
+            <span class="n" id="nNear">0 / 5</span></div>
+          <div class="meter-row"><span class="k">Lock</span>
+            <div class="meter"><div class="fill" id="mLock" style="background:var(--warn)"></div></div>
+            <span class="n" id="nLock">0 / 8</span></div>
+          <div class="meter-row"><span class="k">Unbudgeted</span>
+            <div class="meter"><div class="fill" id="mUnbud" style="background:var(--err)"></div></div>
+            <span class="n" id="nUnbud">0</span></div>
+          <div style="margin-top:9px;border-top:1px solid var(--border);padding-top:8px">
+            <h4>Crowd pool 0 <span class="right mono dim" id="poolMeta"></span></h4>
+            <div class="meter-row"><span class="k">Slots</span>
+              <div class="meter"><div class="fill" id="mPool" style="background:var(--ok)"></div></div>
+              <span class="n" id="nPool">0 / 64</span></div>
+            <div class="kv" style="padding-top:5px"><span class="k">Rendered</span><span class="v" id="kRendered">—</span></div>
+            <div class="kv"><span class="k">Exhaustion</span><span class="v"><span class="pill neutral" style="padding:1px 8px" id="kPolicy">PromoteInstead</span></span></div>
+            <div class="kv" title="Planned CkVisualLod feature: optionally strip shadows/lighting from far GPU members. Toggles are live in this mockup to preview the interaction."><span class="k">Far shadows</span><span class="v"><button class="mocksw on" id="swShadow"><i></i></button> <span id="swShadowLbl">cast</span> <span class="mute" style="font-size:9.5px">planned</span></span></div>
+            <div class="kv"><span class="k">Far lighting</span><span class="v"><button class="mocksw on" id="swLight"><i></i></button> <span id="swLightLbl">dynamic indirect</span> <span class="mute" style="font-size:9.5px">planned</span></span></div>
+          </div>
+        </div>
+
+        <div class="subpane" title="Resolved local view — cached per tick on the arbiter">
+          <h4>View <span class="right" id="viewModeChip"><span class="pill info" style="padding:1px 8px">local-view discovery</span></span></h4>
+          <div class="kv"><span class="marker" id="viewMarker" style="background:var(--ok)"></span><span class="k" style="width:88px">Valid</span><span class="v" id="kViewValid">true</span></div>
+          <div class="kv"><span class="marker" style="background:transparent"></span><span class="k" style="width:88px">Location</span><span class="v" id="kViewLoc">—</span></div>
+          <div class="kv"><span class="marker" style="background:transparent"></span><span class="k" style="width:88px">Forward</span><span class="v" id="kViewFwd">—</span></div>
+          <div class="kv"><span class="marker" style="background:transparent"></span><span class="k" style="width:88px">Cone</span><span class="v" id="kViewCone">—</span></div>
+          <div style="margin-top:8px;border-top:1px solid var(--border);padding-top:8px">
+            <h4>Config</h4>
+            <div class="kv"><span class="k" style="width:110px">Promote / Demote</span><span class="v">900 / 1100</span></div>
+            <div class="kv"><span class="k" style="width:110px">Always-in-view</span><span class="v">300</span></div>
+            <div class="kv"><span class="k" style="width:110px">Preempt</span><span class="v">margin 200 · max 2/tick</span></div>
+            <div class="kv"><span class="k" style="width:110px">Fade</span><span class="v" id="kFade">0.30 s · dissolve</span></div>
+          </div>
+        </div>
+
+        <div class="subpane" title="Per-tick flip counters — SCkDebug_Sparkline ring buffers">
+          <h4>Activity <span class="right dim">per tick · last 60</span></h4>
+          <div class="sparkrow"><span class="k">Promotes</span><canvas id="spPro" width="200" height="24"></canvas><span class="n" id="cPro">0</span></div>
+          <div class="sparkrow"><span class="k">Demotes</span><canvas id="spDem" width="200" height="24"></canvas><span class="n" id="cDem">0</span></div>
+          <div class="sparkrow"><span class="k">Preempts</span><canvas id="spPre" width="200" height="24"></canvas><span class="n" id="cPre">0</span></div>
+          <div style="margin-top:8px;border-top:1px solid var(--border);padding-top:8px">
+            <h4>Totals</h4>
+            <div class="kv"><span class="k">Promotes</span><span class="v" id="tPro">0</span></div>
+            <div class="kv"><span class="k">Demotes</span><span class="v" id="tDem">0</span></div>
+            <div class="kv"><span class="k">Fail-closed</span><span class="v" id="tFail">0</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- world markers preview (CkPmg) -->
+    <div class="pane" id="markersPane" style="flex:none;display:none;margin-top:0">
+      <div class="pane-head">
+        <span class="pane-title">World markers · CkPmg preview</span>
+        <div class="legend" style="margin-left:10px">
+          <span><svg class="sw" viewBox="0 0 10 10"><path d="M5 0l5 5-5 5-5-5z" fill="#54c6ff"/></svg>SkelMesh</span>
+          <span><svg class="sw" viewBox="0 0 10 10"><circle cx="5" cy="5" r="4" fill="#46d08d"/></svg>Far (GPU)</span>
+          <span><svg class="sw" viewBox="0 0 10 10"><circle cx="5" cy="5" r="3.5" fill="none" stroke="#5d6980" stroke-width="1.5"/></svg>Unrendered</span>
+          <span><svg class="sw" viewBox="0 0 10 10"><path d="M1 1l8 8M9 1l-8 8" stroke="#5d6980" stroke-width="1.5"/></svg>Hidden</span>
+        </div>
+        <div class="right"><span class="dim" style="font-size:var(--f-micro)">top-down · rings = promote/demote · click a marker to select</span></div>
+      </div>
+      <canvas id="worldCanvas"></canvas>
+    </div>
+
+    <!-- roster pane -->
+    <div class="pane grow">
+      <div class="pane-head">
+        <span class="pane-title">Members</span>
+        <span class="count-badge" id="rosterCount">40</span>
+        <div class="right">
+          <span class="pill info" style="padding:1px 8px" id="inViewPill">0 in view</span>
+          <span class="pill neutral" style="padding:1px 8px" id="fadingPill">0 fading</span>
+        </div>
+      </div>
+      <div class="tablewrap">
+        <table>
+          <thead><tr>
+            <th data-sort="name">Entity <span class="arrow" id="ar-name"></span></th>
+            <th data-sort="rep">Rep <span class="arrow" id="ar-rep"></span></th>
+            <th data-sort="dist">Distance <span class="arrow" id="ar-dist"></span></th>
+            <th data-sort="view">View <span class="arrow" id="ar-view"></span></th>
+            <th data-sort="fade">Fade α <span class="arrow" id="ar-fade"></span></th>
+            <th data-sort="slot">Slot <span class="arrow" id="ar-slot"></span></th>
+            <th data-sort="flags">Flags <span class="arrow" id="ar-flags"></span></th>
+          </tr></thead>
+          <tbody id="rosterBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="vsplit" title="SSplitter — 5px"></div>
+
+  <!-- detail rail -->
+  <div class="rail">
+    <div class="pane" style="flex:none">
+      <div class="pane-head"><span class="pane-title">Member detail</span><div class="right"><span class="dim" style="font-size:var(--f-micro)">click a row</span></div></div>
+      <div id="detail"><div class="detail-empty">No member selected.<br><span class="mute">Pick in the viewport or click a roster row.</span></div></div>
+    </div>
+    <div class="pane" style="flex:none">
+      <div class="pane-head"><span class="pane-title">Recent activity</span><span class="count-badge" id="evCount">0</span></div>
+      <div class="evlog" id="evlog"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════ footer ══════════════ -->
+<div class="footer">
+  <div class="bar">
+    <span>CkVisualLodDebugger · mockup v1</span>
+    <span>palette + spacing = CkStyle defaults</span>
+    <button class="toggle" id="mapToggle">Slate widget mapping</button>
+    <span style="margin-left:auto" class="mono" id="fps"></span>
+  </div>
+  <div class="mapping" id="mapping">
+    <div><b>Window shell</b> — SCkDebugger_WindowBase + SCkDebug_WindowChrome (world selector, picker in CommonActionsContent, dual search)</div>
+    <div><b>Domain tabs</b> — SCkDebug_UnderlineTabs, one per arbiter (iterate FFragment_VisualLodArbiter_Current)</div>
+    <div><b>Arbiter pill</b> — SCkDebug_StatusPill (Arbitrating / View invalid / Pool exhausted)</div>
+    <div><b>Stat strip</b> — SCkDebug_StageStrip of SCkDebug_StatPair cards, tones via CkStyle</div>
+    <div><b>Budget + pool meters</b> — SCkDebug_MeterBar (fraction + target tick), SCkDebug_KeyValueRow</div>
+    <div><b>View card</b> — SCkDebug_KeyValueRow rows; needs new cached _LastView on the arbiter fragment (CkFoundation)</div>
+    <div><b>Activity sparklines</b> — SCkDebug_Sparkline; needs new per-tick promote/demote/preempt counters (CkFoundation)</div>
+    <div><b>Roster</b> — SListView + CkDebugger.TableView.Row, zebra Row.Even/Odd, stable TSharedPtr identity, row body = STextBlock/SImage only</div>
+    <div><b>Entity cell</b> — SCkDebug_EntityRef (click → ECS debugger via DebugNav; selection via DebugSelectionSync)</div>
+    <div><b>Rep / flag chips</b> — SCkDebug_Chip (visual-only, no OnClicked inside rows)</div>
+    <div><b>Alert lane</b> — SCkDebug_AlertRow (view invalid, pool exhausted, dissolve look unresolved)</div>
+    <div><b>Detail rail</b> — SCkDebug_InspectorPanel sections + KeyValueRows + MeterBar; anim cache via new UCk_Utils_VisualLod_UE getters</div>
+    <div><b>Recent activity</b> — SCkDebug_EventLog fed from OnVisualLod_* signals</div>
+    <div><b>Distance / in-view / rank</b> — needs retained per-member fields (CkFoundation) — today they die with the tick</div>
+    <div><b>Freeze</b> — new FTag_VisualLodArbiter_Frozen + Utils request (CkFoundation); chrome SCkDebug_IconToggle; fades finish, then flips suspend</div>
+    <div><b>Markers</b> — CkDebug_PmgGizmoSet retained PMG shapes moved per tick (diamond = skel mesh, sphere = far, ring = unrendered); never one-frame draws</div>
+    <div><b>Rendering section</b> — read SKMC / batched-crowd ISKM component flags (CastShadow, indirect lighting); far disable switches ship with the planned CkVisualLod feature</div>
+  </div>
+</div>
+
+<script>
+/* ================= simulation of the gym arbiter ================= */
+const CFG={promote:900,demote:1100,nearBudget:5,lockBudget:8,lockMax:8000,alwaysInView:300,
+           fov:90,marginDeg:10,preemptMargin:200,maxPreempts:2,fade:0.30,poolSize:64};
+const cosCone=Math.cos((CFG.fov*0.5+CFG.marginDeg)*Math.PI/180);
+const SEQ=['Idle','Walk','Run'];
+let simTime=0,tickNo=0,paused=false;
+let scViewInvalid=false,scPoolExhausted=false,scNoLook=false;
+let frozen=false,shapesOn=false,farShadow=true,farLight=true;
+
+const members=[];
+for(let i=0;i<40;i++){
+  const theta=(i/40)*Math.PI*2+(i%7)*0.13;
+  members.push({
+    id:2000+i, name:'GymMember_'+String(i).padStart(2,'0'),
+    theta, r:250+((i*173)%1350), drift:(i%2?1:-1)*(18+(i*37)%42), wob:(i*97)%628/100,
+    dist:0,inView:false,
+    promoted:false,viaLock:false,unbud:false,slot:i,hidden:(i===13||i===31),
+    fadePhase:'None',alpha:1,preempt:false,locks:(i===4||i===9)?1:0,
+    seqIdx:1,rate:1,proxySeq:-1,proxyRate:1,
+    promotedAt:-1,
+  });
+}
+let usedSlots=members.filter(m=>m.slot>=0).length;
+
+const rings={pro:new Array(60).fill(0),dem:new Array(60).fill(0),pre:new Array(60).fill(0)};
+let totals={pro:0,dem:0,fail:0};
+const events=[];
+function logEv(tone,msg){events.unshift({t:simTime,tone,msg});if(events.length>40)events.pop();evDirty=true;}
+let evDirty=false;
+
+function stepWorld(dt){
+  const fwd={x:1,y:0};
+  for(const m of members){
+    m.wob+=dt*0.35; m.r+=m.drift*dt*(0.6+0.4*Math.sin(m.wob));
+    if(m.r<180){m.r=180;m.drift=Math.abs(m.drift);} if(m.r>1650){m.r=1650;m.drift=-Math.abs(m.drift);}
+    m.theta+=dt*0.05*Math.sin(m.wob*0.7);
+    m.dist=m.r;
+    const dx=Math.cos(m.theta),dy=Math.sin(m.theta);
+    const dot=dx*fwd.x+dy*fwd.y;
+    m.inView=(m.dist<CFG.alwaysInView)||(dot>cosCone);
+    m.seqIdx=Math.abs(m.drift)>30?1:0; m.rate=Math.min(1.5,Math.max(0.5,Math.abs(m.drift)/40));
+  }
+}
+function poolCap(){return scPoolExhausted?22:CFG.poolSize;}
+
+function arbiterTick(){
+  tickNo++;
+  let pro=0,dem=0,pre=0;
+  if(frozen||scViewInvalid){rings.pro.push(0);rings.dem.push(0);rings.pre.push(0);trimRings();return;}
+  const live=members.filter(m=>!m.hidden);
+  // demotes
+  for(const m of live){
+    if(!m.promoted)continue;
+    const lockHeld=m.locks>0&&m.dist<CFG.lockMax;
+    if(!lockHeld&&m.dist>CFG.demote&&m.fadePhase!=='PromoteFade'){
+      if(m.fadePhase!=='DemoteFade'){m.fadePhase='DemoteFade';m.preempt=false;dem++;totals.dem++;
+        logEv('info',`<b>${m.name}</b> demote begins (dist ${m.dist.toFixed(0)})`);}
+    }
+  }
+  // promotes
+  const nearCount=live.filter(m=>m.promoted&&!m.viaLock&&!m.unbud&&m.fadePhase!=='DemoteFade').length;
+  let lockCount=live.filter(m=>m.promoted&&m.viaLock&&m.fadePhase!=='DemoteFade').length;
+  const cands=live.filter(m=>!m.promoted&&m.dist<CFG.promote)
+    .sort((a,b)=>(b.inView-a.inView)||(a.dist-b.dist));
+  let freeNear=CFG.nearBudget-nearCount;
+  for(const c of cands){
+    const lockWant=c.locks>0&&c.dist<CFG.lockMax&&lockCount<CFG.lockBudget;
+    if(lockWant){doPromote(c,'lock');lockCount++;pro++;continue;}
+    if(freeNear>0){doPromote(c,'near');freeNear--;pro++;continue;}
+    // preempt: worst incumbent out-of-view or farther by margin
+    if(pre<CFG.maxPreempts){
+      const inc=live.filter(m=>m.promoted&&!m.viaLock&&m.fadePhase!=='DemoteFade'&&!m.preempt)
+        .sort((a,b)=>(a.inView-b.inView)||(b.dist-a.dist))[0];
+      if(inc&&((c.inView&&!inc.inView)||(c.dist+CFG.preemptMargin<inc.dist))){
+        inc.fadePhase='DemoteFade';inc.preempt=true;pre++;totals.dem++;
+        logEv('warn',`<b>${inc.name}</b> preempt-demoted for <b>${c.name}</b>`);
+        doPromote(c,'near');pro++;
+      }
+    }
+  }
+  rings.pro.push(pro);rings.dem.push(dem);rings.pre.push(pre);trimRings();
+}
+function doPromote(m,charge){
+  m.promoted=true;m.viaLock=(charge==='lock');m.unbud=(charge==='unbud');
+  m.fadePhase=scNoLook?'None':'PromoteFade';
+  if(scNoLook)m.alpha=0;
+  m.promotedAt=simTime;m.proxySeq=m.seqIdx;m.proxyRate=m.rate;totals.pro++;
+  if(m.slot>=0){usedSlots--;m.slot=-1;}
+  logEv('ok',`<b>${m.name}</b> promoted (${charge}${m.inView?' · in view':''})`);
+}
+function finishDemote(m){
+  m.promoted=false;m.viaLock=false;m.unbud=false;m.preempt=false;m.fadePhase='None';m.alpha=1;
+  m.proxySeq=-1;m.proxyRate=1;
+  if(usedSlots<poolCap()){m.slot=usedSlots++;}
+  else{m.slot=-1;logEv('err',`<b>${m.name}</b> pool exhausted — unrendered`);}
+  logEv('info',`<b>${m.name}</b> demote finished${m.slot<0?' (no slot)':''}`);
+}
+function stepFades(dt){
+  const step=dt/CFG.fade;
+  for(const m of members){
+    if(m.fadePhase==='PromoteFade'){m.alpha-=step;if(m.alpha<=0){m.alpha=0;m.fadePhase='None';}}
+    else if(m.fadePhase==='DemoteFade'){m.alpha+=step;if(m.alpha>=1){finishDemote(m);}}
+  }
+}
+function trimRings(){for(const k of ['pro','dem','pre'])while(rings[k].length>60)rings[k].shift();}
+
+/* ================= rendering ================= */
+const $=id=>document.getElementById(id);
+let sortKey='dist',sortAsc=true,selId=null,filterStr='',hlStr='';
+
+function repOf(m){return m.promoted?'P':(m.slot>=0?'F':'N');}
+const repLabel={P:'SkelMesh',F:'Far',N:'None'};
+
+function buildStatStrip(){
+  const live=members.filter(m=>!m.hidden);
+  const promoted=live.filter(m=>m.promoted);
+  const fading=members.filter(m=>m.fadePhase!=='None').length;
+  const charged=promoted.filter(m=>m.fadePhase!=='DemoteFade');
+  const near=charged.filter(m=>!m.viaLock&&!m.unbud).length;
+  const lock=charged.filter(m=>m.viaLock).length;
+  const unbud=charged.filter(m=>m.unbud).length;
+  const far=live.filter(m=>!m.promoted&&m.slot>=0).length;
+  const none=live.filter(m=>!m.promoted&&m.slot<0).length;
+  const hidden=members.filter(m=>m.hidden).length;
+  const inview=live.filter(m=>m.inView).length;
+  const s=[
+    {v:members.length,l:'Members',meta:inview+' in view',tone:'',stripe:'var(--text-mute)'},
+    {v:promoted.length,l:'SkelMesh (near)',meta:`near ${near} · lock ${lock} · unbud ${unbud}`,tone:'tone-accent',stripe:'var(--accent)'},
+    {v:far,l:'GPU crowd (far)',meta:usedSlots+' slots used',tone:'tone-ok',stripe:'var(--ok)'},
+    {v:fading,l:'Fading',meta:scNoLook?'hard pop!':CFG.fade.toFixed(2)+' s dissolve',tone:fading?'tone-info':'',stripe:'var(--info)'},
+    {v:hidden,l:'Hidden',meta:'suspended',tone:'',stripe:'var(--border-strong)'},
+    {v:none,l:'Unrendered',meta:none?'pool starved':'—',tone:none?'tone-err':'',stripe:none?'var(--err)':'var(--border-strong)'},
+  ];
+  $('statstrip').innerHTML=s.map(x=>
+    `<div class="stat ${x.tone}"><div class="stripe" style="background:${x.stripe}"></div><div class="v">${x.v}</div><div class="l">${x.l}</div><div class="meta">${x.meta}</div></div>`).join('');
+  $('inViewPill').textContent=inview+' in view';
+  $('fadingPill').textContent=fading+' fading';
+  return{near,lock,unbud};
+}
+function renderBudgets(b){
+  $('mNear').style.width=(100*b.near/CFG.nearBudget)+'%';$('nNear').textContent=`${b.near} / ${CFG.nearBudget}`;
+  $('mLock').style.width=(100*b.lock/CFG.lockBudget)+'%';$('nLock').textContent=`${b.lock} / ${CFG.lockBudget}`;
+  $('mUnbud').style.width=Math.min(100,b.unbud*20)+'%';$('nUnbud').textContent=b.unbud;
+  $('budgetHeadroom').textContent=`headroom ${Math.max(0,CFG.nearBudget-b.near)}`;
+  const cap=poolCap();
+  $('mPool').style.width=(100*usedSlots/cap)+'%';
+  $('mPool').style.background=usedSlots>=cap?'var(--err)':'var(--ok)';
+  $('nPool').textContent=`${usedSlots} / ${cap}`;
+  $('poolMeta').textContent='tile 2000 · Villagers';
+  $('kRendered').textContent=members.filter(m=>!m.hidden&&!m.promoted&&m.slot>=0).length+' instances · 4 tiles';
+}
+function renderView(){
+  const bad=scViewInvalid;
+  $('viewMarker').style.background=bad?'var(--err)':'var(--ok)';
+  $('kViewValid').textContent=bad?'false':'true';
+  $('kViewLoc').textContent=bad?'—':'X 0  Y 0  Z 160';
+  $('kViewFwd').textContent=bad?'—':'X 1.00  Y 0.00  Z 0.00';
+  $('kViewCone').textContent=bad?'—':`FOV 90° + 10° margin → 110° (cos ${cosCone.toFixed(3)})`;
+  $('viewModeChip').innerHTML=bad
+    ?'<span class="pill err" style="padding:1px 8px">unresolved</span>'
+    :'<span class="pill info" style="padding:1px 8px">local-view discovery</span>';
+  $('kFade').textContent=scNoLook?'0.30 s · look unresolved → POP':'0.30 s · dissolve';
+}
+function renderArbPill(){
+  const p=$('arbPill'),t=$('arbPillText');
+  if(frozen){p.className='pill info';t.textContent='Frozen — flips suspended';}
+  else if(scViewInvalid){p.className='pill warn';t.textContent='View invalid — idle (whole-batch skip)';}
+  else if(scPoolExhausted&&usedSlots>=poolCap()){p.className='pill err';t.textContent='Pool exhausted';}
+  else{p.className='pill ok';t.textContent='Arbitrating';}
+}
+function renderAlerts(){
+  const a=[];
+  if(scViewInvalid)a.push({tone:'warn',glyph:'▲',msg:'<b>View unresolved</b> — arbiter skips the whole batch: no promotes, no demotes, no far-anim updates.',fix:'wire an observer or verify local player camera'});
+  if(scPoolExhausted&&usedSlots>=poolCap())a.push({tone:'err',glyph:'✕',msg:`<b>Crowd pool 0 exhausted</b> — ${usedSlots}/${poolCap()} slots. Policy <span class="mono">PromoteInstead</span> is charging promotes unbudgeted.`,fix:'raise PoolSize or lower member count'});
+  if(scNoLook)a.push({tone:'warn',glyph:'▲',msg:'<b>Dissolve look unresolved</b> — <span class="mono">M_CkUsf_Look_VisualLodDissolve</span> master missing; transitions hard-pop.',fix:'run Ck_Usf_GenerateLooks VisualLodDissolve'});
+  $('alerts').innerHTML=a.map(x=>`<div class="alert ${x.tone}"><span class="glyph">${x.glyph}</span><span>${x.msg}</span><span class="fix">${x.fix}</span></div>`).join('');
+}
+function drawSpark(cv,data,color){
+  const c=cv.getContext('2d'),W=cv.width=cv.clientWidth*2,H=cv.height=48;
+  c.clearRect(0,0,W,H);
+  const max=Math.max(2,...data);
+  c.strokeStyle='rgba(148,160,179,0.12)';c.beginPath();c.moveTo(0,H-1);c.lineTo(W,H-1);c.stroke();
+  c.fillStyle=color;
+  const bw=W/60;
+  data.forEach((v,i)=>{const h=v/max*(H-6);if(v>0)c.fillRect(i*bw,H-h,Math.max(2,bw-2),h);});
+}
+function renderSparks(){
+  drawSpark($('spPro'),rings.pro,'#46d08d');
+  drawSpark($('spDem'),rings.dem,'#5fb3d4');
+  drawSpark($('spPre'),rings.pre,'#f2b33d');
+  $('cPro').textContent=rings.pro[rings.pro.length-1];
+  $('cDem').textContent=rings.dem[rings.dem.length-1];
+  $('cPre').textContent=rings.pre[rings.pre.length-1];
+  $('tPro').textContent=totals.pro;$('tDem').textContent=totals.dem;$('tFail').textContent=totals.fail;
+}
+
+/* roster — stable DOM rows, in-place updates (mirrors the Slate contract) */
+const rowCache=new Map();
+function rosterRows(){
+  let list=members.slice();
+  if(filterStr)list=list.filter(m=>m.name.toLowerCase().includes(filterStr));
+  const dir=sortAsc?1:-1;
+  const key={name:m=>m.name,rep:m=>repOf(m),dist:m=>m.dist,view:m=>m.inView?0:1,
+             fade:m=>m.alpha,slot:m=>m.slot,flags:m=>(m.locks?2:0)+(m.preempt?1:0)}[sortKey];
+  list.sort((a,b)=>{const ka=key(a),kb=key(b);return(ka<kb?-1:ka>kb?1:a.id-b.id)*dir;});
+  return list;
+}
+function renderRoster(){
+  const list=rosterRows();
+  const body=$('rosterBody');
+  const seen=new Set();
+  list.forEach((m,idx)=>{
+    seen.add(m.id);
+    let tr=rowCache.get(m.id);
+    if(!tr){
+      tr=document.createElement('tr');
+      tr.innerHTML=`<td><span class="entref"><span class="id"></span><span class="nm"></span></span></td>
+        <td><span class="repchip"><span class="d"></span><span class="rl"></span></span></td>
+        <td><span class="mono dcell"></span></td>
+        <td><span class="viewdot"></span></td>
+        <td><span class="fadecell"><span class="bar"><i></i></span><span class="mono fv" style="font-size:10px"></span></span></td>
+        <td><span class="mono scell"></span></td><td class="fcell"></td>`;
+      tr.addEventListener('click',()=>{selId=m.id;renderDetail();paintSelection();});
+      rowCache.set(m.id,tr);
+    }
+    if(body.children[idx]!==tr)body.insertBefore(tr,body.children[idx]||null);
+    const rep=repOf(m);
+    tr.querySelector('.id').textContent='#'+m.id;
+    tr.querySelector('.nm').textContent=m.name;
+    const chip=tr.querySelector('.repchip');chip.className='repchip rep-'+rep;
+    tr.querySelector('.rl').textContent=repLabel[rep];
+    const dc=tr.querySelector('.dcell');dc.textContent=m.dist.toFixed(0);
+    dc.className='mono dcell'+(m.dist>CFG.demote?' far':'');
+    tr.querySelector('.viewdot').style.background=m.inView?'var(--ok)':'var(--border-strong)';
+    tr.querySelector('.fadecell .bar i').style.width=(m.alpha*100)+'%';
+    tr.querySelector('.fv').textContent=m.fadePhase==='None'?(m.alpha>=1?'—':'0.00'):m.alpha.toFixed(2);
+    tr.querySelector('.scell').textContent=m.slot>=0?m.slot:'—';
+    let flags='';
+    if(m.locks)flags+=`<span class="flag lock">LOCK×${m.locks}</span>`;
+    if(m.unbud)flags+='<span class="flag unbud">UNBUD</span>';
+    if(m.preempt)flags+='<span class="flag preempt">PREEMPT</span>';
+    if(m.hidden)flags+='<span class="flag hidden">HIDDEN</span>';
+    tr.querySelector('.fcell').innerHTML=flags;
+    tr.className=(m.hidden?'hiddenrow ':'')+(hlStr&&m.name.toLowerCase().includes(hlStr)?'hl ':'');
+  });
+  for(const[id,tr]of rowCache){if(!seen.has(id)&&tr.parentNode)tr.remove();}
+  $('rosterCount').textContent=list.length+(filterStr?' / '+members.length:'');
+  paintSelection();
+  document.querySelectorAll('thead .arrow').forEach(a=>a.textContent='');
+  const ar=$('ar-'+sortKey);if(ar)ar.textContent=sortAsc?'▲':'▼';
+}
+function paintSelection(){
+  for(const[id,tr]of rowCache)tr.classList.toggle('sel',id===selId);
+}
+function renderDetail(){
+  const m=members.find(x=>x.id===selId);
+  const d=$('detail');
+  if(!m){d.innerHTML='<div class="detail-empty">No member selected.<br><span class="mute">Pick in the viewport or click a roster row.</span></div>';return;}
+  const rep=repOf(m);
+  const charge=m.promoted?(m.viaLock?'Lock':(m.unbud?'Unbudgeted':'Near')):'—';
+  const chargeTone=m.viaLock?'warn':(m.unbud?'err':'accent');
+  d.innerHTML=`<div class="detail-body">
+    <div class="detail-head">
+      <span class="entref" style="font-size:var(--f-small);padding:3px 12px 3px 8px"><span class="id">#${m.id}</span><span class="nm">${m.name}</span></span>
+      <span class="repchip rep-${rep}"><span class="d"></span>${repLabel[rep]}</span>
+      ${m.hidden?'<span class="flag hidden">HIDDEN</span>':''}
+    </div>
+    <div class="sect"><h5>Representation</h5>
+      <div class="kv"><span class="k">Promote charge</span><span class="v" style="color:var(--${m.promoted?chargeTone:'text-mute'})">${charge}</span></div>
+      <div class="kv"><span class="k">Crowd slot</span><span class="v">${m.slot>=0?m.slot+' · crowd 0':'released'}</span></div>
+      <div class="kv"><span class="k">Promote locks</span><span class="v">${m.locks}${m.locks?' <span class="dim">(counter — no expiry)</span>':''}</span></div>
+      <div class="kv"><span class="k">Preempt demote</span><span class="v">${m.preempt}</span></div>
+    </div>
+    <div class="sect"><h5>Fade</h5>
+      <div class="kv"><span class="k">Phase</span><span class="v">${m.fadePhase}</span></div>
+      <div class="bigmeter"><i style="width:${m.alpha*100}%"></i></div>
+      <div class="kv"><span class="k">Member α</span><span class="v">${m.alpha.toFixed(2)} <span class="dim">· mesh dissolve = ${(1-m.alpha).toFixed(2)}</span></span></div>
+    </div>
+    <div class="sect"><h5>Animation</h5>
+      ${m.promoted
+        ?`<div class="kv"><span class="k">SkelMesh sequence</span><span class="v">${m.proxySeq>=0?SEQ[m.proxySeq]+' ['+m.proxySeq+']':'—'}</span></div>
+           <div class="kv"><span class="k">SkelMesh rate</span><span class="v">${m.proxyRate.toFixed(2)}×</span></div>`
+        :`<div class="kv"><span class="k">Far sequence</span><span class="v">${SEQ[m.seqIdx]} [${m.seqIdx}] <span class="dim">· speed-driven</span></span></div>
+           <div class="kv"><span class="k">Far rate</span><span class="v">${m.rate.toFixed(2)}×</span></div>`}
+    </div>
+    <div class="sect"><h5>Rendering</h5>
+      ${m.hidden||rep==='N'
+        ?'<div class="kv"><span class="k">Component</span><span class="v" style="color:var(--text-mute)">not rendered</span></div>'
+        :m.promoted
+        ?`<div class="kv"><span class="k">Component</span><span class="v">SKMC · IskmProxy pool</span></div>
+           <div class="kv"><span class="k">Cast shadow</span><span class="v" style="color:var(--ok)">true</span></div>
+           <div class="kv"><span class="k">Dyn. indirect</span><span class="v" style="color:var(--ok)">true</span></div>
+           <div class="kv"><span class="k">Light channel</span><span class="v">0</span></div>`
+        :`<div class="kv"><span class="k">Component</span><span class="v">ISKM · batched crowd 0</span></div>
+           <div class="kv"><span class="k">Cast shadow</span><span class="v" style="color:var(--${farShadow?'ok':'err'})">${farShadow}</span></div>
+           <div class="kv"><span class="k">Dyn. indirect</span><span class="v" style="color:var(--${farLight?'ok':'err'})">${farLight}</span></div>
+           <div class="kv"><span class="k">Light channel</span><span class="v">0</span></div>`}
+    </div>
+    <div class="sect"><h5>Ranking inputs</h5>
+      <div class="kv"><span class="k">Distance</span><span class="v">${m.dist.toFixed(1)}</span></div>
+      <div class="kv"><span class="k">In view</span><span class="v" style="color:var(--${m.inView?'ok':'text-mute'})">${m.inView}</span></div>
+      <div class="kv"><span class="k">Arbiter</span><span class="v"><span class="entref" style="font-size:10px"><span class="id">#1042</span><span class="nm">Gym.VisualLod.Domain</span></span></span></div>
+    </div>
+  </div>`;
+}
+function renderEvents(){
+  if(!evDirty)return;evDirty=false;
+  $('evlog').innerHTML=events.map(e=>{
+    const c={ok:'var(--ok)',info:'var(--info)',warn:'var(--warn)',err:'var(--err)'}[e.tone];
+    return`<div class="ev"><span class="t">${e.t.toFixed(1)}s</span><span class="d" style="background:${c}"></span><span class="msg">${e.msg}</span></div>`;
+  }).join('');
+  $('evCount').textContent=events.length;
+}
+
+/* world markers canvas (CkPmg preview) */
+function drawWorld(){
+  const cv=$('worldCanvas');
+  const W=cv.width=cv.clientWidth*2,H=cv.height=400;
+  const c=cv.getContext('2d');c.clearRect(0,0,W,H);
+  const cx=W/2,cy=H/2,sc=(H/2-14)/1700;
+  if(!scViewInvalid){
+    const a=(CFG.fov*0.5+CFG.marginDeg)*Math.PI/180;
+    c.beginPath();c.moveTo(cx,cy);c.arc(cx,cy,1700*sc,-a,a);c.closePath();
+    c.fillStyle='rgba(84,198,255,0.06)';c.fill();
+    c.strokeStyle='rgba(84,198,255,0.35)';c.lineWidth=1;c.stroke();
+  }
+  const ring=(r,col,dash)=>{c.beginPath();c.setLineDash(dash);c.strokeStyle=col;c.lineWidth=1.5;
+    c.arc(cx,cy,r*sc,0,Math.PI*2);c.stroke();c.setLineDash([]);};
+  ring(CFG.alwaysInView,'rgba(84,198,255,0.5)',[]);
+  ring(CFG.promote,'rgba(70,208,141,0.45)',[6,5]);
+  ring(CFG.demote,'rgba(240,99,122,0.35)',[3,5]);
+  c.fillStyle='#e9edf4';c.beginPath();c.moveTo(cx+10,cy);c.lineTo(cx-6,cy-6);c.lineTo(cx-6,cy+6);c.closePath();c.fill();
+  for(const m of members){
+    const x=cx+Math.cos(m.theta)*m.dist*sc, y=cy+Math.sin(m.theta)*m.dist*sc;
+    m._mx=x;m._my=y;
+    if(m.id===selId){c.strokeStyle='#f2f2f2';c.lineWidth=1.5;c.beginPath();c.arc(x,y,10,0,Math.PI*2);c.stroke();}
+    if(m.hidden){c.strokeStyle='#5d6980';c.lineWidth=1.6;c.beginPath();
+      c.moveTo(x-4,y-4);c.lineTo(x+4,y+4);c.moveTo(x+4,y-4);c.lineTo(x-4,y+4);c.stroke();continue;}
+    if(m.promoted){
+      c.globalAlpha=0.35+0.65*(1-m.alpha);
+      c.fillStyle='#54c6ff';c.beginPath();c.moveTo(x,y-6.5);c.lineTo(x+6.5,y);c.lineTo(x,y+6.5);c.lineTo(x-6.5,y);c.closePath();c.fill();
+      c.globalAlpha=1;
+    }else if(m.slot>=0){
+      c.fillStyle='#46d08d';c.beginPath();c.arc(x,y,3.6,0,Math.PI*2);c.fill();
+    }else{
+      c.strokeStyle='#5d6980';c.lineWidth=1.6;c.beginPath();c.arc(x,y,3.6,0,Math.PI*2);c.stroke();
+    }
+  }
+}
+
+/* ================= main loop ================= */
+let last=performance.now(),acc=0,frames=0,fpsT=0;
+function frame(now){
+  const dt=Math.min(0.1,(now-last)/1000);last=now;
+  if(!paused){
+    simTime+=dt;stepWorld(dt);stepFades(dt);
+    acc+=dt;
+    if(acc>=0.1){acc-=0.1;arbiterTick();renderSparks();}
+    const b=buildStatStrip();renderBudgets(b);renderView();renderArbPill();renderRoster();renderEvents();
+    if(shapesOn)drawWorld();
+    if(selId!==null)renderDetail();
+    $('tickInfo').textContent='tick '+tickNo+' · t '+simTime.toFixed(1)+'s';
+  }
+  frames++;fpsT+=dt;if(fpsT>=1){$('fps').textContent=frames+' fps';frames=0;fpsT=0;}
+  requestAnimationFrame(frame);
+}
+
+/* ================= wiring ================= */
+document.querySelectorAll('thead th').forEach(th=>th.addEventListener('click',()=>{
+  const k=th.dataset.sort;if(sortKey===k)sortAsc=!sortAsc;else{sortKey=k;sortAsc=true;}renderRoster();
+}));
+$('filterBox').addEventListener('input',e=>{filterStr=e.target.value.trim().toLowerCase();renderRoster();});
+$('hlBox').addEventListener('input',e=>{hlStr=e.target.value.trim().toLowerCase();renderRoster();});
+$('pauseBtn').addEventListener('click',()=>{paused=!paused;
+  $('pauseLbl').textContent=paused?'Paused':'Live · 10 Hz';$('pauseBtn').classList.toggle('on',!paused);});
+function wireScenario(btn,get,set){$(btn).addEventListener('click',()=>{set(!get());$(btn).classList.toggle('on',get());renderAlerts();});}
+wireScenario('scView',()=>scViewInvalid,v=>{scViewInvalid=v;if(v)logEv('warn','<b>Arbiter</b> view became invalid — batch skipped');});
+wireScenario('scPool',()=>scPoolExhausted,v=>{scPoolExhausted=v;if(v)logEv('err','<b>Crowd pool 0</b> capacity clamped (scenario)');});
+wireScenario('scLook',()=>scNoLook,v=>{scNoLook=v;if(v)logEv('warn','<b>Dissolve look</b> unresolved — hard pops (scenario)');});
+$('pickBtn').addEventListener('click',()=>{$('pickBtn').classList.toggle('on');});
+$('freezeBtn').addEventListener('click',()=>{frozen=!frozen;$('freezeBtn').classList.toggle('on',frozen);
+  logEv('info',frozen?'<b>Arbiter</b> frozen — flips suspended, eject and inspect':'<b>Arbiter</b> unfrozen — arbitration resumed');renderArbPill();});
+$('shapesBtn').addEventListener('click',()=>{shapesOn=!shapesOn;$('shapesBtn').classList.toggle('on',shapesOn);
+  $('markersPane').style.display=shapesOn?'block':'none';if(shapesOn)drawWorld();});
+$('worldCanvas').addEventListener('click',e=>{
+  const r=e.target.getBoundingClientRect();
+  const x=(e.clientX-r.left)*(e.target.width/r.width),y=(e.clientY-r.top)*(e.target.height/r.height);
+  let best=null,bd=500;
+  for(const m of members){if(m._mx===undefined)continue;const d=(m._mx-x)**2+(m._my-y)**2;if(d<bd){bd=d;best=m;}}
+  if(best){selId=best.id;renderDetail();paintSelection();}
+});
+function wireSw(id,lblId,get,set,onTxt,name){$(id).addEventListener('click',()=>{set(!get());
+  $(id).classList.toggle('on',get());$(lblId).textContent=get()?onTxt:'off';
+  logEv('info',`<b>Crowd 0</b> far ${name} ${get()?'enabled':'disabled'} <span class="dim">(planned-feature preview)</span>`);
+  if(selId!==null)renderDetail();});}
+wireSw('swShadow','swShadowLbl',()=>farShadow,v=>farShadow=v,'cast','shadows');
+wireSw('swLight','swLightLbl',()=>farLight,v=>farLight=v,'dynamic indirect','lighting');
+$('mapToggle').addEventListener('click',()=>{$('mapping').classList.toggle('open');});
+
+logEv('info','<b>Arbiter #1042</b> setup complete — 1 crowd, pool 64');
+renderAlerts();requestAnimationFrame(frame);
+</script>

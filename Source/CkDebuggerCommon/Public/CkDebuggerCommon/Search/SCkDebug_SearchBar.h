@@ -7,6 +7,11 @@ class SEditableTextBox;
 
 DECLARE_DELEGATE_OneParam(FCkDebug_OnSearchTextChanged, const FString&);
 
+// Fires AFTER OnSearchTextChanged has delivered the same text, so a handler that acts on the
+// commit (Enter → activate the top match) reads an already-filtered list. Escape arrives as
+// ETextCommit::OnCleared. Optional — a consumer that only filters can ignore it entirely.
+DECLARE_DELEGATE_TwoParams(FCkDebug_OnSearchTextCommitted, const FString&, ETextCommit::Type);
+
 // ====================================================================================================================
 // Single-mode search input: search glyph + debounced text box + clear button.
 //
@@ -32,6 +37,7 @@ public:
         , _DesiredHeight(28.0f)
         {}
         SLATE_EVENT(FCkDebug_OnSearchTextChanged, OnSearchTextChanged)
+        SLATE_EVENT(FCkDebug_OnSearchTextCommitted, OnSearchTextCommitted)
         SLATE_ARGUMENT(float, DebounceDelay)
         SLATE_ARGUMENT(FText, HintText)
         SLATE_ARGUMENT(float, DesiredHeight)
@@ -59,6 +65,7 @@ private:
 private:
     FText _SearchText;
     FCkDebug_OnSearchTextChanged _OnSearchTextChanged;
+    FCkDebug_OnSearchTextCommitted _OnSearchTextCommitted;
 
     float _DebounceDelay = 0.3f;
     float _TimeSinceLastChange = 0.0f;

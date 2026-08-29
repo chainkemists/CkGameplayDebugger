@@ -7,7 +7,11 @@
 - `CkDebuggerCommon/Launcher/CkDebuggerToolRegistry` owns the plain-data catalog because every feature debugger already depends on Common.
 - Each feature debugger registers its descriptor immediately after its tab spawner and unregisters it before removing the spawner.
 - Registration returns a generation token. Unregister requires the matching token, so stale Shutdown code during live reload cannot remove a replacement entry.
-- The launcher subscribes to catalog changes and rebuilds only when modules register or unregister. It opens/focuses tools through `FGlobalTabmanager::TryInvokeTab` and detects open tabs with `FindExistingLiveTab`.
+- The launcher subscribes to catalog changes and rebuilds only when modules register or unregister (and when the rail's search query changes). It opens/focuses tools through `FGlobalTabmanager::TryInvokeTab` and detects open tabs with `FindExistingLiveTab`.
+- The rail carries a quick-open search field (`SCkDebug_SearchBar`) at its top: typing filters the rail case-insensitively on display name (empty categories emit no header), Enter activates the top visible match, Escape clears. The filter is the pure `ck::debugger_launcher::Filter_Tools` (`Private/Window/CkDebuggerLauncherFilter.h`), pinned by `Ck.DebuggerLauncher.Filter.QueryNarrowsTheRail`. The field collapses together with the labels below the width hysteresis threshold, and its query is cleared when it collapses — an invisible filter must never read as "tools went missing".
+- The rail has an **embedded mode**: binding `OnToolSelected` makes a click report the tool id to the host instead of invoking a global tab, and the active marker follows the host's `SelectedToolId` attribute. Unbound, the standalone rail behaves exactly as before.
+- **The CK Debugger Suite** (`SCkDebuggerSuiteWindow`, tab id `CkDebuggerSuite`, `ck.DebuggerSuite`) is the one-window host: embedded rail on the left, the selected tool's content on the right. It never re-parents a live global `SDockTab` — a tool already open globally is focused (with a "lives in its own tab" card); a tool with a registered `TabFactory` is built once and cached by tab id so switching back preserves its state; a tool with no factory falls back to its global tab. Per-tool "Pop Out" releases the embedded instance (running its close callback) before invoking the global tab. The suite is deliberately NOT a catalog descriptor — the catalog spec pins the exact tool census, and the suite hosts tools rather than being one. Embedded tabs are released on suite close (close callbacks run) and on `OnEnginePreExit` (silently — owning modules may be mid-teardown).
+- **Dock anchoring is same-category only** (`ck::debugger_tabs::Invoke_DebuggerTab`): with `DockNewDebuggersIntoExistingWindow` on, a newly opened tool docks next to a live tab of its own `ECkDebuggerToolCategory` and otherwise opens standalone. There is deliberately no cross-category fallback — that is what used to pile all 22 tools into one horizontally scrolling tab well.
 - The launcher style scans `Resources/Icons/*.svg` and `Resources/Icons/General/*.svg`. SVGs must remain monochrome white and are tinted through Slate foreground colour.
 - Editor targets attach the launcher to Tools > Debug. Packaged Development/DebugGame targets omit that editor workspace-menu dependency; `FGlobalTabmanager` opens the Nomad tab in a floating top-level Slate window when QA runs `ck.DebuggerLauncher 1`.
 
@@ -16,10 +20,13 @@
 | Group | Tools |
 |---|---|
 | Core | ECS, State Machine, Map, Dialog |
-| AI | A*, GOAP, Crowd, EQS, Aggro |
-| Systems | Scheduler, Object Pooling, Jolt Physics |
+| AI | AI Overview, A*, GOAP, Crowd, EQS, Aggro |
+| Systems | Scheduler, Object Pooling, Jolt Physics, Audio |
 | Interface | UI Layer, Enhanced Input, Intent |
-| Tools | Audio, Insights Analyzer, Style Lab, Save, Optimization |
+| Tools | Insights Analyzer, Style Lab, Save, Optimization, Texture & Surface |
+
+(The exact 22-tool census, categories and sort orders are pinned by
+`CkDebuggerLauncherCatalog.spec.cpp` — trust the spec over this table if they ever disagree.)
 
 `CkInsightsDebugger` owns the Insights Analyzer tab spawner and registers its own descriptor.
 The Foundation analysis module supplies trace parsing and report data; it does not own debugger UI.

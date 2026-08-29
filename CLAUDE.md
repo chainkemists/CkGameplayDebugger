@@ -62,12 +62,15 @@ remain (see Open issues).
 - **Debugger Launcher entry**: every standalone debugger tab registers an
   `FCkDebuggerToolDescriptor` after its tab spawner and unregisters it before the spawner. The exact
   census is enforced by `Source/CkDebuggerLauncher/Private/Tests/CkDebuggerLauncherCatalog.spec.cpp`;
-  permanent authoring steps live in `Source/CkDebuggerLauncher/CLAUDE.md`.
+  permanent authoring steps live in `Source/CkDebuggerLauncher/CLAUDE.md`. Register a `TabFactory`
+  on the descriptor too — it is what lets the CK Debugger Suite (`ck.DebuggerSuite`, one host window
+  with the category rail on the left) embed the tool, and what per-category dock anchoring needs.
 - **Standalone window chrome**: every plugin-owned catalog window wraps its specialized root in
   `SCkDebug_WindowChrome`, which provides single-line command lanes, the trailing status/refresh
   cluster, and the Tools menu. The dock tab is the sole debugger identity surface; never repeat its
   title or icon inside the command bar. At constrained widths, command lanes scroll horizontally
-  rather than wrapping controls. This includes `CkInsightsDebugger`; CkFoundation retains only its
+  rather than wrapping controls, with per-lane edge fades signalling clipped content (lane
+  scrollbars are collapsed). This includes `CkInsightsDebugger`; CkFoundation retains only its
   UI-free trace-analysis dependency.
 - **Entity-aware debugger entry**: a debugger that can select an ECS entity registers an
   `FCkDebug_EntityTargetRoute` and resolves exact/ancestor/descendant handles through the common

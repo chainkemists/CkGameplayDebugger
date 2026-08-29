@@ -2,10 +2,12 @@
 #include "CkEditorTools/Style/CkIconStyle.h"
 
 #include "Styles/CkDebuggerLauncherStyle.h"
+#include "Window/CkDebuggerLauncherFilter.h"
 
 #include "CkCore/Ensure/CkEnsure.h"
 
 #include "CkDebuggerCommon/Launcher/CkDebuggerTabUtils.h"
+#include "CkDebuggerCommon/Search/SCkDebug_SearchBar.h"
 #include "CkDebuggerCommon/Settings/CkDebuggerStyleSettings.h"
 #include "CkDebuggerCommon/Styles/CkDebuggerAxes.h"
 
@@ -64,6 +66,9 @@ namespace ck_debugger_launcher
 
 auto SCkDebuggerLauncher::Construct(const FArguments& InArgs) -> void
 {
+    _OnToolSelected = InArgs._OnToolSelected;
+    _SelectedToolId = InArgs._SelectedToolId;
+
     _RegistryChangedHandle = FCkDebuggerToolRegistry::Get().Get_OnChanged().AddSP(
         this,
         &SCkDebuggerLauncher::RebuildTools);
@@ -77,11 +82,84 @@ auto SCkDebuggerLauncher::Construct(const FArguments& InArgs) -> void
             SNew(SBox)
             .MinDesiredWidth(52.0f)
             [
-                SNew(SScrollBox)
-                .Orientation(Orient_Vertical)
-                + SScrollBox::Slot()
+                SNew(SVerticalBox)
+
+                // The suite entry sits ABOVE everything and dresses differently from the tool
+                // buttons on purpose: it opens the one-window host, not a 23rd tool. Hidden in
+                // embedded mode -- inside the suite this button would open the window it is in.
+                + SVerticalBox::Slot()
+                .AutoHeight()
+                .Padding(FMargin{0.0f, 0.0f, 0.0f, 6.0f})
                 [
-                    SAssignNew(_ToolList, SVerticalBox)
+                    SNew(SBorder)
+                    .BorderImage(CkStyle::GetRoundedBrush())
+                    .BorderBackgroundColor(FSlateColor{CkStyle::Accent().CopyWithNewOpacity(0.30f)})
+                    .Padding(FMargin{2.0f})
+                    .Visibility(Get_IsEmbedded() ? EVisibility::Collapsed : EVisibility::Visible)
+                    [
+                        SNew(SButton)
+                        .HAlign(HAlign_Center)
+                        .ToolTipText(LOCTEXT("OpenSuiteTooltip",
+                            "Open the CK Debugger Suite - every tool in one window, this rail on its left"))
+                        .IsEnabled_Lambda([]
+                        {
+                            return FGlobalTabmanager::Get()->HasTabSpawner(
+                                ck::debugger_tabs::SuiteTabId);
+                        })
+                        .OnClicked_Lambda([]
+                        {
+                            FGlobalTabmanager::Get()->TryInvokeTab(
+                                FTabId{ck::debugger_tabs::SuiteTabId});
+                            return FReply::Handled();
+                        })
+                        [
+                            SNew(SHorizontalBox)
+
+                            + SHorizontalBox::Slot()
+                            .AutoWidth()
+                            .VAlign(VAlign_Center)
+                            [
+                                SNew(SImage)
+                                .Image(FCkIconStyle::Get_Brush(ECk_Icon::Catalog, ECk_Icon_BrushSize::Size_16x16))
+                                .ColorAndOpacity(FSlateColor{CkStyle::Accent()})
+                            ]
+
+                            + SHorizontalBox::Slot()
+                            .AutoWidth()
+                            .VAlign(VAlign_Center)
+                            .Padding(FMargin{6.0f, 2.0f, 0.0f, 2.0f})
+                            [
+                                SNew(STextBlock)
+                                .Text(LOCTEXT("OpenSuite", "Debugger Suite"))
+                                .Font(CkStyle::BoldFont(CkStyle::FontSizeSmall()))
+                                .ColorAndOpacity(FSlateColor{CkStyle::Accent()})
+                                .Visibility(this, &SCkDebuggerLauncher::Get_LabelVisibility)
+                            ]
+                        ]
+                    ]
+                ]
+
+                + SVerticalBox::Slot()
+                .AutoHeight()
+                .Padding(FMargin{0.0f, 0.0f, 0.0f, 4.0f})
+                [
+                    SAssignNew(_SearchBar, SCkDebug_SearchBar)
+                    .HintText(LOCTEXT("SearchHint", "Find a debugger..."))
+                    .Visibility(this, &SCkDebuggerLauncher::Get_SearchVisibility)
+                    .OnSearchTextChanged(FCkDebug_OnSearchTextChanged::CreateSP(
+                        this, &SCkDebuggerLauncher::Handle_SearchTextChanged))
+                    .OnSearchTextCommitted(FCkDebug_OnSearchTextCommitted::CreateSP(
+                        this, &SCkDebuggerLauncher::Handle_SearchTextCommitted))
+                ]
+                + SVerticalBox::Slot()
+                .FillHeight(1.0f)
+                [
+                    SNew(SScrollBox)
+                    .Orientation(Orient_Vertical)
+                    + SScrollBox::Slot()
+                    [
+                        SAssignNew(_ToolList, SVerticalBox)
+                    ]
                 ]
             ]
         ]
@@ -141,7 +219,28 @@ auto SCkDebuggerLauncher::Tick(
     {
         _ShowLabels = ShowLabels;
         Invalidate(EInvalidateWidgetReason::Layout);
+
+        // The search box collapses with the labels — a rail this narrow has nowhere to put it. A
+        // filter the user can no longer see or clear would read as "tools went missing", so the
+        // query dies with the field that owns it.
+        if (NOT _ShowLabels)
+        { Clear_Search(); }
     }
+}
+
+auto SCkDebuggerLauncher::OnKeyDown(
+    const FGeometry& InAllottedGeometry,
+    const FKeyEvent& InKeyEvent) -> FReply
+{
+    // Escape reaches here only when the text box left it unhandled (nothing selected, nothing
+    // changed since focus). The changed case arrives through Handle_SearchTextCommitted instead.
+    if (InKeyEvent.GetKey() == EKeys::Escape && NOT _SearchQuery.IsEmpty())
+    {
+        Clear_Search();
+        return FReply::Handled();
+    }
+
+    return SCompoundWidget::OnKeyDown(InAllottedGeometry, InKeyEvent);
 }
 
 auto SCkDebuggerLauncher::RebuildTools() -> void
@@ -158,7 +257,10 @@ auto SCkDebuggerLauncher::RebuildTools() -> void
     { return; }
 
     _ToolList->ClearChildren();
-    const auto Tools = FCkDebuggerToolRegistry::Get().Get_Tools();
+    _VisibleToolIds.Reset();
+
+    const auto AllTools = FCkDebuggerToolRegistry::Get().Get_Tools();
+    const auto Tools = ck::debugger_launcher::Filter_Tools(_SearchQuery, AllTools);
 
     if (Tools.IsEmpty())
     {
@@ -167,16 +269,22 @@ auto SCkDebuggerLauncher::RebuildTools() -> void
         .Padding(FMargin{4.0f})
         [
             SNew(STextBlock)
-            .Text(LOCTEXT("NoTools", "No debugger tools registered"))
+            .Text(AllTools.IsEmpty()
+                ? LOCTEXT("NoTools", "No debugger tools registered")
+                : LOCTEXT("NoMatchingTools", "No debugger matches that search"))
             .AutoWrapText(true)
             .ColorAndOpacity(FSlateColor::UseSubduedForeground())
         ];
         return;
     }
 
+    // The filter preserves registry order, so a category's surviving tools stay contiguous and an
+    // emptied category never emits a header.
     auto CurrentCategory = ECkDebuggerToolCategory::Invalid;
     for (const auto& Tool : Tools)
     {
+        _VisibleToolIds.Add(Tool.Get_TabId());
+
         if (Tool.Get_Category() != CurrentCategory)
         {
             const auto AddSeparator = CurrentCategory != ECkDebuggerToolCategory::Invalid;
@@ -226,10 +334,11 @@ auto SCkDebuggerLauncher::Build_ToolButton(const FCkDebuggerToolDescriptor& InTo
         {
             return FGlobalTabmanager::Get()->HasTabSpawner(TabId);
         })
-        .OnClicked_Lambda([TabId]()
+        .OnClicked_Lambda([TabId, WeakPanel]()
         {
-            if (FGlobalTabmanager::Get()->HasTabSpawner(TabId))
-            { ck::debugger_tabs::Invoke_DebuggerTab(TabId); }
+            if (const auto Panel = WeakPanel.Pin();
+                Panel.IsValid())
+            { Panel->Activate_Tool(TabId); }
 
             return FReply::Handled();
         })
@@ -245,8 +354,15 @@ auto SCkDebuggerLauncher::Build_ToolButton(const FCkDebuggerToolDescriptor& InTo
                 [
                     SNew(SBorder)
                     .BorderImage(FCkDebuggerLauncherStyle::Get().GetBrush(TEXT("CkDebuggerLauncher.ActiveMarker")))
-                    .Visibility_Lambda([TabId]()
+                    .Visibility_Lambda([TabId, WeakPanel]()
                     {
+                        // An embedded tool has no live global tab to find — the host's selection IS
+                        // its "open" state, so the marker has to read both sources.
+                        const auto Panel = WeakPanel.Pin();
+
+                        if (Panel.IsValid() && Panel->Get_IsEmbedded() && Panel->Get_SelectedToolId() == TabId)
+                        { return EVisibility::Visible; }
+
                         return FGlobalTabmanager::Get()->FindExistingLiveTab(FTabId{TabId}).IsValid()
                             ? EVisibility::Visible
                             : EVisibility::Hidden;
@@ -337,6 +453,84 @@ auto SCkDebuggerLauncher::Build_CategoryHeader(
 auto SCkDebuggerLauncher::Get_LabelVisibility() const -> EVisibility
 {
     return _ShowLabels ? EVisibility::Visible : EVisibility::Collapsed;
+}
+
+auto SCkDebuggerLauncher::Get_SearchVisibility() const -> EVisibility
+{
+    return _ShowLabels ? EVisibility::Visible : EVisibility::Collapsed;
+}
+
+auto SCkDebuggerLauncher::Get_IsEmbedded() const -> bool
+{
+    return _OnToolSelected.IsBound();
+}
+
+auto SCkDebuggerLauncher::Get_SelectedToolId() const -> FName
+{
+    return _SelectedToolId.IsSet() ? _SelectedToolId.Get() : NAME_None;
+}
+
+auto SCkDebuggerLauncher::Activate_Tool(FName InTabId) -> void
+{
+    if (InTabId.IsNone())
+    { return; }
+
+    if (Get_IsEmbedded())
+    {
+        // The host decides what "open" means for this tool — embed it, focus its global tab, or
+        // fall back to invoking it. The rail must not reach past the host to the tab manager.
+        _OnToolSelected.Execute(InTabId);
+        return;
+    }
+
+    if (NOT FGlobalTabmanager::Get()->HasTabSpawner(InTabId))
+    { return; }
+
+    ck::debugger_tabs::Invoke_DebuggerTab(InTabId);
+}
+
+auto SCkDebuggerLauncher::Handle_SearchTextChanged(const FString& InText) -> void
+{
+    if (_SearchQuery == InText)
+    { return; }
+
+    _SearchQuery = InText;
+    RebuildTools();
+}
+
+auto SCkDebuggerLauncher::Handle_SearchTextCommitted(
+    const FString& InText,
+    ETextCommit::Type InCommitType) -> void
+{
+    // Escape reverts the box to whatever it held when it took focus; the rail's contract is that
+    // Escape clears, so reverting is not enough.
+    if (InCommitType == ETextCommit::OnCleared)
+    {
+        Clear_Search();
+        return;
+    }
+
+    if (InCommitType != ETextCommit::OnEnter)
+    { return; }
+
+    // The search bar fires the changed pass before this one, so the list below is already filtered
+    // by InText.
+    if (_VisibleToolIds.IsEmpty())
+    { return; }
+
+    Activate_Tool(_VisibleToolIds[0]);
+}
+
+auto SCkDebuggerLauncher::Clear_Search() -> void
+{
+    if (_SearchBar.IsValid())
+    {
+        // Fires Handle_SearchTextChanged with an empty string, which rebuilds the rail.
+        _SearchBar->Clear_SearchText();
+        return;
+    }
+
+    Handle_SearchTextChanged(FString{});
 }
 
 auto SCkDebuggerLauncher::Get_CategoryDisplayName(ECkDebuggerToolCategory InCategory) -> FText

@@ -19,8 +19,10 @@
 #include "CkDebuggerCommon/Widgets/SCkDebug_EntityRef.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_EventLog.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_IconToggle.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_InspectorPanel.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_KeyValueRow.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_MeterBar.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_NumericEditor.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_PaneHost.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_Sparkline.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_StatPair.h"
@@ -38,10 +40,13 @@
 #include "Engine/World.h"
 #include "Framework/MultiBox/MultiBoxBuilder.h"
 #include "Widgets/Images/SImage.h"
+#include "Widgets/Input/SButton.h"
+#include "Widgets/Input/SSegmentedControl.h"
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/Layout/SScrollBox.h"
 #include "Widgets/Layout/SSplitter.h"
 #include "Widgets/SBoxPanel.h"
+#include "Widgets/SNullWidget.h"
 #include "Widgets/Text/STextBlock.h"
 #include "Widgets/Views/SHeaderRow.h"
 #include "Widgets/Views/STableRow.h"
@@ -235,6 +240,38 @@ namespace ck_visuallod_debugger_window
             .CustomValueColor(MoveTemp(InValueColor));
     }
 
+    auto Make_TunerRow(
+        const FText&                       InKey,
+        const FText&                       InToolTip,
+        TAttribute<double>                 InValue,
+        ECkDebug_NumericKind               InKind,
+        const TOptional<double>&           InMinValue,
+        const TOptional<double>&           InMaxValue,
+        int32                              InFractionalDigits,
+        FOnCkDebug_NumericCommitted        InOnCommitted)
+        -> TSharedRef<SWidget>
+    {
+        return SNew(SBox)
+            .ToolTipText(InToolTip)
+            [
+                SNew(SCkDebug_KeyValueRow)
+                .KeyText(InKey)
+                .Tone(ECkDebug_KeyValueTone::Custom)
+                .CustomValueColor(CkStyle::Text())
+                .ValueWidget()
+                [
+                    SNew(SCkDebug_NumericEditor)
+                    .Value(MoveTemp(InValue))
+                    .Kind(InKind)
+                    .MinValue(InMinValue)
+                    .MaxValue(InMaxValue)
+                    .FractionalDigits(InFractionalDigits)
+                    .Width(86.0f)
+                    .OnValueCommitted(MoveTemp(InOnCommitted))
+                ]
+            ];
+    }
+
     auto Make_SparkRow(
         const FText&              InKey,
         TSharedPtr<TArray<float>> InSamples,
@@ -313,8 +350,6 @@ namespace ck_visuallod_debugger_window
     constexpr auto k_FadeMeterHeight  = 5.0f;
     constexpr auto k_HighlightBarWide = 3.0f;
     constexpr auto k_HiddenRowOpacity = 0.45f;
-    constexpr auto k_DetailRailWidth  = 320.0f;
-    constexpr auto k_EventLogHeight   = 200.0f;
     constexpr auto k_EventLogMaxItems = 120;
     constexpr auto k_DetailMeterWidth = 200.0f;
 
@@ -411,9 +446,9 @@ namespace ck_visuallod_debugger_window
             : FString(TEXT("—"));
     }
 
-    // Which component is actually drawing this member right now: the promoted proxy's SKMC, or the batched crowd
-    // cluster its slot lives in. Unresolved flags render as "—" rather than as false, because "we could not read it"
-    // and "it is off" are different answers.
+    // Which representation is actually drawing this member: the promoted proxy's live SKMC, or the
+    // authored far render profile selected by its band. Legacy crowds retain their shared primitive
+    // fallback. Unresolved flags render as "—" rather than as false.
     auto Get_EffectiveRenderFlags(
         const FCkVisualLodDebugger_ArbiterInfo& InArbiter,
         const FCkVisualLodDebugger_MemberInfo&  InMember)
@@ -421,6 +456,9 @@ namespace ck_visuallod_debugger_window
     {
         if (InMember.Promoted)
         { return InMember.ProxyRender; }
+
+        if (InMember.FarRender.Resolved)
+        { return InMember.FarRender; }
 
         if (InMember.CrowdIndex != INDEX_NONE && InArbiter.Crowds.IsValidIndex(InMember.CrowdIndex))
         { return InArbiter.Crowds[InMember.CrowdIndex].Render; }
@@ -1212,15 +1250,16 @@ auto
     DoBuild_StructureSignature() const
     -> FString
 {
-    // Arbiter identity set + the selected domain's pool COUNT. Deliberately excludes every live number
-    // (counts, distances, slot occupancy): those change every tick and including them would rebuild the
-    // tabs and the pool meters every tick — the exact failure this split exists to avoid.
+    // Arbiter identity set + selected-domain pool and render-band structure. Live values remain
+    // attribute-bound; only a changed control topology warrants rebuilding the retained pool host.
     auto Signature = _SelectedDomain.ToString();
 
     for (const auto& Arbiter : _Collector.Get_Snapshot().Arbiters)
     { Signature.Appendf(TEXT("|%s"), *Arbiter.DomainTagName); }
 
     Signature.Appendf(TEXT("|pools=%d"), _Live.Crowds.Num());
+    for (const auto& Crowd : _Live.Crowds)
+    { Signature.Appendf(TEXT("|crowd=%d,bands=%d"), Crowd.CrowdIndex, Crowd.RuntimeTuners.Get_RenderBands().Num()); }
 
     return Signature;
 }
@@ -1321,7 +1360,8 @@ auto
                 if (NOT InEnabled)
                 { Panel->_MarkerSet.Reset(); }
             })
-        ];
+        ]
+        ;
 
     return {
         FCkDebug_CommandGroup::Primary(
@@ -1335,9 +1375,401 @@ auto
 
 auto
     SCkVisualLodDebuggerWindow::
+    DoBuild_ArbiterTuners()
+    -> TSharedRef<SWidget>
+{
+    const auto WeakPanel = TWeakPtr<SCkVisualLodDebuggerWindow>(SharedThis(this));
+    const auto NoMaximum = TOptional<double>{};
+
+    const auto MakeFloatRow = [WeakPanel, &NoMaximum](
+        const FText& InLabel,
+        const FText& InToolTip,
+        TFunction<double(const FCk_VisualLodArbiter_RuntimeTuners&)> InGet,
+        TFunction<void(FCk_VisualLodArbiter_RuntimeTuners&, float)> InSet,
+        int32 InDigits,
+        TOptional<double> InMinimum = TOptional<double>{0.0}) -> TSharedRef<SWidget>
+    {
+        return ck_visuallod_debugger_window::Make_TunerRow(
+            InLabel,
+            InToolTip,
+            TAttribute<double>::CreateLambda([WeakPanel, Get = MoveTemp(InGet)]() -> double
+            {
+                const auto Panel = WeakPanel.Pin();
+                return Panel.IsValid() ? Get(Panel->_Live.RuntimeTuners) : 0.0;
+            }),
+            ECkDebug_NumericKind::Float,
+            InMinimum,
+            NoMaximum,
+            InDigits,
+            FOnCkDebug_NumericCommitted::CreateLambda([WeakPanel, Set = MoveTemp(InSet)](double InValue)
+            {
+                const auto Panel = WeakPanel.Pin();
+                if (NOT Panel.IsValid())
+                { return; }
+
+                Panel->DoRequest_RuntimeTuners([Set, InValue](FCk_VisualLodArbiter_RuntimeTuners& InTuners)
+                { Set(InTuners, static_cast<float>(InValue)); });
+            }));
+    };
+
+    const auto MakeIntegerRow = [WeakPanel, &NoMaximum](
+        const FText& InLabel,
+        const FText& InToolTip,
+        TFunction<int32(const FCk_VisualLodArbiter_RuntimeTuners&)> InGet,
+        TFunction<void(FCk_VisualLodArbiter_RuntimeTuners&, int32)> InSet) -> TSharedRef<SWidget>
+    {
+        return ck_visuallod_debugger_window::Make_TunerRow(
+            InLabel,
+            InToolTip,
+            TAttribute<double>::CreateLambda([WeakPanel, Get = MoveTemp(InGet)]() -> double
+            {
+                const auto Panel = WeakPanel.Pin();
+                return Panel.IsValid() ? static_cast<double>(Get(Panel->_Live.RuntimeTuners)) : 0.0;
+            }),
+            ECkDebug_NumericKind::Integer,
+            TOptional<double>{0.0},
+            NoMaximum,
+            0,
+            FOnCkDebug_NumericCommitted::CreateLambda([WeakPanel, Set = MoveTemp(InSet)](double InValue)
+            {
+                const auto Panel = WeakPanel.Pin();
+                if (NOT Panel.IsValid())
+                { return; }
+
+                Panel->DoRequest_RuntimeTuners([Set, InValue](FCk_VisualLodArbiter_RuntimeTuners& InTuners)
+                { Set(InTuners, FMath::Max(0, FMath::RoundToInt(InValue))); });
+            }));
+    };
+
+    return SNew(SBox)
+        .IsEnabled_Lambda([WeakPanel]()
+        {
+            const auto Panel = WeakPanel.Pin();
+            return Panel.IsValid() && Panel->_HasLiveArbiter && Panel->_Live.HasConfig
+                && ck::IsValid(Panel->_Live.Entity);
+        })
+        [
+            SNew(SScrollBox)
+            + SScrollBox::Slot()
+            .Padding(CkStyle::SpaceM)
+            [
+                SNew(SVerticalBox)
+                + SVerticalBox::Slot()
+                .AutoHeight()
+                .Padding(0.0f, 0.0f, 0.0f, CkStyle::SpaceS)
+                [
+                    SNew(SHorizontalBox)
+                    + SHorizontalBox::Slot()
+                    .FillWidth(1.0f)
+                    + SHorizontalBox::Slot()
+                    .AutoWidth()
+                    .VAlign(VAlign_Center)
+                    [
+                        SNew(STextBlock)
+                        .Font_Static(&ck_visuallod_debugger_window::Get_MetaFont)
+                        .ColorAndOpacity_Lambda([WeakPanel]()
+                        {
+                            const auto Panel = WeakPanel.Pin();
+                            return Panel.IsValid() && Panel->_Live.Get_RuntimeTunersDifferFromAuthored()
+                                ? CkStyle::Warn()
+                                : CkStyle::TextMute();
+                        })
+                        .Text_Lambda([WeakPanel]() -> FText
+                        {
+                            const auto Panel = WeakPanel.Pin();
+                            return Panel.IsValid() && Panel->_Live.Get_RuntimeTunersDifferFromAuthored()
+                                ? LOCTEXT("RuntimeTunersOverridden", "session override")
+                                : LOCTEXT("RuntimeTunersAuthored", "authored");
+                        })
+                    ]
+                ]
+                + SVerticalBox::Slot()
+                .AutoHeight()
+                .Padding(0.0f, 0.0f, 0.0f, CkStyle::SpaceM)
+                [
+                    SNew(STextBlock)
+                    .AutoWrapText(true)
+                    .Font_Static(&ck_visuallod_debugger_window::Get_MetaFont)
+                    .ColorAndOpacity(CkStyle::TextDim())
+                    .Text(LOCTEXT("RuntimeTunersDescription",
+                        "Commits are deferred to the selected arbiter. They affect this session only; the config "
+                        "asset and structural crowd/profile setup remain unchanged."))
+                ]
+                + SVerticalBox::Slot().AutoHeight()
+                [
+                    MakeIntegerRow(
+                        LOCTEXT("TunerNearBudget", "Near budget"),
+                        LOCTEXT("TunerNearBudgetTip",
+                            "Maximum ranked near-camera promotes. Lowering below current usage blocks new "
+                            "admissions; existing proxies leave through normal demotion or preemption."),
+                        [](const auto& InTuners) { return InTuners.Get_NearBudget(); },
+                        [](auto& InTuners, int32 InValue) { InTuners.Set_NearBudget(InValue); })
+                ]
+                + SVerticalBox::Slot().AutoHeight()
+                [
+                    MakeIntegerRow(
+                        LOCTEXT("TunerLockBudget", "Lock budget"),
+                        LOCTEXT("TunerLockBudgetTip",
+                            "Reserved capacity for new lock-driven promotes. Existing held locks are never evicted."),
+                        [](const auto& InTuners) { return InTuners.Get_LockBudget(); },
+                        [](auto& InTuners, int32 InValue) { InTuners.Set_LockBudget(InValue); })
+                ]
+                + SVerticalBox::Slot().AutoHeight()
+                [
+                    MakeFloatRow(
+                        LOCTEXT("TunerPromoteDistance", "Promote distance (cm)"),
+                        LOCTEXT("TunerPromoteDistanceTip",
+                            "Members nearer than this may promote. Values above the current demote distance clamp to it."),
+                        [](const auto& InTuners) { return static_cast<double>(InTuners.Get_PromoteDistance()); },
+                        [](auto& InTuners, float InValue)
+                        { InTuners.Set_PromoteDistance(FMath::Min(InValue, InTuners.Get_DemoteDistance())); }, 0)
+                ]
+                + SVerticalBox::Slot().AutoHeight()
+                [
+                    MakeFloatRow(
+                        LOCTEXT("TunerDemoteDistance", "Demote distance (cm)"),
+                        LOCTEXT("TunerDemoteDistanceTip",
+                            "Promoted members beyond this distance demote. Values below the current promote distance clamp to it."),
+                        [](const auto& InTuners) { return static_cast<double>(InTuners.Get_DemoteDistance()); },
+                        [](auto& InTuners, float InValue)
+                        { InTuners.Set_DemoteDistance(FMath::Max(InValue, InTuners.Get_PromoteDistance())); }, 0)
+                ]
+                + SVerticalBox::Slot().AutoHeight()
+                [
+                    MakeFloatRow(
+                        LOCTEXT("TunerLockDistance", "Lock max distance (cm)"),
+                        LOCTEXT("TunerLockDistanceTip", "Maximum distance at which a held promote lock may start a promote."),
+                        [](const auto& InTuners) { return static_cast<double>(InTuners.Get_LockPromoteMaxDistance()); },
+                        [](auto& InTuners, float InValue) { InTuners.Set_LockPromoteMaxDistance(InValue); }, 0)
+                ]
+                + SVerticalBox::Slot().AutoHeight()
+                [
+                    MakeFloatRow(
+                        LOCTEXT("TunerAlwaysInView", "Always in view (cm)"),
+                        LOCTEXT("TunerAlwaysInViewTip", "Members this close rank as in-view regardless of facing."),
+                        [](const auto& InTuners) { return static_cast<double>(InTuners.Get_AlwaysInViewDistance()); },
+                        [](auto& InTuners, float InValue) { InTuners.Set_AlwaysInViewDistance(InValue); }, 0)
+                ]
+                + SVerticalBox::Slot().AutoHeight()
+                [
+                    MakeFloatRow(
+                        LOCTEXT("TunerViewMargin", "View margin (deg)"),
+                        LOCTEXT("TunerViewMarginTip", "Extra angle outside the camera FOV that still ranks as in-view."),
+                        [](const auto& InTuners) { return static_cast<double>(InTuners.Get_ViewConeMarginDeg()); },
+                        [](auto& InTuners, float InValue) { InTuners.Set_ViewConeMarginDeg(InValue); }, 1)
+                ]
+                + SVerticalBox::Slot().AutoHeight()
+                [
+                    MakeFloatRow(
+                        LOCTEXT("TunerPreemptMargin", "Preempt margin (cm)"),
+                        LOCTEXT("TunerPreemptMarginTip", "Distance advantage a challenger needs to displace an incumbent."),
+                        [](const auto& InTuners) { return static_cast<double>(InTuners.Get_PreemptDistanceMargin()); },
+                        [](auto& InTuners, float InValue) { InTuners.Set_PreemptDistanceMargin(InValue); }, 0)
+                ]
+                + SVerticalBox::Slot().AutoHeight()
+                [
+                    MakeIntegerRow(
+                        LOCTEXT("TunerMaxPreempts", "Max preempts / tick"),
+                        LOCTEXT("TunerMaxPreemptsTip", "Maximum incumbent replacements begun by one arbiter update."),
+                        [](const auto& InTuners) { return InTuners.Get_MaxPreemptsPerTick(); },
+                        [](auto& InTuners, int32 InValue) { InTuners.Set_MaxPreemptsPerTick(InValue); })
+                ]
+                + SVerticalBox::Slot().AutoHeight()
+                [
+                    MakeFloatRow(
+                        LOCTEXT("TunerFadeDuration", "Fade duration (s)"),
+                        LOCTEXT("TunerFadeDurationTip", "Duration of newly started promote and demote crossfades."),
+                        [](const auto& InTuners) { return InTuners.Get_FadeDuration().Get_Seconds(); },
+                        [](auto& InTuners, float InValue) { InTuners.Set_FadeDuration(FCk_Time{InValue}); }, 3)
+                ]
+                + SVerticalBox::Slot().AutoHeight()
+                [
+                    MakeFloatRow(
+                        LOCTEXT("TunerFadeAnchorLead", "Fade anchor lead (frames)"),
+                        LOCTEXT("TunerFadeAnchorLeadTip", "Frame lead used to align the promoted mesh with the far crowd clock."),
+                        [](const auto& InTuners) { return InTuners.Get_FadeAnchorLeadFrames(); },
+                        [](auto& InTuners, float InValue) { InTuners.Set_FadeAnchorLeadFrames(InValue); }, 2, TOptional<double>{})
+                ]
+                + SVerticalBox::Slot().AutoHeight()
+                [
+                    MakeFloatRow(
+                        LOCTEXT("TunerFadeAnchorLag", "Fade anchor bake lag"),
+                        LOCTEXT("TunerFadeAnchorLagTip", "Bake-interval lag used to align the promoted mesh with the sampled far pose."),
+                        [](const auto& InTuners) { return InTuners.Get_FadeAnchorBakeLagIntervals(); },
+                        [](auto& InTuners, float InValue) { InTuners.Set_FadeAnchorBakeLagIntervals(InValue); }, 2, TOptional<double>{})
+                ]
+                + SVerticalBox::Slot()
+                .AutoHeight()
+                [
+                    SNew(SCkDebug_KeyValueRow)
+                    .KeyText(LOCTEXT("TunerExhaustion", "Pool exhaustion"))
+                    .Tone(ECkDebug_KeyValueTone::Custom)
+                    .CustomValueColor(CkStyle::Text())
+                    .ValueWidget()
+                    [
+                        SNew(SSegmentedControl<ECk_VisualLod_PoolExhaustionPolicy>)
+                        .Value_Lambda([WeakPanel]()
+                        {
+                            const auto Panel = WeakPanel.Pin();
+                            return Panel.IsValid()
+                                ? Panel->_Live.RuntimeTuners.Get_ExhaustionPolicy()
+                                : ECk_VisualLod_PoolExhaustionPolicy::PromoteInstead;
+                        })
+                        .OnValueChanged_Lambda([WeakPanel](ECk_VisualLod_PoolExhaustionPolicy InPolicy)
+                        {
+                            const auto Panel = WeakPanel.Pin();
+                            if (Panel.IsValid())
+                            {
+                                Panel->DoRequest_RuntimeTuners([InPolicy](auto& InTuners)
+                                { InTuners.Set_ExhaustionPolicy(InPolicy); });
+                            }
+                        })
+                        + SSegmentedControl<ECk_VisualLod_PoolExhaustionPolicy>::Slot(
+                            ECk_VisualLod_PoolExhaustionPolicy::PromoteInstead)
+                            .Text(LOCTEXT("TunerExhaustionPromote", "Promote"))
+                        + SSegmentedControl<ECk_VisualLod_PoolExhaustionPolicy>::Slot(
+                            ECk_VisualLod_PoolExhaustionPolicy::Unrendered)
+                            .Text(LOCTEXT("TunerExhaustionUnrendered", "Unrendered"))
+                    ]
+                ]
+                + SVerticalBox::Slot()
+                .AutoHeight()
+                .HAlign(HAlign_Right)
+                .Padding(0.0f, CkStyle::SpaceM, 0.0f, 0.0f)
+                [
+                    SNew(SButton)
+                    .Text(LOCTEXT("RuntimeTunersReset", "Reset to authored"))
+                    .ToolTipText(LOCTEXT("RuntimeTunersResetTip", "Restore every runtime tuner from the arbiter config asset."))
+                    .IsEnabled_Lambda([WeakPanel]()
+                    {
+                        const auto Panel = WeakPanel.Pin();
+                        return Panel.IsValid() && Panel->_Live.Get_RuntimeTunersDifferFromAuthored();
+                    })
+                    .OnClicked(this, &SCkVisualLodDebuggerWindow::DoRequest_ResetRuntimeTuners)
+                ]
+            ]
+        ];
+}
+
+auto
+    SCkVisualLodDebuggerWindow::
+    DoRequest_RuntimeTuners(
+        TFunctionRef<void(FCk_VisualLodArbiter_RuntimeTuners&)> InMutate)
+    -> void
+{
+    auto Generic = _Live.Entity;
+    if (ck::Is_NOT_Valid(Generic))
+    { return; }
+
+    auto Arbiter = UCk_Utils_VisualLodArbiter_UE::Cast(Generic);
+    if (ck::Is_NOT_Valid(Arbiter))
+    { return; }
+
+    auto Tuners = _Live.RuntimeTuners;
+    InMutate(Tuners);
+
+    // This is deliberately the handle-based full validator, not the scalar-only helper: band order,
+    // sequence bounds, rate ranges, and profile invariants must reject before either enqueue or the
+    // optimistic UI copy. A rejected number consequently redraws from the unchanged snapshot.
+    if (NOT UCk_Utils_VisualLodArbiter_UE::Get_AreRuntimeTunersValid(Arbiter, Tuners))
+    { return; }
+
+    UCk_Utils_VisualLodArbiter_UE::Request_SetRuntimeTuners(
+        Arbiter, FCk_Request_VisualLodArbiter_SetRuntimeTuners{Tuners}, {});
+    _Live.Set_RuntimeTuners(Tuners);
+}
+
+auto
+    SCkVisualLodDebuggerWindow::
+    DoRequest_CrowdTuners(
+        int32 InCrowdIndex,
+        TFunctionRef<void(FCk_VisualLod_RuntimeCrowdTuners&)> InMutate)
+    -> void
+{
+    DoRequest_RuntimeTuners([InCrowdIndex, InMutate](FCk_VisualLodArbiter_RuntimeTuners& InTuners)
+    {
+        auto Crowds = InTuners.Get_CrowdTuners();
+        if (NOT Crowds.IsValidIndex(InCrowdIndex))
+        { return; }
+
+        auto Crowd = Crowds[InCrowdIndex];
+        InMutate(Crowd);
+        Crowds[InCrowdIndex] = MoveTemp(Crowd);
+        InTuners.Set_CrowdTuners(Crowds);
+    });
+}
+
+auto
+    SCkVisualLodDebuggerWindow::
+    DoRequest_ProfileTuners(
+        int32 InCrowdIndex,
+        int32 InBandIndex,
+        TFunctionRef<void(FCk_IskmRenderer_RuntimeProfileTuners&)> InMutate)
+    -> void
+{
+    if (InCrowdIndex == INDEX_NONE || InBandIndex == INDEX_NONE)
+    { return; }
+
+    DoRequest_CrowdTuners(InCrowdIndex, [InBandIndex, InMutate](FCk_VisualLod_RuntimeCrowdTuners& InCrowd)
+    {
+        auto Bands = InCrowd.Get_RenderBands();
+        if (NOT Bands.IsValidIndex(InBandIndex))
+        { return; }
+
+        auto Band = Bands[InBandIndex];
+        auto Profile = Band.Get_ProfileTuners();
+        InMutate(Profile);
+        Band.Set_ProfileTuners(Profile);
+        Bands[InBandIndex] = MoveTemp(Band);
+        InCrowd.Set_RenderBands(Bands);
+    });
+}
+
+auto
+    SCkVisualLodDebuggerWindow::
+    DoRequest_ResetRuntimeTuners()
+    -> FReply
+{
+    auto Generic = _Live.Entity;
+    if (ck::Is_NOT_Valid(Generic))
+    { return FReply::Handled(); }
+
+    auto Arbiter = UCk_Utils_VisualLodArbiter_UE::Cast(Generic);
+    if (ck::Is_NOT_Valid(Arbiter))
+    { return FReply::Handled(); }
+
+    UCk_Utils_VisualLodArbiter_UE::Request_ResetRuntimeTuners(
+        Arbiter, FCk_Request_VisualLodArbiter_ResetRuntimeTuners{}, {});
+    _Live.Set_RuntimeTuners(_Live.AuthoredRuntimeTuners);
+    return FReply::Handled();
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkVisualLodDebuggerWindow::
     DoBuild_Body()
     -> TSharedRef<SWidget>
 {
+    const auto WeakPanel = TWeakPtr<SCkVisualLodDebuggerWindow>(SharedThis(this));
+    const auto TunerSlotSizeRule = TAttribute<SSplitter::ESizeRule>::CreateLambda([WeakPanel]()
+    {
+        const auto Panel = WeakPanel.Pin();
+        return Panel.IsValid() && Panel->_TunersExpanded
+            ? SSplitter::FractionOfParent
+            : SSplitter::SizeToContent;
+    });
+    const auto TunerSlotValue = TAttribute<float>::CreateLambda([WeakPanel]()
+    {
+        const auto Panel = WeakPanel.Pin();
+        return Panel.IsValid() && Panel->_TunersExpanded ? 0.42f : 0.0f;
+    });
+    const auto TunerSlotMinSize = TAttribute<float>::CreateLambda([WeakPanel]()
+    {
+        const auto Panel = WeakPanel.Pin();
+        return Panel.IsValid() && Panel->_TunersExpanded ? 170.0f : 0.0f;
+    });
+
     return SNew(SVerticalBox)
         + SVerticalBox::Slot()
         .AutoHeight()
@@ -1362,33 +1794,30 @@ auto
             DoBuild_StatStrip()
         ]
         + SVerticalBox::Slot()
-        .AutoHeight()
-        .Padding(CkStyle::SpaceL, 0.0f, CkStyle::SpaceL, CkStyle::SpaceL)
-        [
-            DoBuild_OverviewGrid()
-        ]
-        + SVerticalBox::Slot()
         .FillHeight(1.0f)
         [
-            // Every major pane boundary is a 5px SSplitter — the suite's layout contract, and what
-            // makes the roster/detail/activity panes user-resizable like every other debugger
             SNew(SSplitter)
-            .Orientation(Orient_Horizontal)
+            .Orientation(Orient_Vertical)
             .PhysicalSplitterHandleSize(5.0f)
             + SSplitter::Slot()
-            .Value(0.72f)
+            .Value(0.30f)
+            .MinSize(190.0f)
             [
-                SAssignNew(_RosterPaneBox, SVerticalBox)
-                + SVerticalBox::Slot()
-                .FillHeight(1.0f)
-                [
-                    DoBuild_RosterPane()
-                ]
+                DoBuild_OverviewGrid()
             ]
             + SSplitter::Slot()
-            .Value(0.28f)
+            .Value(0.70f)
+            .MinSize(280.0f)
             [
-                SAssignNew(_DetailRailBox, SVerticalBox)
+                // The disclosure owns only the header. Its workspace below joins the investigation
+                // row in a retained splitter, so collapse removes both its body and drag handle.
+                SNew(SVerticalBox)
+                + SVerticalBox::Slot()
+                .AutoHeight()
+                .Padding(CkStyle::SpaceL, 0.0f, CkStyle::SpaceL, CkStyle::SpaceS)
+                [
+                    DoBuild_TunersRow()
+                ]
                 + SVerticalBox::Slot()
                 .FillHeight(1.0f)
                 [
@@ -1396,23 +1825,100 @@ auto
                     .Orientation(Orient_Vertical)
                     .PhysicalSplitterHandleSize(5.0f)
                     + SSplitter::Slot()
-                    .Value(0.62f)
+                    .SizeRule(TunerSlotSizeRule)
+                    .Value(TunerSlotValue)
+                    .MinSize(TunerSlotMinSize)
                     [
-                        // The rail's sections exceed a short window; its splitter pane scrolls
-                        // rather than pushing the event log off screen
-                        SNew(SScrollBox)
-                        + SScrollBox::Slot()
-                        [
-                            DoBuild_DetailRail()
-                        ]
+                        SNew(SBox)
+                        .Clipping(EWidgetClipping::ClipToBounds)
+                        .Visibility_Lambda([WeakPanel]()
+                        {
+                            const auto Panel = WeakPanel.Pin();
+                            return Panel.IsValid() && Panel->_TunersExpanded
+                                ? EVisibility::Visible
+                                : EVisibility::Collapsed;
+                        })
+                        [ DoBuild_TunersWorkspace() ]
                     ]
                     + SSplitter::Slot()
-                    .Value(0.38f)
+                    .Value(0.58f)
+                    .MinSize(250.0f)
                     [
-                        DoBuild_EventLog()
+                        SNew(SSplitter)
+                        .Orientation(Orient_Horizontal)
+                        .PhysicalSplitterHandleSize(5.0f)
+                        + SSplitter::Slot()
+                        .Value(0.72f)
+                        .MinSize(360.0f)
+                        [
+                            SAssignNew(_RosterPaneBox, SVerticalBox)
+                            + SVerticalBox::Slot().FillHeight(1.0f)
+                            [ DoBuild_RosterPane() ]
+                        ]
+                        + SSplitter::Slot()
+                        .Value(0.28f)
+                        .MinSize(260.0f)
+                        [
+                            SAssignNew(_DetailRailBox, SVerticalBox)
+                            + SVerticalBox::Slot().FillHeight(1.0f)
+                            [
+                                SNew(SSplitter)
+                                .Orientation(Orient_Vertical)
+                                .PhysicalSplitterHandleSize(5.0f)
+                                + SSplitter::Slot().Value(0.62f).MinSize(180.0f)
+                                [ SNew(SScrollBox) + SScrollBox::Slot()[ DoBuild_DetailRail() ] ]
+                                + SSplitter::Slot().Value(0.38f).MinSize(130.0f)
+                                [ DoBuild_EventLog() ]
+                            ]
+                        ]
                     ]
                 ]
             ]
+        ];
+}
+
+auto
+    SCkVisualLodDebuggerWindow::
+    DoBuild_TunersRow()
+    -> TSharedRef<SWidget>
+{
+    const auto WeakPanel = TWeakPtr<SCkVisualLodDebuggerWindow>(SharedThis(this));
+
+    return SNew(SCkDebug_InspectorPanel)
+        .Title(LOCTEXT("TunersWorkspaceHeading", "Tuners"))
+        .CountText(LOCTEXT("TunersWorkspaceHint", "session overrides"))
+        .StartExpanded(false)
+        .OnToggled(FOnCkDebugInspectorToggled::CreateLambda([WeakPanel](bool InExpanded)
+        {
+            const auto Panel = WeakPanel.Pin();
+            if (Panel.IsValid()) { Panel->_TunersExpanded = InExpanded; }
+        }))
+        .Body()
+        [
+            SNullWidget::NullWidget
+        ];
+}
+
+auto
+    SCkVisualLodDebuggerWindow::
+    DoBuild_TunersWorkspace()
+    -> TSharedRef<SWidget>
+{
+    return SNew(SSplitter)
+        .Orientation(Orient_Horizontal)
+        .PhysicalSplitterHandleSize(5.0f)
+        .Clipping(EWidgetClipping::ClipToBounds)
+        + SSplitter::Slot().Value(1.0f).MinSize(280.0f)
+        [
+            SNew(SBox)
+            .Clipping(EWidgetClipping::ClipToBounds)
+            [ DoBuild_ArbiterTuners() ]
+        ]
+        + SSplitter::Slot().Value(1.25f).MinSize(300.0f)
+        [
+            SNew(SScrollBox)
+            + SScrollBox::Slot()
+            [ SAssignNew(_CrowdTunerBox, SVerticalBox) ]
         ];
 }
 
@@ -1634,23 +2140,47 @@ auto
     DoBuild_OverviewGrid()
     -> TSharedRef<SWidget>
 {
-    return SNew(SHorizontalBox)
-        + SHorizontalBox::Slot()
-        .FillWidth(1.15f)
-        .Padding(0.0f, 0.0f, CkStyle::SpaceM, 0.0f)
+    return SNew(SSplitter)
+        .Orientation(Orient_Horizontal)
+        .PhysicalSplitterHandleSize(5.0f)
+        + SSplitter::Slot()
+        .Value(1.15f)
+        .MinSize(280.0f)
         [
-            DoBuild_BudgetsPane()
+            SNew(SBox)
+            .MaxDesiredWidth(280.0f)
+            .Clipping(EWidgetClipping::ClipToBounds)
+            [
+                SNew(SScrollBox)
+                + SScrollBox::Slot()
+                [ DoBuild_BudgetsPane() ]
+            ]
         ]
-        + SHorizontalBox::Slot()
-        .FillWidth(1.0f)
-        .Padding(0.0f, 0.0f, CkStyle::SpaceM, 0.0f)
+        + SSplitter::Slot()
+        .Value(1.0f)
+        .MinSize(260.0f)
         [
-            DoBuild_ViewPane()
+            SNew(SBox)
+            .MaxDesiredWidth(260.0f)
+            .Clipping(EWidgetClipping::ClipToBounds)
+            [
+                SNew(SScrollBox)
+                + SScrollBox::Slot()
+                [ DoBuild_ViewPane() ]
+            ]
         ]
-        + SHorizontalBox::Slot()
-        .FillWidth(1.0f)
+        + SSplitter::Slot()
+        .Value(1.0f)
+        .MinSize(240.0f)
         [
-            DoBuild_ActivityPane()
+            SNew(SBox)
+            .MaxDesiredWidth(240.0f)
+            .Clipping(EWidgetClipping::ClipToBounds)
+            [
+                SNew(SScrollBox)
+                + SScrollBox::Slot()
+                [ DoBuild_ActivityPane() ]
+            ]
         ];
 }
 
@@ -1760,11 +2290,8 @@ auto
             + SVerticalBox::Slot()
             .AutoHeight()
             [
-                ck_visuallod_debugger_window::Make_Separator()
-            ]
-            + SVerticalBox::Slot()
-            .AutoHeight()
-            [
+                // The overview owns the one scroll viewport for this whole card. A second nested scroll box
+                // here would receive unbounded height from its parent and fight it for wheel input.
                 SAssignNew(_CrowdPoolBox, SVerticalBox)
             ]
         ];
@@ -1776,18 +2303,6 @@ auto
     -> TSharedRef<SWidget>
 {
     const auto WeakPanel = TWeakPtr<SCkVisualLodDebuggerWindow>(SharedThis(this));
-
-    const auto ConfigText = [WeakPanel](TFunction<FString(const FCkVisualLodDebugger_ArbiterInfo&)> InSelector)
-    {
-        return TAttribute<FText>::CreateLambda([WeakPanel, Selector = MoveTemp(InSelector)]() -> FText
-        {
-            const auto Panel = WeakPanel.Pin();
-            if (NOT Panel.IsValid() || NOT Panel->_Live.HasConfig)
-            { return LOCTEXT("Unset", "—"); }
-
-            return FText::FromString(Selector(Panel->_Live));
-        });
-    };
 
     return SNew(SCkDebug_Card)
         [
@@ -1896,70 +2411,6 @@ auto
                             : LOCTEXT("ObserverLocalView", "local-view discovery");
                     }),
                     CkStyle::TextDim())
-            ]
-            + SVerticalBox::Slot()
-            .AutoHeight()
-            [
-                ck_visuallod_debugger_window::Make_Separator()
-            ]
-            + SVerticalBox::Slot()
-            .AutoHeight()
-            .Padding(0.0f, 0.0f, 0.0f, CkStyle::SpaceS)
-            [
-                ck_visuallod_debugger_window::Make_PaneHeading(LOCTEXT("ConfigHeading", "Config"), FText::GetEmpty())
-            ]
-            + SVerticalBox::Slot()
-            .AutoHeight()
-            [
-                ck_visuallod_debugger_window::Make_KvRow(
-                    LOCTEXT("ConfigBand", "Promote / Demote"),
-                    ConfigText([](const FCkVisualLodDebugger_ArbiterInfo& InArbiter)
-                    {
-                        return FString::Printf(TEXT("%.0f / %.0f"), InArbiter.PromoteDistance, InArbiter.DemoteDistance);
-                    }),
-                    CkStyle::Text())
-            ]
-            + SVerticalBox::Slot()
-            .AutoHeight()
-            [
-                ck_visuallod_debugger_window::Make_KvRow(
-                    LOCTEXT("ConfigAlwaysInView", "Always-in-view"),
-                    ConfigText([](const FCkVisualLodDebugger_ArbiterInfo& InArbiter)
-                    { return FString::Printf(TEXT("%.0f"), InArbiter.AlwaysInViewDistance); }),
-                    CkStyle::Text())
-            ]
-            + SVerticalBox::Slot()
-            .AutoHeight()
-            [
-                ck_visuallod_debugger_window::Make_KvRow(
-                    LOCTEXT("ConfigPreempt", "Preempt"),
-                    ConfigText([](const FCkVisualLodDebugger_ArbiterInfo& InArbiter)
-                    {
-                        return FString::Printf(TEXT("margin %.0f · max %d/tick"),
-                            InArbiter.PreemptDistanceMargin, InArbiter.MaxPreemptsPerTick);
-                    }),
-                    CkStyle::Text())
-            ]
-            + SVerticalBox::Slot()
-            .AutoHeight()
-            [
-                ck_visuallod_debugger_window::Make_KvRow(
-                    LOCTEXT("ConfigLockDistance", "Lock promote max"),
-                    ConfigText([](const FCkVisualLodDebugger_ArbiterInfo& InArbiter)
-                    { return FString::Printf(TEXT("%.0f"), InArbiter.LockPromoteMaxDistance); }),
-                    CkStyle::Text())
-            ]
-            + SVerticalBox::Slot()
-            .AutoHeight()
-            [
-                ck_visuallod_debugger_window::Make_KvRow(
-                    LOCTEXT("ConfigFade", "Fade"),
-                    ConfigText([](const FCkVisualLodDebugger_ArbiterInfo& InArbiter)
-                    {
-                        return FString::Printf(TEXT("%.2f s · dither (crowd %d · near CPD %d)"),
-                            InArbiter.FadeDurationSeconds, InArbiter.FadeCrowdSlot, InArbiter.FadeNearSlot);
-                    }),
-                    CkStyle::Text())
             ]
         ];
 }
@@ -2143,12 +2594,13 @@ auto
     DoRebuild_CrowdPools()
     -> void
 {
-    if (NOT _CrowdPoolBox.IsValid())
+    if (NOT _CrowdPoolBox.IsValid() || NOT _CrowdTunerBox.IsValid())
     { return; }
 
     const auto WeakPanel = TWeakPtr<SCkVisualLodDebuggerWindow>(SharedThis(this));
 
     _CrowdPoolBox->ClearChildren();
+    _CrowdTunerBox->ClearChildren();
 
     if (_Live.Crowds.IsEmpty())
     {
@@ -2159,6 +2611,14 @@ auto
                 .Font_Static(&ck_visuallod_debugger_window::Get_MetaFont)
                 .ColorAndOpacity(CkStyle::TextMute())
                 .Text(LOCTEXT("NoCrowdPools", "(no crowd pools configured on this domain)"))
+            ];
+        _CrowdTunerBox->AddSlot()
+            .AutoHeight()
+            [
+                SNew(STextBlock)
+                .Font_Static(&ck_visuallod_debugger_window::Get_MetaFont)
+                .ColorAndOpacity(CkStyle::TextMute())
+                .Text(LOCTEXT("NoCrowdTuners", "(no crowd tuners configured on this domain)"))
             ];
         return;
     }
@@ -2176,6 +2636,50 @@ auto
             return Panel->_Live.Crowds[CrowdIndex];
         };
 
+        const auto MakeCrowdFloat = [WeakPanel, CrowdIndex](
+            const FText& InLabel,
+            TFunction<double(const FCk_VisualLod_RuntimeCrowdTuners&)> InGet,
+            TFunction<void(FCk_VisualLod_RuntimeCrowdTuners&, float)> InSet) -> TSharedRef<SWidget>
+        {
+            return ck_visuallod_debugger_window::Make_TunerRow(
+                InLabel, LOCTEXT("CrowdTunerTip", "Deferred session-only crowd tuning."),
+                TAttribute<double>::CreateLambda([WeakPanel, CrowdIndex, Get = MoveTemp(InGet)]()
+                {
+                    const auto Panel = WeakPanel.Pin();
+                    return Panel.IsValid() && Panel->_Live.RuntimeTuners.Get_CrowdTuners().IsValidIndex(CrowdIndex)
+                        ? Get(Panel->_Live.RuntimeTuners.Get_CrowdTuners()[CrowdIndex]) : 0.0;
+                }), ECkDebug_NumericKind::Float, TOptional<double>{0.0}, TOptional<double>{}, 2,
+                FOnCkDebug_NumericCommitted::CreateLambda([WeakPanel, CrowdIndex, Set = MoveTemp(InSet)](double InValue)
+                {
+                    const auto Panel = WeakPanel.Pin();
+                    if (Panel.IsValid())
+                    { Panel->DoRequest_CrowdTuners(CrowdIndex, [Set, InValue](auto& InCrowd) { Set(InCrowd, static_cast<float>(InValue)); }); }
+                }));
+        };
+
+        const auto MakeCrowdInteger = [WeakPanel, CrowdIndex](
+            const FText& InLabel,
+            TFunction<int32(const FCk_VisualLod_RuntimeCrowdTuners&)> InGet,
+            TFunction<void(FCk_VisualLod_RuntimeCrowdTuners&, int32)> InSet) -> TSharedRef<SWidget>
+        {
+            return ck_visuallod_debugger_window::Make_TunerRow(
+                InLabel, LOCTEXT("CrowdTunerTip", "Deferred session-only crowd tuning."),
+                TAttribute<double>::CreateLambda([WeakPanel, CrowdIndex, Get = MoveTemp(InGet)]()
+                {
+                    const auto Panel = WeakPanel.Pin();
+                    return Panel.IsValid() && Panel->_Live.RuntimeTuners.Get_CrowdTuners().IsValidIndex(CrowdIndex)
+                        ? static_cast<double>(Get(Panel->_Live.RuntimeTuners.Get_CrowdTuners()[CrowdIndex])) : 0.0;
+                }), ECkDebug_NumericKind::Integer, TOptional<double>{0.0}, TOptional<double>{}, 0,
+                FOnCkDebug_NumericCommitted::CreateLambda([WeakPanel, CrowdIndex, Set = MoveTemp(InSet)](double InValue)
+                {
+                    const auto Panel = WeakPanel.Pin();
+                    if (Panel.IsValid())
+                    { Panel->DoRequest_CrowdTuners(CrowdIndex, [Set, InValue](auto& InCrowd) { Set(InCrowd, FMath::Max(0, FMath::RoundToInt(InValue))); }); }
+            }));
+        };
+
+        const auto CrowdTunerBox = SNew(SVerticalBox);
+
         _CrowdPoolBox->AddSlot()
             .AutoHeight()
             .Padding(0.0f, CrowdIndex == 0 ? 0.0f : CkStyle::SpaceM, 0.0f, CkStyle::SpaceS)
@@ -2186,10 +2690,208 @@ auto
                     {
                         const auto Info = Crowd();
                         return Info.HasCrowdActor
-                            ? FText::FromString(FString::Printf(TEXT("%d tile(s)"), Info.TileCount))
+                            ? FText::FromString(FString::Printf(TEXT("%d tile(s) · %d profile bucket(s)"),
+                                Info.TileCount, Info.ProfileBucketCount))
                             : LOCTEXT("CrowdNotStoodUp", "not created yet");
                     }))
             ];
+
+        _CrowdTunerBox->AddSlot().AutoHeight().Padding(0.0f, CrowdIndex == 0 ? 0.0f : CkStyle::SpaceM, 0.0f, 0.0f)
+        [
+            SNew(SCkDebug_InspectorPanel)
+            .Title(FText::FromString(FString::Printf(TEXT("Crowd %d tuners"), CrowdIndex)))
+            .StartExpanded(false)
+            .Body()
+            [
+                CrowdTunerBox
+            ]
+        ];
+
+        CrowdTunerBox->AddSlot().AutoHeight().Padding(0.0f, CkStyle::SpaceS, 0.0f, 0.0f)
+        [
+            ck_visuallod_debugger_window::Make_PaneHeading(
+                LOCTEXT("CrowdAnimationTuners", "Far animation tuners"),
+                LOCTEXT("CrowdAnimationTunersMeta", "session only"))
+        ];
+        CrowdTunerBox->AddSlot().AutoHeight()
+        [ MakeCrowdInteger(LOCTEXT("CrowdIdleSequence", "Idle sequence"),
+            [](const auto& T) { return T.Get_IdleSequenceIndex(); },
+            [](auto& T, int32 V) { T.Set_IdleSequenceIndex(V); }) ];
+        CrowdTunerBox->AddSlot().AutoHeight()
+        [ MakeCrowdInteger(LOCTEXT("CrowdMoveSequence", "Move sequence"),
+            [](const auto& T) { return T.Get_MoveSequenceIndex(); },
+            [](auto& T, int32 V) { T.Set_MoveSequenceIndex(V); }) ];
+        CrowdTunerBox->AddSlot().AutoHeight()
+        [ MakeCrowdFloat(LOCTEXT("CrowdMoveThreshold", "Move threshold"),
+            [](const auto& T) { return static_cast<double>(T.Get_MoveSpeedThreshold()); },
+            [](auto& T, float V) { T.Set_MoveSpeedThreshold(V); }) ];
+        CrowdTunerBox->AddSlot().AutoHeight()
+        [ MakeCrowdFloat(LOCTEXT("CrowdMoveAuthoredSpeed", "Move authored speed"),
+            [](const auto& T) { return static_cast<double>(T.Get_MoveAuthoredSpeed()); },
+            [](auto& T, float V) { T.Set_MoveAuthoredSpeed(FMath::Max(1.0f, V)); }) ];
+        CrowdTunerBox->AddSlot().AutoHeight()
+        [ MakeCrowdFloat(LOCTEXT("CrowdMoveRateMin", "Move rate min"),
+            [](const auto& T) { return T.Get_MoveRateClamp().Get_Min(); },
+            [](auto& T, float V) { T.Set_MoveRateClamp(FCk_FloatRange{V, T.Get_MoveRateClamp().Get_Max()}); }) ];
+        CrowdTunerBox->AddSlot().AutoHeight()
+        [ MakeCrowdFloat(LOCTEXT("CrowdMoveRateMax", "Move rate max"),
+            [](const auto& T) { return T.Get_MoveRateClamp().Get_Max(); },
+            [](auto& T, float V) { T.Set_MoveRateClamp(FCk_FloatRange{T.Get_MoveRateClamp().Get_Min(), V}); }) ];
+
+        const auto BandCount = _Live.RuntimeTuners.Get_CrowdTuners().IsValidIndex(CrowdIndex)
+            ? _Live.RuntimeTuners.Get_CrowdTuners()[CrowdIndex].Get_RenderBands().Num() : 0;
+        for (auto BandIndex = 0; BandIndex < BandCount; ++BandIndex)
+        {
+            const auto MakeBandFloat = [WeakPanel, CrowdIndex, BandIndex](const FText& InLabel,
+                TFunction<double(const FCk_VisualLod_RuntimeRenderBandTuners&)> InGet,
+                TFunction<void(FCk_VisualLod_RuntimeRenderBandTuners&, float)> InSet) -> TSharedRef<SWidget>
+            {
+                return ck_visuallod_debugger_window::Make_TunerRow(InLabel, LOCTEXT("BandTunerTip", "Deferred session-only render-band tuning."),
+                    TAttribute<double>::CreateLambda([WeakPanel, CrowdIndex, BandIndex, Get = MoveTemp(InGet)]()
+                    {
+                        const auto Panel = WeakPanel.Pin();
+                        const auto& Crowds = Panel.IsValid() ? Panel->_Live.RuntimeTuners.Get_CrowdTuners() : TArray<FCk_VisualLod_RuntimeCrowdTuners>{};
+                        return Crowds.IsValidIndex(CrowdIndex) && Crowds[CrowdIndex].Get_RenderBands().IsValidIndex(BandIndex)
+                            ? Get(Crowds[CrowdIndex].Get_RenderBands()[BandIndex]) : 0.0;
+                    }), ECkDebug_NumericKind::Float, TOptional<double>{0.0}, TOptional<double>{}, 0,
+                    FOnCkDebug_NumericCommitted::CreateLambda([WeakPanel, CrowdIndex, BandIndex, Set = MoveTemp(InSet)](double InValue)
+                    {
+                        const auto Panel = WeakPanel.Pin();
+                        if (NOT Panel.IsValid()) { return; }
+                        Panel->DoRequest_CrowdTuners(CrowdIndex, [BandIndex, Set, InValue](auto& InCrowd)
+                        {
+                            auto Bands = InCrowd.Get_RenderBands();
+                            if (NOT Bands.IsValidIndex(BandIndex)) { return; }
+                            auto Band = Bands[BandIndex]; Set(Band, static_cast<float>(InValue)); Bands[BandIndex] = MoveTemp(Band);
+                            InCrowd.Set_RenderBands(Bands);
+                        });
+                    }));
+            };
+            // Render-profile controls belong to the authored band, not to a member currently occupying it.
+            // That keeps every active profile tunable while the crowd is lazy or the band is empty.
+            const auto MakeProfileNumber = [WeakPanel, CrowdIndex, BandIndex](const FText& InLabel,
+                TFunction<double(const FCk_IskmRenderer_RuntimeProfileTuners&)> InGet,
+                TFunction<void(FCk_IskmRenderer_RuntimeProfileTuners&, double)> InSet,
+                ECkDebug_NumericKind InKind, int32 InDigits) -> TSharedRef<SWidget>
+            {
+                return ck_visuallod_debugger_window::Make_TunerRow(
+                    InLabel, LOCTEXT("ProfileTunerTip", "Deferred session-only render-profile tuning."),
+                    TAttribute<double>::CreateLambda([WeakPanel, CrowdIndex, BandIndex, Get = MoveTemp(InGet)]()
+                    {
+                        const auto Panel = WeakPanel.Pin();
+                        if (NOT Panel.IsValid()
+                            || NOT Panel->_Live.RuntimeTuners.Get_CrowdTuners().IsValidIndex(CrowdIndex))
+                        { return 0.0; }
+
+                        const auto& Bands = Panel->_Live.RuntimeTuners.Get_CrowdTuners()[CrowdIndex].Get_RenderBands();
+                        return Bands.IsValidIndex(BandIndex) ? Get(Bands[BandIndex].Get_ProfileTuners()) : 0.0;
+                    }), InKind, TOptional<double>{0.0}, TOptional<double>{}, InDigits,
+                    FOnCkDebug_NumericCommitted::CreateLambda([WeakPanel, CrowdIndex, BandIndex, Set = MoveTemp(InSet)](double InValue)
+                    {
+                        const auto Panel = WeakPanel.Pin();
+                        if (Panel.IsValid())
+                        { Panel->DoRequest_ProfileTuners(CrowdIndex, BandIndex, [Set, InValue](auto& InProfile) { Set(InProfile, InValue); }); }
+                    }));
+            };
+            const auto MakeProfileToggle = [WeakPanel, CrowdIndex, BandIndex](const FText& InLabel,
+                TFunction<bool(const FCk_IskmRenderer_RuntimeProfileTuners&)> InGet,
+                TFunction<void(FCk_IskmRenderer_RuntimeProfileTuners&, bool)> InSet) -> TSharedRef<SWidget>
+            {
+                return SNew(SCkDebug_KeyValueRow)
+                    .KeyText(InLabel)
+                    .Tone(ECkDebug_KeyValueTone::Custom)
+                    .CustomValueColor(CkStyle::Text())
+                    .ValueWidget()
+                    [
+                        SNew(SSegmentedControl<ECk_EnableDisable>)
+                        .Value_Lambda([WeakPanel, CrowdIndex, BandIndex, Get = MoveTemp(InGet)]()
+                        {
+                            const auto Panel = WeakPanel.Pin();
+                            if (NOT Panel.IsValid()
+                                || NOT Panel->_Live.RuntimeTuners.Get_CrowdTuners().IsValidIndex(CrowdIndex))
+                            { return ECk_EnableDisable::Disable; }
+
+                            const auto& Bands = Panel->_Live.RuntimeTuners.Get_CrowdTuners()[CrowdIndex].Get_RenderBands();
+                            return Bands.IsValidIndex(BandIndex) && Get(Bands[BandIndex].Get_ProfileTuners())
+                                ? ECk_EnableDisable::Enable : ECk_EnableDisable::Disable;
+                        })
+                        .OnValueChanged_Lambda([WeakPanel, CrowdIndex, BandIndex, Set = MoveTemp(InSet)](ECk_EnableDisable InValue)
+                        {
+                            const auto Panel = WeakPanel.Pin();
+                            if (Panel.IsValid())
+                            {
+                                Panel->DoRequest_ProfileTuners(CrowdIndex, BandIndex,
+                                    [Set, InValue](auto& InProfile) { Set(InProfile, InValue == ECk_EnableDisable::Enable); });
+                            }
+                        })
+                        + SSegmentedControl<ECk_EnableDisable>::Slot(ECk_EnableDisable::Enable).Text(LOCTEXT("TunerOn", "On"))
+                        + SSegmentedControl<ECk_EnableDisable>::Slot(ECk_EnableDisable::Disable).Text(LOCTEXT("TunerOff", "Off"))
+                    ];
+            };
+            const auto BandTunerBox = SNew(SVerticalBox);
+            CrowdTunerBox->AddSlot().AutoHeight().Padding(0.0f, CkStyle::SpaceS, 0.0f, 0.0f)
+            [
+                SNew(SCkDebug_InspectorPanel)
+                .Title(FText::FromString(FString::Printf(TEXT("Render band %d"), BandIndex)))
+                .StartExpanded(false)
+                .Body()
+                [
+                    BandTunerBox
+                ]
+            ];
+            if (BandIndex == 0)
+            {
+                BandTunerBox->AddSlot().AutoHeight()
+                [ ck_visuallod_debugger_window::Make_KvRow(
+                    LOCTEXT("BandThreshold", "Threshold (cm)"),
+                    TAttribute<FText>::CreateLambda([Crowd]()
+                    {
+                        const auto Info = Crowd();
+                        return Info.RuntimeTuners.Get_RenderBands().IsValidIndex(0)
+                            ? FText::AsNumber(Info.RuntimeTuners.Get_RenderBands()[0].Get_DistanceThreshold())
+                            : FText::GetEmpty();
+                    }),
+                    CkStyle::TextDim()) ];
+            }
+            else
+            {
+                BandTunerBox->AddSlot().AutoHeight()
+                [ MakeBandFloat(LOCTEXT("BandThreshold", "Threshold (cm)"), [](const auto& T) { return T.Get_DistanceThreshold(); }, [](auto& T, float V) { T.Set_DistanceThreshold(V); }) ];
+            }
+            BandTunerBox->AddSlot().AutoHeight()
+            [ MakeBandFloat(LOCTEXT("BandHysteresis", "Return hysteresis"), [](const auto& T) { return T.Get_ReturnHysteresis(); }, [](auto& T, float V) { T.Set_ReturnHysteresis(V); }) ];
+
+            const auto AddProfileToggle = [&BandTunerBox, &MakeProfileToggle](const FText& InLabel,
+                TFunction<bool(const FCk_IskmRenderer_RuntimeProfileTuners&)> InGet,
+                TFunction<void(FCk_IskmRenderer_RuntimeProfileTuners&, bool)> InSet)
+            { BandTunerBox->AddSlot().AutoHeight()[MakeProfileToggle(InLabel, MoveTemp(InGet), MoveTemp(InSet))]; };
+            const auto AddProfileNumber = [&BandTunerBox, &MakeProfileNumber](const FText& InLabel,
+                TFunction<double(const FCk_IskmRenderer_RuntimeProfileTuners&)> InGet,
+                TFunction<void(FCk_IskmRenderer_RuntimeProfileTuners&, double)> InSet,
+                ECkDebug_NumericKind InKind, int32 InDigits)
+            { BandTunerBox->AddSlot().AutoHeight()[MakeProfileNumber(InLabel, MoveTemp(InGet), MoveTemp(InSet), InKind, InDigits)]; };
+
+            AddProfileToggle(LOCTEXT("ProfileCastShadow", "Cast shadow"), [](const auto& P) { return P.Get_RenderingInfo().Get_bCastDynamicShadow() != 0; }, [](auto& P, bool V) { auto R = P.Get_RenderingInfo(); R.Set_bCastDynamicShadow(V); P.Set_RenderingInfo(R); });
+            AddProfileToggle(LOCTEXT("ProfileMainPass", "Main pass"), [](const auto& P) { return P.Get_RenderingInfo().Get_bRenderInMainPass() != 0; }, [](auto& P, bool V) { auto R = P.Get_RenderingInfo(); R.Set_bRenderInMainPass(V); P.Set_RenderingInfo(R); });
+            AddProfileToggle(LOCTEXT("ProfileDepthPass", "Depth pass"), [](const auto& P) { return P.Get_RenderingInfo().Get_bRenderInDepthPass() != 0; }, [](auto& P, bool V) { auto R = P.Get_RenderingInfo(); R.Set_bRenderInDepthPass(V); P.Set_RenderingInfo(R); });
+            AddProfileToggle(LOCTEXT("ProfileDecals", "Receives decals"), [](const auto& P) { return P.Get_RenderingInfo().Get_bReceivesDecals() != 0; }, [](auto& P, bool V) { auto R = P.Get_RenderingInfo(); R.Set_bReceivesDecals(V); P.Set_RenderingInfo(R); });
+            AddProfileToggle(LOCTEXT("ProfileOccluder", "Use as occluder"), [](const auto& P) { return P.Get_RenderingInfo().Get_bUseAsOccluder() != 0; }, [](auto& P, bool V) { auto R = P.Get_RenderingInfo(); R.Set_bUseAsOccluder(V); P.Set_RenderingInfo(R); });
+            AddProfileToggle(LOCTEXT("ProfileCustomDepth", "Custom depth"), [](const auto& P) { return P.Get_RenderingInfo().Get_bRenderCustomDepth() != 0; }, [](auto& P, bool V) { auto R = P.Get_RenderingInfo(); R.Set_bRenderCustomDepth(V); P.Set_RenderingInfo(R); });
+            AddProfileToggle(LOCTEXT("ProfileContactShadow", "Contact shadow"), [](const auto& P) { return P.Get_RenderingInfo().Get_bCastContactShadow() != 0; }, [](auto& P, bool V) { auto R = P.Get_RenderingInfo(); R.Set_bCastContactShadow(V); P.Set_RenderingInfo(R); });
+            AddProfileToggle(LOCTEXT("ProfileIndirect", "Dynamic indirect"), [](const auto& P) { return P.Get_RenderingInfo().Get_bAffectDynamicIndirectLighting() != 0; }, [](auto& P, bool V) { auto R = P.Get_RenderingInfo(); R.Set_bAffectDynamicIndirectLighting(V); P.Set_RenderingInfo(R); });
+            AddProfileToggle(LOCTEXT("ProfileDistanceField", "Distance field"), [](const auto& P) { return P.Get_RenderingInfo().Get_bAffectDistanceFieldLighting() != 0; }, [](auto& P, bool V) { auto R = P.Get_RenderingInfo(); R.Set_bAffectDistanceFieldLighting(V); P.Set_RenderingInfo(R); });
+            AddProfileToggle(LOCTEXT("ProfileRayTracing", "Ray tracing"), [](const auto& P) { return P.Get_RenderingInfo().Get_bVisibleInRayTracing() != 0; }, [](auto& P, bool V) { auto R = P.Get_RenderingInfo(); R.Set_bVisibleInRayTracing(V); P.Set_RenderingInfo(R); });
+            AddProfileToggle(LOCTEXT("ProfileVelocity", "Output velocity"), [](const auto& P) { return P.Get_RenderingInfo().Get_bOutputVelocity() != 0; }, [](auto& P, bool V) { auto R = P.Get_RenderingInfo(); R.Set_bOutputVelocity(V); P.Set_RenderingInfo(R); });
+            AddProfileNumber(LOCTEXT("ProfileMinDraw", "Min draw distance"), [](const auto& P) { return static_cast<double>(P.Get_MinDrawDistance()); }, [](auto& P, double V) { P.Set_MinDrawDistance(static_cast<float>(V)); }, ECkDebug_NumericKind::Float, 0);
+            AddProfileNumber(LOCTEXT("ProfileMaxDraw", "Max draw distance"), [](const auto& P) { return static_cast<double>(P.Get_MaxDrawDistance()); }, [](auto& P, double V) { P.Set_MaxDrawDistance(static_cast<float>(V)); }, ECkDebug_NumericKind::Float, 0);
+            AddProfileNumber(LOCTEXT("ProfileMinLod", "Min LOD"), [](const auto& P) { return static_cast<double>(P.Get_MinLOD()); }, [](auto& P, double V) { P.Set_MinLOD(FMath::Max(0, FMath::RoundToInt(V))); }, ECkDebug_NumericKind::Integer, 0);
+            AddProfileNumber(LOCTEXT("ProfileBounds", "Bounds scale"), [](const auto& P) { return static_cast<double>(P.Get_BoundsScale()); }, [](auto& P, double V) { P.Set_BoundsScale(FMath::Max(0.01f, static_cast<float>(V))); }, ECkDebug_NumericKind::Float, 2);
+            AddProfileNumber(LOCTEXT("ProfileFarInterval", "Far update interval (s)"), [](const auto& P) { return P.Get_FarAnimationUpdateInterval().Get_Seconds(); }, [](auto& P, double V) { P.Set_FarAnimationUpdateInterval(FCk_Time{V}); }, ECkDebug_NumericKind::Float, 3);
+            AddProfileToggle(LOCTEXT("ProfileFreezeFar", "Freeze far animation"), [](const auto& P) { return P.Get_FreezeFarAnimation() == ECk_EnableDisable::Enable; }, [](auto& P, bool V) { P.Set_FreezeFarAnimation(V ? ECk_EnableDisable::Enable : ECk_EnableDisable::Disable); });
+            AddProfileToggle(LOCTEXT("ProfileChannel0", "Lighting channel 0"), [](const auto& P) { return P.Get_LightingChannels().bChannel0 != 0; }, [](auto& P, bool V) { auto C = P.Get_LightingChannels(); C.bChannel0 = V; P.Set_LightingChannels(C); });
+            AddProfileToggle(LOCTEXT("ProfileChannel1", "Lighting channel 1"), [](const auto& P) { return P.Get_LightingChannels().bChannel1 != 0; }, [](auto& P, bool V) { auto C = P.Get_LightingChannels(); C.bChannel1 = V; P.Set_LightingChannels(C); });
+            AddProfileToggle(LOCTEXT("ProfileChannel2", "Lighting channel 2"), [](const auto& P) { return P.Get_LightingChannels().bChannel2 != 0; }, [](auto& P, bool V) { auto C = P.Get_LightingChannels(); C.bChannel2 = V; P.Set_LightingChannels(C); });
+        }
 
         _CrowdPoolBox->AddSlot()
             .AutoHeight()
@@ -2225,8 +2927,8 @@ auto
 
                         // Rendered instances drop below used slots whenever a member is hidden for a
                         // Plan-1 flip, so the two numbers disagreeing is information, not a bug.
-                        return FText::FromString(FString::Printf(TEXT("%d instance(s) · %d tile(s)"),
-                            Info.RenderedInstanceCount, Info.TileCount));
+                        return FText::FromString(FString::Printf(TEXT("%d instance(s) · %d tile(s) · %d profile bucket(s)"),
+                            Info.RenderedInstanceCount, Info.TileCount, Info.ProfileBucketCount));
                     }),
                     CkStyle::Text())
             ];
@@ -2248,14 +2950,9 @@ auto
                     CkStyle::TextDim())
             ];
 
-        // ============================================================================================
-        // Rendering participation — DISPLAY ONLY (plan D9).
-        //
-        // The mockup's far shadow/lighting DISABLE switches are a planned CkVisualLod feature and are
-        // deliberately NOT built here: a debugger that writes renderer state the arbiter does not own
-        // would be lying about where that setting lives. These rows report what the crowd's instanced
-        // components are actually set to right now.
-        // ============================================================================================
+        // Rendering participation — display only. Multiple authored profiles are member-selected;
+        // a single pool-level shadow/lighting summary would be false in that case, so the detail
+        // rail is the authoritative per-member view.
         _CrowdPoolBox->AddSlot()
             .AutoHeight()
             [
@@ -2264,18 +2961,24 @@ auto
                     TAttribute<FText>::CreateLambda([Crowd]() -> FText
                     {
                         const auto Info = Crowd();
-                        if (NOT Info.Render.Resolved)
+                        if (Info.Get_HasMultipleRenderProfiles())
+                        { return LOCTEXT("CrowdPerMember", "per member — see detail"); }
+                        const auto& Flags = Info.RenderProfiles.Num() == 1 ? Info.RenderProfiles[0].Render : Info.Render;
+                        if (NOT Flags.Resolved)
                         { return LOCTEXT("Unset", "—"); }
 
-                        return Info.Render.CastShadow
+                        return Flags.CastShadow
                             ? LOCTEXT("ShadowCast", "cast")
                             : LOCTEXT("ShadowOff", "off");
                     }),
                     TAttribute<FLinearColor>::CreateLambda([Crowd]() -> FLinearColor
                     {
                         const auto Info = Crowd();
-                        return Info.Render.Resolved
-                            ? ck_visuallod_debugger_window::Get_BoolColor(Info.Render.CastShadow)
+                        if (Info.Get_HasMultipleRenderProfiles())
+                        { return CkStyle::TextDim(); }
+                        const auto& Flags = Info.RenderProfiles.Num() == 1 ? Info.RenderProfiles[0].Render : Info.Render;
+                        return Flags.Resolved
+                            ? ck_visuallod_debugger_window::Get_BoolColor(Flags.CastShadow)
                             : CkStyle::TextMute();
                     }))
             ];
@@ -2288,12 +2991,15 @@ auto
                     TAttribute<FText>::CreateLambda([Crowd]() -> FText
                     {
                         const auto Info = Crowd();
-                        if (NOT Info.Render.Resolved)
+                        if (Info.Get_HasMultipleRenderProfiles())
+                        { return LOCTEXT("CrowdPerMember", "per member — see detail"); }
+                        const auto& Flags = Info.RenderProfiles.Num() == 1 ? Info.RenderProfiles[0].Render : Info.Render;
+                        if (NOT Flags.Resolved)
                         { return LOCTEXT("Unset", "—"); }
 
                         return FText::FromString(FString::Printf(TEXT("indirect %s · dist-field %s"),
-                            Info.Render.AffectDynamicIndirectLighting ? TEXT("on") : TEXT("off"),
-                            Info.Render.AffectDistanceFieldLighting ? TEXT("on") : TEXT("off")));
+                            Flags.AffectDynamicIndirectLighting ? TEXT("on") : TEXT("off"),
+                            Flags.AffectDistanceFieldLighting ? TEXT("on") : TEXT("off")));
                     }),
                     CkStyle::Text())
             ];
@@ -2306,8 +3012,11 @@ auto
                     TAttribute<FText>::CreateLambda([Crowd]() -> FText
                     {
                         const auto Info = Crowd();
-                        return Info.Render.Resolved
-                            ? FText::FromString(Info.Render.Get_LightingChannelsText())
+                        if (Info.Get_HasMultipleRenderProfiles())
+                        { return LOCTEXT("CrowdPerMember", "per member — see detail"); }
+                        const auto& Flags = Info.RenderProfiles.Num() == 1 ? Info.RenderProfiles[0].Render : Info.Render;
+                        return Flags.Resolved
+                            ? FText::FromString(Flags.Get_LightingChannelsText())
                             : LOCTEXT("Unset", "—");
                     }),
                     CkStyle::TextDim())
@@ -3079,7 +3788,6 @@ auto
     });
 
     return SNew(SBox)
-        .WidthOverride(k_DetailRailWidth)
         .Padding(FMargin{0.0f, 0.0f, CkStyle::SpaceL, CkStyle::SpaceM})
         [
             SNew(SCkDebug_Card)
@@ -3364,7 +4072,7 @@ auto
                         ]
                     ]
 
-                    // ---- Rendering (DISPLAY ONLY — plan D9) ----
+                    // ---- Rendering (DISPLAY ONLY) ----
                     + SVerticalBox::Slot()
                     .AutoHeight()
                     [
@@ -3375,6 +4083,19 @@ auto
                     .Padding(0.0f, 0.0f, 0.0f, CkStyle::SpaceS)
                     [
                         Make_PaneHeading(LOCTEXT("DetailRenderHeading", "Rendering"), FText::GetEmpty())
+                    ]
+                    + SVerticalBox::Slot()
+                    .AutoHeight()
+                    [
+                        Make_KvRow(
+                            LOCTEXT("DetailRenderBand", "Far render band"),
+                            MemberText([](const auto& InMember, const auto&)
+                            {
+                                return InMember.RenderBandIndex == INDEX_NONE
+                                    ? FString(TEXT("legacy / no slot"))
+                                    : FString::Printf(TEXT("[%d]"), InMember.RenderBandIndex);
+                            }),
+                            CkStyle::TextDim())
                     ]
                     + SVerticalBox::Slot()
                     .AutoHeight()
@@ -3570,7 +4291,6 @@ auto
     const auto WeakPanel = TWeakPtr<SCkVisualLodDebuggerWindow>(SharedThis(this));
 
     return SNew(SBox)
-        .WidthOverride(k_DetailRailWidth)
         .Padding(FMargin{0.0f, 0.0f, CkStyle::SpaceL, CkStyle::SpaceL})
         [
             SNew(SCkDebug_Card)
@@ -3595,15 +4315,11 @@ auto
                         }))
                 ]
                 + SVerticalBox::Slot()
-                .AutoHeight()
+                .FillHeight(1.0f)
                 [
-                    SNew(SBox)
-                    .HeightOverride(k_EventLogHeight)
-                    [
-                        SAssignNew(_EventLog, SCkDebug_EventLog)
-                        .MaxEntries(k_EventLogMaxItems)
-                        .EmptyText(LOCTEXT("EventEmpty", "No representation changes since the window opened."))
-                    ]
+                    SAssignNew(_EventLog, SCkDebug_EventLog)
+                    .MaxEntries(k_EventLogMaxItems)
+                    .EmptyText(LOCTEXT("EventEmpty", "No representation changes since the window opened."))
                 ]
             ]
         ];

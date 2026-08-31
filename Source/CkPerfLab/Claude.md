@@ -5,7 +5,7 @@ sampling statistics, the JSON codec, the position planner, the in-child measurem
 host-side orchestration. It computes and records; it draws nothing.
 
 **Type:** `DeveloperTool` — ships in packaged Development/DebugGame, excluded from Test and Shipping.
-**Depends on:** `CkCore`, `CkEcs`, `CkLog`, `CkProfile`, `Json`.
+**Depends on:** `CkCore`, `CkEcs`, `CkLog`, `CkNavigation`, `CkProfile`, `Json`.
 **Used by:** `CkOptimizationDebugger` (the Performance page and the perf check family).
 
 ---

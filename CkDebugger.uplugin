@@ -127,6 +127,16 @@
 			]
 		},
 		{
+			"Name": "CkGridEditor",
+			"Type": "Editor",
+			"LoadingPhase": "Default",
+			"WhitelistPlatforms": [
+				"Win64",
+				"Mac",
+				"Linux"
+			]
+		},
+		{
 			"Name": "CkOptimizationDebugger",
 			"Type": "DeveloperTool",
 			"LoadingPhase": "Default",

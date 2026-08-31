@@ -23,8 +23,9 @@ class UWorld;
 // CK Visual LOD Debugger window.
 //
 // Layout: window chrome (viewport picker · freeze · markers) → alert lane → domain underline tabs (one
-// per arbiter) → arbiter identity + status pill → stat strip → three overview subpanes (budgets +
-// crowd pool · resolved view + config · activity sparklines) → member roster · detail rail · event log.
+// per arbiter) → arbiter identity + status pill → stat strip → three monitoring subpanes (budgets +
+// crowd pools · resolved view + config · activity sparklines) → default-collapsed tuner workspace
+// (arbiter runtime | crowd/runtime-band controls) → member roster | (detail rail over event log).
 //
 // ====================================================================================================================
 // RENDERING POLICY — the split this window is built around
@@ -39,7 +40,7 @@ class UWorld;
 // STRUCTURE, and each has its own signature and its own stable host container:
 //
 //   * the arbiter SET      → _DomainTabsHost   (a domain appeared or vanished)
-//   * the crowd COUNT      → _CrowdPoolBox     (an arbiter config declares N pools)
+//   * the crowd topology   → both crowd hosts  (an arbiter config declares N pools/bands)
 //   * the alert SET        → _AlertBox         (a fault appeared or cleared)
 //
 // Nothing else rebuilds, ever. The stat strip, the meters, the view card, and the sparklines are the
@@ -116,6 +117,20 @@ private:
     auto DoBuild_BudgetsPane() -> TSharedRef<SWidget>;
     auto DoBuild_ViewPane() -> TSharedRef<SWidget>;
     auto DoBuild_ActivityPane() -> TSharedRef<SWidget>;
+    auto DoBuild_TunersRow() -> TSharedRef<SWidget>;
+    auto DoBuild_TunersWorkspace() -> TSharedRef<SWidget>;
+    auto DoBuild_ArbiterTuners() -> TSharedRef<SWidget>;
+
+    auto DoRequest_RuntimeTuners(
+        TFunctionRef<void(FCk_VisualLodArbiter_RuntimeTuners&)> InMutate) -> void;
+    auto DoRequest_CrowdTuners(
+        int32 InCrowdIndex,
+        TFunctionRef<void(FCk_VisualLod_RuntimeCrowdTuners&)> InMutate) -> void;
+    auto DoRequest_ProfileTuners(
+        int32 InCrowdIndex,
+        int32 InBandIndex,
+        TFunctionRef<void(FCk_IskmRenderer_RuntimeProfileTuners&)> InMutate) -> void;
+    auto DoRequest_ResetRuntimeTuners() -> FReply;
 
     auto DoRebuild_DomainTabs() -> void;
     auto DoRebuild_CrowdPools() -> void;
@@ -209,13 +224,17 @@ private:
     // reads THIS, so a refresh is one copy and zero widget-tree work.
     FCkVisualLodDebugger_ArbiterInfo _Live;
     bool _HasLiveArbiter = false;
+    bool _TunersExpanded = false;
 
     FName _SelectedDomain;
 
     // ---- retained hosts (the only containers a rebuild ever touches) ----
 
     TSharedPtr<SBox>          _DomainTabsHost;
+    // Crowd topology is rendered into two hosts together: monitoring stays in the overview while every
+    // mutating control lives in the independently scrollable tuner workspace.
     TSharedPtr<SVerticalBox>  _CrowdPoolBox;
+    TSharedPtr<SVerticalBox>  _CrowdTunerBox;
     TSharedPtr<SVerticalBox>  _AlertBox;
 
     TSharedPtr<SVerticalBox>  _RosterPaneBox;

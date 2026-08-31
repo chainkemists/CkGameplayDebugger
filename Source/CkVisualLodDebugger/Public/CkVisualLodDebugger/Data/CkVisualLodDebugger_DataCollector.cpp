@@ -10,6 +10,8 @@
 
 #include "CkIskmRenderer/Proxy/CkIskmProxy_Fragment.h"
 #include "CkIskmRenderer/Renderer/CkIskm_BatchedCrowd_Actor.h"
+#include "CkIskmRenderer/Renderer/CkIskm_BatchedUtils.h"
+#include "CkIskmRenderer/Renderer/CkIskmRenderer_Fragment_Data.h"
 
 #include "CkVisualLod/CkVisualLod_Fragment.h"
 #include "CkVisualLod/CkVisualLod_Utils.h"
@@ -47,11 +49,35 @@ namespace ck_visuallod_debugger_collector
         return Flags;
     }
 
+    // Far render bands are authored UCk_IskmRenderer_Data assets, not live UPrimitiveComponents.
+    // Copy only the flags this debugger presents; retaining the asset itself would cross a PIE
+    // teardown boundary and is unnecessary for a read-only snapshot.
+    auto DoRead_RenderProfileFlags(
+        const FCk_IskmRenderer_RuntimeProfileTuners& InTuners,
+        const FString&               InDesc)
+        -> FCkVisualLodDebugger_RenderFlags
+    {
+        auto Flags = FCkVisualLodDebugger_RenderFlags{};
+        const auto& Rendering = InTuners.Get_RenderingInfo();
+        const auto& Channels  = InTuners.Get_LightingChannels();
+
+        Flags.Resolved                      = true;
+        Flags.ComponentDesc                 = InDesc;
+        Flags.CastShadow                    = Rendering.Get_bCastDynamicShadow() != 0;
+        Flags.AffectDynamicIndirectLighting = Rendering.Get_bAffectDynamicIndirectLighting() != 0;
+        Flags.AffectDistanceFieldLighting   = Rendering.Get_bAffectDistanceFieldLighting() != 0;
+        Flags.LightingChannel0              = Channels.bChannel0;
+        Flags.LightingChannel1              = Channels.bChannel1;
+        Flags.LightingChannel2              = Channels.bChannel2;
+        return Flags;
+    }
+
     // The crowd actor's root is a plain USceneComponent, so every PRIMITIVE it owns is one of the batched
     // cluster components — the spatial tiles, plus the custom-depth highlight clusters when outlines are
-    // in use. The manager applies one rendering setup to every tile it creates, so the first primitive is
-    // a faithful readout for the whole crowd, and this reads it through UPrimitiveComponent rather than
-    // the cluster type so the debugger does not couple to that component's internals.
+    // in use. This is the legacy shared-profile fallback only: render-band crowds can have several
+    // primitive profiles, so their authoritative flags are read from the member-selected authored
+    // profile instead. It still reads through UPrimitiveComponent rather than the cluster type so
+    // the debugger does not couple to that component's internals.
     auto DoRead_CrowdRenderFlags(
         const ACk_Iskm_BatchedCrowd_Actor* InCrowd,
         int32                              InCrowdIndex)
@@ -167,6 +193,8 @@ auto
             Info.Observer            = UCk_Utils_VisualLodArbiter_UE::Get_Observer(Arbiter);
             Info.HasExplicitObserver = ck::IsValid(Info.Observer);
 
+            Info.Set_RuntimeTuners(UCk_Utils_VisualLodArbiter_UE::Get_RuntimeTuners(Arbiter));
+
             // No Utils getter for the resolved config asset — the arbiter's public surface exposes the
             // derived counts, not the asset it derived them from. The fragment getter is public and this
             // is a read-only echo of authored values.
@@ -175,20 +203,7 @@ auto
                 Info.HasConfig     = true;
                 Info.ConfigName    = Config->GetName();
                 Info.DomainTagName = Config->Get_DomainTag().ToString();
-
-                Info.PromoteDistance        = Config->Get_PromoteDistance();
-                Info.DemoteDistance         = Config->Get_DemoteDistance();
-                Info.AlwaysInViewDistance   = Config->Get_AlwaysInViewDistance();
-                Info.PreemptDistanceMargin  = Config->Get_PreemptDistanceMargin();
-                Info.LockPromoteMaxDistance = Config->Get_LockPromoteMaxDistance();
-                Info.ViewConeMarginDeg      = Config->Get_ViewConeMarginDeg();
-
-                Info.NearBudget         = Config->Get_NearBudget();
-                Info.LockBudget         = Config->Get_LockBudget();
-                Info.MaxPreemptsPerTick = Config->Get_MaxPreemptsPerTick();
-
-                Info.FadeDurationSeconds = static_cast<float>(Config->Get_FadeDuration().Get_Seconds());
-                Info.ExhaustionPolicy    = Config->Get_ExhaustionPolicy();
+                Info.AuthoredRuntimeTuners = ck::visual_lod::MakeRuntimeTuners(*Config);
 
                 Info.FadeCrowdSlot = Config->Get_FadeCustomDataSlot();
                 Info.FadeNearSlot  = Config->Get_FadeNearCustomPrimitiveDataSlot();
@@ -208,6 +223,32 @@ auto
                 CrowdInfo.CrowdIndex = CrowdIndex;
                 CrowdInfo.PoolSize   = PoolInfo.PoolSize;
                 CrowdInfo.FreeSlots  = PoolInfo.FreeSlots;
+                if (Info.RuntimeTuners.Get_CrowdTuners().IsValidIndex(CrowdIndex))
+                { CrowdInfo.RuntimeTuners = Info.RuntimeTuners.Get_CrowdTuners()[CrowdIndex]; }
+
+                // The config is the authored profile order. A profile asset is normally rooted by
+                // the live crowd setup; Get() still stays nullable for a pre-stand-up/debug race.
+                if (const auto* Config = InCurrent.Get_Config().Get();
+                    ck::IsValid(Config) && Config->Get_CrowdConfigs().IsValidIndex(CrowdIndex))
+                {
+                    const auto& CrowdConfig = Config->Get_CrowdConfigs()[CrowdIndex];
+                    for (auto ProfileIndex = 0; ProfileIndex < CrowdConfig.Get_RenderBands().Num(); ++ProfileIndex)
+                    {
+                        const auto& Band = CrowdConfig.Get_RenderBands()[ProfileIndex];
+                        const auto* Profile = Band.Get_RendererProfile().Get();
+
+                        auto ProfileInfo = FCkVisualLodDebugger_RenderProfileInfo{};
+                        ProfileInfo.ProfileIndex = ProfileIndex;
+                        ProfileInfo.ProfileName  = ck::IsValid(Profile)
+                            ? Profile->GetName()
+                            : Band.Get_RendererProfile().ToSoftObjectPath().ToString();
+                        if (CrowdInfo.RuntimeTuners.Get_RenderBands().IsValidIndex(ProfileIndex))
+                        { ProfileInfo.RuntimeTuners = CrowdInfo.RuntimeTuners.Get_RenderBands()[ProfileIndex].Get_ProfileTuners(); }
+                        ProfileInfo.Render = ck_visuallod_debugger_collector::DoRead_RenderProfileFlags(
+                            ProfileInfo.RuntimeTuners, FString::Printf(TEXT("ISKM profile %d · %s"), ProfileIndex, *ProfileInfo.ProfileName));
+                        CrowdInfo.RenderProfiles.Add(MoveTemp(ProfileInfo));
+                    }
+                }
 
                 if (const auto* Crowd = PoolInfo.Crowd.Get())
                 {
@@ -217,6 +258,7 @@ auto
                     CrowdInfo.CrowdName             = Crowd->GetName();
                     CrowdInfo.RenderedInstanceCount = Crowd->Get_RenderedInstanceCount();
                     CrowdInfo.TileCount             = Crowd->Get_TileCount();
+                    CrowdInfo.ProfileBucketCount    = UCk_Utils_IskmBatched_UE::Get_CrowdProfileBucketCount(Crowd);
                     CrowdInfo.Render                = ck_visuallod_debugger_collector::DoRead_CrowdRenderFlags(Crowd, CrowdIndex);
                 }
 
@@ -281,6 +323,7 @@ auto
             Info.ProxyRate          = UCk_Utils_VisualLod_UE::Get_ProxyRate(Member);
             Info.FarSequenceIndex   = UCk_Utils_VisualLod_UE::Get_FarSequenceIndex(Member);
             Info.FarRate            = UCk_Utils_VisualLod_UE::Get_FarRate(Member);
+            Info.RenderBandIndex    = UCk_Utils_VisualLod_UE::Get_RenderBandIndex(Member);
 
             if (Info.Promoted)
             {
@@ -295,6 +338,17 @@ auto
             {
                 if (const auto* FoundCrowdIndex = CrowdIndexByActor.Find(Crowd))
                 { Info.CrowdIndex = *FoundCrowdIndex; }
+            }
+
+            // New render-band crowds select authored flags per member. Legacy crowds retain the
+            // old shared primitive readout, so no active crowd loses useful detail during rollout.
+            if (Info.CrowdIndex != INDEX_NONE && OwningArbiter.Crowds.IsValidIndex(Info.CrowdIndex))
+            {
+                const auto& CrowdInfo = OwningArbiter.Crowds[Info.CrowdIndex];
+                if (CrowdInfo.RenderProfiles.IsValidIndex(Info.RenderBandIndex))
+                { Info.FarRender = CrowdInfo.RenderProfiles[Info.RenderBandIndex].Render; }
+                else
+                { Info.FarRender = CrowdInfo.Render; }
             }
 
             // Where the marker belongs. A far member's own entity transform is the arbitration input, not what the

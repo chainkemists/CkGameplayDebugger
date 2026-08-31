@@ -23,6 +23,8 @@
 #include "CkNavigation/Nav/CkNav_Algorithm.h"
 #include "CkNavigation/Nav/CkNav_Fragment.h"
 #include "CkNavigation/Nav/CkNav_Fragment_Data.h"
+#include "CkNavigation/NavSurface/CkNavSurface_Utils.h"
+#include "CkNavigation/NavSurface/Recast/CkNavSurface_RecastAdapter.h"
 
 #include "CkPathNetwork/Actor/CkPathNetwork_Actor.h"
 #include "CkPathNetwork/Network/CkPathNetwork_Fragment.h"
@@ -166,19 +168,19 @@ auto
 
 	// Sample navmesh state once per tick.
 	{
-		auto* NavSys = UNavigationSystemV1::GetCurrent(InWorld);
+		auto* NavSys = ck::nav_surface_recast::TryGet_NavSystem(InWorld);
 		_NavmeshStatus._NavSystemPresent = (NavSys != nullptr);
 
 		if (NavSys != nullptr)
 		{
-			auto* NavData = Cast<ARecastNavMesh>(NavSys->GetDefaultNavDataInstance(FNavigationSystem::DontCreate));
+			auto* NavData = ck::nav_surface_recast::TryGet_NavData(InWorld);
 			if (NavData != nullptr)
 			{
 				_NavmeshStatus._NavDataClassName = NavData->GetClass()->GetName();
 				_NavmeshStatus._DefaultFilterValid = NavData->GetDefaultQueryFilter().IsValid();
 				_NavmeshStatus._SupportedAgents = 1; // Default-nav-data path = 1 supported agent
 
-				const auto NavBounds = NavData->GetBounds();
+				const auto NavBounds = UCk_Utils_NavSurface_UE::Get_SurfaceBounds(InWorld);
 				if (NavBounds.IsValid != 0)
 				{
 					_NavmeshStatus._NavBoundsValid = true;
@@ -476,10 +478,10 @@ auto
 	if (NOT IsValid(InWorld))           { FailEarly(TEXT("NoWorld"));     return; }
 	if (NOT InWorld->HasBegunPlay())    { FailEarly(TEXT("WorldNotPlaying")); return; }
 
-	auto* NavSys = UNavigationSystemV1::GetCurrent(InWorld);
+	auto* NavSys = ck::nav_surface_recast::TryGet_NavSystem(InWorld);
 	if (NavSys == nullptr)              { FailEarly(TEXT("NoNavSystem")); return; }
 
-	auto* NavData = Cast<ARecastNavMesh>(NavSys->GetDefaultNavDataInstance(FNavigationSystem::DontCreate));
+	auto* NavData = ck::nav_surface_recast::TryGet_NavData(InWorld);
 	if (NavData == nullptr)             { FailEarly(TEXT("NoNavData"));   return; }
 
 	const auto Start = FVector::ZeroVector;

@@ -25,10 +25,14 @@ public class CkPerfLab : CkModuleRules
             // UCk_Utils_Stats_UE::Get_ThreadTimings — the measurement the runner records.
             "CkProfile",
 
-            // UNavigationSystemV1::ProjectPointToNavigation — navmesh-seeded positions, which are
+            // UCk_Utils_NavSurface_UE::Try_ProjectPoint — navmesh-seeded positions, which are
             // preferred over a grid because a spot no player can reach costs nobody anything.
             // Projection of a fixed lattice rather than random sampling, so the same map plans the
             // same position ids every run and two sessions of it stay comparable.
+            "CkNavigation",
+
+            // UNavigationSystemV1::GetWorldBounds — the lattice footprint, which the navigation
+            // surface's own tile bounds cannot stand in for (see the survey builder's comment).
             "NavigationSystem",
 
             // RHIGetGPUFrameCycles and GUsingNullRHI, for the runner's environment assertion.

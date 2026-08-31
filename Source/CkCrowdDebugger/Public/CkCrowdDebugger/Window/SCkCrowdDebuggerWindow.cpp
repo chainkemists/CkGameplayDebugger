@@ -668,13 +668,6 @@ auto SCkCrowdDebuggerWindow::BuildCommandGroups() -> TArray<FCkDebug_CommandGrou
 		;
 
 	const auto NavigationMenu = SNew(SVerticalBox)
-		+ SVerticalBox::Slot().AutoHeight()
-		[
-			Make_ControlGroup(TEXT("UNREAL NAVIGATION"),
-			{
-				{TEXT("ck.Crowd.DrawNavProjection"), TEXT("Unreal Nav Projection"), TEXT("Draw the existing Unreal navmesh/projection diagnostics.")}
-			})
-		]
 		+ SVerticalBox::Slot().AutoHeight().Padding(8.0f, 6.0f, 8.0f, 2.0f)
 		[
 			ck::crowd_debugger_axes::Make_PaneHeading(TEXT("Voxel Navigation"))

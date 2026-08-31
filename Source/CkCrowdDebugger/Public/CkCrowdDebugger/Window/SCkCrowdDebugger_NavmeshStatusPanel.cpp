@@ -88,7 +88,7 @@ auto SCkCrowdDebugger_NavmeshStatusPanel::Get_NavSystemText() const -> FText
 	const auto& Status = _ViewModel->Get_NavmeshStatus();
 	if (NOT Status._Sampled)          { return FText::FromString(TEXT("(no PIE world)")); }
 	if (NOT Status._NavSystemPresent) { return FText::FromString(TEXT("MISSING")); }
-	return FText::FromString(TEXT("UNavigationSystemV1  OK"));
+	return FText::FromString(TEXT("OK"));
 }
 
 auto SCkCrowdDebugger_NavmeshStatusPanel::Get_NavSystemColor() const -> FLinearColor

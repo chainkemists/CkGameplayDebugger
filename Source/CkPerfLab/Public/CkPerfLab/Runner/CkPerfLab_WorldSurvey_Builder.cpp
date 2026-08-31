@@ -2,6 +2,8 @@
 
 #include "CkCore/Algorithms/CkAlgorithms.h"
 
+#include "CkNavigation/NavSurface/CkNavSurface_Utils.h"
+
 #include <Components/LightComponent.h>
 #include <Components/PrimitiveComponent.h>
 #include <Components/StaticMeshComponent.h>
@@ -54,7 +56,7 @@ namespace ck_perf_lab_survey
      */
     auto
         Project_LatticeOntoNavmesh(
-            const UNavigationSystemV1& InNavSystem,
+            const UObject* InWorldContext,
             const FBox& InBounds)
         -> TArray<FVector>
     {
@@ -85,16 +87,20 @@ namespace ck_perf_lab_survey
                     Centre.Z
                 };
 
-                auto Projected = FNavLocation{};
+                const auto ProjectionQuery = FCk_NavSurface_ProjectionQuery{Query}
+                    .Set_SearchHalfExtents(Extent);
 
-                if (NOT InNavSystem.ProjectPointToNavigation(Query, Projected, Extent))
+                const auto Projected = UCk_Utils_NavSurface_UE::Try_ProjectPoint(
+                    InWorldContext, ProjectionQuery);
+
+                if (Projected.Get_Status() != ECk_NavSurface_QueryStatus::Success)
                 {
                     continue;
                 }
 
                 // Deduplicated on the same 50 cm quantisation the planner uses for position ids, so
                 // two lattice cells that resolve to the same measurable spot count once.
-                const auto Key = ck::perf_lab::Get_PositionId(Projected.Location);
+                const auto Key = ck::perf_lab::Get_PositionId(Projected.Get_Location());
 
                 if (Seen.Contains(Key))
                 {
@@ -102,7 +108,7 @@ namespace ck_perf_lab_survey
                 }
 
                 Seen.Add(Key);
-                Points.Add(Projected.Location);
+                Points.Add(Projected.Get_Location());
             }
         }
 
@@ -247,7 +253,10 @@ namespace ck::perf_lab
         {
             // A map with no navigation data is a normal case; the planner falls back to a grid and
             // says so, so absence here is a quiet branch rather than an error.
-            if (ck::IsValid(NavSystem->GetDefaultNavDataInstance()))
+            const auto ProviderHealth = UCk_Utils_NavSurface_UE::Get_ProviderHealth(InWorld);
+
+            if (ProviderHealth != ECk_NavSurface_ProviderHealth::NoData
+                && ProviderHealth != ECk_NavSurface_ProviderHealth::Error)
             {
                 // The navigation system's OWN bounds, not the actor bounds accumulated above. Those
                 // are a box over actor PIVOTS, and a level built as one landscape proxy with its
@@ -262,7 +271,7 @@ namespace ck::perf_lab
 
                 if (LatticeBounds.IsValid)
                 {
-                    NavmeshPoints = ck_perf_lab_survey::Project_LatticeOntoNavmesh(*NavSystem, LatticeBounds);
+                    NavmeshPoints = ck_perf_lab_survey::Project_LatticeOntoNavmesh(InWorld, LatticeBounds);
                 }
             }
         }

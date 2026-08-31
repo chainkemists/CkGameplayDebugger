@@ -130,7 +130,7 @@ struct FCkCrowdDebugger_NavmeshStatus
 	int32 _SupportedAgents = 0;
 	double _LastRegenTimestamp = -1.0;
 
-	// Navmesh world bounds (ARecastNavMesh::GetBounds) — the viewport's world->screen extent.
+	// Navigation-surface world bounds — the viewport's world->screen extent.
 	bool    _NavBoundsValid = false;
 	FVector _NavBoundsMin = FVector::ZeroVector;
 	FVector _NavBoundsMax = FVector::ZeroVector;

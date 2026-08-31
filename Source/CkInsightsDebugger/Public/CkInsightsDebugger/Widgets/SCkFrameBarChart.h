@@ -1,6 +1,9 @@
 #pragma once
 
 #include "CoreMinimal.h"
+
+#include "CkInsightsAnalyzer/Report/CkMultiFrameReport.h"
+
 #include "Layout/SlateRect.h"
 #include "Widgets/SCompoundWidget.h"
 #include "Widgets/SToolTip.h"
@@ -10,7 +13,7 @@ struct FSlateBrush;
 
 // --------------------------------------------------------------------------------------------------------------------
 
-DECLARE_DELEGATE_TwoParams(FOnFrameSelectionChanged, uint64 /*StartFrame*/, uint64 /*EndFrame*/);
+DECLARE_DELEGATE_OneParam(FOnFrameSelectionChanged, const TArray<FCk_FrameRun>& /*SelectedRuns*/);
 DECLARE_DELEGATE_TwoParams(FOnScreenshotMarkerClicked, uint32 /*ScreenshotId*/, uint64 /*FrameIndex*/);
 
 /**
@@ -35,8 +38,9 @@ struct FCk_FrameScreenshotMarker
  * - Yellow: 1x-2x over budget
  * - Red: > 2x over budget
  *
- * Supports click-to-select, drag-to-select-range, scroll-to-zoom, and middle-drag-to-pan.
- * Fires FOnFrameSelectionChanged when the user selects frame(s).
+ * Supports click-to-select, drag-to-select-range, shift-to-extend, ctrl-to-add/toggle a
+ * disjoint run, scroll-to-zoom, and middle-drag-to-pan. The selection is a sorted, merged,
+ * non-overlapping run list; FOnFrameSelectionChanged carries it on mouse-up.
  */
 class CKINSIGHTSDEBUGGER_API SCkFrameBarChart : public SCompoundWidget
 {
@@ -79,13 +83,18 @@ public:
 
     // ---- Selection ----
 
-    /** Get the current selection range (inclusive). */
-    auto GetSelectionStart() const -> uint64 { return _SelectionStart; }
-    auto GetSelectionEnd() const -> uint64 { return _SelectionEnd; }
-    auto HasSelection() const -> bool { return _bHasSelection; }
+    /** Current selection: sorted, merged, non-overlapping inclusive runs. Empty when nothing is selected. */
+    auto Get_Selection() const -> const TArray<FCk_FrameRun>& { return _SelectedRuns; }
+    auto HasSelection() const -> bool { return _SelectedRuns.Num() > 0; }
 
-    /** Programmatically select a frame range. */
-    auto SetSelection(uint64 StartFrame, uint64 EndFrame) -> void;
+    /** Total number of frames covered by the current selection. */
+    auto Get_SelectedFrameCount() const -> uint64;
+
+    /** Replace the selection. Runs are clamped to the loaded frames, then sorted and merged. */
+    auto SetSelection(TArray<FCk_FrameRun> InRuns) -> void;
+
+    /** Replace the selection with a single frame and re-anchor shift-extend on it. */
+    auto SetSelection(uint64 InFrame) -> void;
 
     /** Clear selection. */
     auto ClearSelection() -> void;
@@ -145,6 +154,12 @@ private:
     /** Determine the compact rail rectangle for a marker in stable sorted order. */
     auto GetScreenshotThumbnailRect(const FGeometry& Geometry, int32 MarkerIndex) const -> FSlateRect;
 
+    /** Selection the in-flight drag would commit with the pointer over InFrame. */
+    auto Get_DragPreviewSelection(int64 InFrame) const -> TArray<FCk_FrameRun>;
+
+    /** Frame a shift-extend runs from; InFallbackFrame when no anchor survives. */
+    auto Get_EffectiveAnchor(int64 InFallbackFrame) const -> int64;
+
 private:
     TArray<double> _FrameDurationsMs;
     double _TargetFrameMs = 16.67;
@@ -153,15 +168,22 @@ private:
     double _ViewOffset = 0.0;       // First visible frame (fractional for smooth scrolling)
     double _FramesPerPixel = 1.0;   // Zoom level: how many frames fit in one pixel
 
-    // Selection
-    bool   _bHasSelection = false;
-    uint64 _SelectionStart = 0;
-    uint64 _SelectionEnd = 0;
+    // Selection — sorted, merged, non-overlapping inclusive runs
+    TArray<FCk_FrameRun> _SelectedRuns;
+
+    // Frame a shift-extend runs from: the last plain/ctrl-clicked frame or drag origin. INDEX_NONE when unset.
+    int64 _SelectionAnchor = INDEX_NONE;
 
     // Interaction state
     bool   _bIsDragging = false;
     bool   _bIsPanning = false;
+    bool   _bDragShift = false;
+    bool   _bDragCtrl = false;
     int64  _DragStartFrame = 0;
+
+    // Selection the drag started from — the base an additive ctrl-drag adds its pending run to.
+    TArray<FCk_FrameRun> _DragBaseRuns;
+
     float  _PanStartX = 0.0f;
     double _PanStartOffset = 0.0;
     int64  _HoveredFrame = -1;

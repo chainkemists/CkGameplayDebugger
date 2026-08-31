@@ -7,6 +7,7 @@
 #include "CkInsightsAnalyzer/Report/CkMultiFrameReport.h"
 #include "CkInsightsDebugger/Capture/CkInsightsCaptureController.h"
 #include "CkInsightsDebugger/Widgets/SCkFrameBarChart.h"
+#include "CkInsightsDebugger/Widgets/SCkFramePresenceStrip.h"
 
 #include "CkEditorTools/Style/CkStyle.h"
 
@@ -83,6 +84,18 @@ private:
                               const TSharedRef<STableViewBase>& InOwnerTable) -> TSharedRef<ITableRow>;
     auto DoExpandHotPathDefaults() -> void;
 
+    // ---- Merged hot-path tree (averaged details) ----
+
+    auto DoGenerateMergedHotPathRow(TSharedPtr<FCk_MergedHotPathNode> InNode,
+                                    const TSharedRef<STableViewBase>& InOwnerTable) -> TSharedRef<ITableRow>;
+    auto DoExpandMergedHotPathDefaults() -> void;
+
+    /** A strip slot drilled into one frame — collapses the selection and the details onto it. */
+    auto DoOnPresenceStripFrameClicked(uint64 InFrameIndex) -> void;
+
+    /** Ctrl-click on a strip — narrows the selection to the frames that row's node appeared in. */
+    auto DoOnPresenceStripRefineToRuns(const TArray<FCk_FrameRun>& InRuns) -> void;
+
     // ---- Side panel row rebuilds ----
 
     auto DoRebuildCategoryRows() -> void;
@@ -130,7 +143,7 @@ private:
 
     // ---- Chart Delegate ----
 
-    auto DoOnFrameSelectionChanged(uint64 StartFrame, uint64 EndFrame) -> void;
+    auto DoOnFrameSelectionChanged(const TArray<FCk_FrameRun>& InRuns) -> void;
 
     // ---- Helpers ----
 
@@ -138,9 +151,16 @@ private:
     auto DoSetReport(const FString& ReportText) -> void;
     auto DoClearResults() -> void;
     auto DoAnalyzeSingleFrame(uint64 FrameIndex) -> void;
-    auto DoAnalyzeFrameRange(uint64 StartFrame, uint64 EndFrame) -> void;
+    auto DoAnalyzeFrameSet(const TArray<FCk_FrameRun>& InRuns) -> void;
     auto DoRerunCurrentSelection() -> void;
     auto DoPopulateMultiFrame(const FCk_MultiFrameStats& Stats) -> void;
+
+    /**
+     * Fill the hot-path / category / wait / top-timer panels from the selection's synthetic mean
+     * frame, or blank them when the analysis produced none (worst-frames runs never do).
+     */
+    auto DoPopulateDetailPanels_Averaged(const FCk_MultiFrameStats& Stats) -> void;
+    auto DoClearAveragedDetailScope() -> void;
     auto DoGenerateAutomatedCaptureReport() -> bool;
     auto DoLoadScreenshots() -> void;
     auto DoClearScreenshots() -> void;
@@ -198,8 +218,21 @@ private:
     EResultsMode _ResultsMode = EResultsMode::None;
     double _AnalyzedFrameMs = 0.0; // frame duration backing the hot-path %-of-frame column
 
+    // The detail panels show a synthetic mean frame, not one real frame. Every number in them is an
+    // average, so both the summary strip and the hot-path panel say so.
+    bool _DetailsAreAveraged = false;
+    FString _AveragedScopeLabel;
+
     TArray<TSharedPtr<FCk_HotPathNode>> _HotPathRoots;
     TSharedPtr<STreeView<TSharedPtr<FCk_HotPathNode>>> _HotPathTree;
+
+    // Averaged details render merged nodes instead: one row per timer across the whole selection,
+    // carrying the per-frame presence the single-frame node has no place for.
+    TArray<TSharedPtr<FCk_MergedHotPathNode>> _MergedHotPathRoots;
+    TSharedPtr<STreeView<TSharedPtr<FCk_MergedHotPathNode>>> _MergedHotPathTree;
+
+    // Ordinal → real frame index for the current multi-frame analysis, shared by every strip.
+    TSharedPtr<TArray<uint64>> _AnalysedFrameIndices;
 
     TArray<FCk_CategorySummaryEntry> _Categories;
     TArray<FCk_TopTimerEntry> _TopTimers;

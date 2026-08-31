@@ -82,6 +82,101 @@ namespace FrameBarChart
         return FMath::Clamp(1.0 / DesiredBarWidth, MinFramesPerPixel, MaxFramesPerPixel);
     }
 
+    /**
+     * Clamp every run to the loaded frames, then sort and merge into the canonical form the whole
+     * widget assumes: ascending, non-overlapping, and never adjacent (5-6 and 7-9 become 5-9, so a
+     * ctrl-click next to a run grows it instead of leaving a seam only the internals can see).
+     */
+    auto Normalize_Runs(TArray<FCk_FrameRun>& InOutRuns, int32 InFrameCount) -> void
+    {
+        if (InFrameCount <= 0)
+        {
+            InOutRuns.Reset();
+            return;
+        }
+
+        const uint64 LastValidFrame = static_cast<uint64>(InFrameCount - 1);
+
+        for (int32 Index = InOutRuns.Num() - 1; Index >= 0; --Index)
+        {
+            auto& Run = InOutRuns[Index];
+            if (Run.FirstFrame > Run.LastFrame)
+            {
+                Swap(Run.FirstFrame, Run.LastFrame);
+            }
+
+            if (Run.FirstFrame > LastValidFrame)
+            {
+                InOutRuns.RemoveAt(Index);
+                continue;
+            }
+
+            Run.LastFrame = FMath::Min(Run.LastFrame, LastValidFrame);
+        }
+
+        InOutRuns.Sort([](const FCk_FrameRun& Left, const FCk_FrameRun& Right)
+        {
+            return Left.FirstFrame < Right.FirstFrame;
+        });
+
+        auto Merged = TArray<FCk_FrameRun>{};
+        Merged.Reserve(InOutRuns.Num());
+
+        for (const auto& Run : InOutRuns)
+        {
+            if (NOT Merged.IsEmpty() && Run.FirstFrame <= Merged.Last().LastFrame + 1)
+            {
+                Merged.Last().LastFrame = FMath::Max(Merged.Last().LastFrame, Run.LastFrame);
+                continue;
+            }
+
+            Merged.Add(Run);
+        }
+
+        InOutRuns = MoveTemp(Merged);
+    }
+
+    /** Add the frame when it is outside the selection, otherwise carve it out of its run. */
+    auto Toggle_Frame(TArray<FCk_FrameRun>& InOutRuns, uint64 InFrame, int32 InFrameCount) -> void
+    {
+        const int32 ContainingIndex = InOutRuns.IndexOfByPredicate([InFrame](const FCk_FrameRun& Run)
+        {
+            return InFrame >= Run.FirstFrame && InFrame <= Run.LastFrame;
+        });
+
+        if (ContainingIndex == INDEX_NONE)
+        {
+            InOutRuns.Add(FCk_FrameRun{InFrame, InFrame});
+            Normalize_Runs(InOutRuns, InFrameCount);
+            return;
+        }
+
+        const FCk_FrameRun Run = InOutRuns[ContainingIndex];
+        InOutRuns.RemoveAt(ContainingIndex);
+
+        if (InFrame > Run.FirstFrame)
+        {
+            InOutRuns.Add(FCk_FrameRun{Run.FirstFrame, InFrame - 1});
+        }
+
+        if (InFrame < Run.LastFrame)
+        {
+            InOutRuns.Add(FCk_FrameRun{InFrame + 1, Run.LastFrame});
+        }
+
+        Normalize_Runs(InOutRuns, InFrameCount);
+    }
+
+    auto Get_RunFrameCount(const TArray<FCk_FrameRun>& InRuns) -> uint64
+    {
+        uint64 Total = 0;
+        for (const auto& Run : InRuns)
+        {
+            Total += Run.LastFrame - Run.FirstFrame + 1;
+        }
+        return Total;
+    }
+
     /** Format an integer with comma separators (e.g. 4160 → "4,160"). */
     auto FormatWithCommas(int64 Value) -> FString
     {
@@ -240,13 +335,29 @@ auto
 
 auto
     SCkFrameBarChart::
-    SetSelection(uint64 StartFrame, uint64 EndFrame)
+    Get_SelectedFrameCount() const
+    -> uint64
+{
+    return FrameBarChart::Get_RunFrameCount(_SelectedRuns);
+}
+
+auto
+    SCkFrameBarChart::
+    SetSelection(TArray<FCk_FrameRun> InRuns)
     -> void
 {
-    _bHasSelection = true;
-    _SelectionStart = FMath::Min(StartFrame, EndFrame);
-    _SelectionEnd = FMath::Max(StartFrame, EndFrame);
+    FrameBarChart::Normalize_Runs(InRuns, _FrameDurationsMs.Num());
+    _SelectedRuns = MoveTemp(InRuns);
     Invalidate(EInvalidateWidgetReason::Paint);
+}
+
+auto
+    SCkFrameBarChart::
+    SetSelection(uint64 InFrame)
+    -> void
+{
+    SetSelection(TArray<FCk_FrameRun>{FCk_FrameRun{InFrame, InFrame}});
+    _SelectionAnchor = static_cast<int64>(InFrame);
 }
 
 auto
@@ -254,10 +365,66 @@ auto
     ClearSelection()
     -> void
 {
-    _bHasSelection = false;
-    _SelectionStart = 0;
-    _SelectionEnd = 0;
+    _SelectedRuns.Reset();
+    _DragBaseRuns.Reset();
+    _SelectionAnchor = INDEX_NONE;
     Invalidate(EInvalidateWidgetReason::Paint);
+}
+
+auto
+    SCkFrameBarChart::
+    Get_EffectiveAnchor(int64 InFallbackFrame) const
+    -> int64
+{
+    if (_SelectionAnchor < 0 || _FrameDurationsMs.IsEmpty())
+    {
+        return InFallbackFrame;
+    }
+
+    return FMath::Min(_SelectionAnchor, static_cast<int64>(_FrameDurationsMs.Num() - 1));
+}
+
+auto
+    SCkFrameBarChart::
+    Get_DragPreviewSelection(int64 InFrame) const
+    -> TArray<FCk_FrameRun>
+{
+    const auto Frame = static_cast<uint64>(InFrame);
+    const auto DragStart = static_cast<uint64>(_DragStartFrame);
+
+    if (_bDragShift)
+    {
+        const auto Anchor = static_cast<uint64>(Get_EffectiveAnchor(_DragStartFrame));
+        const auto ExtendRun = FCk_FrameRun{FMath::Min(Anchor, Frame), FMath::Max(Anchor, Frame)};
+
+        if (NOT _bDragCtrl)
+        {
+            return TArray<FCk_FrameRun>{ExtendRun};
+        }
+
+        auto Runs = _DragBaseRuns;
+        Runs.Add(ExtendRun);
+        return Runs;
+    }
+
+    if (_bDragCtrl)
+    {
+        auto Runs = _DragBaseRuns;
+
+        // A ctrl gesture that never left its origin frame is a toggle; the moment it spans more
+        // than one frame it becomes an additive range, so dragging back onto the origin restores
+        // the toggle rather than leaving a one-frame add behind.
+        if (InFrame == _DragStartFrame)
+        {
+            FrameBarChart::Toggle_Frame(Runs, Frame, _FrameDurationsMs.Num());
+            return Runs;
+        }
+
+        Runs.Add(FCk_FrameRun{FMath::Min(DragStart, Frame), FMath::Max(DragStart, Frame)});
+        return Runs;
+    }
+
+    return TArray<FCk_FrameRun>{FCk_FrameRun{FMath::Min(DragStart, Frame), FMath::Max(DragStart, Frame)}};
 }
 
 auto
@@ -492,23 +659,26 @@ auto
         }
     }
 
-    if (_bHasSelection)
+    // Runs are ascending and disjoint, so the first one starting past the right edge ends the pass.
+    for (const auto& Run : _SelectedRuns)
     {
-        const float SelX1 = (static_cast<float>(_SelectionStart) - static_cast<float>(_ViewOffset)) * BarStep;
-        const float SelX2 = (static_cast<float>(_SelectionEnd + 1) - static_cast<float>(_ViewOffset)) * BarStep;
+        const float SelX1 = (static_cast<float>(Run.FirstFrame) - static_cast<float>(_ViewOffset)) * BarStep;
+        if (SelX1 > Width) break;
+
+        const float SelX2 = (static_cast<float>(Run.LastFrame + 1) - static_cast<float>(_ViewOffset)) * BarStep;
+        if (SelX2 < 0.0f) continue;
+
         const float ClampedX1 = FMath::Max(0.0f, SelX1);
         const float ClampedX2 = FMath::Min(Width, SelX2);
+        if (ClampedX2 <= ClampedX1) continue;
 
-        if (ClampedX2 > ClampedX1)
-        {
-            FSlateDrawElement::MakeBox(
-                OutDrawElements, LayerId + 3,
-                AllottedGeometry.ToPaintGeometry(
-                    FVector2D(ClampedX2 - ClampedX1, Height),
-                    FSlateLayoutTransform(FVector2D(ClampedX1, 0.0f))),
-                FAppStyle::GetBrush(TEXT("WhiteBrush")),
-                ESlateDrawEffect::None, FrameBarChart::ColorSelect());
-        }
+        FSlateDrawElement::MakeBox(
+            OutDrawElements, LayerId + 3,
+            AllottedGeometry.ToPaintGeometry(
+                FVector2D(ClampedX2 - ClampedX1, Height),
+                FSlateLayoutTransform(FVector2D(ClampedX1, 0.0f))),
+            FAppStyle::GetBrush(TEXT("WhiteBrush")),
+            ESlateDrawEffect::None, FrameBarChart::ColorSelect());
     }
 
     if (_HoveredFrame >= 0 && _HoveredFrame < _FrameDurationsMs.Num())
@@ -552,7 +722,15 @@ auto
         }
 
         _bIsDragging = true;
+        _bDragShift = MouseEvent.IsShiftDown();
+        _bDragCtrl = MouseEvent.IsControlDown();
         _DragStartFrame = XToFrame(MyGeometry, LocalPosition.X);
+        _DragBaseRuns = _SelectedRuns;
+
+        // Modifiers are latched from the press, not re-read on release, so letting go of shift
+        // mid-drag cannot silently turn an extend into a replace.
+        SetSelection(Get_DragPreviewSelection(_DragStartFrame));
+
         return FReply::Handled().CaptureMouse(Self).SetUserFocus(Self, EFocusCause::Mouse);
     }
 
@@ -578,11 +756,24 @@ auto
         _bIsDragging = false;
 
         const int64 EndFrame = XToFrame(MyGeometry, MyGeometry.AbsoluteToLocal(MouseEvent.GetScreenSpacePosition()).X);
-        const uint64 Start = static_cast<uint64>(FMath::Min(_DragStartFrame, EndFrame));
-        const uint64 End = static_cast<uint64>(FMath::Max(_DragStartFrame, EndFrame));
+        SetSelection(Get_DragPreviewSelection(EndFrame));
 
-        SetSelection(Start, End);
-        _OnFrameSelectionChanged.ExecuteIfBound(Start, End);
+        // A shift-extend keeps the anchor it extended from; every other gesture re-anchors on the
+        // frame the press landed on.
+        if (NOT _bDragShift)
+        {
+            _SelectionAnchor = _DragStartFrame;
+        }
+
+        _DragBaseRuns.Reset();
+
+        // Toggling the last selected frame off leaves nothing to analyze — same state as a clear.
+        if (_SelectedRuns.IsEmpty())
+        {
+            ClearSelection();
+        }
+
+        _OnFrameSelectionChanged.ExecuteIfBound(_SelectedRuns);
 
         return FReply::Handled().ReleaseMouseCapture();
     }
@@ -606,10 +797,7 @@ auto
 
     if (_bIsDragging)
     {
-        const int64 CurrentFrame = XToFrame(MyGeometry, LocalPos.X);
-        const uint64 Start = static_cast<uint64>(FMath::Min(_DragStartFrame, CurrentFrame));
-        const uint64 End = static_cast<uint64>(FMath::Max(_DragStartFrame, CurrentFrame));
-        SetSelection(Start, End);
+        SetSelection(Get_DragPreviewSelection(XToFrame(MyGeometry, LocalPos.X)));
         return FReply::Handled();
     }
 

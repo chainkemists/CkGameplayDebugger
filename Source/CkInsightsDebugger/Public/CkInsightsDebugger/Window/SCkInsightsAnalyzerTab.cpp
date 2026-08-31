@@ -185,6 +185,59 @@ namespace ck_insights_analyzer_tab
             ];
     }
 
+    // Takes the font GETTER, not a font: bound through .Font_Static the cell keeps following
+    // TextScale after the row widget is built.
+    using FFontGetter = FSlateFontInfo (*)();
+
+    auto MakeValueCell(const FString& InText, FFontGetter InFont, const FLinearColor& InColor) -> TSharedRef<SWidget>
+    {
+        return SNew(SBox)
+            .Padding(FMargin(SectionSpacing * 0.5f, 0.0f))
+            .VAlign(VAlign_Center)
+            .HAlign(HAlign_Right)
+            [
+                SNew(STextBlock)
+                .Text(FText::FromString(InText))
+                .Font_Static(InFont)
+                .ColorAndOpacity(InColor)
+            ];
+    }
+
+    auto Get_BreadcrumbSuffix(const TArray<FString>& InBreadcrumbs) -> FString
+    {
+        constexpr auto MaxShownWrappers = 2;
+
+        FString Breadcrumb;
+        const int32 Start = FMath::Max(0, InBreadcrumbs.Num() - MaxShownWrappers);
+        for (int32 i = Start; i < InBreadcrumbs.Num(); ++i)
+        {
+            const FString Simplified = FCk_TimerCategorizer::SimplifyName(InBreadcrumbs[i]);
+            if (Simplified.Len() > 30)
+            {
+                continue;
+            }
+            if (NOT Breadcrumb.IsEmpty())
+            {
+                Breadcrumb += TEXT(" → ");
+            }
+            Breadcrumb += Simplified;
+        }
+        return Breadcrumb.IsEmpty() ? Breadcrumb : FString::Printf(TEXT("  (%s)"), *Breadcrumb);
+    }
+
+    // A timer missing from most of the selection is a different reading than one present in all of
+    // them, so the count carries the warning rather than a separate column.
+    auto PresenceColor(uint64 InFramesPresent, int32 InAnalysedFrames) -> FLinearColor
+    {
+        if (InAnalysedFrames <= 0 || InFramesPresent >= static_cast<uint64>(InAnalysedFrames))
+        { return CkStyle::TextMute(); }
+
+        if (InFramesPresent * 2 < static_cast<uint64>(InAnalysedFrames))
+        { return CkStyle::Err(); }
+
+        return CkStyle::Warn();
+    }
+
     auto MakeStatTile(const FString& InLabel, const FString& InValue, const FLinearColor& InValueColor) -> TSharedRef<SWidget>
     {
         return SNew(SBorder)
@@ -249,6 +302,56 @@ namespace ck_insights_analyzer_tab
             Result.AppendChar(Raw[i]);
         }
         return Result;
+    }
+
+    auto Get_RunFrameCount(const TArray<FCk_FrameRun>& InRuns) -> uint64
+    {
+        uint64 Total = 0;
+        for (const auto& Run : InRuns)
+        {
+            Total += Run.LastFrame - Run.FirstFrame + 1;
+        }
+        return Total;
+    }
+
+    /** Names the detail panels' scope so nobody reads a mean frame as a real one. */
+    auto Get_AveragedScopeLabel(const FCk_MultiFrameStats& InStats) -> FString
+    {
+        const auto RunCount = InStats.SelectedRuns.Num();
+
+        if (RunCount > 1)
+        {
+            return FString::Printf(TEXT("Average of %s frames across %d selected ranges"),
+                *FormatWithCommas(InStats.FrameCount), RunCount);
+        }
+
+        return FString::Printf(TEXT("Average of %s frames"), *FormatWithCommas(InStats.FrameCount));
+    }
+
+    /**
+     * Encode the selection in the exported filename so two exports off the same trace never collide.
+     * Past three runs the run list stops being a filename and the total frame count stands in.
+     */
+    auto Get_MultiFrameExportName(const FString& InTraceStem, const FCk_MultiFrameStats& InStats) -> FString
+    {
+        const auto& Runs = InStats.SelectedRuns;
+
+        if (Runs.IsEmpty())
+        {
+            return FString::Printf(TEXT("%s_Frames.json"), *InTraceStem);
+        }
+
+        if (Runs.Num() <= 3)
+        {
+            FString RunSuffix;
+            for (const auto& Run : Runs)
+            {
+                RunSuffix += FString::Printf(TEXT("_%llu-%llu"), Run.FirstFrame, Run.LastFrame);
+            }
+            return FString::Printf(TEXT("%s_Frames%s.json"), *InTraceStem, *RunSuffix);
+        }
+
+        return FString::Printf(TEXT("%s_Frames_%llusel.json"), *InTraceStem, Get_RunFrameCount(Runs));
     }
 }
 
@@ -320,7 +423,7 @@ public:
                    .ToolTipText(FText::FromString(_Node->RawName))
                ];
 
-            const FString Breadcrumb = DoBuildBreadcrumbSuffix();
+            const FString Breadcrumb = Get_BreadcrumbSuffix(_Node->Breadcrumbs);
             if (NOT Breadcrumb.IsEmpty())
             {
                 Row->AddSlot()
@@ -339,7 +442,7 @@ public:
 
         if (InColumnName == TEXT("Incl"))
         {
-            return DoMakeCell(
+            return MakeValueCell(
                 FCk_TimerCategorizer::FormatMs(_Node->InclusiveMs),
                 &BodyBoldFont,
                 _Node->bIsAggregate ? CkStyle::TextDim() : SeverityColor(_Node->InclusiveMs));
@@ -348,14 +451,14 @@ public:
         if (InColumnName == TEXT("Self"))
         {
             const bool ShowSelf = _Node->ExclusiveMs > 0.05;
-            return DoMakeCell(
+            return MakeValueCell(
                 ShowSelf ? FCk_TimerCategorizer::FormatMs(_Node->ExclusiveMs) : FString(),
                 &BodyFont, CkStyle::TextDim());
         }
 
         if (InColumnName == TEXT("Count"))
         {
-            return DoMakeCell(
+            return MakeValueCell(
                 (_Node->Count > 1) ? FCk_TimerCategorizer::FormatCount(_Node->Count) : FString(),
                 &BodyFont, CkStyle::TextMute());
         }
@@ -389,49 +492,183 @@ public:
     }
 
 private:
-    auto DoBuildBreadcrumbSuffix() const -> FString
-    {
-        constexpr auto MaxShownWrappers = 2;
+    TSharedPtr<FCk_HotPathNode> _Node;
+    double _FrameDurationMs = 0.0;
+};
 
-        FString Breadcrumb;
-        const int32 Start = FMath::Max(0, _Node->Breadcrumbs.Num() - MaxShownWrappers);
-        for (int32 i = Start; i < _Node->Breadcrumbs.Num(); ++i)
-        {
-            const FString Simplified = FCk_TimerCategorizer::SimplifyName(_Node->Breadcrumbs[i]);
-            if (Simplified.Len() > 30)
-            {
-                continue;
-            }
-            if (NOT Breadcrumb.IsEmpty())
-            {
-                Breadcrumb += TEXT(" → ");
-            }
-            Breadcrumb += Simplified;
-        }
-        return Breadcrumb.IsEmpty() ? Breadcrumb : FString::Printf(TEXT("  (%s)"), *Breadcrumb);
+// --------------------------------------------------------------------------------------------------------------------
+// Merged hot-path tree row (averaged details)
+// --------------------------------------------------------------------------------------------------------------------
+
+class SCkInsights_MergedHotPathRow : public SMultiColumnTableRow<TSharedPtr<FCk_MergedHotPathNode>>
+{
+public:
+    SLATE_BEGIN_ARGS(SCkInsights_MergedHotPathRow)
+        : _AvgFrameMs(0.0)
+    {}
+        SLATE_ARGUMENT(TSharedPtr<FCk_MergedHotPathNode>, Node)
+        SLATE_ARGUMENT(double, AvgFrameMs)
+        SLATE_ARGUMENT(TSharedPtr<TArray<uint64>>, AnalysedFrameIndices)
+        SLATE_EVENT(FOnPresenceStripFrameClicked, OnStripFrameClicked)
+        SLATE_EVENT(FOnPresenceStripRefineToRuns, OnStripRefineToRuns)
+    SLATE_END_ARGS()
+
+    auto Construct(const FArguments& InArgs, const TSharedRef<STableViewBase>& InOwnerTable) -> void
+    {
+        _Node = InArgs._Node;
+        _AvgFrameMs = InArgs._AvgFrameMs;
+        _AnalysedFrameIndices = InArgs._AnalysedFrameIndices;
+        _OnStripFrameClicked = InArgs._OnStripFrameClicked;
+        _OnStripRefineToRuns = InArgs._OnStripRefineToRuns;
+
+        SMultiColumnTableRow<TSharedPtr<FCk_MergedHotPathNode>>::Construct(
+            FSuperRowType::FArguments()
+                .Padding(TAttribute<FMargin>::CreateStatic(&ck_insights_analyzer_tab::Get_HotPathRowPadding))
+                .ShowSelection(true),
+            InOwnerTable);
     }
 
-    // Takes the font GETTER, not a font: bound through .Font_Static the cell keeps following
-    // TextScale after the row widget is built.
-    using FFontGetter = FSlateFontInfo (*)();
-
-    auto DoMakeCell(const FString& InText, FFontGetter InFont, const FLinearColor& InColor) const -> TSharedRef<SWidget>
+    virtual auto GenerateWidgetForColumn(const FName& InColumnName) -> TSharedRef<SWidget> override
     {
-        return SNew(SBox)
-            .Padding(FMargin(ck_insights_analyzer_tab::SectionSpacing * 0.5f, 0.0f))
-            .VAlign(VAlign_Center)
-            .HAlign(HAlign_Right)
-            [
-                SNew(STextBlock)
-                .Text(FText::FromString(InText))
-                .Font_Static(InFont)
-                .ColorAndOpacity(InColor)
-            ];
+        using namespace ck_insights_analyzer_tab;
+
+        if (ck::Is_NOT_Valid(_Node))
+        {
+            return SNullWidget::NullWidget;
+        }
+
+        if (InColumnName == TEXT("Timer"))
+        {
+            const TSharedRef<SHorizontalBox> Row = SNew(SHorizontalBox);
+
+            Row->AddSlot()
+               .AutoWidth()
+               [
+                   SNew(SExpanderArrow, SharedThis(this))
+                   .IndentAmount(12.0f)
+               ];
+
+            Row->AddSlot()
+               .AutoWidth()
+               .VAlign(VAlign_Center)
+               .Padding(0.0f, 0.0f, CkStyle::SpaceS, 0.0f)
+               [
+                   MakeDot(_Node->bIsAggregate ? CkStyle::TextMute() : SeverityColor(_Node->AvgInclusiveMs))
+               ];
+
+            Row->AddSlot()
+               .AutoWidth()
+               .VAlign(VAlign_Center)
+               [
+                   SNew(STextBlock)
+                   .Text(FText::FromString(_Node->DisplayName))
+                   .Font_Lambda([IsAggregate = _Node->bIsAggregate]()
+                   { return IsAggregate ? ItalicFont() : BodyFont(); })
+                   .ColorAndOpacity(_Node->bIsAggregate ? CkStyle::TextDim() : CkStyle::Text())
+                   .ToolTipText(FText::FromString(_Node->RawName))
+               ];
+
+            const FString Breadcrumb = Get_BreadcrumbSuffix(_Node->Breadcrumbs);
+            if (NOT Breadcrumb.IsEmpty())
+            {
+                Row->AddSlot()
+                   .AutoWidth()
+                   .VAlign(VAlign_Center)
+                   [
+                       SNew(STextBlock)
+                       .Text(FText::FromString(Breadcrumb))
+                       .Font_Static(&ItalicFont)
+                       .ColorAndOpacity(CkStyle::TextMute())
+                   ];
+            }
+
+            return Row;
+        }
+
+        if (InColumnName == TEXT("Strip"))
+        {
+            return SNew(SBox)
+                .Padding(FMargin(CkStyle::SpaceS, 0.0f))
+                .VAlign(VAlign_Center)
+                [
+                    SNew(SCkFramePresenceStrip)
+                    .Node(_Node)
+                    .AnalysedFrameIndices(_AnalysedFrameIndices)
+                    .OnFrameClicked(_OnStripFrameClicked)
+                    .OnRefineToRuns(_OnStripRefineToRuns)
+                ];
+        }
+
+        if (InColumnName == TEXT("Frames"))
+        {
+            const int32 AnalysedFrames = ck::IsValid(_AnalysedFrameIndices) ? _AnalysedFrameIndices->Num() : 0;
+
+            return MakeValueCell(
+                FString::Printf(TEXT("%llu/%d"), _Node->FramesPresent, AnalysedFrames),
+                &BodyFont,
+                PresenceColor(_Node->FramesPresent, AnalysedFrames));
+        }
+
+        if (InColumnName == TEXT("Incl"))
+        {
+            return MakeValueCell(
+                FCk_TimerCategorizer::FormatMs(_Node->AvgInclusiveMs),
+                &BodyBoldFont,
+                _Node->bIsAggregate ? CkStyle::TextDim() : SeverityColor(_Node->AvgInclusiveMs));
+        }
+
+        if (InColumnName == TEXT("Self"))
+        {
+            const bool ShowSelf = _Node->AvgExclusiveMs > 0.05;
+            return MakeValueCell(
+                ShowSelf ? FCk_TimerCategorizer::FormatMs(_Node->AvgExclusiveMs) : FString(),
+                &BodyFont, CkStyle::TextDim());
+        }
+
+        if (InColumnName == TEXT("Count"))
+        {
+            // Fractional, like the markdown TimerAverages rows: a timer hit on half the frames
+            // averages 0.5 calls, and rounding that to an integer erases the distinction.
+            return MakeValueCell(
+                (_Node->AvgCount > 1.0) ? FString::Printf(TEXT("%.1fx"), _Node->AvgCount) : FString(),
+                &BodyFont, CkStyle::TextMute());
+        }
+
+        if (InColumnName == TEXT("Pct"))
+        {
+            const double Pct = (_AvgFrameMs > 0.0)
+                ? (_Node->AvgInclusiveMs / _AvgFrameMs) * 100.0
+                : 0.0;
+
+            return SNew(SHorizontalBox)
+                + SHorizontalBox::Slot()
+                .AutoWidth()
+                .VAlign(VAlign_Center)
+                .Padding(CkStyle::SpaceS, 0.0f)
+                [
+                    MakeProportionBar(Pct, CkStyle::OverlayOf(SeverityColor(_Node->AvgInclusiveMs), 0.85f), 60.0f)
+                ]
+                + SHorizontalBox::Slot()
+                .AutoWidth()
+                .VAlign(VAlign_Center)
+                [
+                    SNew(STextBlock)
+                    .Text(FText::FromString(FString::Printf(TEXT("%.0f%%"), Pct)))
+                    .Font_Static(&SmallFont)
+                    .ColorAndOpacity(CkStyle::TextDim())
+                ];
+        }
+
+        return SNullWidget::NullWidget;
     }
 
 private:
-    TSharedPtr<FCk_HotPathNode> _Node;
-    double _FrameDurationMs = 0.0;
+    TSharedPtr<FCk_MergedHotPathNode> _Node;
+    double _AvgFrameMs = 0.0;
+    TSharedPtr<TArray<uint64>> _AnalysedFrameIndices;
+
+    FOnPresenceStripFrameClicked _OnStripFrameClicked;
+    FOnPresenceStripRefineToRuns _OnStripRefineToRuns;
 };
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -1119,6 +1356,47 @@ auto
               .FixedWidth(120.0f)
         );
 
+    SAssignNew(_MergedHotPathTree, STreeView<TSharedPtr<FCk_MergedHotPathNode>>)
+        .TreeItemsSource(&_MergedHotPathRoots)
+        .SelectionMode(ESelectionMode::Single)
+        .OnGenerateRow(this, &SCkInsightsAnalyzerTab::DoGenerateMergedHotPathRow)
+        .OnGetChildren_Lambda([](TSharedPtr<FCk_MergedHotPathNode> InNode, TArray<TSharedPtr<FCk_MergedHotPathNode>>& OutChildren)
+        {
+            if (InNode.IsValid())
+            {
+                OutChildren = InNode->Children;
+            }
+        })
+        .HeaderRow
+        (
+            SNew(SHeaderRow)
+            + SHeaderRow::Column(TEXT("Timer"))
+              .DefaultLabel(FText::FromString(TEXT("Timer")))
+              .FillWidth(1.0f)
+            + SHeaderRow::Column(TEXT("Strip"))
+              .DefaultLabel(FText::FromString(TEXT("Presence")))
+              .FixedWidth(300.0f)
+            + SHeaderRow::Column(TEXT("Frames"))
+              .DefaultLabel(FText::FromString(TEXT("Frames")))
+              .FixedWidth(76.0f)
+              .HAlignHeader(HAlign_Right)
+            + SHeaderRow::Column(TEXT("Incl"))
+              .DefaultLabel(FText::FromString(TEXT("Incl")))
+              .FixedWidth(76.0f)
+              .HAlignHeader(HAlign_Right)
+            + SHeaderRow::Column(TEXT("Self"))
+              .DefaultLabel(FText::FromString(TEXT("Self")))
+              .FixedWidth(76.0f)
+              .HAlignHeader(HAlign_Right)
+            + SHeaderRow::Column(TEXT("Count"))
+              .DefaultLabel(FText::FromString(TEXT("Count")))
+              .FixedWidth(64.0f)
+              .HAlignHeader(HAlign_Right)
+            + SHeaderRow::Column(TEXT("Pct"))
+              .DefaultLabel(FText::FromString(TEXT("% Frame")))
+              .FixedWidth(120.0f)
+        );
+
     return SNew(SBox)
         .Padding(CkStyle::SpaceM)
         [
@@ -1129,12 +1407,45 @@ auto
                 MakeHeading(TEXT("Game Thread Hot Paths"))
             ]
             + SVerticalBox::Slot()
+            .AutoHeight()
+            [
+                SNew(STextBlock)
+                .Font_Static(&ItalicFont)
+                .ColorAndOpacity(CkStyle::TextMute())
+                .Visibility_Lambda([this]() -> EVisibility
+                {
+                    return _DetailsAreAveraged ? EVisibility::HitTestInvisible : EVisibility::Collapsed;
+                })
+                .Text_Lambda([this]() -> FText
+                {
+                    return FText::FromString(_AveragedScopeLabel);
+                })
+            ]
+            + SVerticalBox::Slot()
             .FillHeight(1.0f)
             [
                 SNew(SOverlay)
                 + SOverlay::Slot()
                 [
-                    _HotPathTree.ToSharedRef()
+                    SNew(SBox)
+                    .Visibility_Lambda([this]() -> EVisibility
+                    {
+                        return _DetailsAreAveraged ? EVisibility::Collapsed : EVisibility::Visible;
+                    })
+                    [
+                        _HotPathTree.ToSharedRef()
+                    ]
+                ]
+                + SOverlay::Slot()
+                [
+                    SNew(SBox)
+                    .Visibility_Lambda([this]() -> EVisibility
+                    {
+                        return _DetailsAreAveraged ? EVisibility::Visible : EVisibility::Collapsed;
+                    })
+                    [
+                        _MergedHotPathTree.ToSharedRef()
+                    ]
                 ]
                 + SOverlay::Slot()
                 .HAlign(HAlign_Center)
@@ -1145,7 +1456,9 @@ auto
                     .ColorAndOpacity(CkStyle::TextMute())
                     .Visibility_Lambda([this]() -> EVisibility
                     {
-                        return (_HotPathRoots.Num() == 0)
+                        const auto ShownRows = _DetailsAreAveraged ? _MergedHotPathRoots.Num() : _HotPathRoots.Num();
+
+                        return (ShownRows == 0)
                             ? EVisibility::HitTestInvisible
                             : EVisibility::Collapsed;
                     })
@@ -1154,7 +1467,9 @@ auto
                         switch (_ResultsMode)
                         {
                             case EResultsMode::MultiFrame:
-                                return FText::FromString(TEXT("Range analyzed — click a Worst Frame row or a single chart bar to see its hot paths."));
+                                return FText::FromString(_DetailsAreAveraged
+                                    ? TEXT("No hot paths above threshold in the selected frames.")
+                                    : TEXT("No averaged frame for this analysis — click a Worst Frame row to drill in."));
                             case EResultsMode::SingleFrame:
                                 return FText::FromString(TEXT("No hot paths found for this frame."));
                             default:
@@ -1433,6 +1748,84 @@ auto
             _HotPathTree->SetItemExpansion(Child, true);
         }
     }
+}
+
+auto
+    SCkInsightsAnalyzerTab::
+    DoGenerateMergedHotPathRow(TSharedPtr<FCk_MergedHotPathNode> InNode,
+                               const TSharedRef<STableViewBase>& InOwnerTable)
+    -> TSharedRef<ITableRow>
+{
+    return SNew(SCkInsights_MergedHotPathRow, InOwnerTable)
+        .Node(InNode)
+        .AvgFrameMs(_AnalyzedFrameMs)
+        .AnalysedFrameIndices(_AnalysedFrameIndices)
+        .OnStripFrameClicked(FOnPresenceStripFrameClicked::CreateSP(this, &SCkInsightsAnalyzerTab::DoOnPresenceStripFrameClicked))
+        .OnStripRefineToRuns(FOnPresenceStripRefineToRuns::CreateSP(this, &SCkInsightsAnalyzerTab::DoOnPresenceStripRefineToRuns));
+}
+
+auto
+    SCkInsightsAnalyzerTab::
+    DoExpandMergedHotPathDefaults()
+    -> void
+{
+    if (ck::Is_NOT_Valid(_MergedHotPathTree))
+    {
+        return;
+    }
+
+    for (const auto& Root : _MergedHotPathRoots)
+    {
+        _MergedHotPathTree->SetItemExpansion(Root, true);
+        for (const auto& Child : Root->Children)
+        {
+            _MergedHotPathTree->SetItemExpansion(Child, true);
+        }
+    }
+}
+
+auto
+    SCkInsightsAnalyzerTab::
+    DoOnPresenceStripFrameClicked(uint64 InFrameIndex)
+    -> void
+{
+    if (NOT _Session.IsOpen() || _LoadingState == ELoadingState::Opening)
+    {
+        return;
+    }
+
+    if (ck::IsValid(_FrameBarChart))
+    {
+        _FrameBarChart->EnsureFrameVisible(InFrameIndex);
+        _FrameBarChart->SetSelection(InFrameIndex);
+    }
+
+    DoClearScreenshotSelection();
+    DoAnalyzeSingleFrame(InFrameIndex);
+}
+
+auto
+    SCkInsightsAnalyzerTab::
+    DoOnPresenceStripRefineToRuns(const TArray<FCk_FrameRun>& InRuns)
+    -> void
+{
+    if (NOT _Session.IsOpen() || _LoadingState == ELoadingState::Opening || InRuns.IsEmpty())
+    {
+        return;
+    }
+
+    if (ck::Is_NOT_Valid(_FrameBarChart))
+    {
+        // A refined selection the chart cannot show is still analysable, and reporting numbers the
+        // chart does not highlight beats dropping the gesture.
+        DoOnFrameSelectionChanged(InRuns);
+        return;
+    }
+
+    _FrameBarChart->SetSelection(InRuns);
+
+    // Through the chart's own normalization, so the analysis matches what the user sees selected.
+    DoOnFrameSelectionChanged(_FrameBarChart->Get_Selection());
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -2264,7 +2657,7 @@ auto
     const FString BaseName = FPaths::GetBaseFilename(_Session.GetFilePath());
     const FString DefaultName = _LastSingleResult.IsSet()
         ? FString::Printf(TEXT("%s_Frame%llu.json"), *BaseName, _LastSingleResult->FrameIndex)
-        : FString::Printf(TEXT("%s_Frames.json"), *BaseName);
+        : Get_MultiFrameExportName(BaseName, *_LastMultiStats);
 
     TArray<FString> OutFiles;
     const bool Saved = DesktopPlatform->SaveFileDialog(
@@ -2327,7 +2720,7 @@ auto
     if (ck::IsValid(_FrameBarChart))
     {
         _FrameBarChart->EnsureFrameVisible(FrameIndex);
-        _FrameBarChart->SetSelection(FrameIndex, FrameIndex);
+        _FrameBarChart->SetSelection(FrameIndex);
     }
     DoClearScreenshotSelection();
     DoAnalyzeSingleFrame(FrameIndex);
@@ -2364,7 +2757,7 @@ auto
     if (ck::IsValid(_FrameBarChart))
     {
         _FrameBarChart->EnsureFrameVisible(FrameIndex);
-        _FrameBarChart->SetSelection(FrameIndex, FrameIndex);
+        _FrameBarChart->SetSelection(FrameIndex);
     }
     DoAnalyzeSingleFrame(FrameIndex);
 }
@@ -2408,7 +2801,7 @@ auto
 
 auto
     SCkInsightsAnalyzerTab::
-    DoOnFrameSelectionChanged(uint64 StartFrame, uint64 EndFrame)
+    DoOnFrameSelectionChanged(const TArray<FCk_FrameRun>& InRuns)
     -> void
 {
     // Only Opening is blocked — during ReadingFrames the user can inspect loaded frames.
@@ -2416,14 +2809,21 @@ auto
 
     DoClearScreenshotSelection();
 
-    if (StartFrame == EndFrame)
+    if (InRuns.IsEmpty())
     {
-        DoAnalyzeSingleFrame(StartFrame);
+        DoClearResults();
+        DoRebuildSummaryStrip_TraceInfo();
+        DoSetStatus(TEXT("Selection cleared. Click a frame bar, or drag a range, in the chart."), ECk_Tone::Neutral);
+        return;
     }
-    else
+
+    if (InRuns.Num() == 1 && InRuns[0].FirstFrame == InRuns[0].LastFrame)
     {
-        DoAnalyzeFrameRange(StartFrame, EndFrame);
+        DoAnalyzeSingleFrame(InRuns[0].FirstFrame);
+        return;
     }
+
+    DoAnalyzeFrameSet(InRuns);
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -2463,6 +2863,7 @@ auto
 
     _ResultsMode = EResultsMode::None;
     _AnalyzedFrameMs = 0.0;
+    DoClearAveragedDetailScope();
 
     _HotPathRoots.Reset();
     _Categories.Reset();
@@ -2533,6 +2934,9 @@ auto
 
     if (ck::IsValid(_HotPathTree))
     { _HotPathTree->RebuildList(); }
+
+    if (ck::IsValid(_MergedHotPathTree))
+    { _MergedHotPathTree->RebuildList(); }
 }
 
 auto
@@ -2734,6 +3138,7 @@ auto
 
         _ResultsMode = EResultsMode::None;
         _AnalyzedFrameMs = 0.0;
+        DoClearAveragedDetailScope();
         _HotPathRoots.Reset();
         _Categories.Reset();
         _TopTimers.Reset();
@@ -2758,6 +3163,7 @@ auto
 
     _ResultsMode = EResultsMode::SingleFrame;
     _AnalyzedFrameMs = Result.FrameDurationMs;
+    DoClearAveragedDetailScope();
     _LastSingleResult = Result;   // retained for Export JSON
     _LastMultiStats.Reset();
     _HotPathRoots = FrameReport.BuildHotPathTree(_Session, Result);
@@ -2793,27 +3199,40 @@ auto
 
 auto
     SCkInsightsAnalyzerTab::
-    DoAnalyzeFrameRange(uint64 StartFrame, uint64 EndFrame)
+    DoAnalyzeFrameSet(const TArray<FCk_FrameRun>& InRuns)
     -> void
 {
     using namespace ck_insights_analyzer_tab;
 
-    const uint64 Count = EndFrame - StartFrame + 1;
-    DoSetStatus(FString::Printf(TEXT("Analyzing frames %llu-%llu (%llu frames)..."), StartFrame, EndFrame, Count),
-        ECk_Tone::Info);
+    const auto SelectedFrames = Get_RunFrameCount(InRuns);
+    DoSetStatus(FString::Printf(TEXT("Analyzing %s frames across %d range(s)..."),
+        *FormatWithCommas(SelectedFrames), InRuns.Num()), ECk_Tone::Info);
 
     FCk_MultiFrameReportConfig Config;
     Config.TargetFrameMs = TargetFrameMs;
     Config.Depth = _ReportDepth;
     Config.ApplyDepth();
+    Config.ComputeWaitAverages = true;
+    Config.BuildMergedHotPaths = true;
+    Config.ShowAllChildren = _ShowAllChildren;
 
     FCk_MultiFrameReport MultiReport(Config);
-    const uint64 EndFrameExclusive = EndFrame + 1;
-    DoSetReport(MultiReport.AnalyzeAndGenerate(_Session, StartFrame, EndFrameExclusive));
-    DoPopulateMultiFrame(MultiReport.GetStats());
+    DoSetReport(MultiReport.AnalyzeFrameSet(_Session, InRuns));
 
-    DoSetStatus(FString::Printf(TEXT("Analyzed frames %llu-%llu (%llu frames)"), StartFrame, EndFrame, Count),
-        ECk_Tone::Ok);
+    const auto& Stats = MultiReport.GetStats();
+
+    // Without the mean frame there is nothing to drive the detail panels with; DoPopulateMultiFrame
+    // then falls back to aggregate-only surfaces rather than showing a previous frame's numbers.
+    const auto HasAveragedFrame = Stats.AveragedFrame.IsSet();
+    CK_ENSURE_IF_NOT(HasAveragedFrame, TEXT("A multi-frame selection must produce a synthetic averaged frame"))
+    {}
+
+    DoPopulateMultiFrame(Stats);
+
+    DoSetStatus(FString::Printf(TEXT("Analyzed %s frames across %d range(s) — avg %.2fms%s"),
+        *FormatWithCommas(Stats.FrameCount), InRuns.Num(), Stats.AvgFrameMs,
+        HasAveragedFrame ? TEXT("") : TEXT("  |  no averaged frame: aggregates only")),
+        HasAveragedFrame ? FrameBudgetTone(Stats.AvgFrameMs) : ECk_Tone::Warn);
 }
 
 auto
@@ -2827,7 +3246,7 @@ auto
         return;
     }
 
-    DoOnFrameSelectionChanged(_FrameBarChart->GetSelectionStart(), _FrameBarChart->GetSelectionEnd());
+    DoOnFrameSelectionChanged(_FrameBarChart->Get_Selection());
 }
 
 auto
@@ -2836,25 +3255,95 @@ auto
     -> void
 {
     _ResultsMode = EResultsMode::MultiFrame;
-    _AnalyzedFrameMs = 0.0;
 
-    _HotPathRoots.Reset();
-    _Categories.Reset();
-    _TopTimers.Reset();
-    _WaitRows.Reset();
     _LastSingleResult.Reset();
     _LastMultiStats = Stats;      // retained for Export JSON
 
     _WorstFrames = Stats.WorstFrames;
     _CategoryAverages = Stats.CategoryAverages;
 
+    DoPopulateDetailPanels_Averaged(Stats);
+
     if (ck::IsValid(_HotPathTree)) { _HotPathTree->RequestTreeRefresh(); }
+    if (ck::IsValid(_MergedHotPathTree)) { _MergedHotPathTree->RequestTreeRefresh(); }
+    DoExpandHotPathDefaults();
+    DoExpandMergedHotPathDefaults();
     DoRebuildCategoryRows();
     DoRebuildTopTimerRows();
     DoRebuildWaitRows();
     DoRebuildWorstFrameRows();
     DoRebuildCategoryAvgRows();
     DoRebuildSummaryStrip_MultiFrame(Stats);
+}
+
+auto
+    SCkInsightsAnalyzerTab::
+    DoPopulateDetailPanels_Averaged(const FCk_MultiFrameStats& Stats)
+    -> void
+{
+    using namespace ck_insights_analyzer_tab;
+
+    _AnalyzedFrameMs = 0.0;
+    DoClearAveragedDetailScope();
+
+    _HotPathRoots.Reset();
+    _Categories.Reset();
+    _TopTimers.Reset();
+    _WaitRows.Reset();
+
+    if (NOT Stats.AveragedFrame.IsSet())
+    {
+        return;
+    }
+
+    const auto& Averaged = Stats.AveragedFrame.GetValue();
+
+    FCk_FrameReportConfig Config;
+    Config.TargetFrameMs = TargetFrameMs;
+    Config.Depth = _ReportDepth;
+    Config.ApplyDepth();
+
+    FCk_FrameReport FrameReport(Config);
+
+    _AnalyzedFrameMs = Stats.AvgFrameMs;
+
+    // The averaged frame is a mean of quantities with no session window behind it — BuildHotPathTree
+    // rejects it. The merged nodes carry the same tree plus the per-frame presence it took a
+    // multi-frame pass to know.
+    _MergedHotPathRoots = Stats.MergedHotPaths;
+    _AnalysedFrameIndices = MakeShared<TArray<uint64>>(Stats.AnalysedFrameIndices);
+
+    {
+        TraceServices::FAnalysisSessionReadScope ReadScope = _Session.CreateReadScope();
+        const FCk_FrameReport::FTimerNameMap TimerNames = FCk_FrameReport::BuildTimerNameMap(_Session);
+        _Categories = FrameReport.ComputeCategorySummary(Averaged, TimerNames);
+        _TopTimers = FrameReport.ComputeTopTimers(Averaged, TimerNames, TopTimerCount);
+    }
+
+    // Wait rows cannot be derived from the synthesized average (no session time window to re-read);
+    // the worker aggregates them per-thread into WaitAverages instead.
+    _WaitRows = ck::algo::Filter(Stats.WaitAverages,
+        [&](const FCk_WaitThreadSummary& InWait)
+        {
+            return InWait.WaitMs >= Config.MinWaitMs;
+        });
+
+    _DetailsAreAveraged = true;
+    _AveragedScopeLabel = Get_AveragedScopeLabel(Stats);
+}
+
+auto
+    SCkInsightsAnalyzerTab::
+    DoClearAveragedDetailScope()
+    -> void
+{
+    _DetailsAreAveraged = false;
+    _AveragedScopeLabel.Reset();
+
+    _MergedHotPathRoots.Reset();
+    _AnalysedFrameIndices.Reset();
+
+    if (ck::IsValid(_MergedHotPathTree)) { _MergedHotPathTree->RequestTreeRefresh(); }
 }
 
 auto
@@ -3021,7 +3510,18 @@ auto
 
     DoRebuildSummaryStrip_TraceInfo();
 
-    DoAddSummaryTile(TEXT("Analyzed"), FormatWithCommas(Stats.FrameCount), CkStyle::Accent());
+    // The detail panels below are a mean frame when AveragedFrame drove them, so the tile that names
+    // the scope says "averaged over" rather than the ambiguous "analyzed".
+    DoAddSummaryTile(
+        _DetailsAreAveraged ? TEXT("Averaged Over") : TEXT("Analyzed"),
+        FString::Printf(TEXT("%s frames"), *FormatWithCommas(Stats.FrameCount)),
+        CkStyle::Accent());
+
+    if (_DetailsAreAveraged && Stats.SelectedRuns.Num() > 1)
+    {
+        DoAddSummaryTile(TEXT("Ranges"), FString::Printf(TEXT("%d"), Stats.SelectedRuns.Num()), CkStyle::TextDim());
+    }
+
     DoAddSummaryTile(TEXT("Avg"), FString::Printf(TEXT("%.2fms"), Stats.AvgFrameMs), FrameBudgetColor(Stats.AvgFrameMs));
     DoAddSummaryTile(TEXT("P95"), FString::Printf(TEXT("%.2fms"), Stats.P95FrameMs), FrameBudgetColor(Stats.P95FrameMs));
     DoAddSummaryTile(TEXT("P99"), FString::Printf(TEXT("%.2fms"), Stats.P99FrameMs), FrameBudgetColor(Stats.P99FrameMs));

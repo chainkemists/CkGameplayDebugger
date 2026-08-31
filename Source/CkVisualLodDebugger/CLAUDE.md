@@ -7,10 +7,13 @@ this module.
 
 **Purpose:** Standalone Slate debugger for `CkVisualLod` — budgeted SKMC-proxy ↔ GPU-batched-crowd
 LOD arbitration. Per-domain view of budgets (near/lock/unbudgeted charges), crowd pool occupancy,
-the resolved local view, per-tick flip activity, a sortable member roster (representation,
+the resolved local view, per-tick flip activity, a default-collapsed, separately scrollable runtime
+tuner workspace, a sortable member roster (representation,
 distance, in-view, fade, slot, flags), a member detail rail (fade phase, anim caches, rendering
 participation), an event log, fault alerts (view unresolved, pool exhausted), a **Freeze** hold
-for eject-and-inspect, and **PMG world markers** colored by representation.
+for eject-and-inspect, **PMG world markers** colored by representation, and default-collapsed
+runtime tuners for the selected arbiter and every crowd render band, including each band's far
+renderer profile.
 
 Launcher: category **Systems / 50**, tab `CkVisualLodDebugger`, console `ck.VisualLodDebugger`,
 icon `ECk_Icon::IsmRenderer`.
@@ -24,23 +27,32 @@ ring = unrendered · TextMute, hidden skipped). UI wording: the near representat
 **SkelMesh**, not "Proxy" — the framework's `PromotedProxy`/IskmProxy vocabulary is renderer-side
 (the pooled SKMC proxies a batched-crowd instance) and reads backwards to a user, for whom the
 near one IS the real skeletal mesh. Keep code identifiers framework-named; keep UI labels
-user-named. The mockup's far-shadow/lighting *switches* are a
-preview of a planned CkVisualLod feature; this module renders those flags **display-only** until
-that feature lands.
+user-named. Far shadow/lighting profiles are now authored CkVisualLod render bands; this module
+renders their effective flags and runtime values without retaining their assets. Runtime tuner controls
+mutate only the arbiter-owned complete snapshot; they never modify config/profile assets.
 
 ## Architecture
 
 Aggro-pattern collector + window:
 
-- `Data/CkVisualLodDebugger_Types.h` — POD snapshots (arbiter info incl. config echo, view, pools,
-  rendering flags; member rows).
+- `Data/CkVisualLodDebugger_Types.h` — POD snapshots (arbiter info incl. complete authored/live
+  tuner trees, view, pools, authored profile names as identity labels, rendering flags; member rows
+  with current render band). Never retain a data asset in a Slate attribute.
 - `Data/CkVisualLodDebugger_DataCollector` — `Collect(UWorld*)` walks arbiter then member fragment
   views via the transient entity, reads ONLY public Utils plus the documented pure-debug fragment
   reads (each carries a why-comment).
 - `Window/SCkVisualLodDebuggerWindow` — the rendering policy is documented at the top of its
   header and is load-bearing: **structure built once; values via TAttribute lambdas over `_Live`;
-  rebuilds only on three signatures** (arbiter set, crowd count, alert set). Member tallies are
-  computed once per gated tick (`FTallies`), never per-cell.
+  rebuilds only on three signatures** (arbiter set, crowd topology, alert set). Member tallies are
+  computed once per gated tick (`FTallies`), never per-cell. The overview is monitoring-only:
+  `Budgets & crowd pools | View | Activity`, with each pane bounded and locally scrollable. The
+  full-width **Tuners** disclosure sits immediately below it; collapsed means its splitter slot uses
+  `SizeToContent` with a collapsed child and reserves no expanded height. Expanded, the tuner body and
+  investigation workspace share a resizable 5px vertical splitter, while the tuner's own 5px horizontal splitter divides bounded,
+  independently scrollable `Arbiter runtime tuners | Crowd tuners` panes. Crowd monitoring and
+  crowd tuning have separate retained hosts and are populated/cleared together on topology changes.
+  The investigation row remains `roster | (detail | recent activity)` with 5px splitters and no
+  layout-local fixed rail or event-log dimensions.
 
 ## The CkFoundation debug surface this module consumes
 
@@ -48,9 +60,19 @@ Added for this debugger (C++-only statics; no BP/AS exposure by design):
 
 - Arbiter: `Get_LastView`, `Get_{Promotes,Demotes,Preempts}ThisTick` ("flips STARTED by the last
   update"), `Get_IsFrozen`/`Request_SetFrozen`, `Get_NumCrowds`/`Get_CrowdPoolDebugInfo`.
+- Runtime tuning: `Get_RuntimeTuners`, `Request_SetRuntimeTuners`, and
+  `Request_ResetRuntimeTuners`. Inline controls cover arbiter decisions/fade anchors, each crowd's
+  speed-driven animation and band boundaries, plus every active render band's renderer-profile
+  flags, draw distances, bounds, light channels, and far-animation policy. Profile controls are
+  index-bound to the crowd/band snapshot, never the selected member, so they remain editable when a
+  band is empty or its crowd is lazy. Every edit sends the complete validated snapshot so same-frame
+  commits accumulate and malformed values publish nothing.
+  LOD scale and authored LOD-distance fields are deliberately not surfaced until CkIskm has a
+  production consumer.
 - Member: `Get_LastDistance`/`Get_LastInView` ("as of the last update that RANKED this member";
   -1 = never ranked), `Get_FadePhase`, `Get_PromotedViaLock`/`Get_PromotedUnbudgeted`/
-  `Get_PreemptDemote`, `Get_{Proxy,Far}SequenceIndex`/`Get_{Proxy,Far}Rate`.
+  `Get_PreemptDemote`, `Get_{Proxy,Far}SequenceIndex`/`Get_{Proxy,Far}Rate`, and
+  `Get_RenderBandIndex`.
 
 ## Semantics worth knowing before trusting the numbers
 
@@ -80,3 +102,6 @@ Added for this debugger (C++-only statics; no BP/AS exposure by design):
    path, and the whole set clears on toggle-off, domain switch, world/session invalidation, EndPIE.
 4. `Is_VisualLodPickCandidate` is THE ONE predicate (picker filter + entity-target route). Two
    predicates would be two answers to one question.
+5. Don't write the config data asset or arbiter fragments from Slate. Every tuner commit is a
+   public deferred request; Reset restores the authored snapshot without dirtying content. Use the
+   window's optimistic complete-snapshot path, never a local per-control shadow value.

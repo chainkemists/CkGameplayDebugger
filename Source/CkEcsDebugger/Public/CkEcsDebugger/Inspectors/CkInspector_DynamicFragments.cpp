@@ -100,8 +100,7 @@ namespace
         if (const auto* EnumProp = CastField<FEnumProperty>(InProperty))
         {
             const auto* Enum = EnumProp->GetEnum();
-            auto NumericValue = int64{};
-            EnumProp->GetUnderlyingProperty()->GetValue_InContainer(InContainer, &NumericValue);
+            const auto NumericValue = EnumProp->GetUnderlyingProperty()->GetSignedIntPropertyValue(ValuePtr);
             const auto DisplayName = ck::dynamic::Resolve_EnumValueDisplayName(InFragmentType, Enum, NumericValue);
             return { DisplayName, CkStyle::Value_Enum() };
         }
@@ -159,7 +158,7 @@ namespace
             return { Obj->GetName(), CkStyle::Value_Object() };
         }
 
-        // ---- Struct types (order matters — check specific before generic fallback)
+        // ---- Struct types (order matters - check specific before generic fallback)
 
         if (const auto* StructProp = CastField<FStructProperty>(InProperty))
         {
@@ -263,7 +262,7 @@ auto FCkInspector_DynamicFragments::BuildFragmentWidget(
             const auto* HandlePtr = StructProp->ContainerPtrToValuePtr<FCk_Handle>(StructMemory);
             const auto HandleValue = *HandlePtr;
 
-            // Property name in the key column (plain label — the value column is the
+            // Property name in the key column (plain label - the value column is the
             // clickable navigator now, so the key no longer needs to be a button).
             Grid->AddSlot(0, Row)
                 .Padding(FCkDebuggerStyle::Padding_Small)
@@ -315,7 +314,7 @@ auto FCkInspector_DynamicFragments::BuildFragmentWidget(
 
     // ---- Fragment-level verbs -------------------------------------------------
     // This inspector already holds the fragment's UScriptStruct per section, which is exactly what the
-    // two type-addressed requests take — so the verbs cost nothing to wire. The struct is held WEAKLY
+    // two type-addressed requests take - so the verbs cost nothing to wire. The struct is held WEAKLY
     // (it is a UObject) and re-resolved on every fire; the entity is captured by value and re-validated.
     //
     // Mark-Replication-Dirty is only OFFERED when the fragment was registered as replicated: the Util
@@ -333,7 +332,7 @@ auto FCkInspector_DynamicFragments::BuildFragmentWidget(
     Actions.Add(FCkInspector_Action
     {
         FText::FromString(TEXT("Remove")),
-        FText::FromString(TEXT("Request_TryRemove — drops this dynamic fragment from the entity. No-op if it is already gone.")),
+        FText::FromString(TEXT("Request_TryRemove - drops this dynamic fragment from the entity. No-op if it is already gone.")),
         [CapturedEntity, WeakStruct]()
         {
             auto MutableEntity = CapturedEntity;
@@ -350,7 +349,7 @@ auto FCkInspector_DynamicFragments::BuildFragmentWidget(
         Actions.Add(FCkInspector_Action
         {
             FText::FromString(TEXT("Mark Rep Dirty")),
-            FText::FromString(TEXT("Request_MarkReplicationDirty — re-sends this fragment on the next replication pass.")),
+            FText::FromString(TEXT("Request_MarkReplicationDirty - re-sends this fragment on the next replication pass.")),
             [CapturedEntity, WeakStruct]()
             {
                 auto MutableEntity = CapturedEntity;

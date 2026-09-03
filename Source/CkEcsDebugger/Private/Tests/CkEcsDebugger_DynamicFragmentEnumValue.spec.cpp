@@ -10,6 +10,7 @@
 #include "CkJolt/Query/CkJoltQuery_Data.h"
 #include "CkTimer/CkTimer_Fragment_Data.h"
 
+#include "Engine/EngineTypes.h"
 #include "StructUtils/InstancedStruct.h"
 #include "UObject/UnrealType.h"
 #include "Widgets/Text/STextBlock.h"
@@ -53,18 +54,6 @@ namespace ck_ecs_debugger_dynamic_fragment_enum_value_tests
         return false;
     }
 
-    auto FindNonZeroEnumValue(const UEnum& InEnum) -> int64
-    {
-        for (auto Index = 0; Index < InEnum.NumEnums(); ++Index)
-        {
-            const auto Value = InEnum.GetValueByIndex(Index);
-            if (Value != 0 && NOT InEnum.HasMetaData(TEXT("Hidden"), Index))
-            { return Value; }
-        }
-
-        return 0;
-    }
-
     auto AnySectionHasKeyValuePair(
         const TArray<ICkDebuggerComponentInspector_Base::FInspectorSection>& InSections,
         const FString& InExpectedKey,
@@ -97,13 +86,14 @@ bool FCkEcsDebuggerDynamicFragmentEnumValue_UsesFieldAddress::RunTest(const FStr
 
     const auto* Enum = EnumProperty->GetEnum();
     const auto* UnderlyingProperty = EnumProperty->GetUnderlyingProperty();
-    TestNotNull(TEXT("fixture enum metadata resolves"), Enum);
+    TestNotNull(TEXT("fixture enum descriptor resolves"), Enum);
     TestNotNull(TEXT("fixture enum has an underlying property"), UnderlyingProperty);
     if (Enum == nullptr || UnderlyingProperty == nullptr)
     { return false; }
 
-    const auto ExpectedValue = FindNonZeroEnumValue(*Enum);
-    TestTrue(TEXT("fixture enum has a nonzero visible value"), ExpectedValue != 0);
+    // Explicit runtime values keep the fixture independent of stripped UEnum metadata.
+    const auto ExpectedValue = static_cast<int64>(ECk_Timer_CountDirection::CountDown);
+    TestTrue(TEXT("fixture uses an explicit nonzero CountDirection value"), ExpectedValue != 0);
     TestTrue(TEXT("fixture enum field is not at the container start"), EnumProperty->GetOffset_ForInternal() > 0);
     if (ExpectedValue == 0 || EnumProperty->GetOffset_ForInternal() <= 0)
     { return false; }
@@ -140,12 +130,12 @@ bool FCkEcsDebuggerDynamicFragmentEnumValue_UsesFieldAddress::RunTest(const FStr
     const auto* ByteFragmentType = FCk_Jolt_QueryFilter::StaticStruct();
     const auto* ByteProperty = CastField<FByteProperty>(ByteFragmentType->FindPropertyByName(TEXT("_Channel")));
     TestNotNull(TEXT("byte-enum fixture exposes the FByteProperty"), ByteProperty);
-    TestNotNull(TEXT("byte-enum fixture exposes metadata"), ByteProperty != nullptr ? ByteProperty->Enum.Get() : nullptr);
+    TestNotNull(TEXT("byte-enum fixture exposes an enum descriptor"), ByteProperty != nullptr ? ByteProperty->Enum.Get() : nullptr);
     if (ByteProperty == nullptr || ByteProperty->Enum == nullptr)
     { return false; }
 
-    const auto ByteValue = FindNonZeroEnumValue(*ByteProperty->Enum);
-    TestTrue(TEXT("byte-enum fixture has a nonzero visible value"), ByteValue != 0);
+    const auto ByteValue = static_cast<int64>(ECC_WorldDynamic);
+    TestTrue(TEXT("byte-enum fixture uses an explicit nonzero collision channel"), ByteValue != 0);
     if (ByteValue == 0)
     { return false; }
 

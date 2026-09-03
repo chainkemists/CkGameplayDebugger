@@ -11,6 +11,8 @@ class SScrollBox;
 namespace ck_debugger_panel_inspector
 {
     auto Should_TickInspector(bool InCanInspect, bool InWantsTickWhenNotInspectable) -> bool;
+    auto Matches_SectionQuery(const FString& InQuery, const FString& InInspectorName,
+        const FString& InSectionName = FString{}) -> bool;
 }
 
 enum class ECkInspectorDisplayMode : uint8
@@ -35,7 +37,7 @@ public:
     /**
      * The one entry point every rebuild TRIGGER goes through (selection change, panel filter,
      * display-mode flip, a style-revision bump, a deferred structural request). While an interactive
-     * row reports an active edit the request is parked on the edit guard — deferred, never dropped —
+     * row reports an active edit the request is parked on the edit guard - deferred, never dropped -
      * and Tick performs it the moment the edit ends. Construct calls RebuildInspectors directly:
      * there is nothing to eat. Public because external triggers (the window's style watcher) are
      * legitimate rebuild sources.
@@ -65,7 +67,7 @@ private:
 
     auto Build_MultiEntityInspector_GroupByInspector(const TArray<FCk_Handle>& Entities) -> TSharedRef<SWidget>;
     auto Build_MultiEntityInspector_GroupByEntity(const TArray<FCk_Handle>& Entities) -> TSharedRef<SWidget>;
-    auto Build_EntitySubSection(const FCk_Handle& Entity, const TSharedPtr<ICkDebuggerComponentInspector_Base>& Inspector, int32 OuterIndex, int32 InnerIndex) -> TSharedRef<SWidget>;
+    auto Build_EntitySubSection(const FCk_Handle& Entity, const TSharedPtr<ICkDebuggerComponentInspector_Base>& Inspector, int32 OuterIndex, int32 InnerIndex) -> TSharedPtr<SWidget>;
     auto OnDisplayModeChanged(ECkInspectorDisplayMode NewMode) -> void;
     auto Format_EntityDisplayName(const FCk_Handle& Entity) const -> FText;
 
@@ -75,12 +77,12 @@ private:
 
     // Panel-level search (distinct from the per-inspector SCkDebuggerWidget_SearchBars,
     // which filter rows INSIDE an inspector). This pair filters whole inspector SECTIONS
-    // by Get_ComponentName: _PanelFilterString hides non-matching sections outright,
+    // by component name or displayed sub-section name: _PanelFilterString hides non-matching sections outright,
     // _PanelHighlightString dims them via RenderOpacity instead of hiding them.
-    auto Matches_PanelFilter(const TSharedPtr<ICkDebuggerComponentInspector_Base>& Inspector) const -> bool;
-    auto Get_PanelHighlightOpacity(const TSharedPtr<ICkDebuggerComponentInspector_Base>& Inspector) const -> float;
+    auto Matches_PanelFilter(const TSharedPtr<ICkDebuggerComponentInspector_Base>& Inspector, const FText& InSectionName = FText{}) const -> bool;
+    auto Get_PanelHighlightOpacity(const TSharedPtr<ICkDebuggerComponentInspector_Base>& Inspector, const FText& InSectionName = FText{}) const -> float;
 
-    // Owner-chain breadcrumb (root › … › selected) pinned above the sections —
+    // Owner-chain breadcrumb (root › … › selected) pinned above the sections -
     // rebuilt only on selection change (stable-identity rule).
     auto RebuildBreadcrumb() -> void;
 
@@ -101,7 +103,7 @@ private:
     TMap<TPair<int32, int32>, TSharedPtr<SBox>> _InspectorContentContainers;
     TArray<FCk_Handle> _CurrentInspectedEntities;
 
-    // Diff-mode state. The label sets hold STRINGS only — nothing here retains a PIE handle, so the
+    // Diff-mode state. The label sets hold STRINGS only - nothing here retains a PIE handle, so the
     // session-invalidation boundary has nothing extra to clear.
     bool _DiffMode = false;
     TMap<int32, TSet<FString>> _DiffLabelsByInspector;

@@ -1,4 +1,4 @@
-# CkEcsDebugger — Development Guidelines
+# CkEcsDebugger - Development Guidelines
 
 > **Read [`../CkDebuggerCommon/CLAUDE.md`](../CkDebuggerCommon/CLAUDE.md) first.**
 > It covers cross-debugger conventions: shared widgets, copy / selectable text
@@ -26,8 +26,8 @@ Window (SCkDebuggerWindow_Main)
 ```
 
 ### Key Models (shared state)
-- `FCkDebuggerModel_EntitySelection` — selected entities + history for back/forward navigation
-- `FCkDebuggerModel_WorldContext` — selected world, entity cache, world change broadcast
+- `FCkDebuggerModel_EntitySelection` - selected entities + history for back/forward navigation
+- `FCkDebuggerModel_WorldContext` - selected world, entity cache, world change broadcast
 
 World/session changes are atomic ownership boundaries. The main window routes
 both the common debugger-session invalidation signal and
@@ -69,20 +69,27 @@ and relinks every surviving node. Do not replace the `TSharedPtr` nodes or fall 
 `ForceFullRefresh`; selection, expansion, and cached labels depend on stable node identity.
 
 ### Inspector System
-- `ICkDebuggerComponentInspector_Base` — interface with lifecycle: `CanInspect`, `Build_Inspector`, `Tick`, `OnDeactivated`
-- `FCkDebuggerInspectorRegistry` — auto-registration via `CK_REGISTER_DEBUGGER_INSPECTOR` macro
-- `FCkInspectorWidgetBuilder` — fluent API for building label-value grids with filtering
+- `ICkDebuggerComponentInspector_Base` - interface with lifecycle: `CanInspect`, `Build_Inspector`, `Tick`, `OnDeactivated`
+- `FCkDebuggerInspectorRegistry` - auto-registration via `CK_REGISTER_DEBUGGER_INSPECTOR` macro
+- `FCkInspectorWidgetBuilder` - fluent API for building label-value grids with filtering
+- Panel Filter/Highlight match both the inspector category and each displayed sub-section name in
+  single-entity and both multi-selection layouts. Spaces/underscores are ignored for identifier
+  searches (`WorldItem` matches `World Item`); a category query such as `Dynamic` keeps all of its
+  sub-sections. Nonmatching multi-section groups must not leave empty entity/inspector panels.
+- Dynamic enum formatting must read the field's `ContainerPtrToValuePtr` address. An
+  `FEnumProperty`'s underlying numeric property is relative to that enum value, not the containing
+  fragment; using `GetValue_InContainer` on the fragment can display its first byte instead.
 
 ### Graph System
-- `FCkEcsGraphModel` — pure data: nodes + edges from entity relationships
-- `ICkEcsGraphLayoutStrategy` — layout algorithm (currently `FCkDirectionalGraphLayout`)
-- `SCkDebuggerWidget_GraphView` — SCanvas + OnPaint rendering with pan/zoom/drag
+- `FCkEcsGraphModel` - pure data: nodes + edges from entity relationships
+- `ICkEcsGraphLayoutStrategy` - layout algorithm (currently `FCkDirectionalGraphLayout`)
+- `SCkDebuggerWidget_GraphView` - SCanvas + OnPaint rendering with pan/zoom/drag
 
 ## ECS-Specific Safety Rule
 
 ### Inspector lifecycle: use `OnDeactivated` for cleanup
 
-When an inspector allocates per-entity state (debug draw, registered delegates, etc.), clean it up in `OnDeactivated()` — NOT in the destructor alone. `OnDeactivated` is called when:
+When an inspector allocates per-entity state (debug draw, registered delegates, etc.), clean it up in `OnDeactivated()` - NOT in the destructor alone. `OnDeactivated` is called when:
 - The inspected entity changes
 - The inspector panel rebuilds
 - The panel is destroyed
@@ -96,7 +103,7 @@ When an inspector allocates per-entity state (debug draw, registered delegates, 
   them into window-wide command groups.
 - Inspector priority determines sort order (lower = higher in panel): EntityInfo=10, Transform=20, TagSet=25, Network=30, Relationships=40, etc.
 - Inspectors that need per-inspector search set `IsFilterable() -> true`
-- `FCkDebuggerStyle` (Slate brushes, text styles, padding + graph-node size constants, SVG icon registry) **moved to `CkDebuggerCommon/Styles/CkDebuggerStyle.h`** in the 2026-08-09 common-widget consolidation — it is now the whole suite's style set. Include the common path; do NOT call `Initialize`/`Shutdown` from this module (CkDebuggerCommon owns its lifetime). Cross-debugger colour tokens still live in `CkStyle::`.
+- `FCkDebuggerStyle` (Slate brushes, text styles, padding + graph-node size constants, SVG icon registry) **moved to `CkDebuggerCommon/Styles/CkDebuggerStyle.h`** in the 2026-08-09 common-widget consolidation - it is now the whole suite's style set. Include the common path; do NOT call `Initialize`/`Shutdown` from this module (CkDebuggerCommon owns its lifetime). Cross-debugger colour tokens still live in `CkStyle::`.
 - `SCkDebuggerWidget_SearchBar` is now a compatibility alias for the promoted `SCkDebug_SearchBar` (`CkDebuggerCommon/Search/`). New code uses the common spelling; the alias header is deleted in a later unit of that campaign.
 - `FCkInspectorWidgetBuilder` composes rows out of `SCkDebug_KeyValueRow`. `AddHeader` emits `SCkDebug_SectionHeader`.
 - **Interactive rows.** The builder's `AddActionRow` / `AddToggleRow` / `AddNumericRow` / `AddIntegerRow` /
@@ -121,7 +128,7 @@ When an inspector allocates per-entity state (debug draw, registered delegates, 
 4. Implement `Get_ComponentName`, `CanInspect`, `Build_Inspector`, `Get_SortPriority`
 5. If filterable: override `IsFilterable() -> true` and implement `Build_Inspector(Entity, Filter)`
 6. If cleanup needed: override `OnDeactivated()`
-7. Use `SCkDebug_KeyValueRow` (via `FCkInspectorWidgetBuilder::AddRow`) for value rows — values are automatically copyable. For custom text, use `SCkDebug_SelectableLabel` (see `CkDebuggerCommon/CLAUDE.md`).
+7. Use `SCkDebug_KeyValueRow` (via `FCkInspectorWidgetBuilder::AddRow`) for value rows - values are automatically copyable. For custom text, use `SCkDebug_SelectableLabel` (see `CkDebuggerCommon/CLAUDE.md`).
 8. Add module dependency to `CkEcsDebugger.Build.cs` if needed
 
 ## Adding a Graph Relationship

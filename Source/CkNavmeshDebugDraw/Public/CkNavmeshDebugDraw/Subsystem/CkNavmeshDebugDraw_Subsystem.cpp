@@ -93,9 +93,6 @@ TryAppendTileGeometry(
                      TEXT("Ck navmesh draw requires [{}] area buffers"),
                      RECAST_MAX_AREAS)
     {
-    }
-    if (NOT AreaStorageIsReady)
-    {
         return false;
     }
 
@@ -109,9 +106,6 @@ TryAppendTileGeometry(
         CK_ENSURE_IF_NOT(HasTriangleIndices,
                          TEXT("Ck navmesh draw rejected non-triangular Recast area indices [{}]"),
                          Indices.Num())
-        {
-        }
-        if (NOT HasTriangleIndices)
         {
             return false;
         }
@@ -132,9 +126,6 @@ TryAppendTileGeometry(
                                          InGeometry.MeshVerts.IsValidIndex(CIndex);
             CK_ENSURE_IF_NOT(IndicesAreValid, TEXT("Ck navmesh draw rejected an invalid Recast vertex index"))
             {
-            }
-            if (NOT IndicesAreValid)
-            {
                 return false;
             }
 
@@ -143,9 +134,6 @@ TryAppendTileGeometry(
             const auto C = InGeometry.MeshVerts[CIndex] + InDrawOffset;
             const auto TriangleIsFinite = IsFinite(A) && IsFinite(B) && IsFinite(C);
             CK_ENSURE_IF_NOT(TriangleIsFinite, TEXT("Ck navmesh draw rejected non-finite Recast geometry"))
-            {
-            }
-            if (NOT TriangleIsFinite)
             {
                 return false;
             }
@@ -697,9 +685,6 @@ auto
     const auto WorldIsValid = ck::IsValid(GetWorld()) && GetWorld()->IsGameWorld();
     CK_ENSURE_IF_NOT(WorldIsValid, TEXT("Ck navmesh draw activation requires a game world"))
     {
-    }
-    if (NOT WorldIsValid)
-    {
         return;
     }
 
@@ -1057,9 +1042,6 @@ auto
     const auto BucketIsValid = Bucket != nullptr;
     CK_ENSURE_IF_NOT(BucketIsValid, TEXT("Ck navmesh draw lost pending bucket [{}]"), BucketKey)
     {
-    }
-    if (NOT BucketIsValid)
-    {
         ++_Impl->_CurrentBucketIndex;
         return;
     }
@@ -1308,9 +1290,6 @@ auto
             TEXT("Ck navmesh draw rejected an invalid completed scan bucket [{}]"),
             BucketKey)
         {
-        }
-        if (NOT CandidateIsValid)
-        {
             return false;
         }
 
@@ -1350,9 +1329,6 @@ auto
         CK_ENSURE_IF_NOT(ComponentWasCreated,
             TEXT("Ck navmesh draw failed to create a completed-scan bucket component"))
         {
-        }
-        if (NOT ComponentWasCreated)
-        {
             for (auto& NewComponentPair : NewComponents)
             {
                 NewComponentPair.Value->DestroyComponent();
@@ -1379,9 +1355,6 @@ auto
         const auto ComponentWasRegistered = Component->IsRegistered();
         CK_ENSURE_IF_NOT(ComponentWasRegistered,
             TEXT("Ck navmesh draw failed to register a completed-scan bucket component"))
-        {
-        }
-        if (NOT ComponentWasRegistered)
         {
             Component->DestroyComponent();
             for (auto& NewComponentPair : NewComponents)

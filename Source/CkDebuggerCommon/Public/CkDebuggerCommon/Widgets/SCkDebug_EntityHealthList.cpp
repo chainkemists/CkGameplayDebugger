@@ -182,8 +182,6 @@ auto SCkDebug_EntityHealthList::Set_Items(TArray<FCkDebug_EntityHealthItem> InIt
         RenderedContentChanged,
         Error);
     CK_ENSURE_IF_NOT(ReconciliationSucceeded, TEXT("Cannot set entity health rows: {}"), Error)
-    {}
-    if (NOT ReconciliationSucceeded)
     { return false; }
 
     _Items = MoveTemp(Reconciled);

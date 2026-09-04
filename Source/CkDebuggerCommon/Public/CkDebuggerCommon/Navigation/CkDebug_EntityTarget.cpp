@@ -36,32 +36,24 @@ auto FCkDebug_EntityTargetRegistry::Register(FCkDebug_EntityTargetRoute InRoute)
     CK_ENSURE_IF_NOT(HasOwner,
         TEXT("Cannot register entity-target route [{}] without an owning module"),
         InRoute.Get_TabId())
-    {}
-    if (NOT HasOwner)
     { return 0; }
 
     const auto HasTabId = NOT InRoute.Get_TabId().IsNone();
     CK_ENSURE_IF_NOT(HasTabId,
         TEXT("Cannot register entity-target route from module [{}] without a tab id"),
         InRoute.Get_OwnerModule())
-    {}
-    if (NOT HasTabId)
     { return 0; }
 
     const auto HasCanTarget = InRoute.Has_CanTarget();
     CK_ENSURE_IF_NOT(HasCanTarget,
         TEXT("Cannot register entity-target route [{}] without a CanTarget callback"),
         InRoute.Get_TabId())
-    {}
-    if (NOT HasCanTarget)
     { return 0; }
 
     const auto HasOpenAndTarget = InRoute.Has_OpenAndTarget();
     CK_ENSURE_IF_NOT(HasOpenAndTarget,
         TEXT("Cannot register entity-target route [{}] without an OpenAndTarget callback"),
         InRoute.Get_TabId())
-    {}
-    if (NOT HasOpenAndTarget)
     { return 0; }
 
     const auto RegistrationId = _NextRegistrationId++;
@@ -76,8 +68,6 @@ auto FCkDebug_EntityTargetRegistry::Register(FCkDebug_EntityTargetRoute InRoute)
             InRoute.Get_TabId(),
             Existing->Route.Get_OwnerModule(),
             InRoute.Get_OwnerModule())
-        {}
-        if (NOT OwnerMatches)
         { return 0; }
 
         Existing->Route = MoveTemp(InRoute);

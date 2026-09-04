@@ -40,6 +40,25 @@ namespace ck_jolt_bake_inspector_preview
     }
 }
 
+auto
+    ck::jolt_bake_inspector::
+    Get_CookedPreviewLabel(const ck::jolt::cook::FCk_Jolt_MeshShapeAuditResult& InAudit)
+    -> const TCHAR*
+{
+    using enum ck::jolt::cook::ECk_Jolt_MeshShapeAuditCookedPreviewAvailability;
+    switch (InAudit._CookedPreviewAvailability)
+    {
+        case MissingCookedAsset: return TEXT("CURRENT COOKED: MISSING");
+        case IncompatibleStale: return TEXT("CURRENT COOKED: STALE/INCOMPATIBLE");
+        case CorruptBlob: return TEXT("CURRENT COOKED: CORRUPT");
+        case NonTriMesh: return TEXT("CURRENT COOKED: NON-TRI-MESH");
+        case Available: return InAudit._bCookedPreviewTruncated
+                                  ? TEXT("CURRENT COOKED JOLT SHAPE (TRUNCATED)")
+                                  : TEXT("CURRENT COOKED JOLT SHAPE");
+    }
+    return TEXT("CURRENT COOKED: UNKNOWN");
+}
+
 auto FCkJoltBakeInspectorPreviewAdapter::Set_Target(TSharedPtr<FCk_DebugScene_Target> InTarget) -> void
 { _Target = MoveTemp(InTarget); }
 
@@ -94,8 +113,7 @@ auto FCkJoltBakeInspectorPreviewAdapter::Reconcile(const ck::jolt::cook::FCk_Jol
         InAudit._bNormalizedPreviewTruncated ? TEXT("NORMALIZED JOLT CANDIDATE (TRUNCATED)") : TEXT("NORMALIZED JOLT CANDIDATE"),
         FLinearColor{0.15f, 0.75f, 0.85f}});
     Labels.Emplace(FCk_DebugScene_Label{FVector{2.0 * HalfWidth, 0.0, 0.0},
-        InAudit._bCookedPreviewUnavailable ? TEXT("CURRENT COOKED JOLT SHAPE (UNAVAILABLE)")
-        : InAudit._bCookedPreviewTruncated ? TEXT("CURRENT COOKED JOLT SHAPE (TRUNCATED)") : TEXT("CURRENT COOKED JOLT SHAPE"),
+        ck::jolt_bake_inspector::Get_CookedPreviewLabel(InAudit),
         FLinearColor{0.30f, 0.90f, 0.35f}});
     _Target->Set_LabelChannel(ck_jolt_bake_inspector_preview::LabelChannel, MoveTemp(Labels));
 }

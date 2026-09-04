@@ -9,7 +9,7 @@
 
 class SListViewBase;
 template <typename ItemType> class SListView;
-class SSearchBox;
+class SCkDebug_SearchBar;
 class SCkJoltBakeInspectorPreview;
 
 struct FCkJoltBakeInspectorRow
@@ -42,7 +42,7 @@ private:
     auto RefreshInventory() -> void;
     auto OnRefreshClicked() -> FReply;
     auto RefilterRows() -> void;
-    auto OnSearchChanged(const FText& InText) -> void;
+    auto OnSearchChanged(const FString& InText) -> void;
     auto OnSelectionChanged(FRowPtr InRow, ESelectInfo::Type InSelection) -> void;
     auto AnalyzeSelectedRow() -> void;
     auto AnalyzeRow(const FRowPtr& InRow) -> void;
@@ -59,7 +59,10 @@ private:
     auto CanBakeSelected() const -> bool;
     auto CanBakeAll() const -> bool;
     auto GetSummaryText() const -> FText;
-    auto GetSelectedDetailText() const -> FText;
+    auto GetMetricText(int32 InMetric) const -> FText;
+    auto GetSelectedSourceText() const -> FText;
+    auto GetSelectedCookedText() const -> FText;
+    auto GetSelectedDiagnosisText() const -> FText;
 
     TArray<FRowPtr> _AllRows;
     TArray<FRowPtr> _VisibleRows;
@@ -70,6 +73,6 @@ private:
     ck::jolt_bake_inspector::FCkJoltBakeInspectorAnalysisQueue _AnalysisState;
     TUniquePtr<ck::jolt::FCk_Jolt_ScopedGlobalInit> _AnalysisJoltLease;
     TSharedPtr<SListView<FRowPtr>> _ListView;
-    TSharedPtr<SSearchBox> _SearchBox;
+    TSharedPtr<SCkDebug_SearchBar> _SearchBar;
     TSharedPtr<SCkJoltBakeInspectorPreview> _Preview;
 };

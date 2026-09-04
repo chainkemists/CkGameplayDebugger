@@ -28,7 +28,7 @@ auto FCkJoltBakeInspectorModule::StartupModule() -> void
         TEXT("CkJoltBakeInspector"), ck_jolt_bake_inspector::TabId,
         FText::FromString(TEXT("[CK] Jolt Bake Inspector")),
         FText::FromString(TEXT("Inspect mesh-shape bake readiness, winding repairs, and predicted failures")),
-        ECk_Icon::Entity, ECkDebuggerToolCategory::Systems, 31}
+        ECk_Icon::Jolt, ECkDebuggerToolCategory::Systems, 31}
         .Set_TabFactory(FCkDebuggerToolTabFactory::CreateLambda([this]
         { return OnSpawnTab(FSpawnTabArgs{TSharedPtr<SWindow>{}, FTabId{ck_jolt_bake_inspector::TabId}}); })));
 

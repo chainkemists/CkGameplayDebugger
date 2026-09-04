@@ -194,6 +194,8 @@ class CKDEBUGGERCOMMON_API SCkDebug_3dPreviewViewport final : public SViewport
     }
     SLATE_ARGUMENT(FCkDebug3dPreviewDescriptor, Descriptor)
     SLATE_ARGUMENT(TSharedPtr<ICkDebug3dPreviewAdapter>, Adapter)
+    /** Informational, click-passive content placed below the shared top control strip. */
+    SLATE_ARGUMENT(TSharedPtr<SWidget>, SafeAreaOverlay)
     SLATE_ARGUMENT(TArray<FCkDebug3dCameraBookmark>, CameraBookmarks)
     SLATE_EVENT(FOnCkDebug3dBookmarksChanged, OnCameraBookmarksChanged)
     SLATE_EVENT(FOnCkDebug3dCameraOrientationChanged, OnCameraOrientationChanged)
@@ -265,6 +267,12 @@ class CKDEBUGGERCOMMON_API SCkDebug_3dPreviewViewport final : public SViewport
     Get_RenderModeOptions() const -> TArray<ECkDebug3dRenderMode>;
     auto
     Get_CommonControlsWidget() const -> TSharedPtr<SWidget>;
+    /** The caller-owned informational overlay hosted below the shared toolbar, if supplied. */
+    auto
+    Get_SafeAreaOverlayWidget() const -> TSharedPtr<SWidget>;
+    /** Insets informational overlay content below the non-wrapping shared top control strip. */
+    auto
+    Get_SafeAreaOverlayPadding() const -> FMargin;
     virtual auto
     Tick(const FGeometry& InAllottedGeometry, double InCurrentTime, float InDeltaTime) -> void override;
 
@@ -282,6 +290,7 @@ class CKDEBUGGERCOMMON_API SCkDebug_3dPreviewViewport final : public SViewport
     TArray<uint64> _SelectionKeys;
     TArray<uint64> _IsolatedKeys;
     TSharedPtr<SWidget> _CommonControls;
+    TSharedPtr<SWidget> _SafeAreaOverlay;
     bool _FollowSelection = false;
     bool _IsolateSelection = false;
     bool _TornDown = false;

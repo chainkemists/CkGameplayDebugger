@@ -1,5 +1,6 @@
 #include "CkJoltBakeInspector/Window/SCkJoltBakeInspectorWindow.h"
 #include "CkJoltBakeInspector/Viewport/SCkJoltBakeInspectorPreview.h"
+#include "CkJoltBakeInspector/Viewport/CkJoltBakeInspectorPreviewAdapter.h"
 #include "CkJoltBakeInspector/CkJoltBakeInspector_Policy.h"
 
 #include "Misc/AutomationTest.h"
@@ -37,7 +38,14 @@ auto FCkJoltBakeInspectorPreview_RendersValueOnlyAuditTriangles::RunTest(const F
         FVector{0.0, 0.0, 0.0}, FVector{0.0, 100.0, 0.0}, FVector{100.0, 0.0, 0.0}});
     Audit._CookedPreviewTriangles.Emplace(ck::jolt::cook::FCk_Jolt_MeshShapeAuditTriangle{
         FVector{0.0, 0.0, 0.0}, FVector{100.0, 0.0, 0.0}, FVector{0.0, 0.0, 100.0}});
-    Audit._bCookedPreviewUnavailable = false;
+    Audit._CookedPreviewAvailability = ck::jolt::cook::ECk_Jolt_MeshShapeAuditCookedPreviewAvailability::Available;
+    TestEqual(TEXT("available cooked preview has its specific label"),
+        FString{ck::jolt_bake_inspector::Get_CookedPreviewLabel(Audit)}, FString{TEXT("CURRENT COOKED JOLT SHAPE")});
+    using enum ck::jolt::cook::ECk_Jolt_MeshShapeAuditCookedPreviewAvailability;
+    Audit._CookedPreviewAvailability = CorruptBlob;
+    TestEqual(TEXT("corrupt cooked preview has its specific label"),
+        FString{ck::jolt_bake_inspector::Get_CookedPreviewLabel(Audit)}, FString{TEXT("CURRENT COOKED: CORRUPT")});
+    Audit._CookedPreviewAvailability = Available;
     Preview->Show_Audit(Audit);
     TestTrue(TEXT("source, normalized, and current cooked audit triangles give the adapter valid frame bounds"),
         Preview->Get_RenderedBounds().IsValid != 0);

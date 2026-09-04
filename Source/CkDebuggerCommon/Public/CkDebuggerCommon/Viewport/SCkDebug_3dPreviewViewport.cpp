@@ -23,6 +23,7 @@
 #include "Widgets/Layout/SScrollBox.h"
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/SOverlay.h"
+#include "Widgets/SNullWidget.h"
 #include "Widgets/Text/STextBlock.h"
 
 namespace ck_debug_3d_preview_viewport
@@ -34,6 +35,7 @@ constexpr float DefaultCameraSpeed = 1.0f;
 constexpr float MinimumCameraSpeed = 0.00001f;
 constexpr float MaximumCameraSpeed = 10000.0f;
 constexpr int32 BookmarkCount = 10;
+constexpr float TopControlStripSafeHeight = 36.0f;
 
 auto
 SanitizeCameraSpeed(float InCameraSpeed) -> float
@@ -812,6 +814,7 @@ auto
 {
     _Descriptor = InArgs._Descriptor;
     _Adapter = InArgs._Adapter;
+    _SafeAreaOverlay = InArgs._SafeAreaOverlay;
     _CameraBookmarks = InArgs._CameraBookmarks;
     _CameraBookmarks.SetNum(ck_debug_3d_preview_viewport::BookmarkCount);
     _OnCameraBookmarksChanged = InArgs._OnCameraBookmarksChanged;
@@ -1027,13 +1030,21 @@ auto
     }
     CompleteControls->AddSlot().AutoWidth()[SNew(SCkDebug_IconToolbar).Actions(MoveTemp(Actions))];
     _CommonControls = CompleteControls;
+    const TSharedRef<SWidget> SafeAreaOverlay = _SafeAreaOverlay.IsValid()
+                                                     ? _SafeAreaOverlay.ToSharedRef()
+                                                     : SNullWidget::NullWidget;
     {
         ChildSlot[SNew(SOverlay) +
                   SOverlay::Slot()
-                      .HAlign(HAlign_Fill)
-                      .VAlign(VAlign_Top)[SNew(SScrollBox).Orientation(Orient_Horizontal) +
-                                          SScrollBox::Slot()[_CommonControls.ToSharedRef()]] +
-                  SOverlay::Slot()
+                       .HAlign(HAlign_Fill)
+                       .VAlign(VAlign_Top)[SNew(SScrollBox).Orientation(Orient_Horizontal) +
+                                           SScrollBox::Slot()[_CommonControls.ToSharedRef()]] +
+                   SOverlay::Slot()
+                       .HAlign(HAlign_Fill)
+                       .VAlign(VAlign_Top)
+                       .Padding(Get_SafeAreaOverlayPadding())
+                       [SNew(SBox).Visibility(EVisibility::HitTestInvisible)[SafeAreaOverlay]] +
+                   SOverlay::Slot()
                       .HAlign(HAlign_Left)
                       .VAlign(VAlign_Bottom)[SNew(SCkDebug_OrientationCube)
                                                  .Visibility_Lambda(
@@ -1468,6 +1479,20 @@ auto
     -> TSharedPtr<SWidget>
 {
     return _CommonControls;
+}
+auto
+    SCkDebug_3dPreviewViewport::
+    Get_SafeAreaOverlayWidget() const
+    -> TSharedPtr<SWidget>
+{
+    return _SafeAreaOverlay;
+}
+auto
+    SCkDebug_3dPreviewViewport::
+    Get_SafeAreaOverlayPadding() const
+    -> FMargin
+{
+    return {8.0f, ck_debug_3d_preview_viewport::TopControlStripSafeHeight, 8.0f, 8.0f};
 }
 auto
     SCkDebug_3dPreviewViewport::

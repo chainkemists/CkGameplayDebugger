@@ -58,6 +58,12 @@ public:
     Set_NavmeshTriangles(
         const TArray<FVector>& InNavTriVerts,
         uint64 InGeometryRevision) -> void;
+    /** The GroundNav field copy the scene draws, beside the revision derived from its cache key. A
+     *  revision that has not moved is not a change, so the same copy costs nothing to re-submit. */
+    auto
+    Set_GroundNavField(
+        const FCkCrowdDebugger_GroundNavField& InField,
+        uint64 InRevision) -> void;
     auto
     Set_PathNetworkRibbons(
         const TArray<FCkCrowdDebugger_PathNetworkRibbonSnapshot>& InRibbons) -> void;

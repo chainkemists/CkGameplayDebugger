@@ -36,6 +36,8 @@ public class CkCrowdDebugger : CkModuleRules
             "CkEditorTools",
 
 			"CkNavigation",
+			"CkGroundNav", // GroundNav field snapshot + shadow-parity diagnostics, copied as values
+			"CkShapes",    // the agent profile a GroundNav bake takes names its standing shape
 			"CkVoxelNav",
 			"CkPathNetwork",
 			"CkCrowd",

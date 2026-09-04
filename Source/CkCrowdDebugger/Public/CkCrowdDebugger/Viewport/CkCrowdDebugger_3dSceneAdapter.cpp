@@ -192,6 +192,126 @@ Get_RecastBucketSignature(
     return Signature;
 }
 
+// The layer palette CkGroundNav's own draw reads, reproduced here because its Get_LayerColor is
+// file-local to that draw TU and nothing exports it. Kept in the same order for the same reason the
+// outlines are read from the same arrays: two pictures of one field that agreed about the geometry
+// and disagreed about the colour would still be two pictures.
+auto
+Get_GroundNavLayerColor(int32 InLayerIndex) -> FLinearColor
+{
+    static const FColor Palette[] = {
+        FColor{ 80, 200, 120},
+        FColor{ 90, 150, 255},
+        FColor{255, 190,  70},
+        FColor{225, 110, 220},
+        FColor{110, 230, 230},
+        FColor{255, 130, 110}};
+
+    return FLinearColor{Palette[FMath::Abs(InLayerIndex) % UE_ARRAY_COUNT(Palette)]};
+}
+
+// Plate outlines and boundary runs share one scene role, so each identity is biased into its own bit
+// of the space: a plate and a run must never intern the same key. Identity 0 is the "no item"
+// sentinel elsewhere in this adapter, which the bias also keeps clear of.
+constexpr auto GroundNavPlateIdentityBit = 0x1ull << 62;
+constexpr auto GroundNavBoundaryIdentityBit = 0x1ull << 63;
+
+// Everything below the two bias bits, which is where the hash goes.
+constexpr auto GroundNavIdentityPayloadMask = (0x1ull << 62) - 1;
+
+// Two independently-seeded 32-bit hashes stacked into that payload rather than one hash zero-extended
+// into it.
+//
+// The engine's GetTypeHash is 32-bit, and an identity is what a retained item is INTERNED under: two
+// plates that collided would not draw wrong for a frame, they would be one item for as long as the
+// field stands. A field's worth of plates is well inside the range where a 32-bit birthday collision
+// is a real event; 62 bits is not.
+constexpr auto GroundNavIdentitySeed = 0x9E3779B9u;
+
+auto
+Make_GroundNavIdentity(
+    uint32 InLow,
+    uint32 InHigh) -> uint64
+{
+    return ((static_cast<uint64>(InHigh) << 32) | static_cast<uint64>(InLow)) &
+           GroundNavIdentityPayloadMask;
+}
+
+// A plate's own geometry rather than its slot in the array. A rebake that reorders the plate list is
+// not a scene change, and index-keyed items would churn every outline in it. Two plates with the same
+// bounds on the same layer collapse to one item, which is what they would be to look at anyway.
+auto
+Get_GroundNavPlateIdentity(
+    const ck::groundnav::FCk_GroundNav_DebugPlate& InPlate) -> uint64
+{
+    auto Low = GetTypeHash(InPlate._Bounds.Min);
+    Low = HashCombineFast(Low, GetTypeHash(InPlate._Bounds.Max));
+    Low = HashCombineFast(Low, GetTypeHash(InPlate._LayerIndex));
+
+    // The same members in the opposite order off a different seed: two runs of one hash over one
+    // input would agree by construction and buy no width at all.
+    auto High = HashCombineFast(GroundNavIdentitySeed, GetTypeHash(InPlate._LayerIndex));
+    High = HashCombineFast(High, GetTypeHash(InPlate._Bounds.Max));
+    High = HashCombineFast(High, GetTypeHash(InPlate._Bounds.Min));
+
+    return Make_GroundNavIdentity(Low, High) | GroundNavPlateIdentityBit;
+}
+
+// The rim flag rides in the identity because it decides the run's COLOUR: a run that stops being a
+// tile rim once its neighbour bakes is a different thing to look at, and a cached instance keyed
+// without it would keep the old colour.
+auto
+Get_GroundNavBoundaryIdentity(
+    const ck::groundnav::FCk_GroundNav_DebugBoundary& InRun) -> uint64
+{
+    auto Low = GetTypeHash(InRun._Start);
+    Low = HashCombineFast(Low, GetTypeHash(InRun._End));
+    Low = HashCombineFast(Low, GetTypeHash(InRun._LayerIndex));
+    Low = HashCombineFast(Low, GetTypeHash(static_cast<int32>(InRun._IsTileRim)));
+
+    auto High = HashCombineFast(GroundNavIdentitySeed, GetTypeHash(static_cast<int32>(InRun._IsTileRim)));
+    High = HashCombineFast(High, GetTypeHash(InRun._LayerIndex));
+    High = HashCombineFast(High, GetTypeHash(InRun._End));
+    High = HashCombineFast(High, GetTypeHash(InRun._Start));
+
+    return Make_GroundNavIdentity(Low, High) | GroundNavBoundaryIdentityBit;
+}
+
+// A plate outline as twelve retained EDGES rather than the shape builder's wire box: a wire box is
+// committed to a line CHANNEL, and a channel is published whole, so it carries no per-plate identity
+// for a reorder to survive. The same box CkGroundNav's own plate mode draws.
+//
+// The edges are thin axis-aligned boxes rather than bars. A plate's bounds are axis-aligned, so no
+// edge needs orienting, and the unit cube is twelve triangles where the bar's cylinder is a hundred -
+// which is the difference between a field's worth of outlines costing thousands of triangles and tens
+// of thousands.
+auto
+Append_GroundNavPlateOutline(
+    const FBox&                  InBounds,
+    float                        InThickness,
+    const FLinearColor&          InColor,
+    FCk_DebugScene_ShapeBuilder& OutShapes) -> void
+{
+    const auto Size = InBounds.GetSize();
+    const auto Centre = InBounds.GetCenter();
+    const auto Width = static_cast<double>(InThickness);
+
+    for (const auto Z : {InBounds.Min.Z, InBounds.Max.Z})
+    {
+        for (const auto Y : {InBounds.Min.Y, InBounds.Max.Y})
+        { OutShapes.Add_Box(FVector{Centre.X, Y, Z}, FVector{Size.X, Width, Width}, FRotator::ZeroRotator, InColor); }
+
+        for (const auto X : {InBounds.Min.X, InBounds.Max.X})
+        { OutShapes.Add_Box(FVector{X, Centre.Y, Z}, FVector{Width, Size.Y, Width}, FRotator::ZeroRotator, InColor); }
+    }
+
+    for (const auto X : {InBounds.Min.X, InBounds.Max.X})
+    {
+        for (const auto Y : {InBounds.Min.Y, InBounds.Max.Y})
+        { OutShapes.Add_Box(FVector{X, Y, Centre.Z}, FVector{Width, Width, Size.Z}, FRotator::ZeroRotator, InColor); }
+    }
+}
+
 auto
 AppendTwoSidedTriangle(
     const FCk_DebugScene_Triangle& InTriangle,
@@ -727,6 +847,163 @@ auto
             }
         }
     }
+    // The GroundNav field, drawn from the debugger's own copy of one bake: _Plates gives one wire-box
+    // outline per plate, _Boundary gives one bar per run plus the tick that says which side the floor
+    // is on. Those are the two arrays CkGroundNav's own Plates and Boundary modes draw, read here
+    // directly, so nothing is derived that the bake did not already publish and the two overlays agree
+    // by construction.
+    //
+    // A field that is not drawable has a STATUS to report rather than geometry, and a status is a row
+    // in a panel, never a shape: the role submits nothing and the copy's own _Status says why.
+    {
+        constexpr auto GroundNavRole = ECkCrowdDebugger_3dSceneRole::GroundNavField;
+        const auto& GroundNav = InSnapshot._GroundNav;
+        const auto CanReuseGroundNav = PreviousState._WorldEpoch == InSnapshot._WorldEpoch &&
+                                       _GroundNavRevision == GroundNav._Revision;
+        if (CanReuseGroundNav)
+        {
+            if (const auto* PreviousKeys = PreviousState._RoleItems.Find(GroundNavRole))
+            {
+                for (const auto Key : *PreviousKeys)
+                {
+                    const auto* Instances = _StaticInstances.Find(Key);
+                    if (Instances == nullptr || NOT InTarget.Upsert_Item(Key, *Instances))
+                    {
+                        InTarget.Abort_Reconcile();
+                        return RestoreAndFail();
+                    }
+                    _RoleItems.FindOrAdd(GroundNavRole).Add(Key);
+                }
+            }
+        }
+        else
+        {
+            TRACE_CPUPROFILER_EVENT_SCOPE(CkCrowdDbg_AdapterGroundNavBuild);
+            _GroundNavRevision = GroundNav._Revision;
+
+            // The copy holds the snapshot cache's own immutable value, so a world with no ground-nav
+            // volume - or a tick before the first bake - hands over nothing at all. Null is NO FIELD,
+            // not an empty one: no item is submitted, and the identities the last field left behind
+            // are swept below exactly as a rebake sweeps them.
+            const auto* Field = GroundNav._Field._Snapshot.Get();
+            const auto FieldIsDrawable = Field != nullptr && Field->Get_IsDrawable();
+            // Lifted for the reason CkGroundNav lifts it: a run drawn exactly on the surface it bounds
+            // disappears into that surface from every angle a camera actually looks from.
+            const auto BoundaryLift = FieldIsDrawable
+                ? FVector{0.0, 0.0, static_cast<double>(Field->_CellSizeUu) * 0.5}
+                : FVector::ZeroVector;
+
+            auto LiveIdentities = TSet<uint64>{};
+            auto PlateCount = 0;
+            auto BoundaryCount = 0;
+
+            // The key IS the content that produced it, so anything already retained under it is still
+            // correct: a rebuild re-submits the cached instances and builds only what is new. That is
+            // what makes a reordered plate list cost nothing.
+            const auto SubmitGroundNavItem = [&](uint64 InIdentity, auto&& InBuildShapes) -> bool
+            {
+                const auto Key = MakeItemKey(GroundNavRole, InIdentity);
+                LiveIdentities.Add(InIdentity);
+                _GroundNavIdentities.Add(InIdentity);
+
+                if (const auto* Cached = _StaticInstances.Find(Key))
+                {
+                    if (NOT InTarget.Upsert_Item(Key, *Cached))
+                    { return false; }
+                    _RoleItems.FindOrAdd(GroundNavRole).Add(Key);
+                    return true;
+                }
+
+                auto Shapes = FCk_DebugScene_ShapeBuilder{};
+                InBuildShapes(Shapes);
+                auto Instances = Shapes.Get_Instances();
+                if (Instances.IsEmpty() || NOT InTarget.Upsert_Item(Key, Instances))
+                { return false; }
+
+                _StaticInstances.Add(Key, MoveTemp(Instances));
+                _RoleItems.FindOrAdd(GroundNavRole).Add(Key);
+                return true;
+            };
+
+            for (auto Index = 0; FieldIsDrawable && Index < Field->_Plates.Num(); ++Index)
+            {
+                const auto& Plate = Field->_Plates[Index];
+                if (Plate._Bounds.IsValid == 0)
+                { continue; }
+
+                const auto Identity = ck_crowd_debugger_3d_scene_adapter::Get_GroundNavPlateIdentity(Plate);
+                if (LiveIdentities.Contains(Identity))
+                { continue; }
+
+                const auto Color = ck_crowd_debugger_3d_scene_adapter::Get_GroundNavLayerColor(Plate._LayerIndex);
+                // A perfectly flat plate has no thickness to draw, so it gets just enough to be a box
+                // - the same single unit CkGroundNav's plate mode adds to the extent.
+                const auto Outline = Plate._Bounds.ExpandBy(FVector{0.0, 0.0, 1.0});
+                if (NOT SubmitGroundNavItem(Identity, [&](FCk_DebugScene_ShapeBuilder& OutShapes)
+                    {
+                        ck_crowd_debugger_3d_scene_adapter::Append_GroundNavPlateOutline(
+                            Outline, 1.5f, Color, OutShapes);
+                    }))
+                {
+                    InTarget.Abort_Reconcile();
+                    return RestoreAndFail();
+                }
+                ++PlateCount;
+            }
+
+            for (auto Index = 0; FieldIsDrawable && Index < Field->_Boundary.Num(); ++Index)
+            {
+                const auto& Run = Field->_Boundary[Index];
+                const auto Start = Run._Start + BoundaryLift;
+                const auto End = Run._End + BoundaryLift;
+                if (NOT ck_crowd_debugger_3d_scene_adapter::IsFinite(Start) ||
+                    NOT ck_crowd_debugger_3d_scene_adapter::IsFinite(End) ||
+                    FVector::DistSquared(Start, End) <= UE_SMALL_NUMBER)
+                { continue; }
+
+                const auto Identity = ck_crowd_debugger_3d_scene_adapter::Get_GroundNavBoundaryIdentity(Run);
+                if (LiveIdentities.Contains(Identity))
+                { continue; }
+
+                const auto Color = Run._IsTileRim
+                    ? GroundNav._TileRimColor
+                    : ck_crowd_debugger_3d_scene_adapter::Get_GroundNavLayerColor(Run._LayerIndex);
+                // Which side of the run the floor is on. Two runs a cell apart facing each other and
+                // two facing away are a corridor and a pillar, and the runs alone cannot say which.
+                const auto Midpoint = (Start + End) * 0.5;
+                const auto Inward = FVector{Run._InwardNormalXY.X, Run._InwardNormalXY.Y, 0.0};
+                // CkGroundNav's line widths read as bar RADII here: a retained run is a solid, not a
+                // one-pixel line, and the numbers are kept so the two draws stay comparable by eye.
+                if (NOT SubmitGroundNavItem(Identity, [&](FCk_DebugScene_ShapeBuilder& OutShapes)
+                    {
+                        OutShapes.Add_Bar(Start, End, 3.0f, Color);
+                        if (NOT Inward.IsNearlyZero())
+                        { OutShapes.Add_Bar(Midpoint, Midpoint + (Inward * 20.0), 1.5f, Color); }
+                    }))
+                {
+                    InTarget.Abort_Reconcile();
+                    return RestoreAndFail();
+                }
+                ++BoundaryCount;
+            }
+
+            // Identities a rebake dropped leave both maps, so neither grows as the field reshapes.
+            for (auto It = _GroundNavIdentities.CreateIterator(); It; ++It)
+            {
+                if (LiveIdentities.Contains(*It))
+                { continue; }
+
+                _StaticInstances.Remove(MakeItemKey(GroundNavRole, *It));
+                _InternalItemKeys.Remove(
+                    FString::Printf(TEXT("%d:%llu"), static_cast<int32>(GroundNavRole),
+                                    static_cast<unsigned long long>(*It)));
+                It.RemoveCurrent();
+            }
+
+            _GroundNavPlateCount = PlateCount;
+            _GroundNavBoundaryCount = BoundaryCount;
+        }
+    }
     if (InSnapshot._PathNetwork._Revision == _RibbonRevision)
     {
         for (auto Index = 0; Index < InSnapshot._PathNetwork._Ribbons.Num(); ++Index)
@@ -985,6 +1262,7 @@ auto
     InTarget.HideAll();
     _WorldEpoch = 0;
     _RecastRevision = MAX_uint64;
+    _GroundNavRevision = MAX_uint64;
     _RibbonRevision = MAX_uint64;
     _VoxelRevision = MAX_uint64;
     _RibbonCount = 0;
@@ -1002,6 +1280,9 @@ auto
     _RecastBucketSignatures.Reset();
     _RecastTriangleCount = 0;
     _RecastRenderedTriangleCount = 0;
+    _GroundNavIdentities.Reset();
+    _GroundNavPlateCount = 0;
+    _GroundNavBoundaryCount = 0;
     _RibbonTriangleCounts.Reset();
     _RibbonRenderedTriangleCounts.Reset();
     _RibbonOutlinePointCounts.Reset();
@@ -1126,4 +1407,18 @@ auto
     -> int32
 {
     return _RecastRenderedTriangleCount;
+}
+auto
+    FCkCrowdDebugger_3dSceneAdapter::
+    Get_GroundNavPlateCount() const
+    -> int32
+{
+    return _GroundNavPlateCount;
+}
+auto
+    FCkCrowdDebugger_3dSceneAdapter::
+    Get_GroundNavBoundaryCount() const
+    -> int32
+{
+    return _GroundNavBoundaryCount;
 }

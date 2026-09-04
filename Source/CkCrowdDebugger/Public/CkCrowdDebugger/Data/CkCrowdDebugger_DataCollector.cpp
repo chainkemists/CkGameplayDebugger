@@ -20,6 +20,12 @@
 
 #include "CkEcsExt/Transform/CkTransform_Utils.h"
 
+#include "CkGroundNav/Debug/CkGroundNav_DebugSnapshot.h"
+#include "CkGroundNav/Facade/CkGroundNav_WorldFieldRegistry.h"
+#include "CkGroundNav/Field/CkGroundNav_Field.h"
+#include "CkGroundNav/Shadow/CkGroundNav_Shadow_Fragment.h"
+#include "CkGroundNav/Volume/CkGroundNavVolume_Utils.h"
+
 #include "CkNavigation/Nav/CkNav_Algorithm.h"
 #include "CkNavigation/Nav/CkNav_Fragment.h"
 #include "CkNavigation/Nav/CkNav_Fragment_Data.h"
@@ -51,6 +57,12 @@
 
 namespace
 {
+	// The window's copy of a field draws PLATE outlines and BOUNDARY runs and nothing per-cell, so the
+	// per-cell list is capped hard. The counts every panel reads stay exact whatever the cap
+	// (Make_DebugSnapshotFromField caps the list only), and an uncapped field is tens of thousands of
+	// cell values copied on every rebake for a view that never draws one.
+	constexpr auto GroundNavSnapshotMaxCells = 4096;
+
 	auto EnumName(ECk_PathNetwork_RouteFailReason InReason) -> FString
 	{
 		const auto* Enum = StaticEnum<ECk_PathNetwork_RouteFailReason>();
@@ -112,6 +124,14 @@ auto FCkCrowdDebugger_DataCollector::Reset_ForWorldChange() -> void
 	_NavGeomLastPullTime = -1.0;
 	_NavGeomSignature = 0;
 	_PlayerPawnEntity = FCk_Handle{};
+
+	// The copy and the diagnostics name ground in the world that is going away, so they go with it. The
+	// snapshot cache is left alone: its key carries the world's name, so the first key built in the new
+	// world differs and the cache replaces itself on its own terms.
+	_GroundNavField = FCkCrowdDebugger_GroundNavField{};
+	_GroundNavFieldSampled = false;
+	_GroundNavRevision = 0;
+	_ShadowParity = FCkCrowdDebugger_ShadowParity{};
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -142,6 +162,12 @@ auto
 	_NavmeshStatus._SupportedAgents = 0;
 	_NavmeshStatus._LastRegenTimestamp = -1.0;
 	_NavmeshStatus._NavBoundsValid = false;
+
+	// Only the two flags, for the same reason: a tick that reaches no world, or a world that stopped
+	// publishing a field, must read as NOT SAMPLED rather than silently keep showing the last bake as
+	// current. The values behind them stay, so a paused window still has something to draw.
+	_GroundNavFieldSampled = false;
+	_ShadowParity._Sampled = false;
 
 	// Per CkDebuggerCommon convention: guard on world validity AND HasBegunPlay
 	// (worlds appear in GEngine->GetWorldContexts before BeginPlay).
@@ -276,6 +302,108 @@ auto
 		_NavmeshStatus._Sampled = true;
 	}
 
+	// The GroundNav field the viewport draws, copied through a snapshot cache of this collector's own.
+	//
+	// Only while GroundNav is the provider actually serving this world. A Recast world has no field to
+	// show, and a copy left standing from a world that had one would put ground on screen that nothing
+	// is planning over.
+	{
+		TRACE_CPUPROFILER_EVENT_SCOPE(CkCrowdDbg_GroundNavField);
+
+		if (_NavmeshStatus._Provider == ECk_NavSurface_Provider::GroundNav)
+		{
+			// Which volume's field: the one nearest the SELECTION when there is a selection, because the
+			// field worth looking at is the one under the agent being looked at; otherwise the first that
+			// has published, so a world with a single field draws it without anybody selecting anything.
+			// A volume that has published nothing is skipped either way - its surface bounds are empty by
+			// contract, which is also how "has published" is read here.
+			auto SelectionLocation = FVector::ZeroVector;
+			auto HasSelection = false;
+
+			if (const auto SelectedTransform = UCk_Utils_Transform_UE::Cast(InSelectedAgent);
+				ck::IsValid(SelectedTransform))
+			{
+				SelectionLocation = UCk_Utils_Transform_UE::Get_EntityCurrentLocation(SelectedTransform);
+				HasSelection = true;
+			}
+
+			auto ChosenVolume = FCk_Handle{};
+			auto ChosenLocation = FVector::ZeroVector;
+			auto ChosenDistanceSq = TNumericLimits<double>::Max();
+
+			for (auto& VolumeEntity : ck::groundnav::world_fields::Get_VolumeEntities(InWorld))
+			{
+				const auto Volume = UCk_Utils_GroundNavVolume_UE::Cast(VolumeEntity);
+
+				if (ck::Is_NOT_Valid(Volume))
+				{ continue; }
+
+				const auto Bounds = UCk_Utils_GroundNavVolume_UE::Get_SurfaceBounds(Volume);
+
+				if (Bounds.IsValid == 0)
+				{ continue; }
+
+				const auto Centre = Bounds.GetCenter();
+
+				if (NOT HasSelection)
+				{
+					ChosenVolume = VolumeEntity;
+					ChosenLocation = Centre;
+					break;
+				}
+
+				const auto DistanceSq = FVector::DistSquared(Centre, SelectionLocation);
+
+				if (DistanceSq >= ChosenDistanceSq)
+				{ continue; }
+
+				ChosenVolume = VolumeEntity;
+				ChosenLocation = Centre;
+				ChosenDistanceSq = DistanceSq;
+			}
+
+			// Resolved through the registry rather than off the volume handle: that read is the neutral
+			// one, hands back its own reference to an immutable field, and answers the same field a query
+			// at that location would be planned over.
+			const auto Field = ck::IsValid(ChosenVolume)
+				? ck::groundnav::world_fields::TryGet_Field(InWorld, ChosenLocation)
+				: ck::groundnav::FCk_GroundNav_FieldPtr{};
+
+			if (Field.IsValid())
+			{
+				const auto VolumeEntity = ChosenVolume.Get_Entity();
+
+				// The newest tile's epoch, read the way the capture reads it: any tile that moved moves
+				// this, which is the whole of what makes a rebuilt field a different key.
+				auto NewestTileEpoch = int64{0};
+
+				for (const auto& Tile : Field->_Tiles)
+				{ NewestTileEpoch = FMath::Max(NewestTileEpoch, Tile._Epoch._Value); }
+
+				auto Key = ck::groundnav::FCk_GroundNav_DebugSnapshotCacheKey{};
+				Key._WorldName = InWorld->GetFName();
+				Key._VolumeEntityNumber = static_cast<int32>(VolumeEntity.Get_EntityNumber());
+				Key._VolumeEntityVersion = static_cast<int32>(VolumeEntity.Get_VersionNumber());
+				Key._NewestTileEpoch = NewestTileEpoch;
+				Key._SurfaceRevision = UCk_Utils_NavSurface_UE::Get_SurfaceRevision(InWorld);
+
+				// The key is checked FIRST and the snapshot is built only when it moved, which is what makes
+				// a static field cost a five-member comparison a tick instead of a whole flatten.
+				if (NOT _GroundNavCache.Get_Key().Get_IsEqual(Key))
+				{
+					_GroundNavCache.Replace(Key,
+						ck::groundnav::Make_DebugSnapshotFromField(*Field, GroundNavSnapshotMaxCells));
+				}
+
+				_GroundNavField._Snapshot = _GroundNavCache.TryGet_Current(Key);
+				_GroundNavField._Key = Key;
+				_GroundNavField._Source = ECkCrowdDebugger_SnapshotSource::LivePie;
+				_GroundNavRevision = Get_GroundNavRevisionFromKey(Key);
+				_GroundNavFieldSampled = true;
+			}
+		}
+	}
+
 	// Retain only value snapshots across debugger refreshes and world teardown.
 	auto AppendPathNetworkRibbons = [this](const TArray<FCk_PathNetwork_Ribbon>& InRibbons)
 	{
@@ -300,6 +428,19 @@ auto
 	auto TransientEntity = UCk_Utils_EcsWorld_Subsystem_UE::Get_TransientEntity(InWorld);
 	if (ck::IsValid(TransientEntity))
 	{
+		// Shadow-parity diagnostics live on the world's transient entity, one bucket set per world, so
+		// this is where they are read. Copied WHOLE - a name, a map of fixed-size counters and a list of
+		// ids, none of which points back at the world - so the panel goes on rendering the last run after
+		// PIE stops. Sampled only when the fragment is actually there: an empty copy and a world that
+		// never ran a shadow comparison are different answers, and the flag is what tells them apart.
+		if (TransientEntity.Has<ck::FFragment_GroundNav_ShadowDiagnostics>())
+		{
+			TRACE_CPUPROFILER_EVENT_SCOPE(CkCrowdDbg_ShadowParity);
+
+			_ShadowParity._Diagnostics = TransientEntity.Get<ck::FFragment_GroundNav_ShadowDiagnostics>();
+			_ShadowParity._Sampled = true;
+		}
+
 		TRACE_CPUPROFILER_EVENT_SCOPE(CkCrowdDbg_PathNetworkRibbons_Ecs);
 		// Runtime-created networks, including the Path Network gym, have no actor. Authority-side
 		// actor networks are bridged into the same ECS representation at BeginPlay.

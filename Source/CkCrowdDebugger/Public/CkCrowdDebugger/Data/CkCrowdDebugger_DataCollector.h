@@ -28,6 +28,13 @@ public:
 	auto Get_AgentCount() const -> int32 { return _Agents.Num(); }
 	auto Get_NavmeshStatus() const -> const FCkCrowdDebugger_NavmeshStatus& { return _NavmeshStatus; }
 
+	// The GroundNav field the world is publishing, as this debugger's own copy, beside the revision
+	// DERIVED from the key it was captured under. Handed out by const reference because the copy is a
+	// whole bake and the viewport reads the same one the panels do.
+	auto Get_GroundNavField() const -> const FCkCrowdDebugger_GroundNavField& { return _GroundNavField; }
+	auto Get_GroundNavRevision() const -> uint64 { return _GroundNavRevision; }
+	auto Get_ShadowParity() const -> const FCkCrowdDebugger_ShadowParity& { return _ShadowParity; }
+
 	// Flat triangle soup (3 world-space verts per triangle) of the walkable navmesh — the viewport's
 	// base layer. Refreshed on a throttle (navmesh geometry changes rarely).
 	auto Get_NavTriVerts() const -> const TArray<FVector>& { return _NavTriVerts; }
@@ -44,6 +51,16 @@ private:
 private:
 	TArray<FCkCrowdDebugger_AgentSnapshot> _Agents;
 	FCkCrowdDebugger_NavmeshStatus _NavmeshStatus;
+
+	FCkCrowdDebugger_GroundNavField _GroundNavField;
+	bool _GroundNavFieldSampled = false;
+	uint64 _GroundNavRevision = 0;
+	FCkCrowdDebugger_ShadowParity _ShadowParity;
+
+	// The copy's own cache, not the world's: the snapshot is built HERE, off a published field, and the
+	// key is what stops it being rebuilt for a field that has not moved. Whole-value replacement, so a
+	// reader never enumerates one bake's plates beside another's counts.
+	ck::groundnav::FCk_GroundNav_DebugSnapshotCache _GroundNavCache;
 
 	TArray<FVector> _NavTriVerts;
 	TArray<FCkCrowdDebugger_PathNetworkRibbonSnapshot> _PathNetworkRibbons;

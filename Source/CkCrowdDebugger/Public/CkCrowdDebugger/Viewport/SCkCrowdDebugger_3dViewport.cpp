@@ -343,6 +343,23 @@ auto
 
 auto
     SCkCrowdDebugger_3dViewport::
+    Set_GroundNavField(
+        const FCkCrowdDebugger_GroundNavField& InField,
+        uint64 InRevision)
+    -> void
+{
+    TRACE_CPUPROFILER_EVENT_SCOPE(CkCrowdDbg_SetGroundNavField);
+    if (_Snapshot._GroundNav._Revision == InRevision)
+    {
+        return;
+    }
+    _Snapshot._GroundNav._Revision = InRevision;
+    _Snapshot._GroundNav._Field = InField;
+    _SnapshotDirty = true;
+}
+
+auto
+    SCkCrowdDebugger_3dViewport::
     Set_PathNetworkRibbons(
         const TArray<FCkCrowdDebugger_PathNetworkRibbonSnapshot>& InRibbons)
     -> void

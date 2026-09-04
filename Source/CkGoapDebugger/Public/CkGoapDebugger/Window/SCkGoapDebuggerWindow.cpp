@@ -167,8 +167,6 @@ auto SCkGoapDebuggerWindow::Request_PauseExecution() -> void
     auto* World = _CachedWorld.Get();
     const auto IsWorldValid = ck::IsValid(World);
     CK_ENSURE_IF_NOT(IsWorldValid, TEXT("GOAP pause-on event requires the selected runtime world"))
-    {}
-    if (NOT IsWorldValid)
     { return; }
 
     UGameplayStatics::SetGamePaused(World, true);

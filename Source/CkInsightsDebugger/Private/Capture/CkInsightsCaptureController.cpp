@@ -274,8 +274,6 @@ auto
     OutError.Reset();
     const auto DurationIsValid = InDurationSeconds > 0.0;
     CK_ENSURE_IF_NOT(DurationIsValid, TEXT("Timed Insights capture duration must be positive, got [{}]"), InDurationSeconds)
-    {}
-    if (NOT DurationIsValid)
     {
         OutError = TEXT("Timed capture duration must be greater than zero.");
         return false;
@@ -289,8 +287,6 @@ auto
         MinTimedCaptureScreenshotCount,
         MaxTimedCaptureScreenshotCount,
         InScreenshotCount)
-    {}
-    if (NOT ScreenshotCountIsValid)
     {
         OutError = ck::Format_UE(
             TEXT("Timed capture screenshot count must be from {} through {}."),
@@ -430,8 +426,6 @@ auto
     OutError.Reset();
     const auto ValueIsValid = InValue >= 1;
     CK_ENSURE_IF_NOT(ValueIsValid, TEXT("Stats MaxPerGroup must be at least one, got [{}]"), InValue)
-    {}
-    if (NOT ValueIsValid)
     {
         OutError = TEXT("Max stats per group must be at least 1.");
         return false;
@@ -440,8 +434,6 @@ auto
     auto* MaxPerGroup = IConsoleManager::Get().FindConsoleVariable(TEXT("stats.MaxPerGroup"));
     const auto CVarIsValid = MaxPerGroup != nullptr;
     CK_ENSURE_IF_NOT(CVarIsValid, TEXT("Unreal did not register stats.MaxPerGroup"))
-    {}
-    if (NOT CVarIsValid)
     {
         OutError = TEXT("stats.MaxPerGroup is not available in this build.");
         return false;
@@ -505,8 +497,6 @@ auto
     const auto Groups = Get_StatGroups(InProfile);
     const auto ProfileIsValid = NOT Groups.IsEmpty();
     CK_ENSURE_IF_NOT(ProfileIsValid, TEXT("Unknown Insights stat profile [{}]"), static_cast<uint8>(InProfile))
-    {}
-    if (NOT ProfileIsValid)
     {
         OutError = TEXT("The requested stat profile is not defined.");
         return false;
@@ -514,8 +504,6 @@ auto
 
     const auto EngineIsValid = ck::IsValid(GEngine);
     CK_ENSURE_IF_NOT(EngineIsValid, TEXT("Cannot change Insights stat profiles before GEngine is available"))
-    {}
-    if (NOT EngineIsValid)
     {
         OutError = TEXT("Unreal's console-command system is not available yet.");
         return false;

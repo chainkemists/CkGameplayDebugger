@@ -53,9 +53,6 @@ HandleCommand(
     const auto WorldIsValid = ck::IsValid(InWorld) && InWorld->IsGameWorld();
     CK_ENSURE_IF_NOT(WorldIsValid, TEXT("ck.Navmesh.DebugDraw requires an active game world"))
     {
-    }
-    if (NOT WorldIsValid)
-    {
         return;
     }
 
@@ -64,9 +61,6 @@ HandleCommand(
     CK_ENSURE_IF_NOT(SubsystemIsValid,
                      TEXT("ck.Navmesh.DebugDraw could not resolve its subsystem in world [{}]"),
                      InWorld)
-    {
-    }
-    if (NOT SubsystemIsValid)
     {
         return;
     }

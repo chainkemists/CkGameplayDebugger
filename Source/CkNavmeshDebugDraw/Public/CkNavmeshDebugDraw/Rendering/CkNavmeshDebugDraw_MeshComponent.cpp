@@ -849,8 +849,6 @@ auto UCk_NavmeshDebugDraw_MeshComponent_UE::TryApplySnapshot(
     const auto SnapshotIsValid = IsSnapshotValid(InSnapshot);
     CK_ENSURE_IF_NOT(SnapshotIsValid,
         TEXT("Navmesh mesh snapshot must contain valid area triangles and paired finite edges"))
-    {}
-    if (NOT SnapshotIsValid)
     { return false; }
 
     ApplyValidatedSnapshot(MoveTemp(InSnapshot), InMaxGhostTriangleCount);

@@ -2379,8 +2379,6 @@ auto
 {
     const auto PathIsValid = NOT TracePath.IsEmpty();
     CK_ENSURE_IF_NOT(PathIsValid, TEXT("A stopped Insights Analyzer file capture must provide its path"))
-    {}
-    if (NOT PathIsValid)
     {
         DoSetStatus(TEXT("Trace stopped, but Unreal did not return the capture path."), ECk_Tone::Err);
         return;
@@ -3074,8 +3072,6 @@ auto
 {
     const auto DimensionsAreValid = MaxWidth > 0 && MaxHeight > 0 && ResourceSuffix != nullptr;
     CK_ENSURE_IF_NOT(DimensionsAreValid, TEXT("Screenshot brush dimensions and suffix must be valid"))
-    {}
-    if (NOT DimensionsAreValid)
     {
         return nullptr;
     }
@@ -3360,8 +3356,6 @@ auto
         && NOT TracePath.IsEmpty()
         && FPaths::ConvertRelativePathToFull(TracePath) == FPaths::ConvertRelativePathToFull(_Session.GetFilePath());
     CK_ENSURE_IF_NOT(CanGenerate, TEXT("Automated capture report must target the trace that finished loading"))
-    {}
-    if (NOT CanGenerate)
     {
         DoSetStatus(TEXT("Trace loaded, but its automated report target did not match."), ECk_Tone::Err);
         return false;

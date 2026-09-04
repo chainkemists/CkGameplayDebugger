@@ -152,8 +152,6 @@ auto
     auto Layout = FCkDebug_CommandBarLayout{};
     const auto LayoutIsValid = FCkDebug_CommandBarLayout::TryBuild(InArgs._Groups, Layout);
     CK_ENSURE_IF_NOT(LayoutIsValid, TEXT("Invalid common debugger command bar configuration"))
-    {}
-    if (NOT LayoutIsValid)
     {
         ChildSlot[SNullWidget::NullWidget];
         return;

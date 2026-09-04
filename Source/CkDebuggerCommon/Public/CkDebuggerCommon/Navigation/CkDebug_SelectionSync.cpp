@@ -151,8 +151,6 @@ namespace ck::DebugSelectionSync
             CK_ENSURE_IF_NOT(HasLifetimeOwner,
                 TEXT("Cannot resolve conceptual target for [{}]: ownership chain ended before the transient root"),
                 InLeaf)
-            {}
-            if (NOT HasLifetimeOwner)
             { return {}; }
 
             const auto Owner = UCk_Utils_EntityLifetime_UE::Get_LifetimeOwner(Current);
@@ -160,16 +158,12 @@ namespace ck::DebugSelectionSync
             CK_ENSURE_IF_NOT(HasValidOwner,
                 TEXT("Cannot resolve conceptual target for [{}]: lifetime owner is invalid"),
                 InLeaf)
-            {}
-            if (NOT HasValidOwner)
             { return {}; }
 
             const auto IsNotSelfOwned = Owner != Current;
             CK_ENSURE_IF_NOT(IsNotSelfOwned,
                 TEXT("Cannot resolve conceptual target for [{}]: lifetime ownership chain is self-referential"),
                 InLeaf)
-            {}
-            if (NOT IsNotSelfOwned)
             { return {}; }
 
             Current = Owner;
@@ -180,8 +174,6 @@ namespace ck::DebugSelectionSync
             TEXT("Cannot resolve conceptual target for [{}]: lifetime ownership walk exceeded {} hops"),
             InLeaf,
             LineageWalk_MaxDepth)
-        {}
-        if (NOT DidReachTransientRoot)
         { return {}; }
 
         return ConceptualTarget;

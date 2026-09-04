@@ -18,8 +18,6 @@ namespace ck::debug_3d
         // live entity, so a null world here is a bug worth seeing rather than a silent no-draw.
         const auto WorldIsValid = ck::IsValid(InWorld);
         CK_ENSURE_IF_NOT(WorldIsValid, TEXT("Cannot draw a world command ping: no valid world"))
-        {}
-        if (NOT WorldIsValid)
         { return; }
 
         UCk_Utils_Pmg_FlatShapes::DrawFilledRing(

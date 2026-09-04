@@ -345,8 +345,6 @@ auto SCkAiDebuggerWindow::Select_Entity(const FCk_Handle& InEntity, bool InBroad
     CK_ENSURE_IF_NOT(TargetWorldIsValid,
         TEXT("AI Overview cannot select entity [{}] without a valid owning world"),
         Target)
-    {}
-    if (NOT TargetWorldIsValid)
     { return; }
 
     const auto EntityChanged = _SelectedEntity != Target;
@@ -394,8 +392,6 @@ auto SCkAiDebuggerWindow::Build_Model(const FCk_Handle& InEntity, double InNow) 
     TRACE_CPUPROFILER_EVENT_SCOPE(CkAiDbg_BuildModel);
     const auto EntityIsValid = ck::IsValid(InEntity);
     CK_ENSURE_IF_NOT(EntityIsValid, TEXT("AI Overview cannot build a model for an invalid entity"))
-    {}
-    if (NOT EntityIsValid)
     { return {}; }
 
     const auto Providers = FCk_DebugOverlay_Registry::Get().CreateAll();
@@ -650,8 +646,6 @@ auto SCkAiDebuggerWindow::Refresh_Roster() -> void
     {
         const auto AgentIsValid = ck::IsValid(Agent.Handle);
         CK_ENSURE_IF_NOT(AgentIsValid, TEXT("AI Overview roster received an invalid Crowd agent"))
-        {}
-        if (NOT AgentIsValid)
         { continue; }
 
         const auto Entity = ck::DebugSelectionSync::Resolve_ConceptualTarget(Agent.Handle);
@@ -659,8 +653,6 @@ auto SCkAiDebuggerWindow::Refresh_Roster() -> void
         CK_ENSURE_IF_NOT(TargetIsValid,
             TEXT("AI Overview could not resolve a conceptual target for Crowd agent [{}]"),
             Agent.Handle)
-        {}
-        if (NOT TargetIsValid)
         { continue; }
 
         const auto HasFailure = Agent.Status == ECkCrowdDebugger_AgentStatus::Failed;
@@ -717,8 +709,6 @@ auto SCkAiDebuggerWindow::HandleWorldInvalidated(UWorld* InWorld) -> void
 {
     const auto WorldIsValid = ck::IsValid(InWorld);
     CK_ENSURE_IF_NOT(WorldIsValid, TEXT("AI Overview received an invalid world-teardown boundary"))
-    {}
-    if (NOT WorldIsValid)
     { return; }
 
     if (_ActiveWorld.Get() != InWorld)

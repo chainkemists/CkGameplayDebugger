@@ -36,8 +36,6 @@ auto FCkAiDebuggerModule::StartupModule() -> void
     CK_ENSURE_IF_NOT(TabIdIsAvailable,
         TEXT("AI Overview cannot register duplicate tab id [{}]"),
         _DebuggerTabName)
-    {}
-    if (NOT TabIdIsAvailable)
     { return; }
 
     auto& TabSpawner = FGlobalTabmanager::Get()->RegisterNomadTabSpawner(
@@ -59,8 +57,6 @@ auto FCkAiDebuggerModule::StartupModule() -> void
     const auto ToolRegistrationSucceeded = _DebuggerToolRegistrationId != 0;
     CK_ENSURE_IF_NOT(ToolRegistrationSucceeded,
         TEXT("AI Overview failed to register its debugger-tool descriptor"))
-    {}
-    if (NOT ToolRegistrationSucceeded)
     {
         RollbackStartupRegistrations();
         return;
@@ -73,8 +69,6 @@ auto FCkAiDebuggerModule::StartupModule() -> void
     const auto TargetRouteRegistrationSucceeded = _EntityTargetRouteRegistrationId != 0;
     CK_ENSURE_IF_NOT(TargetRouteRegistrationSucceeded,
         TEXT("AI Overview failed to register its entity-target route"))
-    {}
-    if (NOT TargetRouteRegistrationSucceeded)
     {
         RollbackStartupRegistrations();
         return;
@@ -85,8 +79,6 @@ auto FCkAiDebuggerModule::StartupModule() -> void
     const auto SelectionRegistrationSucceeded = _SelectionSyncHandle.IsValid();
     CK_ENSURE_IF_NOT(SelectionRegistrationSucceeded,
         TEXT("AI Overview failed to register its selection-sync receiver"))
-    {}
-    if (NOT SelectionRegistrationSucceeded)
     {
         RollbackStartupRegistrations();
         return;
@@ -96,8 +88,6 @@ auto FCkAiDebuggerModule::StartupModule() -> void
     const auto PreExitRegistrationSucceeded = _EnginePreExitHandle.IsValid();
     CK_ENSURE_IF_NOT(PreExitRegistrationSucceeded,
         TEXT("AI Overview failed to register its engine pre-exit teardown"))
-    {}
-    if (NOT PreExitRegistrationSucceeded)
     { RollbackStartupRegistrations(); }
 }
 

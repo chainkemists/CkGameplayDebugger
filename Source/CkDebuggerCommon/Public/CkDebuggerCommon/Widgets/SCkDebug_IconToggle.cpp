@@ -106,8 +106,6 @@ auto
         TEXT("Missing common debugger icon [{}] for toggle [{}]"),
         InArgs._IconId,
         InArgs._Label.ToString())
-    {}
-    if (NOT IconIsValid)
     {
         ChildSlot[SNullWidget::NullWidget];
         return;
@@ -201,8 +199,6 @@ auto
     const auto LayoutIsValid = FCkDebug_IconToolbarLayout::TryBuild(InArgs._Actions, Layout);
 
     CK_ENSURE_IF_NOT(LayoutIsValid, TEXT("Invalid common debugger icon toolbar configuration"))
-    {}
-    if (NOT LayoutIsValid)
     {
         ChildSlot[SNullWidget::NullWidget];
         return;

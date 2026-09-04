@@ -18,8 +18,6 @@ auto SCkDebug_IconButton::Construct(const FArguments& InArgs) -> void
     const auto* IconBrush = FCkIconStyle::Get_Brush(InArgs._IconId, ECk_Icon_BrushSize::Size_16x16);
     const auto IconIsValid = InArgs._IconId != ECk_Icon::None && IconBrush != nullptr;
     CK_ENSURE_IF_NOT(IconIsValid, TEXT("Missing common debugger icon [{}] for icon button"), InArgs._IconId)
-    {}
-    if (NOT IconIsValid)
     {
         ChildSlot[SNullWidget::NullWidget];
         return;

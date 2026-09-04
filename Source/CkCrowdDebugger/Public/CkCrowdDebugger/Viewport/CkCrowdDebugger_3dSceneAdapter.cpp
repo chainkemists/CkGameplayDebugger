@@ -431,9 +431,6 @@ auto
     const auto InputsValid = InSnapshot._WorldEpoch != 0;
     CK_ENSURE_IF_NOT(InputsValid, TEXT("Crowd debug-scene adapter rejected a snapshot without a world epoch"))
     {
-    }
-    if (NOT InputsValid)
-    {
         return RestoreAndFail();
     }
     if (_WorldEpoch != 0 && _WorldEpoch != InSnapshot._WorldEpoch)
@@ -471,9 +468,6 @@ auto
             FMath::IsFinite(Agent._StatusColor.R) && FMath::IsFinite(Agent._StatusColor.G) &&
             FMath::IsFinite(Agent._StatusColor.B) && FMath::IsFinite(Agent._StatusColor.A);
         CK_ENSURE_IF_NOT(CompleteAgentIsValid, TEXT("Crowd debug-scene adapter rejected an invalid agent snapshot"))
-        {
-        }
-        if (NOT CompleteAgentIsValid)
         {
             InTarget.Abort_Reconcile();
             return RestoreAndFail();
@@ -580,8 +574,7 @@ auto
             ck_crowd_debugger_3d_scene_adapter::IsFinitePositive(Volume._PaintedWorldHalfExtents) &&
             (Volume._State == ECkCrowdDebugger_AvoidanceVolumeState::Retiring ||
              ck_crowd_debugger_3d_scene_adapter::IsFinitePositive(Volume._InfluenceWorldHalfExtents));
-        CK_ENSURE_IF_NOT(GeometryValid, TEXT("Crowd debug-scene adapter rejected invalid avoidance-volume geometry")) {}
-        if (NOT GeometryValid)
+        CK_ENSURE_IF_NOT(GeometryValid, TEXT("Crowd debug-scene adapter rejected invalid avoidance-volume geometry"))
         { InTarget.Abort_Reconcile(); return RestoreAndFail(); }
 
         const auto TransformFor = [&Volume](const FVector& InHalfExtents) -> FTransform
@@ -607,8 +600,7 @@ auto
     for (const auto& Queue : InSnapshot._Queues)
     {
         const auto QueueValid = Queue._Identity != 0;
-        CK_ENSURE_IF_NOT(QueueValid, TEXT("Crowd debug-scene adapter rejected an invalid queue snapshot")) {}
-        if (NOT QueueValid)
+        CK_ENSURE_IF_NOT(QueueValid, TEXT("Crowd debug-scene adapter rejected an invalid queue snapshot"))
         { InTarget.Abort_Reconcile(); return RestoreAndFail(); }
         const auto Hue = static_cast<float>(GetTypeHash(Queue._Category)) / static_cast<float>(MAX_uint32);
         const auto Color = FLinearColor::MakeFromHSV8(static_cast<uint8>(Hue * 255.0f), 170, 255);
@@ -625,8 +617,7 @@ auto
             { continue; }
             const auto ValidReservation = Member._SlotIdentity != 0 &&
                 ck_crowd_debugger_3d_scene_adapter::IsFinite(Member._ReservationLocation);
-            CK_ENSURE_IF_NOT(ValidReservation, TEXT("Crowd debug-scene adapter rejected an invalid queue reservation")) {}
-            if (NOT ValidReservation)
+            CK_ENSURE_IF_NOT(ValidReservation, TEXT("Crowd debug-scene adapter rejected an invalid queue reservation"))
             { InTarget.Abort_Reconcile(); return RestoreAndFail(); }
             const auto Rotation = Member._ReservationForward.IsNearlyZero()
                 ? FQuat::Identity : FRotationMatrix::MakeFromX(Member._ReservationForward.GetSafeNormal()).ToQuat();

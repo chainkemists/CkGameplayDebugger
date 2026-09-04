@@ -277,6 +277,16 @@
 			]
 		},
 		{
+			"Name": "CkJoltBakeInspector",
+			"Type": "Editor",
+			"LoadingPhase": "Default",
+			"WhitelistPlatforms": [
+				"Win64",
+				"Mac",
+				"Linux"
+			]
+		},
+		{
 			"Name": "CkMapDebugger",
 			"Type": "DeveloperTool",
 			"LoadingPhase": "Default",

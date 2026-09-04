@@ -657,6 +657,8 @@ If your module renders graph nodes via `SGraphEditor`, also add `GraphEditor`.
   camera presets and bookmarks, one icon-first common render/grid/frame/follow/isolate control strip, projection,
   and teardown. Fly speed is a shared per-user `UCkDebuggerWindowSettings` preference adjusted by perspective
   RMB + wheel and restored by every new Common preview client.
+- Informational viewport labels belong in the preview's `.SafeAreaOverlay(...)` argument. Common places this
+  click-passive overlay below its top control strip; do not add feature-local top overlays that collide with toolbar icons.
 - `Viewport/CkDebug3dInteractionRouter` owns neutral click, additive selection, drag sequencing, plane shifts,
   hover throttling, and focus-loss cleanup. Feature adapters resolve opaque identities and execute specialized
   behavior; they do not create a second viewport client.

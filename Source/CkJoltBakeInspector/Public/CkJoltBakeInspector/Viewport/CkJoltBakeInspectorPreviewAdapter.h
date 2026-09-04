@@ -5,6 +5,11 @@
 
 class FCk_DebugScene_Target;
 
+namespace ck::jolt_bake_inspector
+{
+auto Get_CookedPreviewLabel(const ck::jolt::cook::FCk_Jolt_MeshShapeAuditResult& InAudit) -> const TCHAR*;
+}
+
 class FCkJoltBakeInspectorPreviewAdapter final : public ICkDebug3dPreviewAdapter
 {
 public:

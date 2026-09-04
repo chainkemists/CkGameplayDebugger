@@ -18,6 +18,7 @@ class SCkCrowdDebugger_AgentListPanel;
 class SCkCrowdDebugger_AgentDetailPanel;
 class SCkCrowdDebugger_StatsPanel;
 class SCkCrowdDebugger_EventLogPanel;
+class SCkCrowdDebugger_ShadowParityPanel;
 class SCkCrowdDebugger_3dViewport;
 class UWorld;
 
@@ -79,6 +80,7 @@ private:
 	TSharedPtr<SCkCrowdDebugger_AgentDetailPanel>   _AgentDetailPanel;
 	TSharedPtr<SCkCrowdDebugger_StatsPanel>         _StatsPanel;
 	TSharedPtr<SCkCrowdDebugger_EventLogPanel>      _EventLogPanel;
+	TSharedPtr<SCkCrowdDebugger_ShadowParityPanel>  _ShadowParityPanel;
 	TSharedPtr<SCkCrowdDebugger_3dViewport>         _ViewportPanel;
 
 	ECkCrowdDebugger_VoxelSource _VoxelSource = ECkCrowdDebugger_VoxelSource::Auto;

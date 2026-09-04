@@ -70,6 +70,14 @@ public:
 	auto Get_AvoidanceVolumes() const -> const TArray<FCkCrowdDebugger_AvoidanceVolumeSnapshot>&
 	{ return _DataCollector.Get_AvoidanceVolumes(); }
 
+	// GroundNav
+	auto Get_GroundNavField() const -> const FCkCrowdDebugger_GroundNavField&
+	{ return _DataCollector.Get_GroundNavField(); }
+	auto Get_GroundNavRevision() const -> uint64
+	{ return _DataCollector.Get_GroundNavRevision(); }
+	auto Get_ShadowParity() const -> const FCkCrowdDebugger_ShadowParity&
+	{ return _DataCollector.Get_ShadowParity(); }
+
 	// Pause
 	auto Set_Paused(bool InPaused) -> void;
 	auto Get_Paused() const -> bool { return _IsPaused; }

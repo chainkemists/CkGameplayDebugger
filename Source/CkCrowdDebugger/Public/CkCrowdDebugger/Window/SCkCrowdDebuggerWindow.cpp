@@ -7,6 +7,7 @@
 #include "CkCrowdDebugger/Window/SCkCrowdDebugger_AgentDetailPanel.h"
 #include "CkCrowdDebugger/Window/SCkCrowdDebugger_StatsPanel.h"
 #include "CkCrowdDebugger/Window/SCkCrowdDebugger_EventLogPanel.h"
+#include "CkCrowdDebugger/Window/SCkCrowdDebugger_ShadowParityPanel.h"
 #include "CkCrowdDebugger/Viewport/SCkCrowdDebugger_3dViewport.h"
 #include "CkCrowdDebugger/Window/CkCrowdDebugger_PanelAxes.h"
 
@@ -119,6 +120,9 @@ auto SCkCrowdDebuggerWindow::Construct(const FArguments& InArgs) -> void
 	_AgentDetailPanel   = SNew(SCkCrowdDebugger_AgentDetailPanel).ViewModel(_ViewModel);
 	_StatsPanel         = SNew(SCkCrowdDebugger_StatsPanel).ViewModel(_ViewModel);
 	_EventLogPanel      = SNew(SCkCrowdDebugger_EventLogPanel).ViewModel(_ViewModel);
+	// No view model: every row this panel draws is decided by the copied diagnostics it is PUSHED each
+	// tick, so there is nothing for it to pull.
+	_ShadowParityPanel  = SNew(SCkCrowdDebugger_ShadowParityPanel);
 	const auto WeakViewModel = TWeakPtr<FCkCrowdDebugger_ViewModel>{_ViewModel};
 	_ViewportPanel      = SNew(SCkCrowdDebugger_3dViewport)
 		.OnAgentPicked_Lambda([WeakViewModel](int32 InAgentIndex)
@@ -200,17 +204,24 @@ auto SCkCrowdDebuggerWindow::Construct(const FArguments& InArgs) -> void
 					.Orientation(Orient_Vertical)
 					.PhysicalSplitterHandleSize(ck_crowd_debugger_window::LeftRailSplitterHandleSize)
 					+ SSplitter::Slot()
-					.Value(0.22f)
+					.Value(0.20f)
 					[ SNew(SCkDebug_PaneHost) [ _NavmeshStatusPanel.ToSharedRef() ] ]
 					+ SSplitter::Slot()
-					.Value(0.46f)
+					.Value(0.42f)
 					[ SNew(SCkDebug_PaneHost) [ _AgentListPanel.ToSharedRef() ] ]
 					+ SSplitter::Slot()
-					.Value(0.14f)
+					.Value(0.12f)
 					[ SNew(SCkDebug_PaneHost) [ _StatsPanel.ToSharedRef() ] ]
 					+ SSplitter::Slot()
-					.Value(0.18f)
+					.Value(0.14f)
 					[ SNew(SCkDebug_PaneHost) [ _EventLogPanel.ToSharedRef() ] ]
+					// Last on the rail, because it reports on a run rather than on the current frame: the
+					// status header above says which provider is answering, and this says whether the one
+					// shadowing it agreed. All five values are re-normalised to sum to 1.00 - a splitter reads
+					// its slots as proportions, so adding a sixth means re-normalising again.
+					+ SSplitter::Slot()
+					.Value(0.12f)
+					[ SNew(SCkDebug_PaneHost) [ _ShadowParityPanel.ToSharedRef() ] ]
 				]
 			]
 			// Center: the viewport, full height (the mockup's centerpiece).
@@ -300,7 +311,13 @@ auto SCkCrowdDebuggerWindow::Tick(const FGeometry& AllottedGeometry, double InCu
 		_ViewportPanel->Set_QueueSnapshots(_ShowQueues ? _ViewModel->Get_Queues() : TArray<FCkCrowdDebugger_QueueSnapshot>{});
 		_ViewportPanel->Set_AvoidanceVolumeSnapshots(
 			_ShowAvoidanceVolumes ? _ViewModel->Get_AvoidanceVolumes() : TArray<FCkCrowdDebugger_AvoidanceVolumeSnapshot>{});
+		_ViewportPanel->Set_GroundNavField(
+			_ViewModel->Get_GroundNavField(),
+			_ViewModel->Get_GroundNavRevision());
 	}
+
+	if (_ShadowParityPanel.IsValid())
+	{ _ShadowParityPanel->Set_Parity(_ViewModel->Get_ShadowParity()); }
 
 	if (_VoxelRefreshRequested || InCurrentTime >= _NextVoxelRefreshTime)
 	{

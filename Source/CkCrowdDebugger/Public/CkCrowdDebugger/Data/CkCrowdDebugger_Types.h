@@ -7,6 +7,9 @@
 #include "CkNavigation/Nav/CkNav_Fragment_Data.h"
 #include "CkNavigation/NavSurface/CkNavSurface_Fragment_Data.h"
 
+#include "CkGroundNav/Debug/CkGroundNav_DebugSnapshot.h"
+#include "CkGroundNav/Shadow/CkGroundNav_Shadow_Fragment.h"
+
 #include "CkPathNetwork/Network/CkPathNetwork_Fragment_Data.h"
 
 #include <CoreMinimal.h>
@@ -246,6 +249,104 @@ struct FCkCrowdDebugger_QueueSnapshot
 	FVector OwnerTargetLocation = FVector::ZeroVector;
 	FVector OwnerTargetForward = FVector::ForwardVector;
 	TArray<FCkCrowdDebugger_QueueMemberSnapshot> Members;
+};
+
+// --------------------------------------------------------------------------------------------------------------------
+
+// Where a GroundNav field copy came from. The runtime snapshot deliberately does not carry this: a
+// bake knows what it baked, not which surface is looking at it, and the same capture can be shown
+// live, replayed from a retained one, or previewed with no session behind it at all.
+enum class ECkCrowdDebugger_SnapshotSource : uint8
+{
+	LivePie,
+	RetainedSnapshot,
+	EditorPreview,
+};
+
+// One GroundNav bake, held as the snapshot cache's own value, beside the key it was captured under.
+//
+// A shared pointer to a CONST snapshot rather than a snapshot of its own, because that is exactly
+// what FCk_GroundNav_DebugSnapshotCache::TryGet_Current hands back
+// (CkGroundNav/Debug/CkGroundNav_DebugSnapshot.h): taking it as it comes means a tick that finds the
+// key unchanged copies a pointer where a value would copy every plate in the field.
+//
+// This does not weaken the copy boundary. What the boundary bans is anything that can reach BACK at a
+// producer - a handle, a UObject, a view onto something still being written. An immutable value
+// nobody holds a writer to is none of those: FCk_GroundNav_DebugSnapshot is asserted value-only, the
+// cache publishes whole snapshots and never edits one it has published, so this goes on drawing after
+// the volume, the registry and the world it was baked from are gone.
+//
+// Null is a legal state and means NO FIELD - a world with no ground-nav volume, or a tick before the
+// first bake. A reader submits nothing for it, which is not the same as drawing an empty field.
+//
+// The key is what keeps the copy cheap to hold current. A reader compares the world's current key
+// against this one FIRST and re-fetches only when the two differ, so a field that has not rebaked
+// costs a five-member comparison per tick instead of a snapshot.
+//
+// There is no separate "sampled" flag: a null pointer says nothing was captured, and a captured
+// snapshot's own _Status says what the bake made of it. A capture that failed reads its status and
+// Get_IsDrawable() false - failure is a status here too, never an empty field.
+struct FCkCrowdDebugger_GroundNavField
+{
+	ECkCrowdDebugger_SnapshotSource _Source = ECkCrowdDebugger_SnapshotSource::LivePie;
+
+	ck::groundnav::FCk_GroundNav_DebugSnapshotCacheKey _Key;
+
+	TSharedPtr<const ck::groundnav::FCk_GroundNav_DebugSnapshot> _Snapshot;
+};
+
+// --------------------------------------------------------------------------------------------------------------------
+
+// The revision a copy captured under this key stands for.
+//
+// DERIVED from the key rather than stamped by hand wherever a copy is set. A viewer decides whether
+// to rebuild by comparing revisions, so a revision that could stand still while the key moved would
+// leave the overlay drawing a field that is no longer there - and a hand-stamped number is exactly
+// the thing that gets forgotten at the one call site that matters. Every member of the key folds in,
+// which is the whole of what makes one capture different from another.
+//
+// Two independently-seeded 32-bit hashes stacked into 64 bits: the engine's GetTypeHash is 32-bit,
+// and a revision is compared for EQUALITY, so a collision does not draw the wrong field slowly - it
+// draws the wrong field forever.
+inline auto
+Get_GroundNavRevisionFromKey(
+	const ck::groundnav::FCk_GroundNav_DebugSnapshotCacheKey& InKey) -> uint64
+{
+	auto Low = GetTypeHash(InKey._WorldName);
+	Low = HashCombineFast(Low, GetTypeHash(InKey._VolumeEntityNumber));
+	Low = HashCombineFast(Low, GetTypeHash(InKey._VolumeEntityVersion));
+	Low = HashCombineFast(Low, GetTypeHash(InKey._NewestTileEpoch));
+	Low = HashCombineFast(Low, GetTypeHash(InKey._SurfaceRevision));
+
+	// The same members in the opposite order off a different seed, so the two halves cannot agree by
+	// construction the way two runs of one hash would.
+	constexpr auto Seed = 0x9E3779B9u;
+
+	auto High = HashCombineFast(Seed, GetTypeHash(InKey._SurfaceRevision));
+	High = HashCombineFast(High, GetTypeHash(InKey._NewestTileEpoch));
+	High = HashCombineFast(High, GetTypeHash(InKey._VolumeEntityVersion));
+	High = HashCombineFast(High, GetTypeHash(InKey._VolumeEntityNumber));
+	High = HashCombineFast(High, GetTypeHash(InKey._WorldName));
+
+	return (static_cast<uint64>(High) << 32) | static_cast<uint64>(Low);
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+// The world's shadow-parity diagnostics, copied off the entity that holds them.
+//
+// FFragment_GroundNav_ShadowDiagnostics is already a per-world value - a fixture name, a map of
+// fixed-size counters and a list of ids, with nothing pointing back at the world - so the panel keeps
+// one by value and goes on rendering it after PIE stops.
+//
+// _Sampled is what separates "a world was read and holds no diagnostics" from "no world was read":
+// an empty fragment cannot say which, and a panel that showed them alike would report a shadow run
+// that never started as one that found nothing.
+struct FCkCrowdDebugger_ShadowParity
+{
+	bool _Sampled = false;
+
+	ck::FFragment_GroundNav_ShadowDiagnostics _Diagnostics;
 };
 
 // --------------------------------------------------------------------------------------------------------------------

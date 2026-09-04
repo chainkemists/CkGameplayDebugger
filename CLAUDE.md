@@ -10,15 +10,15 @@ here. Full extension runbooks live in the `ck-gameplaydebugger-extension` skill 
 - **Naming surprise, up front:** the repo/folder is `CkGameplayDebugger`, but the plugin it ships
   is **`CkDebugger.uplugin`** (FriendlyName "Ck Gameplay Debugger"). One *module* inside also
   carries the repo name — that module is the legacy generation, not the plugin.
-- **32-module debugger suite** for the CkFoundation ECS: 5 Runtime (`CkGameplayDebugger`,
+- **34-module debugger suite** for the CkFoundation ECS: 5 Runtime (`CkGameplayDebugger`,
   `CkDebuggerCommon`, `CkEntityDebugOverlay`, `CkInputHudOverlay`, `CkNavmeshDebugDraw`) + 25 DeveloperTool
   (`CkEcsDebugger`, `CkSmDebugger`, `CkDialogDebugger`, `CkAudioDebugger`, `CkAggroDebugger`,
   `CkSaveDebugger`, `CkOptimizationDebugger`, `CkPerfLab`, `CkTextureDebugger`, `CkUIDebugger`,
   `CkSchedulerDebugger`, `CkAStarDebugger`, `CkGoapDebugger`, `CkAiDebugger`, `CkCrowdDebugger`,
   `CkEqsDebugger`, `CkInputDebugger`, `CkIntentDebugger`, `CkObjectPoolingDebugger`, `CkJoltDebugger`,
   `CkMapDebugger`, `CkInsightsDebugger`, `CkStyleLabDebugger`, `CkVisualLodDebugger`,
-  `CkDebuggerLauncher`) + 2 Editor companions
-  (`CkSaveDebuggerEditor`, `CkOptimizationDebuggerEditor`). Plugin dependency: **CkFoundation only**.
+   `CkDebuggerLauncher`) + 4 Editor companions
+   (`CkSaveDebuggerEditor`, `CkOptimizationDebuggerEditor`, `CkGridEditor`, `CkJoltBakeInspector`). Plugin dependency: **CkFoundation only**.
   The Runtime types are load-bearing for packaged in-world tooling; each feature compiles its behavior out of Shipping.
 - **Packaged-module contract (2026-08-29):** all 25 DeveloperTool modules are included in
   Development/DebugGame and excluded from Test/Shipping. ECS, State Machine, Scheduler, and GOAP
@@ -149,9 +149,9 @@ remain (see Open issues).
 
 Facts above verified against code on **2026-07-14** (launcher branch based on `7fd41c8`). Re-verify with:
 
-- Module count/types: `rg -c '"Name"' CkDebugger.uplugin` (expect **27** = 26 modules + the
-  CkFoundation entry in the `Plugins` dependency array), or count modules only:
-  `(Get-Content CkDebugger.uplugin -Raw | ConvertFrom-Json).Modules.Count` (expect 26); read the
+- Module count/types: `rg -c '"Name"' CkDebugger.uplugin` (expect **35** = 34 modules + the
+   CkFoundation entry in the `Plugins` dependency array), or count modules only:
+   `(Get-Content CkDebugger.uplugin -Raw | ConvertFrom-Json).Modules.Count` (expect 34); read the
   `"Type"` fields.
 - Registration macros: `rg -n 'define CK_REGISTER_DEBUG_OVERLAY_PROVIDER' Source/CkEntityDebugOverlay` · `rg -n 'define CK_REGISTER_DEBUGGER_INSPECTOR' Source/CkEcsDebugger`.
 - Settings Config attributes: `rg -n 'UCLASS\(Config' Source/CkEntityDebugOverlay/Public/CkEntityDebugOverlay/Settings/CkDebugOverlay_Settings.h`.

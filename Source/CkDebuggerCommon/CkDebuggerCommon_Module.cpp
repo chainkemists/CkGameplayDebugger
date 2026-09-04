@@ -125,8 +125,6 @@ auto FCkDebuggerCommonModule::HandleWorldBeginTearDown(UWorld* InWorld) -> void
 {
 	const auto WorldIsValid = ck::IsValid(InWorld);
 	CK_ENSURE_IF_NOT(WorldIsValid, TEXT("Debugger session teardown requires a valid world"))
-	{}
-	if (NOT WorldIsValid)
 	{ return; }
 
 	if (NOT InWorld->IsGameWorld())

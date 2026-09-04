@@ -44,8 +44,6 @@ auto FCkDebug_BehaviorOverrideRegistry::Register(FCkDebug_BehaviorOverrideDescri
     const auto DescriptorIsValid = InDescriptor.IsValid();
     CK_ENSURE_IF_NOT(DescriptorIsValid,
         TEXT("Cannot register invalid debugger behavior override [{}]"), InDescriptor.Get_Id())
-    {}
-    if (NOT DescriptorIsValid)
     { return 0; }
 
     const auto RegistrationId = _NextRegistrationId++;
@@ -60,8 +58,6 @@ auto FCkDebug_BehaviorOverrideRegistry::Register(FCkDebug_BehaviorOverrideDescri
             InDescriptor.Get_Id(),
             Existing->Descriptor.Get_OwnerModule(),
             InDescriptor.Get_OwnerModule())
-        {}
-        if (NOT OwnerMatches)
         { return 0; }
 
         Existing->Descriptor = MoveTemp(InDescriptor);

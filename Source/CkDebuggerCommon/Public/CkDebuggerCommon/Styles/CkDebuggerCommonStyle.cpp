@@ -114,8 +114,6 @@ auto
     const auto Plugin = IPluginManager::Get().FindPlugin(TEXT("CkDebugger"));
     const auto PluginIsValid = Plugin.IsValid();
     CK_ENSURE_IF_NOT(PluginIsValid, TEXT("CkDebugger plugin not found — common debugger brushes will be missing"))
-    {}
-    if (NOT PluginIsValid)
     { return Style; }
 
     Style->SetContentRoot(Plugin->GetBaseDir() / TEXT("Source/CkDebuggerCommon/Resources"));

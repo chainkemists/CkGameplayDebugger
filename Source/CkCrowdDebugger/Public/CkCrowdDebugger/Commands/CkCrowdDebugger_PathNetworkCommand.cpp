@@ -27,8 +27,6 @@ namespace ck::crowd_debugger
         const auto AgentIsValid = ck::IsValid(InAgent);
         CK_ENSURE_IF_NOT(AgentIsValid,
             TEXT("Invalid CrowdAgent handle [{}] passed to Try_IssueManualMove"), InAgent)
-        {}
-        if (NOT AgentIsValid)
         { return false; }
 
         auto AgentHandle = FCk_Handle{InAgent};
@@ -85,8 +83,6 @@ namespace ck::crowd_debugger
         CK_ENSURE_IF_NOT(HasExactlyOnePathNetwork,
             TEXT("Manual debugger path-network move requires exactly one ACk_PathNetwork_UE in [{}], found [{}]"),
             World, PathNetworkActors.Num())
-        {}
-        if (NOT HasExactlyOnePathNetwork)
         { return false; }
 
         const auto* const PathNetworkActor = Cast<ACk_PathNetwork_UE>(PathNetworkActors[0]);
@@ -108,8 +104,6 @@ namespace ck::crowd_debugger
             UCk_Utils_PathNetworkFollower_UE::Get_OwnerToken(Follower) == PathNetworkFollowerOwnerToken;
         CK_ENSURE_IF_NOT(IsDebuggerOwned,
             TEXT("Manual debugger path-network follower on [{}] was not composed with its owner token"), InAgent)
-        {}
-        if (NOT IsDebuggerOwned)
         {
             UCk_Utils_PathNetworkFollower_UE::Remove(Follower);
             return false;

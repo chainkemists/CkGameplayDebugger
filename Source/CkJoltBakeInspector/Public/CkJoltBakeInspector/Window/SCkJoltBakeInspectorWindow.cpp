@@ -7,6 +7,15 @@
 #include "CkJoltEditor/Cook/CkJoltCook_EditorSubsystem.h"
 #include "CkJoltEditor/Cook/CkJoltCook_MeshShapeAudit.h"
 #include "CkJoltBakeInspector/Viewport/SCkJoltBakeInspectorPreview.h"
+#include "CkDebuggerCommon/Search/SCkDebug_SearchBar.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_Card.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_Chip.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_InspectorPanel.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_PaneHost.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_StatPair.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_StatusPill.h"
+#include "CkDebuggerCommon/Window/SCkDebug_WindowChrome.h"
+#include "CkEditorTools/Style/CkStyle.h"
 
 #include <AssetRegistry/AssetRegistryModule.h>
 #include <AssetRegistry/IAssetRegistry.h>
@@ -15,10 +24,10 @@
 #include <Subsystems/AssetEditorSubsystem.h>
 #include <UObject/StrongObjectPtr.h>
 #include <Widgets/Input/SButton.h>
-#include <Widgets/Input/SSearchBox.h>
 #include <Widgets/SBoxPanel.h>
+#include <Widgets/Layout/SBox.h>
+#include <Widgets/Layout/SScrollBox.h>
 #include <Widgets/Layout/SSplitter.h>
-#include <Widgets/Layout/SBorder.h>
 #include <Widgets/Text/STextBlock.h>
 #include <Widgets/Views/SListView.h>
 
@@ -91,6 +100,37 @@ namespace ck_jolt_bake_inspector_window
         }
         return TEXT("Unknown winding verdict");
     }
+
+    auto ToText(ck::jolt::cook::ECk_Jolt_MeshShapeAuditCookedPreviewAvailability InAvailability) -> FString
+    {
+        using enum ck::jolt::cook::ECk_Jolt_MeshShapeAuditCookedPreviewAvailability;
+        switch (InAvailability)
+        {
+            case MissingCookedAsset: return TEXT("No cooked asset");
+            case IncompatibleStale: return TEXT("Stale blob is incompatible with this Jolt version");
+            case CorruptBlob: return TEXT("Cooked blob is corrupt");
+            case NonTriMesh: return TEXT("Cooked shape is not a tri-mesh");
+            case Available: return TEXT("Available");
+        }
+        return TEXT("Unknown availability");
+    }
+
+    auto GetTone(const FCkJoltBakeInspectorRow& InRow) -> ECk_Tone
+    {
+        if (NOT InRow.Audit.IsSet())
+        {
+            return InRow.Classification == TEXT("Not analyzed")
+                ? ECk_Tone::Neutral
+                : ECk_Tone::Err;
+        }
+        if (InRow.Audit->_bWouldFailBake)
+        { return ECk_Tone::Err; }
+        if (InRow.Audit->_bWouldUseHeuristic)
+        { return ECk_Tone::Warn; }
+        return InRow.Audit->_RecommendedAction == ck::jolt::cook::ECk_Jolt_MeshShapeAuditAction::None
+            ? ECk_Tone::Ok
+            : ECk_Tone::Info;
+    }
 }
 
 auto SCkJoltBakeInspectorWindow::Construct(const FArguments&) -> void
@@ -99,66 +139,88 @@ auto SCkJoltBakeInspectorWindow::Construct(const FArguments&) -> void
 
     ChildSlot
     [
-        SNew(SVerticalBox)
-        + SVerticalBox::Slot().AutoHeight().Padding(6.0f)
+        SNew(SCkDebug_WindowChrome)
+        .WindowId(WindowId)
+        .ToolTabId(TEXT("CkJoltBakeInspector"))
+        .StatusText(this, &SCkJoltBakeInspectorWindow::GetSummaryText)
+        .ToolbarContent()
         [
             SNew(SHorizontalBox)
-            + SHorizontalBox::Slot().FillWidth(1.0f).Padding(0.0f, 0.0f, 6.0f, 0.0f)
-            [ SAssignNew(_SearchBox, SSearchBox).OnTextChanged(this, &SCkJoltBakeInspectorWindow::OnSearchChanged) ]
-            + SHorizontalBox::Slot().AutoWidth().Padding(2.0f)
+            + SHorizontalBox::Slot().FillWidth(1.0f).Padding(0.0f, 0.0f, CkStyle::SpaceS, 0.0f)
+            [ SAssignNew(_SearchBar, SCkDebug_SearchBar).HintText(FText::FromString(TEXT("Filter baked meshes"))).OnSearchTextChanged(this, &SCkJoltBakeInspectorWindow::OnSearchChanged) ]
+            + SHorizontalBox::Slot().AutoWidth().Padding(CkStyle::SpaceXS)
             [ ck_jolt_bake_inspector_window::MakeButton(TEXT("Refresh"), FOnClicked::CreateSP(this, &SCkJoltBakeInspectorWindow::OnRefreshClicked)) ]
-            + SHorizontalBox::Slot().AutoWidth().Padding(2.0f)
+            + SHorizontalBox::Slot().AutoWidth().Padding(CkStyle::SpaceXS)
             [ ck_jolt_bake_inspector_window::MakeButton(TEXT("Analyze All"), FOnClicked::CreateSP(this, &SCkJoltBakeInspectorWindow::StartAnalyzeAll)) ]
-            + SHorizontalBox::Slot().AutoWidth().Padding(2.0f)
+            + SHorizontalBox::Slot().AutoWidth().Padding(CkStyle::SpaceXS)
             [ ck_jolt_bake_inspector_window::MakeButton(TEXT("Cancel"), FOnClicked::CreateSP(this, &SCkJoltBakeInspectorWindow::CancelAnalyzeAll)) ]
-            + SHorizontalBox::Slot().AutoWidth().Padding(2.0f)
+            + SHorizontalBox::Slot().AutoWidth().Padding(CkStyle::SpaceXS)
             [ ck_jolt_bake_inspector_window::MakeButton(TEXT("All"), FOnClicked::CreateSP(this, &SCkJoltBakeInspectorWindow::SetFilterMode, 0)) ]
-            + SHorizontalBox::Slot().AutoWidth().Padding(2.0f)
+            + SHorizontalBox::Slot().AutoWidth().Padding(CkStyle::SpaceXS)
             [ ck_jolt_bake_inspector_window::MakeButton(TEXT("Heuristic"), FOnClicked::CreateSP(this, &SCkJoltBakeInspectorWindow::SetFilterMode, 1)) ]
-            + SHorizontalBox::Slot().AutoWidth().Padding(2.0f)
+            + SHorizontalBox::Slot().AutoWidth().Padding(CkStyle::SpaceXS)
             [ ck_jolt_bake_inspector_window::MakeButton(TEXT("Would Fail"), FOnClicked::CreateSP(this, &SCkJoltBakeInspectorWindow::SetFilterMode, 2)) ]
         ]
-        + SVerticalBox::Slot().AutoHeight().Padding(6.0f, 0.0f)
-        [ SNew(STextBlock).Text(this, &SCkJoltBakeInspectorWindow::GetSummaryText) ]
-        + SVerticalBox::Slot().FillHeight(1.0f).Padding(6.0f)
+        .Content()
         [
-            SNew(SSplitter).Orientation(Orient_Horizontal)
-            + SSplitter::Slot().Value(0.48f)
+            SNew(SVerticalBox)
+            + SVerticalBox::Slot().AutoHeight().Padding(CkStyle::SpaceM, CkStyle::SpaceS)
             [
-                SAssignNew(_ListView, SListView<FRowPtr>)
-                .ListItemsSource(&_VisibleRows)
-                .OnGenerateRow(this, &SCkJoltBakeInspectorWindow::GenerateRow)
-                .OnSelectionChanged(this, &SCkJoltBakeInspectorWindow::OnSelectionChanged)
+                SNew(SHorizontalBox)
+                + SHorizontalBox::Slot().FillWidth(1.0f).Padding(0.0f, 0.0f, CkStyle::SpaceS, 0.0f)
+                [ SNew(SCkDebug_Card).StripeColor(CkStyle::Info()).BodyPadding(FMargin{CkStyle::SpaceS})
+                    [ SNew(SCkDebug_StatPair).Layout(ECkDebug_StatPairLayout::Stacked_ValueOnTop).Value_Lambda([this] { return GetMetricText(0); }).Label(FText::FromString(TEXT("Inventory"))) ] ]
+                + SHorizontalBox::Slot().FillWidth(1.0f).Padding(CkStyle::SpaceXS, 0.0f, CkStyle::SpaceS, 0.0f)
+                [ SNew(SCkDebug_Card).StripeColor(CkStyle::Accent()).BodyPadding(FMargin{CkStyle::SpaceS})
+                    [ SNew(SCkDebug_StatPair).Layout(ECkDebug_StatPairLayout::Stacked_ValueOnTop).Value_Lambda([this] { return GetMetricText(1); }).Label(FText::FromString(TEXT("Analyzed"))) ] ]
+                + SHorizontalBox::Slot().FillWidth(1.0f).Padding(CkStyle::SpaceXS, 0.0f, CkStyle::SpaceS, 0.0f)
+                [ SNew(SCkDebug_Card).StripeColor(CkStyle::Warn()).BodyPadding(FMargin{CkStyle::SpaceS})
+                    [ SNew(SCkDebug_StatPair).Layout(ECkDebug_StatPairLayout::Stacked_ValueOnTop).Value_Lambda([this] { return GetMetricText(2); }).Label(FText::FromString(TEXT("Heuristic"))) ] ]
+                + SHorizontalBox::Slot().FillWidth(1.0f).Padding(CkStyle::SpaceXS, 0.0f, 0.0f, 0.0f)
+                [ SNew(SCkDebug_Card).StripeColor(CkStyle::Err()).BodyPadding(FMargin{CkStyle::SpaceS})
+                    [ SNew(SCkDebug_StatPair).Layout(ECkDebug_StatPairLayout::Stacked_ValueOnTop).Value_Lambda([this] { return GetMetricText(3); }).Label(FText::FromString(TEXT("Would fail"))) ] ]
             ]
-            + SSplitter::Slot().Value(0.52f)
+            + SVerticalBox::Slot().FillHeight(1.0f).Padding(CkStyle::SpaceM)
             [
-                SNew(SBorder).Padding(8.0f)
+                SNew(SSplitter).Orientation(Orient_Horizontal)
+                + SSplitter::Slot().Value(0.42f)
                 [
-                    SNew(SVerticalBox)
-                    + SVerticalBox::Slot().FillHeight(0.48f)
-                    [ SAssignNew(_Preview, SCkJoltBakeInspectorPreview) ]
-                    + SVerticalBox::Slot().FillHeight(0.52f).Padding(0.0f, 8.0f, 0.0f, 0.0f)
-                    [ SNew(STextBlock).AutoWrapText(true).Text(this, &SCkJoltBakeInspectorWindow::GetSelectedDetailText) ]
-                    + SVerticalBox::Slot().AutoHeight().Padding(0.0f, 8.0f, 0.0f, 0.0f)
+                    SNew(SCkDebug_PaneHost)
                     [
-                        SNew(SHorizontalBox)
-                        + SHorizontalBox::Slot().AutoWidth().Padding(2.0f)
-                        [ ck_jolt_bake_inspector_window::MakeButton(TEXT("Show in Content Browser"), FOnClicked::CreateSP(this, &SCkJoltBakeInspectorWindow::BrowseSelectedAsset)) ]
-                        + SHorizontalBox::Slot().AutoWidth().Padding(2.0f)
-                        [ ck_jolt_bake_inspector_window::MakeButton(TEXT("Open Asset"), FOnClicked::CreateSP(this, &SCkJoltBakeInspectorWindow::OpenSelectedAsset)) ]
-                        + SHorizontalBox::Slot().AutoWidth().Padding(2.0f)
+                        SAssignNew(_ListView, SListView<FRowPtr>)
+                        .ListItemsSource(&_VisibleRows)
+                        .OnGenerateRow(this, &SCkJoltBakeInspectorWindow::GenerateRow)
+                        .OnSelectionChanged(this, &SCkJoltBakeInspectorWindow::OnSelectionChanged)
+                    ]
+                ]
+                + SSplitter::Slot().Value(0.58f)
+                [
+                    SNew(SCkDebug_PaneHost)
+                    [
+                        SNew(SVerticalBox)
+                        + SVerticalBox::Slot().FillHeight(0.48f)
+                        [ SNew(SCkDebug_PaneHost).ContentMode(ECkDebugPaneContent::OpaqueRenderer)[SAssignNew(_Preview, SCkJoltBakeInspectorPreview)] ]
+                        + SVerticalBox::Slot().FillHeight(0.52f).Padding(0.0f, CkStyle::SpaceS, 0.0f, 0.0f)
                         [
-                            SNew(SButton)
-                            .Text(FText::FromString(TEXT("Bake Selected")))
-                            .IsEnabled(this, &SCkJoltBakeInspectorWindow::CanBakeSelected)
-                            .OnClicked(this, &SCkJoltBakeInspectorWindow::BakeSelected)
-                        ]
-                        + SHorizontalBox::Slot().AutoWidth().Padding(2.0f)
-                        [
-                            SNew(SButton)
-                            .Text(FText::FromString(TEXT("Bake All Repairable/Stale")))
-                            .IsEnabled(this, &SCkJoltBakeInspectorWindow::CanBakeAll)
-                            .OnClicked(this, &SCkJoltBakeInspectorWindow::BakeAll)
+                            SNew(SScrollBox)
+                            + SScrollBox::Slot()
+                            [
+                                SNew(SVerticalBox)
+                                + SVerticalBox::Slot().AutoHeight()
+                                [ SNew(SCkDebug_InspectorPanel).Title(FText::FromString(TEXT("Bake status"))).Body()[SNew(SVerticalBox) + SVerticalBox::Slot().AutoHeight()[SNew(SCkDebug_StatusPill).Text_Lambda([this] { return _SelectedRow.IsValid() ? FText::FromString(_SelectedRow->Classification) : FText::FromString(TEXT("Select mesh")); }).Tone_Lambda([this] { return _SelectedRow.IsValid() ? ck_jolt_bake_inspector_window::GetTone(*_SelectedRow) : ECk_Tone::Neutral; })] + SVerticalBox::Slot().AutoHeight().Padding(0.0f, CkStyle::SpaceXS)[SNew(STextBlock).AutoWrapText(true).Text(this, &SCkJoltBakeInspectorWindow::GetSelectedDiagnosisText)]] ]
+                                + SVerticalBox::Slot().AutoHeight().Padding(0.0f, CkStyle::SpaceXS)
+                                [ SNew(SCkDebug_InspectorPanel).Title(FText::FromString(TEXT("Source topology"))).Body()[SNew(STextBlock).AutoWrapText(true).Text(this, &SCkJoltBakeInspectorWindow::GetSelectedSourceText)] ]
+                                + SVerticalBox::Slot().AutoHeight().Padding(0.0f, CkStyle::SpaceXS)
+                                [ SNew(SCkDebug_InspectorPanel).Title(FText::FromString(TEXT("Cooked shape"))).Body()[SNew(STextBlock).AutoWrapText(true).Text(this, &SCkJoltBakeInspectorWindow::GetSelectedCookedText)] ]
+                                + SVerticalBox::Slot().AutoHeight().Padding(0.0f, CkStyle::SpaceS, 0.0f, 0.0f)
+                                [
+                                    SNew(SHorizontalBox)
+                                    + SHorizontalBox::Slot().AutoWidth().Padding(CkStyle::SpaceXS)[ck_jolt_bake_inspector_window::MakeButton(TEXT("Show in Content Browser"), FOnClicked::CreateSP(this, &SCkJoltBakeInspectorWindow::BrowseSelectedAsset))]
+                                    + SHorizontalBox::Slot().AutoWidth().Padding(CkStyle::SpaceXS)[ck_jolt_bake_inspector_window::MakeButton(TEXT("Open Asset"), FOnClicked::CreateSP(this, &SCkJoltBakeInspectorWindow::OpenSelectedAsset))]
+                                    + SHorizontalBox::Slot().AutoWidth().Padding(CkStyle::SpaceXS)[SNew(SButton).Text(FText::FromString(TEXT("Bake Selected"))).IsEnabled(this, &SCkJoltBakeInspectorWindow::CanBakeSelected).OnClicked(this, &SCkJoltBakeInspectorWindow::BakeSelected)]
+                                    + SHorizontalBox::Slot().AutoWidth().Padding(CkStyle::SpaceXS)[SNew(SButton).Text(FText::FromString(TEXT("Bake Repairable"))).IsEnabled(this, &SCkJoltBakeInspectorWindow::CanBakeAll).OnClicked(this, &SCkJoltBakeInspectorWindow::BakeAll)]
+                                ]
+                            ]
                         ]
                     ]
                 ]
@@ -258,9 +320,9 @@ auto SCkJoltBakeInspectorWindow::RefilterRows() -> void
     { _ListView->RequestListRefresh(); }
 }
 
-auto SCkJoltBakeInspectorWindow::OnSearchChanged(const FText& InText) -> void
+auto SCkJoltBakeInspectorWindow::OnSearchChanged(const FString& InText) -> void
 {
-    _FilterText = InText.ToString();
+    _FilterText = InText;
     RefilterRows();
 }
 
@@ -300,15 +362,11 @@ auto SCkJoltBakeInspectorWindow::AnalyzeRow(const FRowPtr& InRow) -> void
     const auto& Audit = InRow->Audit.GetValue();
     InRow->Classification = ck_jolt_bake_inspector_window::ToText(Audit._RecommendedAction);
     InRow->Detail = ck::Format_UE(
-        TEXT("Source: {}\nCooked: {}\nSource winding: {} ({})\nNormalized winding: {} ({})\nCooked winding: {} ({})\n"
-             "Cooked preview: {}\nRepairs: {} individual, {} aggregate no-verdict\nHeuristic: {}\nWould fail bake: {}\n{}"),
+        TEXT("Source: {}\nCooked: {}\nCooked preview: {}\nRepairs: {} individual, {} aggregate no-verdict\n"
+             "Heuristic: {}\nWould fail bake: {}\n{}"),
         ck_jolt_bake_inspector_window::ToText(Audit._SourceState),
         ck_jolt_bake_inspector_window::ToText(Audit._CookedState),
-        ck_jolt_bake_inspector_window::ToText(Audit._SourceWinding), Audit._SourceWindingRatio,
-        ck_jolt_bake_inspector_window::ToText(Audit._NormalizedSourceWinding), Audit._NormalizedSourceWindingRatio,
-        ck_jolt_bake_inspector_window::ToText(Audit._CookedWinding), Audit._CookedWindingRatio,
-        Audit._bCookedPreviewUnavailable ? TEXT("unavailable")
-        : Audit._bCookedPreviewTruncated ? TEXT("truncated") : TEXT("available"),
+        ck_jolt_bake_inspector_window::ToText(Audit._CookedPreviewAvailability),
         Audit._IndividualHeuristicRepairCount, Audit._AggregateHeuristicRepairCount,
         Audit._bWouldUseHeuristic ? TEXT("yes") : TEXT("no"),
         Audit._bWouldFailBake ? TEXT("yes") : TEXT("no"),
@@ -333,9 +391,23 @@ auto SCkJoltBakeInspectorWindow::GenerateRow(FRowPtr InRow, const TSharedRef<STa
     return SNew(STableRow<FRowPtr>, InOwnerTable)
     [
         SNew(SVerticalBox)
-        + SVerticalBox::Slot().AutoHeight()[SNew(STextBlock).Text_Lambda([InRow] { return FText::FromString(InRow->DisplayName); })]
-        + SVerticalBox::Slot().AutoHeight()[SNew(STextBlock).Text_Lambda([InRow]
-            { return FText::FromString(ck::Format_UE(TEXT("{} — {}"), InRow->Classification, InRow->PackagePath)); })]
+        + SVerticalBox::Slot().AutoHeight()
+        [
+            SNew(SHorizontalBox)
+            + SHorizontalBox::Slot().FillWidth(1.0f)
+            [ SNew(STextBlock).Text_Lambda([InRow] { return FText::FromString(InRow->DisplayName); }).Font(CkStyle::BoldFont(CkStyle::FontSizeSmall())) ]
+            + SHorizontalBox::Slot().AutoWidth()
+            [ SNew(SCkDebug_StatusPill).ShowDot(false).Text_Lambda([InRow] { return FText::FromString(InRow->Classification); }).Tone_Lambda([InRow] { return ck_jolt_bake_inspector_window::GetTone(*InRow); }) ]
+        ]
+        + SVerticalBox::Slot().AutoHeight().Padding(0.0f, CkStyle::SpaceXS, 0.0f, 0.0f)
+        [
+            SNew(SHorizontalBox)
+            + SHorizontalBox::Slot().FillWidth(1.0f)
+            [ SNew(STextBlock).Text_Lambda([InRow] { return FText::FromString(InRow->PackagePath); }).ColorAndOpacity(CkStyle::TextMute()) ]
+            + SHorizontalBox::Slot().AutoWidth()
+            [ SNew(SBox).Visibility_Lambda([InRow] { return InRow->Audit.IsSet() && InRow->Audit->_bWouldUseHeuristic ? EVisibility::Visible : EVisibility::Collapsed; })
+                [ SNew(SCkDebug_Chip).Text(FText::FromString(TEXT("heuristic"))).Kind(ECkDebug_ChipKind::Neutral).ShowDot(false) ] ]
+        ]
     ];
 }
 
@@ -427,24 +499,90 @@ auto SCkJoltBakeInspectorWindow::GetSummaryText() const -> FText
     auto NumHeuristic = 0;
     for (const auto& Row : _AllRows)
     {
-        if (NOT Row->Audit.IsSet()) { continue; }
+        if (NOT Row->Audit.IsSet())
+        { continue; }
         ++NumAnalyzed;
         NumWouldFail += Row->Audit->_bWouldFailBake ? 1 : 0;
         NumHeuristic += Row->Audit->_bWouldUseHeuristic ? 1 : 0;
     }
     return FText::FromString(ck::Format_UE(TEXT("{} baked-root meshes; {} shown; {} analyzed; {} would fail; {} repair heuristics"),
         _AllRows.Num(), _VisibleRows.Num(), NumAnalyzed, NumWouldFail, NumHeuristic)
-        + (GetIsAnalyzing() ? ck::Format_UE(TEXT("; analyzing {}/{}"), _AnalysisState.Get_Processed(), _AnalysisState.Get_Total()) : FString{}));
+         + (GetIsAnalyzing() ? ck::Format_UE(TEXT("; analyzing {}/{}"), _AnalysisState.Get_Processed(), _AnalysisState.Get_Total()) : FString{}));
 }
 
-auto SCkJoltBakeInspectorWindow::GetSelectedDetailText() const -> FText
+auto SCkJoltBakeInspectorWindow::GetMetricText(int32 InMetric) const -> FText
+{
+    auto NumAnalyzed = 0;
+    auto NumWouldFail = 0;
+    auto NumHeuristic = 0;
+    for (const auto& Row : _AllRows)
+    {
+        if (NOT Row->Audit.IsSet()) { continue; }
+        ++NumAnalyzed;
+        NumWouldFail += Row->Audit->_bWouldFailBake ? 1 : 0;
+        NumHeuristic += Row->Audit->_bWouldUseHeuristic ? 1 : 0;
+    }
+
+    switch (InMetric)
+    {
+        case 0: return FText::AsNumber(_AllRows.Num());
+        case 1: return FText::AsNumber(NumAnalyzed);
+        case 2: return FText::AsNumber(NumHeuristic);
+        case 3: return FText::AsNumber(NumWouldFail);
+    }
+    return FText::GetEmpty();
+}
+
+auto SCkJoltBakeInspectorWindow::GetSelectedSourceText() const -> FText
 {
     if (NOT _SelectedRow.IsValid())
-    { return FText::FromString(TEXT("Select a mesh. Preview and the shared read-only bake audit land in the selected-row panel.")); }
-    const auto CookedPath = _SelectedRow->Audit.IsSet() ? _SelectedRow->Audit->_CookedShapeObjectPath : TEXT("pending audit");
-    return FText::FromString(ck::Format_UE(TEXT("Source package: {}\nCooked shape: {}\n\n{}\n\n"
-        "Preview: source collision is red on the left; the normalized Jolt candidate is cyan in the center; "
-        "the current cooked Jolt shape is green on the right. Preview triangles are capped by the shared audit and "
-        "marked when truncated or unavailable."),
-        _SelectedRow->PackagePath, CookedPath, _SelectedRow->Detail));
+    { return FText::FromString(TEXT("Select a mesh to inspect its source collision.")); }
+    if (NOT _SelectedRow->Audit.IsSet())
+    { return FText::FromString(TEXT("Source audit is pending for this mesh.")); }
+
+    const auto& Audit = _SelectedRow->Audit.GetValue();
+    return FText::FromString(ck::Format_UE(
+        TEXT("Package: {}\nState: {}\nTriangles: {}\nSource winding: {} ({})\nNormalized winding: {} ({})\n"
+             "Repairs: {} individual, {} aggregate no-verdict"),
+        _SelectedRow->PackagePath,
+        ck_jolt_bake_inspector_window::ToText(Audit._SourceState),
+        Audit._SourceTriangleCount,
+        ck_jolt_bake_inspector_window::ToText(Audit._SourceWinding), Audit._SourceWindingRatio,
+        ck_jolt_bake_inspector_window::ToText(Audit._NormalizedSourceWinding), Audit._NormalizedSourceWindingRatio,
+        Audit._IndividualHeuristicRepairCount, Audit._AggregateHeuristicRepairCount));
+}
+
+auto SCkJoltBakeInspectorWindow::GetSelectedCookedText() const -> FText
+{
+    if (NOT _SelectedRow.IsValid())
+    { return FText::FromString(TEXT("Select a mesh to inspect its generated Jolt shape.")); }
+    if (NOT _SelectedRow->Audit.IsSet())
+    { return FText::FromString(TEXT("Cooked-shape audit is pending for this mesh.")); }
+
+    const auto& Audit = _SelectedRow->Audit.GetValue();
+    return FText::FromString(ck::Format_UE(
+        TEXT("Asset: {}\nState: {}\nPreview: {}{}\nCooked winding: {} ({})"),
+        Audit._CookedShapeObjectPath,
+        ck_jolt_bake_inspector_window::ToText(Audit._CookedState),
+        ck_jolt_bake_inspector_window::ToText(Audit._CookedPreviewAvailability),
+        Audit._bCookedPreviewTruncated ? TEXT(" (triangle cap reached)") : TEXT(""),
+        ck_jolt_bake_inspector_window::ToText(Audit._CookedWinding), Audit._CookedWindingRatio));
+}
+
+auto SCkJoltBakeInspectorWindow::GetSelectedDiagnosisText() const -> FText
+{
+    if (NOT _SelectedRow.IsValid())
+    { return FText::FromString(TEXT("Select a mesh. The preview and read-only audit appear here.")); }
+    if (NOT _SelectedRow->Audit.IsSet())
+    { return FText::FromString(_SelectedRow->Detail); }
+
+    const auto& Audit = _SelectedRow->Audit.GetValue();
+    const auto FailureSuffix = Audit._Failure.IsEmpty()
+        ? FString{}
+        : ck::Format_UE(TEXT("\n{}"), Audit._Failure);
+    return FText::FromString(ck::Format_UE(TEXT("Recommended action: {}\nHeuristic repair: {}\nWould fail bake: {}{}"),
+        _SelectedRow->Classification,
+        Audit._bWouldUseHeuristic ? TEXT("yes") : TEXT("no"),
+        Audit._bWouldFailBake ? TEXT("yes") : TEXT("no"),
+        FailureSuffix));
 }

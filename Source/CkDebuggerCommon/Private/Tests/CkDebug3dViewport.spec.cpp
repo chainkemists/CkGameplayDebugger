@@ -2,6 +2,7 @@
 #include "CkDebuggerCommon/Settings/CkDebuggerWindowSettings.h"
 
 #include "Misc/AutomationTest.h"
+#include "Widgets/Text/STextBlock.h"
 
 #include <limits>
 
@@ -588,6 +589,33 @@ auto
     WeakConsumerViewport->Teardown();
     constexpr auto TeardownWasSafe = true;
     TestTrue(TEXT("teardown tolerates an expired weak adapter"), TeardownWasSafe);
+    return true;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCkDebug3dViewport_SafeAreaOverlay,
+                                  "Ck.DebuggerCommon.Viewport3d.SafeAreaOverlay",
+                                  EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+auto
+    FCkDebug3dViewport_SafeAreaOverlay::
+    RunTest(const FString&)
+    -> bool
+{
+    using namespace ck_debug_3d_viewport_spec;
+    const auto Overlay = SNew(STextBlock).Text(FText::FromString(TEXT("informational preview label")));
+    const auto Viewport = SNew(SCkDebug_3dPreviewViewport)
+                              .Descriptor(MakeDescriptor())
+                              .Adapter(MakeShared<FConsumer>())
+                              .SafeAreaOverlay(Overlay);
+    Viewport->SlatePrepass();
+    TestTrue(TEXT("common preview retains the supplied safe-area informational overlay"),
+             Viewport->Get_SafeAreaOverlayWidget() == Overlay);
+    TestTrue(TEXT("safe-area overlay starts below the common top control strip"),
+             Viewport->Get_SafeAreaOverlayPadding().Top > 0.0f);
+    TestTrue(TEXT("safe-area overlay does not replace the common toolbar"),
+             Viewport->Get_CommonControlsWidget().IsValid());
     return true;
 }
 

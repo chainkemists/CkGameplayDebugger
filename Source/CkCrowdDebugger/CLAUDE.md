@@ -21,12 +21,23 @@
   per-origin formation links, member-to-slot links, and queued-agent rank/category as copied values; the Crowd
   debugger must never retain a queue or member handle.
 
+## Navmesh status panel
+
+- `SCkCrowdDebugger_NavmeshStatusPanel` renders a provider-neutral header first - provider,
+  provider health, surface revision, surface bounds - read from `UCk_Utils_NavSurface_UE` for every
+  world, then a Recast detail section (NavSystem / NavData / Filter / Supported Agents) only while
+  Recast is the provider answering. The collector gates its Recast pull the same way, so a GroundNav
+  world reports that provider's own health and revision instead of a missing navmesh.
+
 ## Verification
 
 - `Ck.CrowdDebugger.Viewport3d.*` covers copied lifetimes, stable identity reorder, exact pick mapping, bounds,
   ribbons, Voxel content, atomic failure, appearance ownership, and 240-agent stable instancing.
-- Re-run the full serial `Crowd` family after adapter changes. The current CkPlugins user config has an inherited
-  `Nav.Filter.Customer` mapping failure; do not hide new failures behind that known baseline.
+- Re-run the full serial `Crowd` family after adapter changes. There is no inherited baseline failure to work
+  around: the `Viewport3d.*` family is 19/19 with zero failures, and the `Nav.Filter.Customer` tag exists and its
+  consumer is green. Any red is new.
+- `Ck.CrowdDebugger.NavmeshStatus.*` pins the header/detail split from a status value alone, with no world.
+
 ## Cross-debugger reuse
 
 `FCkCrowdDebugger_ViewModel` and `SCkCrowdDebugger_3dViewport` are exported reuse surfaces for concise overview tools.

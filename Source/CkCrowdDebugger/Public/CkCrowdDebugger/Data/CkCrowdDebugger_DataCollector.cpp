@@ -129,7 +129,13 @@ auto
 
 	// Reset only the per-tick-sampled fields. Health-check fields are sticky across
 	// ticks (set explicitly by Run_HealthCheckProbe; not derived from the live world).
+	// The neutral values are sampled too, so a tick that reaches no world leaves behind the
+	// provider it read last tick rather than the one answering now.
 	_NavmeshStatus._Sampled = false;
+	_NavmeshStatus._Provider = ECk_NavSurface_Provider::Recast;
+	_NavmeshStatus._ProviderHealth = ECk_NavSurface_ProviderHealth::NoData;
+	_NavmeshStatus._SurfaceRevision = 0;
+	_NavmeshStatus._ProviderIsRecast = false;
 	_NavmeshStatus._NavSystemPresent = false;
 	_NavmeshStatus._NavDataClassName.Empty();
 	_NavmeshStatus._DefaultFilterValid = false;
@@ -166,87 +172,105 @@ auto
 		{ _PlayerPawnEntity = UCk_Utils_OwningActor_UE::TryGet_ActorEntityHandle(Pawn); }
 	}
 
-	// Sample navmesh state once per tick.
+	// Sample navmesh state once per tick. The provider-neutral values are read first and for every
+	// world: whichever provider answers, the panel can name it, say how it is, and say which revision
+	// of the surface these values came from. Everything after that is one provider's own detail, and
+	// is pulled only while that provider is the one answering.
 	{
-		auto* NavSys = ck::nav_surface_recast::TryGet_NavSystem(InWorld);
-		_NavmeshStatus._NavSystemPresent = (NavSys != nullptr);
+		_NavmeshStatus._Provider         = UCk_Utils_NavSurface_UE::Get_Provider(InWorld);
+		_NavmeshStatus._ProviderHealth   = UCk_Utils_NavSurface_UE::Get_ProviderHealth(InWorld);
+		_NavmeshStatus._SurfaceRevision  = UCk_Utils_NavSurface_UE::Get_SurfaceRevision(InWorld);
+		_NavmeshStatus._ProviderIsRecast = _NavmeshStatus._Provider == ECk_NavSurface_Provider::Recast;
 
-		if (NavSys != nullptr)
+		const auto NavBounds = UCk_Utils_NavSurface_UE::Get_SurfaceBounds(InWorld);
+		if (NavBounds.IsValid != 0)
 		{
-			auto* NavData = ck::nav_surface_recast::TryGet_NavData(InWorld);
-			if (NavData != nullptr)
-			{
-				_NavmeshStatus._NavDataClassName = NavData->GetClass()->GetName();
-				_NavmeshStatus._DefaultFilterValid = NavData->GetDefaultQueryFilter().IsValid();
-				_NavmeshStatus._SupportedAgents = 1; // Default-nav-data path = 1 supported agent
-
-				const auto NavBounds = UCk_Utils_NavSurface_UE::Get_SurfaceBounds(InWorld);
-				if (NavBounds.IsValid != 0)
-				{
-					_NavmeshStatus._NavBoundsValid = true;
-					_NavmeshStatus._NavBoundsMin = NavBounds.Min;
-					_NavmeshStatus._NavBoundsMax = NavBounds.Max;
-				}
-
-				// Refresh the walkable-triangle soup on a throttle — the geometry rarely changes and a
-				// full all-tiles pull every frame would be wasteful at scale.
-				const auto Now = FPlatformTime::Seconds();
-				if (_NavGeomLastPullTime < 0.0 || (Now - _NavGeomLastPullTime) > 1.0)
-				{
-					// Prime suspect: gathers EVERY navmesh tile, then unconditionally bumps the
-					// revision so the whole mesh is re-copied, rebuilt and re-uploaded downstream.
-					TRACE_CPUPROFILER_EVENT_SCOPE(CkCrowdDbg_NavmeshGeometryPull);
-					_NavGeomLastPullTime = Now;
-
-					auto Geom = FRecastDebugGeometry{};
-					NavData->GetDebugGeometryForTile(Geom, FNavTileRef{}); // invalid TileRef = gather all tiles
-
-					auto PulledVerts = TArray<FVector>{};
-					for (auto Area = 0; Area < RECAST_MAX_AREAS; ++Area)
-					{
-						const auto& Indices = Geom.AreaIndices[Area];
-						PulledVerts.Reserve(PulledVerts.Num() + Indices.Num());
-						for (const auto Idx : Indices)
-						{
-							if (Geom.MeshVerts.IsValidIndex(Idx))
-							{ PulledVerts.Add(Geom.MeshVerts[Idx]); }
-						}
-					}
-
-					// Bump the revision only when the geometry ACTUALLY changed. This used to bump
-					// on every pull, i.e. once a second forever, and the revision is what makes the
-					// scene adapter rebuild the whole navmesh static mesh — a ~245ms job on a real
-					// map. A navmesh that never rebakes must never pay that more than once.
-					auto Signature = GetTypeHash(PulledVerts.Num());
-					for (const auto& Vert : PulledVerts)
-					{ Signature = HashCombineFast(Signature, GetTypeHash(Vert)); }
-
-					if (Signature != _NavGeomSignature)
-					{
-						_NavGeomSignature = Signature;
-						_NavTriVerts = MoveTemp(PulledVerts);
-						++_NavGeometryRevision;
-					}
-				}
-			}
-			else
-			{
-				_NavmeshStatus._NavDataClassName = TEXT("(no NavData)");
-				_NavmeshStatus._DefaultFilterValid = false;
-				const auto HadNavGeometryState = NOT _NavTriVerts.IsEmpty() || _NavGeomLastPullTime >= 0.0;
-				_NavTriVerts.Reset();
-				_NavGeomLastPullTime = -1.0;
-				if (HadNavGeometryState)
-				{ ++_NavGeometryRevision; }
-			}
+			_NavmeshStatus._NavBoundsValid = true;
+			_NavmeshStatus._NavBoundsMin = NavBounds.Min;
+			_NavmeshStatus._NavBoundsMax = NavBounds.Max;
 		}
-		else
+
+		// Whenever no Recast tiles can be read, whatever the last Recast world left behind stops
+		// standing for anything: drop it and bump the revision so the retained scene stops drawing it.
+		const auto Drop_NavGeometry = [this]()
 		{
 			const auto HadNavGeometryState = NOT _NavTriVerts.IsEmpty() || _NavGeomLastPullTime >= 0.0;
 			_NavTriVerts.Reset();
 			_NavGeomLastPullTime = -1.0;
 			if (HadNavGeometryState)
 			{ ++_NavGeometryRevision; }
+		};
+
+		if (NOT _NavmeshStatus._ProviderIsRecast)
+		{
+			Drop_NavGeometry();
+		}
+		else
+		{
+			auto* NavSys = ck::nav_surface_recast::TryGet_NavSystem(InWorld);
+			_NavmeshStatus._NavSystemPresent = (NavSys != nullptr);
+
+			if (NavSys != nullptr)
+			{
+				auto* NavData = ck::nav_surface_recast::TryGet_NavData(InWorld);
+				if (NavData != nullptr)
+				{
+					_NavmeshStatus._NavDataClassName = NavData->GetClass()->GetName();
+					_NavmeshStatus._DefaultFilterValid = NavData->GetDefaultQueryFilter().IsValid();
+					_NavmeshStatus._SupportedAgents = 1; // Default-nav-data path = 1 supported agent
+
+					// Refresh the walkable-triangle soup on a throttle — the geometry rarely changes and a
+					// full all-tiles pull every frame would be wasteful at scale.
+					const auto Now = FPlatformTime::Seconds();
+					if (_NavGeomLastPullTime < 0.0 || (Now - _NavGeomLastPullTime) > 1.0)
+					{
+						// Prime suspect: gathers EVERY navmesh tile, then unconditionally bumps the
+						// revision so the whole mesh is re-copied, rebuilt and re-uploaded downstream.
+						TRACE_CPUPROFILER_EVENT_SCOPE(CkCrowdDbg_NavmeshGeometryPull);
+						_NavGeomLastPullTime = Now;
+
+						auto Geom = FRecastDebugGeometry{};
+						NavData->GetDebugGeometryForTile(Geom, FNavTileRef{}); // invalid TileRef = gather all tiles
+
+						auto PulledVerts = TArray<FVector>{};
+						for (auto Area = 0; Area < RECAST_MAX_AREAS; ++Area)
+						{
+							const auto& Indices = Geom.AreaIndices[Area];
+							PulledVerts.Reserve(PulledVerts.Num() + Indices.Num());
+							for (const auto Idx : Indices)
+							{
+								if (Geom.MeshVerts.IsValidIndex(Idx))
+								{ PulledVerts.Add(Geom.MeshVerts[Idx]); }
+							}
+						}
+
+						// Bump the revision only when the geometry ACTUALLY changed. This used to bump
+						// on every pull, i.e. once a second forever, and the revision is what makes the
+						// scene adapter rebuild the whole navmesh static mesh — a ~245ms job on a real
+						// map. A navmesh that never rebakes must never pay that more than once.
+						auto Signature = GetTypeHash(PulledVerts.Num());
+						for (const auto& Vert : PulledVerts)
+						{ Signature = HashCombineFast(Signature, GetTypeHash(Vert)); }
+
+						if (Signature != _NavGeomSignature)
+						{
+							_NavGeomSignature = Signature;
+							_NavTriVerts = MoveTemp(PulledVerts);
+							++_NavGeometryRevision;
+						}
+					}
+				}
+				else
+				{
+					_NavmeshStatus._NavDataClassName = TEXT("(no NavData)");
+					_NavmeshStatus._DefaultFilterValid = false;
+					Drop_NavGeometry();
+				}
+			}
+			else
+			{
+				Drop_NavGeometry();
+			}
 		}
 
 		_NavmeshStatus._Sampled = true;

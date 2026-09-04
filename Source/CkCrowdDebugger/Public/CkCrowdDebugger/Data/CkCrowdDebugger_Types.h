@@ -5,6 +5,7 @@
 #include "CkCrowd/Agent/CkCrowdAgent_Fragment_Data.h"
 
 #include "CkNavigation/Nav/CkNav_Fragment_Data.h"
+#include "CkNavigation/NavSurface/CkNavSurface_Fragment_Data.h"
 
 #include "CkPathNetwork/Network/CkPathNetwork_Fragment_Data.h"
 
@@ -123,7 +124,19 @@ struct FCkCrowdDebugger_AgentSnapshot
 
 struct FCkCrowdDebugger_NavmeshStatus
 {
-	bool _Sampled = false;        // false until Gate 1 lands
+	bool _Sampled = false;        // false until a live world has been read this tick
+
+	// Provider-neutral facade values, read for every world whichever provider answers it. The panel's
+	// header is built from these alone, so a world with no Recast navmesh still reports what answers
+	// its queries, how that provider is, and which revision of the surface it was read at.
+	ECk_NavSurface_Provider       _Provider         = ECk_NavSurface_Provider::Recast;
+	ECk_NavSurface_ProviderHealth _ProviderHealth   = ECk_NavSurface_ProviderHealth::NoData;
+	int64                         _SurfaceRevision  = 0;
+	bool                          _ProviderIsRecast = false;
+
+	// Recast-only detail, filled only while _ProviderIsRecast. Under another provider these stay at
+	// their defaults and the panel renders no detail section for them, rather than reporting the
+	// navmesh nobody asked for as missing.
 	bool _NavSystemPresent = false;
 	FString _NavDataClassName;
 	bool _DefaultFilterValid = false;

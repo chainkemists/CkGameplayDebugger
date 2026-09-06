@@ -186,8 +186,8 @@ namespace ck_insights_capture_tests
                                 TEXT("Markdown contains detailed hot-frame sections"),
                                 Markdown.Contains(TEXT("Hot Frame 1 Detail")));
                             _Test->TestTrue(
-                                TEXT("JSON declares schema version 2"),
-                                Json.Contains(TEXT("\"schemaVersion\": 2")));
+                                TEXT("JSON declares schema version 3"),
+                                Json.Contains(TEXT("\"schemaVersion\": 3")));
                             _Test->TestTrue(
                                 TEXT("JSON contains detailed hot frames"),
                                 Json.Contains(TEXT("\"hotFrames\"")));

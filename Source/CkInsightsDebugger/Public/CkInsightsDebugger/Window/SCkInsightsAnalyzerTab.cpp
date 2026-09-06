@@ -686,7 +686,17 @@ auto
     _DepthOptions.Add(MakeShared<FString>(TEXT("Concise")));
     _DepthOptions.Add(MakeShared<FString>(TEXT("Hot Paths Only")));
 
+    auto* Capture = &FCkInsightsDebuggerModule::Get().Get_CaptureController();
     const auto Content = SNew(SBox)
+        .Tag(TEXT("InsightsAnalyzer.RetainedResults"))
+        .Visibility_Lambda([Capture]()
+        {
+            // Retain selection and expansion state, but exclude charts and result rows from
+            // layout, ticking and painting until capture (including screenshot drain) ends.
+            return Capture->Get_Snapshot().State == ECkInsightsCaptureState::Idle
+                ? EVisibility::Visible
+                : EVisibility::Collapsed;
+        })
         .Padding(PanelPadding)
         [
             SNew(SVerticalBox)
@@ -920,6 +930,7 @@ auto
                 .ToolTipText(FText::FromString(TEXT(
                     "Start a timed file trace, or stop it early. Choose 0-12 automated screenshots; 0 disables them, "
                     "and the default 3 are embedded at 10%, 50%, and 90%. "
+                    "Results are hidden while recording to reduce analyzer overhead. "
                     "The completed trace opens automatically and produces same-name Markdown and JSON reports.")))
                 .IsEnabled_Lambda([this, Capture]()
                 {

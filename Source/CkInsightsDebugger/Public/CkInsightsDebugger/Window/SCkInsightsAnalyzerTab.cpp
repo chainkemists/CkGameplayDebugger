@@ -19,6 +19,7 @@
 #include "CkDebuggerCommon/Widgets/SCkDebug_SelectableLabel.h"
 #include "CkDebuggerCommon/Window/SCkDebug_WindowChrome.h"
 
+#include <Async/Async.h>
 #include <Brushes/SlateDynamicImageBrush.h>
 #include <DesktopPlatformModule.h>
 #include <Framework/MultiBox/MultiBoxBuilder.h>
@@ -1213,6 +1214,20 @@ auto
         .Padding(0.0f, 0.0f, SectionSpacing, 0.0f)
         [
             SNew(SButton)
+            .Text(FText::FromString(TEXT("Cancel analysis")))
+            .IsEnabled_Lambda([this]() { return _FrameRequests.IsBusy(); })
+            .OnClicked_Lambda([this]()
+            {
+                DoClearResults();
+                DoSetStatus(TEXT("Analysis cancelled."), ECk_Tone::Info);
+                return FReply::Handled();
+            })
+        ]
+        + SHorizontalBox::Slot()
+        .AutoWidth()
+        .Padding(0.0f, 0.0f, SectionSpacing, 0.0f)
+        [
+            SNew(SButton)
             .Text(FText::FromString(TEXT("Copy Report")))
             .ToolTipText(FText::FromString(TEXT("Copy the current markdown report to the system clipboard")))
             .OnClicked(this, &SCkInsightsAnalyzerTab::DoOnCopyToClipboardClicked)
@@ -1276,16 +1291,21 @@ auto
 {
     SAssignNew(_SummaryBox, SHorizontalBox);
 
-    return SNew(SBox)
-        .Visibility_Lambda([this]() -> EVisibility
-        {
-            return (ck::IsValid(_SummaryBox) && _SummaryBox->NumSlots() > 0)
-                ? EVisibility::Visible
-                : EVisibility::Collapsed;
-        })
+    // The hidden tile participates in layout even while results are cleared. Its dynamic fonts
+    // reserve exactly the same two-line height as a populated summary, including style scaling.
+    const auto Placeholder = ck_insights_analyzer_tab::MakeStatTile(TEXT("Trace"), TEXT("—"), CkStyle::Text());
+    Placeholder->SetVisibility(EVisibility::Hidden);
+    auto Strip = SNew(SOverlay)
+        + SOverlay::Slot()
+        [
+            Placeholder
+        ]
+        + SOverlay::Slot()
         [
             _SummaryBox.ToSharedRef()
         ];
+    _SummaryStrip = Strip;
+    return Strip;
 }
 
 auto
@@ -1415,11 +1435,13 @@ auto
                 .ColorAndOpacity(CkStyle::TextMute())
                 .Visibility_Lambda([this]() -> EVisibility
                 {
-                    return _DetailsAreAveraged ? EVisibility::HitTestInvisible : EVisibility::Collapsed;
+                    return (_DetailsAreAveraged || _SingleDetailsProvisional) ? EVisibility::HitTestInvisible : EVisibility::Collapsed;
                 })
                 .Text_Lambda([this]() -> FText
                 {
-                    return FText::FromString(_AveragedScopeLabel);
+                    return FText::FromString(_SingleDetailsProvisional
+                        ? TEXT("Provisional — trace still loading; timer data may be incomplete. Wait details appear after loading.")
+                        : _AveragedScopeLabel);
                 })
             ]
             + SVerticalBox::Slot()
@@ -1790,7 +1812,7 @@ auto
     DoOnPresenceStripFrameClicked(uint64 InFrameIndex)
     -> void
 {
-    if (NOT _Session.IsOpen() || _LoadingState == ELoadingState::Opening)
+    if (NOT _Session->IsOpen() || _LoadingState == ELoadingState::Opening)
     {
         return;
     }
@@ -1810,7 +1832,7 @@ auto
     DoOnPresenceStripRefineToRuns(const TArray<FCk_FrameRun>& InRuns)
     -> void
 {
-    if (NOT _Session.IsOpen() || _LoadingState == ELoadingState::Opening || InRuns.IsEmpty())
+    if (NOT _Session->IsOpen() || _LoadingState == ELoadingState::Opening || InRuns.IsEmpty())
     {
         return;
     }
@@ -2249,12 +2271,6 @@ auto
     DoOnOpenTraceClicked()
     -> FReply
 {
-    if (DoIsLoading())
-    {
-        DoSetStatus(TEXT("Loading in progress..."), ECk_Tone::Warn);
-        return FReply::Handled();
-    }
-
     const auto DesktopPlatform = FDesktopPlatformModule::Get();
     if (ck::Is_NOT_Valid(DesktopPlatform, ck::IsValid_Policy_NullptrOnly{}))
     {
@@ -2286,14 +2302,8 @@ auto
     DoOpenTracePath(FString TracePath)
     -> void
 {
-    if (DoIsLoading())
-    {
-        DoSetStatus(TEXT("Loading in progress..."), ECk_Tone::Warn);
-        return;
-    }
-
+    DoCancelLoading();
     DoClearScreenshots();
-    _Session.Close();
     _FrameBarChart->ClearFrameData();
     DoClearResults();
 
@@ -2592,25 +2602,13 @@ auto
 {
     using namespace ck_insights_analyzer_tab;
 
-    if (NOT _Session.IsOpen() || DoIsLoading())
+    if (NOT _Session->IsOpen() || DoIsLoading())
     {
         DoSetStatus(TEXT("No trace loaded. Open a .utrace file first."), ECk_Tone::Warn);
         return FReply::Handled();
     }
 
-    DoSetStatus(TEXT("Analyzing worst 10 frames..."), ECk_Tone::Info);
-
-    FCk_MultiFrameReportConfig Config;
-    Config.TargetFrameMs = TargetFrameMs;
-    Config.Depth = _ReportDepth;
-    Config.ApplyDepth();
-    Config.WorstFrameCount = 10; // Override depth's default worst count
-
-    FCk_MultiFrameReport MultiReport(Config);
-    DoSetReport(MultiReport.AnalyzeWorstFrames(_Session, 10));
-    DoPopulateMultiFrame(MultiReport.GetStats());
-
-    DoSetStatus(TEXT("Worst 10 frames analysis complete. Click a Worst Frame row to drill in."), ECk_Tone::Ok);
+    DoQueueMultiFrameAnalysis({}, true);
 
     return FReply::Handled();
 }
@@ -2639,7 +2637,7 @@ auto
 {
     using namespace ck_insights_analyzer_tab;
 
-    if (NOT _Session.IsOpen() ||
+    if (NOT _Session->IsOpen() || _SingleDetailsProvisional || _MultiDetailsIntermediate || _FrameRequests.IsBusy() ||
         (NOT _LastSingleResult.IsSet() && NOT _LastMultiStats.IsSet()))
     {
         DoSetStatus(TEXT("No analysis to export. Analyze a frame or range first."), ECk_Tone::Warn);
@@ -2653,7 +2651,7 @@ auto
         return FReply::Handled();
     }
 
-    const FString BaseName = FPaths::GetBaseFilename(_Session.GetFilePath());
+    const FString BaseName = FPaths::GetBaseFilename(_Session->GetFilePath());
     const FString DefaultName = _LastSingleResult.IsSet()
         ? FString::Printf(TEXT("%s_Frame%llu.json"), *BaseName, _LastSingleResult->FrameIndex)
         : Get_MultiFrameExportName(BaseName, *_LastMultiStats);
@@ -2682,7 +2680,7 @@ auto
         Config.ApplyDepth();
         Config.ShowAllChildren = _ShowAllChildren;
 
-        Json = FCk_JsonReport::GenerateSingleFrame(_Session, *_LastSingleResult, Config);
+        Json = FCk_JsonReport::GenerateSingleFrame(*_Session, *_LastSingleResult, Config);
     }
     else
     {
@@ -2691,7 +2689,7 @@ auto
         Config.Depth = _ReportDepth;
         Config.ApplyDepth();
 
-        Json = FCk_JsonReport::GenerateMultiFrame(_Session, *_LastMultiStats, Config);
+        Json = FCk_JsonReport::GenerateMultiFrame(*_Session, *_LastMultiStats, Config);
     }
 
     if (FFileHelper::SaveStringToFile(Json, *OutFiles[0]))
@@ -2711,7 +2709,7 @@ auto
     DoOnWorstFrameClicked(uint64 FrameIndex)
     -> FReply
 {
-    if (NOT _Session.IsOpen() || DoIsLoading())
+    if (NOT _Session->IsOpen() || DoIsLoading())
     {
         return FReply::Handled();
     }
@@ -2736,7 +2734,7 @@ auto
     DoOnScreenshotMarkerClicked(uint32 ScreenshotId, uint64 FrameIndex)
     -> void
 {
-    if (NOT _Session.IsOpen() || _LoadingState == ELoadingState::Opening)
+    if (NOT _Session->IsOpen() || _LoadingState == ELoadingState::Opening)
     {
         return;
     }
@@ -2803,8 +2801,7 @@ auto
     DoOnFrameSelectionChanged(const TArray<FCk_FrameRun>& InRuns)
     -> void
 {
-    // Only Opening is blocked — during ReadingFrames the user can inspect loaded frames.
-    if (NOT _Session.IsOpen() || _LoadingState == ELoadingState::Opening) return;
+    if (NOT _Session->IsOpen() && NOT DoIsLoading()) return;
 
     DoClearScreenshotSelection();
 
@@ -2822,6 +2819,12 @@ auto
         return;
     }
 
+    if (DoIsLoading())
+    {
+        DoClearResults();
+        DoSetStatus(TEXT("Range analysis will be available when loading finishes. Click one frame to inspect it now."), ECk_Tone::Info);
+        return;
+    }
     DoAnalyzeFrameSet(InRuns);
 }
 
@@ -2858,6 +2861,11 @@ auto
     DoClearResults()
     -> void
 {
+    _FrameRequests.Reset();
+    _SelectedLiveFrame.Reset();
+    _SingleDetailsProvisional = false;
+    _MultiDetailsIntermediate = false;
+    _FinalFrameRequestQueued = false;
     DoSetReport(TEXT(""));
 
     _ResultsMode = EResultsMode::None;
@@ -2906,6 +2914,7 @@ auto
     SCompoundWidget::Tick(InAllottedGeometry, InCurrentTime, InDeltaTime);
 
     Poll_StyleRevision();
+    DoPollFrameDetails();
 }
 
 auto
@@ -2944,12 +2953,12 @@ auto
     -> void
 {
     DoClearScreenshots();
-    if (NOT _Session.IsOpen())
+    if (NOT _Session->IsOpen())
     {
         return;
     }
 
-    _TraceScreenshots = _Session.GetScreenshots();
+    _TraceScreenshots = _Session->GetScreenshots();
 
     auto Markers = TArray<FCk_FrameScreenshotMarker>{};
     Markers.Reserve(_TraceScreenshots.Num());
@@ -2958,7 +2967,7 @@ auto
     {
         if (Screenshot.GameFrameIndex == INDEX_NONE
             || Screenshot.GameFrameIndex < 0
-            || static_cast<uint64>(Screenshot.GameFrameIndex) >= _Session.GetFrameCount())
+            || static_cast<uint64>(Screenshot.GameFrameIndex) >= _Session->GetFrameCount())
         {
             continue;
         }
@@ -3078,7 +3087,7 @@ auto
     }
 
     auto CompressedData = TArray<uint8>{};
-    if (NOT _Session.TryCopyScreenshotData(ScreenshotId, CompressedData) || CompressedData.IsEmpty())
+    if (NOT _Session->TryCopyScreenshotData(ScreenshotId, CompressedData) || CompressedData.IsEmpty())
     {
         return nullptr;
     }
@@ -3128,70 +3137,200 @@ auto
 
     DoSetStatus(FString::Printf(TEXT("Analyzing frame %llu..."), FrameIndex), ECk_Tone::Info);
 
-    FCk_FrameAnalysisResult Result = FCk_FrameAnalyzer::AnalyzeFrame(_Session, FrameIndex);
-    if (NOT Result.IsValid())
+    if (!_SelectedLiveFrame.IsSet() || _SelectedLiveFrame.GetValue() != FrameIndex)
     {
-        DoSetStatus(FString::Printf(TEXT("Frame %llu produced no analysis data."), FrameIndex), ECk_Tone::Warn);
-
-        _ResultsMode = EResultsMode::None;
-        _AnalyzedFrameMs = 0.0;
-        DoClearAveragedDetailScope();
-        _HotPathRoots.Reset();
-        _Categories.Reset();
-        _TopTimers.Reset();
-        _WaitRows.Reset();
-        _LastSingleResult.Reset();
-        if (ck::IsValid(_HotPathTree)) { _HotPathTree->RequestTreeRefresh(); }
-        DoRebuildCategoryRows();
-        DoRebuildTopTimerRows();
-        DoRebuildWaitRows();
-        DoSetReport(TEXT(""));
-        return;
+        DoClearResults();
+        _SelectedLiveFrame = FrameIndex;
     }
+    _FinalFrameRequestQueued = _Session->IsAnalysisComplete();
+    _SingleDetailsProvisional = _SingleDetailsProvisional || !_FinalFrameRequestQueued;
+    _NextFrameRefreshSeconds = FPlatformTime::Seconds() + 1.0;
 
     FCk_FrameReportConfig Config;
     Config.TargetFrameMs = TargetFrameMs;
     Config.Depth = _ReportDepth;
     Config.ApplyDepth();
     Config.ShowAllChildren = _ShowAllChildren;
-
-    FCk_FrameReport FrameReport(Config);
-    DoSetReport(FrameReport.Generate(_Session, Result));
-
-    _ResultsMode = EResultsMode::SingleFrame;
-    _AnalyzedFrameMs = Result.FrameDurationMs;
-    DoClearAveragedDetailScope();
-    _LastSingleResult = Result;   // retained for Export JSON
-    _LastMultiStats.Reset();
-    _HotPathRoots = FrameReport.BuildHotPathTree(_Session, Result);
-
+    const auto Session = _Session;
+    _FrameRequests.Request(FrameIndex, [Session, FrameIndex, Config](const FCancelToken& Cancelled)
     {
-        TraceServices::FAnalysisSessionReadScope ReadScope = _Session.CreateReadScope();
-        const FCk_FrameReport::FTimerNameMap TimerNames = FCk_FrameReport::BuildTimerNameMap(_Session);
-        _Categories = FrameReport.ComputeCategorySummary(Result, TimerNames);
-        _TopTimers = FrameReport.ComputeTopTimers(Result, TimerNames, TopTimerCount);
+        FCkInsightsFrameDetails Details;
+        FCk_FrameSnapshot Snapshot;
+        if (!FCk_FrameAnalyzer::TryCaptureFrameSnapshot(*Session, FrameIndex, Snapshot, &Cancelled.Get()))
+        {
+            Details.IsProvisional = Snapshot.IsProvisional;
+            Details.UnavailableReason = Snapshot.UnavailableReason;
+            return Details;
+        }
+        Details.Result = MoveTemp(Snapshot.Result);
+        Details.IsProvisional = Snapshot.IsProvisional;
+        if (Cancelled->Load()) { return Details; }
+        const FCk_FrameReport Report(Config);
+        Details.HotPaths = Report.BuildHotPathTree(*Session, Details.Result, Snapshot.TimerNames);
+        Details.Categories = Report.ComputeCategorySummary(Details.Result, Snapshot.TimerNames);
+        Details.TopTimers = Report.ComputeTopTimers(Details.Result, Snapshot.TimerNames, TopTimerCount);
+        if (Cancelled->Load()) { return Details; }
+        if (!Details.IsProvisional)
+        {
+            Details.Report = Report.Generate(*Session, Details.Result);
+            const auto Scope = Session->CreateReadScope();
+            Details.WaitRows = FCk_FrameReport::ComputeWaitSummaries(*Session, Details.Result, Config.MinWaitMs);
+        }
+        else
+        {
+            Details.Report = FString::Printf(TEXT("Frame %llu: %.2fms\nProvisional: trace still loading. Full report and wait details will be available after loading."),
+                FrameIndex, Details.Result.FrameDurationMs);
+        }
+        return Details;
+    });
+}
 
-        // ComputeWaitSummaries reads timer names internally — needs the scope above
-        _WaitRows = FCk_FrameReport::ComputeWaitSummaries(_Session, Result, Config.MinWaitMs);
+auto
+    SCkInsightsAnalyzerTab::
+    DoPollFrameDetails()
+    -> void
+{
+    if (auto Details = _FrameRequests.Poll(); Details.IsSet())
+    {
+        DoApplyFrameDetails(MoveTemp(Details.GetValue()));
     }
+    if (!_SelectedLiveFrame.IsSet()) { return; }
+    if (_Session->IsAnalysisComplete() && !_FinalFrameRequestQueued)
+    {
+        DoAnalyzeSingleFrame(_SelectedLiveFrame.GetValue());
+    }
+    else if (DoIsLoading() && !_Session->IsAnalysisComplete() && !_FrameRequests.IsBusy()
+        && FPlatformTime::Seconds() >= _NextFrameRefreshSeconds)
+    {
+        DoAnalyzeSingleFrame(_SelectedLiveFrame.GetValue());
+    }
+}
 
-    if (ck::IsValid(_HotPathTree)) { _HotPathTree->RequestTreeRefresh(); }
-    DoExpandHotPathDefaults();
+auto
+    SCkInsightsAnalyzerTab::
+    DoApplyFrameDetails(FCkInsightsFrameDetails Details)
+    -> void
+{
+    using namespace ck_insights_analyzer_tab;
+    if (Details.MultiStats.IsSet())
+    {
+        const bool PreserveExpansion = _LastMultiStats.IsSet();
+        TSet<FString> ExpandedPaths;
+        TSet<FString> SelectedPaths;
+        const float ScrollOffset = _MergedHotPathTree.IsValid() ? _MergedHotPathTree->GetScrollOffset() : 0.0f;
+        TFunction<void(const TArray<TSharedPtr<FCk_MergedHotPathNode>>&, const FString&, bool)> Visit;
+        Visit = [this, &Visit, &ExpandedPaths, &SelectedPaths](const auto& Nodes, const FString& Parent, bool Restore)
+        {
+            for (const auto& Node : Nodes)
+            {
+                auto Path = Parent + FString::Printf(TEXT("/%d:%s:%d"), Node->RawName.Len(), *Node->RawName, Node->bIsAggregate);
+                for (const auto& Crumb : Node->Breadcrumbs)
+                { Path += FString::Printf(TEXT("|%d:%s"), Crumb.Len(), *Crumb); }
+                if (Restore)
+                {
+                    _MergedHotPathTree->SetItemExpansion(Node, ExpandedPaths.Contains(Path));
+                    if (SelectedPaths.Contains(Path)) { _MergedHotPathTree->SetItemSelection(Node, true); }
+                }
+                else
+                {
+                    if (_MergedHotPathTree->IsItemExpanded(Node)) { ExpandedPaths.Add(Path); }
+                    if (_MergedHotPathTree->IsItemSelected(Node)) { SelectedPaths.Add(Path); }
+                }
+                Visit(Node->Children, Path, Restore);
+            }
+        };
+        if (PreserveExpansion && _MergedHotPathTree.IsValid())
+        {
+            Visit(_MergedHotPathRoots, TEXT(""), false);
+            _MergedHotPathTree->ClearExpandedItems();
+            _MergedHotPathTree->ClearSelection();
+        }
+        _MultiDetailsIntermediate = Details.IsIntermediate;
+        DoSetReport(Details.Report);
+        DoPopulateMultiFrame(MoveTemp(Details.MultiStats.GetValue()), &Details);
+        if (PreserveExpansion && _MergedHotPathTree.IsValid())
+        {
+            Visit(_MergedHotPathRoots, TEXT(""), true);
+            _MergedHotPathTree->SetScrollOffset(ScrollOffset);
+        }
+        const auto& Stats = _LastMultiStats.GetValue();
+        if (_MultiDetailsIntermediate)
+        {
+            _AveragedScopeLabel += TEXT(" — partial results; analysis is still running");
+            DoAddSummaryTile(TEXT("Processed"), FString::Printf(TEXT("%llu / %llu"),
+                Details.ProcessedFrames, Details.RequestedFrames), CkStyle::Accent());
+            DoSetStatus(FString::Printf(TEXT("Analyzing %llu / %llu frames — partial averages over %llu analyzed frames"),
+                Details.ProcessedFrames, Details.RequestedFrames, Stats.FrameCount), ECk_Tone::Info);
+        }
+        else
+        {
+            DoSetStatus(FString::Printf(TEXT("Analyzed %s frames — avg %.2fms"),
+                *FormatWithCommas(Stats.FrameCount), Stats.AvgFrameMs),
+                Stats.FrameCount > 0 ? FrameBudgetTone(Stats.AvgFrameMs) : ECk_Tone::Warn);
+        }
+        return;
+    }
+    _MultiDetailsIntermediate = false;
+    if (!Details.Result.IsValid())
+    {
+        _SingleDetailsProvisional = Details.IsProvisional;
+        _ResultsMode = EResultsMode::None;
+        _AnalyzedFrameMs = 0.0;
+        _LastSingleResult.Reset();
+        _LastMultiStats.Reset();
+        DoClearAveragedDetailScope();
+        _HotPathRoots.Reset();
+        _Categories.Reset();
+        _TopTimers.Reset();
+        _WaitRows.Reset();
+        if (_HotPathTree.IsValid()) { _HotPathTree->RequestTreeRefresh(); }
+        DoRebuildCategoryRows();
+        DoRebuildTopTimerRows();
+        DoRebuildWaitRows();
+        DoSetReport(TEXT(""));
+        if (_SummaryBox.IsValid()) { _SummaryBox->ClearChildren(); }
+        DoSetStatus(Details.UnavailableReason.IsEmpty() ? TEXT("No timer data available for this frame.")
+            : Details.UnavailableReason, ECk_Tone::Info);
+        return;
+    }
+    _SingleDetailsProvisional = Details.IsProvisional;
+    const auto HadDetails = _LastSingleResult.IsSet();
+    TSet<FString> ExpandedPaths;
+    TFunction<void(const TArray<TSharedPtr<FCk_HotPathNode>>&, const FString&, bool)> Visit;
+    Visit = [this, &Visit, &ExpandedPaths](const auto& Nodes, const FString& Parent, bool Restore)
+    {
+        for (const auto& Node : Nodes)
+        {
+            const auto Path = Parent + TEXT("/") + Node->RawName;
+            if (Restore) { _HotPathTree->SetItemExpansion(Node, ExpandedPaths.Contains(Path)); }
+            else if (_HotPathTree->IsItemExpanded(Node)) { ExpandedPaths.Add(Path); }
+            Visit(Node->Children, Path, Restore);
+        }
+    };
+    if (_HotPathTree.IsValid() && HadDetails) { Visit(_HotPathRoots, TEXT(""), false); }
+    _ResultsMode = EResultsMode::SingleFrame;
+    _AnalyzedFrameMs = Details.Result.FrameDurationMs;
+    DoClearAveragedDetailScope();
+    _LastSingleResult = MoveTemp(Details.Result);
+    _LastMultiStats.Reset();
+    _HotPathRoots = MoveTemp(Details.HotPaths);
+    _Categories = MoveTemp(Details.Categories);
+    _TopTimers = MoveTemp(Details.TopTimers);
+    _WaitRows = MoveTemp(Details.WaitRows);
+    DoSetReport(Details.Report);
+    if (_HotPathTree.IsValid())
+    {
+        _HotPathTree->RequestTreeRefresh();
+        if (HadDetails) { Visit(_HotPathRoots, TEXT(""), true); }
+        else { DoExpandHotPathDefaults(); }
+    }
     DoRebuildCategoryRows();
     DoRebuildTopTimerRows();
     DoRebuildWaitRows();
-    DoRebuildSummaryStrip_SingleFrame(Result);
-
-    auto Status = FString::Printf(TEXT("Frame %llu: %.2fms"), FrameIndex, Result.FrameDurationMs);
-    if (_SelectedScreenshotId.IsSet())
-    {
-        const auto Screenshot = DoFindScreenshot(_SelectedScreenshotId.GetValue());
-        if (Screenshot != nullptr && Screenshot->GameFrameIndex == static_cast<int64>(FrameIndex))
-        {
-            Status += FString::Printf(TEXT("  |  screenshot: %s"), *Screenshot->Name);
-        }
-    }
-    DoSetStatus(Status, FrameBudgetTone(Result.FrameDurationMs));
+    DoRebuildSummaryStrip_SingleFrame(_LastSingleResult.GetValue());
+    DoSetStatus(FString::Printf(TEXT("Frame %llu: %.2fms%s"), _LastSingleResult->FrameIndex,
+        _AnalyzedFrameMs, _SingleDetailsProvisional ? TEXT(" | provisional — loading") : TEXT("")),
+        FrameBudgetTone(_AnalyzedFrameMs));
 }
 
 auto
@@ -3199,37 +3338,82 @@ auto
     DoAnalyzeFrameSet(const TArray<FCk_FrameRun>& InRuns)
     -> void
 {
-    using namespace ck_insights_analyzer_tab;
+    DoQueueMultiFrameAnalysis(InRuns, false);
+}
 
-    const auto SelectedFrames = Get_RunFrameCount(InRuns);
-    DoSetStatus(FString::Printf(TEXT("Analyzing %s frames across %d range(s)..."),
-        *FormatWithCommas(SelectedFrames), InRuns.Num()), ECk_Tone::Info);
+auto
+    SCkInsightsAnalyzerTab::
+    DoQueueMultiFrameAnalysis(const TArray<FCk_FrameRun>& InRuns, bool InWorstFrames)
+    -> void
+{
+    using namespace ck_insights_analyzer_tab;
+    const auto Runs = InRuns;
+    DoClearResults();
+    DoSetStatus(InWorstFrames ? TEXT("Analyzing worst 10 frames in the background...")
+        : FString::Printf(TEXT("Analyzing %s selected frames in the background..."),
+            *FormatWithCommas(Get_RunFrameCount(Runs))), ECk_Tone::Info);
 
     FCk_MultiFrameReportConfig Config;
     Config.TargetFrameMs = TargetFrameMs;
     Config.Depth = _ReportDepth;
     Config.ApplyDepth();
-    Config.ComputeWaitAverages = true;
-    Config.BuildMergedHotPaths = true;
+    Config.ComputeWaitAverages = !InWorstFrames;
+    Config.BuildMergedHotPaths = !InWorstFrames;
     Config.ShowAllChildren = _ShowAllChildren;
-
-    FCk_MultiFrameReport MultiReport(Config);
-    DoSetReport(MultiReport.AnalyzeFrameSet(_Session, InRuns));
-
-    const auto& Stats = MultiReport.GetStats();
-
-    // Without the mean frame there is nothing to drive the detail panels with; DoPopulateMultiFrame
-    // then falls back to aggregate-only surfaces rather than showing a previous frame's numbers.
-    const auto HasAveragedFrame = Stats.AveragedFrame.IsSet();
-    CK_ENSURE_IF_NOT(HasAveragedFrame, TEXT("A multi-frame selection must produce a synthetic averaged frame"))
-    {}
-
-    DoPopulateMultiFrame(Stats);
-
-    DoSetStatus(FString::Printf(TEXT("Analyzed %s frames across %d range(s) — avg %.2fms%s"),
-        *FormatWithCommas(Stats.FrameCount), InRuns.Num(), Stats.AvgFrameMs,
-        HasAveragedFrame ? TEXT("") : TEXT("  |  no averaged frame: aggregates only")),
-        HasAveragedFrame ? FrameBudgetTone(Stats.AvgFrameMs) : ECk_Tone::Warn);
+    if (InWorstFrames) { Config.WorstFrameCount = 10; }
+    // Resolve the session's mutable legacy cache before any multi-frame worker can read it.
+    _Session->GetGameThreadId();
+    const auto Session = _Session;
+    _FrameRequests.RequestProgressive(0, [Session, Runs, Config, InWorstFrames](
+        const FCancelToken& Cancelled, const FCkInsightsFrameRequestQueue::FPublish& Publish) mutable
+    {
+        FCkInsightsFrameDetails Details;
+        Config.Cancelled = &Cancelled.Get();
+        FCk_FrameReportConfig FrameConfig;
+        FrameConfig.TargetFrameMs = Config.TargetFrameMs;
+        FrameConfig.Depth = Config.Depth;
+        FrameConfig.ApplyDepth();
+        const FCk_FrameReport FrameReport(FrameConfig);
+        FCk_FrameReport::FTimerNameMap Names;
+        {
+            const auto Scope = Session->CreateReadScope();
+            Names = FCk_FrameReport::BuildTimerNameMap(*Session);
+        }
+        const auto PreparePanels = [&](FCkInsightsFrameDetails& InDetails)
+        {
+            const auto& Stats = InDetails.MultiStats.GetValue();
+            if (!Stats.AveragedFrame.IsSet()) { return; }
+            InDetails.Categories = FrameReport.ComputeCategorySummary(Stats.AveragedFrame.GetValue(), Names);
+            InDetails.TopTimers = FrameReport.ComputeTopTimers(Stats.AveragedFrame.GetValue(), Names, TopTimerCount);
+            for (const auto& Wait : Stats.WaitAverages)
+            {
+                if (Wait.WaitMs >= FrameConfig.MinWaitMs) { InDetails.WaitRows.Add(Wait); }
+            }
+        };
+        if (!InWorstFrames)
+        {
+            Config.OnProgress = [&](FCk_MultiFrameStats&& Stats, uint64 RequestedFrames, uint64 VisitedFrames)
+            {
+                if (Cancelled->Load()) { return; }
+                FCkInsightsFrameDetails Progress;
+                Progress.MultiStats = MoveTemp(Stats);
+                Progress.IsIntermediate = true;
+                Progress.ProcessedFrames = VisitedFrames;
+                Progress.RequestedFrames = RequestedFrames;
+                Progress.Report = FString::Printf(TEXT("Partial analysis: %llu / %llu frames processed. Full report is still being generated."),
+                    VisitedFrames, RequestedFrames);
+                PreparePanels(Progress);
+                if (!Cancelled->Load()) { Publish(MoveTemp(Progress)); }
+            };
+        }
+        FCk_MultiFrameReport MultiReport(Config);
+        Details.Report = InWorstFrames ? MultiReport.AnalyzeWorstFrames(*Session, 10)
+            : MultiReport.AnalyzeFrameSet(*Session, Runs);
+        if (Cancelled->Load()) { return Details; }
+        Details.MultiStats = MultiReport.GetStats();
+        PreparePanels(Details);
+        return Details;
+    });
 }
 
 auto
@@ -3237,7 +3421,7 @@ auto
     DoRerunCurrentSelection()
     -> void
 {
-    if (NOT _Session.IsOpen() || DoIsLoading() ||
+    if ((!_Session->IsOpen() && !DoIsLoading()) ||
         ck::Is_NOT_Valid(_FrameBarChart) || NOT _FrameBarChart->HasSelection())
     {
         return;
@@ -3248,18 +3432,19 @@ auto
 
 auto
     SCkInsightsAnalyzerTab::
-    DoPopulateMultiFrame(const FCk_MultiFrameStats& Stats)
+    DoPopulateMultiFrame(FCk_MultiFrameStats InStats, FCkInsightsFrameDetails* Prepared)
     -> void
 {
+    _LastMultiStats = MoveTemp(InStats);
+    const auto& Stats = _LastMultiStats.GetValue();
     _ResultsMode = EResultsMode::MultiFrame;
 
     _LastSingleResult.Reset();
-    _LastMultiStats = Stats;      // retained for Export JSON
 
     _WorstFrames = Stats.WorstFrames;
     _CategoryAverages = Stats.CategoryAverages;
 
-    DoPopulateDetailPanels_Averaged(Stats);
+    DoPopulateDetailPanels_Averaged(Stats, Prepared);
 
     if (ck::IsValid(_HotPathTree)) { _HotPathTree->RequestTreeRefresh(); }
     if (ck::IsValid(_MergedHotPathTree)) { _MergedHotPathTree->RequestTreeRefresh(); }
@@ -3275,7 +3460,7 @@ auto
 
 auto
     SCkInsightsAnalyzerTab::
-    DoPopulateDetailPanels_Averaged(const FCk_MultiFrameStats& Stats)
+    DoPopulateDetailPanels_Averaged(const FCk_MultiFrameStats& Stats, FCkInsightsFrameDetails* Prepared)
     -> void
 {
     using namespace ck_insights_analyzer_tab;
@@ -3310,20 +3495,30 @@ auto
     _MergedHotPathRoots = Stats.MergedHotPaths;
     _AnalysedFrameIndices = MakeShared<TArray<uint64>>(Stats.AnalysedFrameIndices);
 
+    if (Prepared != nullptr)
     {
-        TraceServices::FAnalysisSessionReadScope ReadScope = _Session.CreateReadScope();
-        const FCk_FrameReport::FTimerNameMap TimerNames = FCk_FrameReport::BuildTimerNameMap(_Session);
-        _Categories = FrameReport.ComputeCategorySummary(Averaged, TimerNames);
-        _TopTimers = FrameReport.ComputeTopTimers(Averaged, TimerNames, TopTimerCount);
+        _Categories = MoveTemp(Prepared->Categories);
+        _TopTimers = MoveTemp(Prepared->TopTimers);
+        _WaitRows = MoveTemp(Prepared->WaitRows);
     }
-
-    // Wait rows cannot be derived from the synthesized average (no session time window to re-read);
-    // the worker aggregates them per-thread into WaitAverages instead.
-    _WaitRows = ck::algo::Filter(Stats.WaitAverages,
-        [&](const FCk_WaitThreadSummary& InWait)
+    else
+    {
         {
-            return InWait.WaitMs >= Config.MinWaitMs;
-        });
+            TraceServices::FAnalysisSessionReadScope ReadScope = _Session->CreateReadScope();
+            const FCk_FrameReport::FTimerNameMap TimerNames = FCk_FrameReport::BuildTimerNameMap(*_Session);
+            _Categories = FrameReport.ComputeCategorySummary(Averaged, TimerNames);
+            _TopTimers = FrameReport.ComputeTopTimers(Averaged, TimerNames, TopTimerCount);
+        }
+
+        // Wait rows cannot be derived from the synthesized average (no session time window to re-read);
+        // the worker aggregates them per-thread into WaitAverages instead.
+        _WaitRows = ck::algo::Filter(Stats.WaitAverages,
+            [&](const FCk_WaitThreadSummary& InWait)
+            {
+                return InWait.WaitMs >= Config.MinWaitMs;
+            });
+
+    }
 
     _DetailsAreAveraged = true;
     _AveragedScopeLabel = Get_AveragedScopeLabel(Stats);
@@ -3353,9 +3548,9 @@ auto
     const auto TracePath = MoveTemp(_PendingAutoReportTracePath);
     _PendingAutoReportTracePath.Reset();
 
-    const auto CanGenerate = _Session.IsOpen()
+    const auto CanGenerate = _Session->IsOpen()
         && NOT TracePath.IsEmpty()
-        && FPaths::ConvertRelativePathToFull(TracePath) == FPaths::ConvertRelativePathToFull(_Session.GetFilePath());
+        && FPaths::ConvertRelativePathToFull(TracePath) == FPaths::ConvertRelativePathToFull(_Session->GetFilePath());
     CK_ENSURE_IF_NOT(CanGenerate, TEXT("Automated capture report must target the trace that finished loading"))
     {
         DoSetStatus(TEXT("Trace loaded, but its automated report target did not match."), ECk_Tone::Err);
@@ -3370,10 +3565,10 @@ auto
     Config.WorstFrameCount = HotFrameCount;
 
     FCk_MultiFrameReport MultiReport(Config);
-    const auto Markdown = MultiReport.AnalyzeWorstFrames(_Session, HotFrameCount);
+    const auto Markdown = MultiReport.AnalyzeWorstFrames(*_Session, HotFrameCount);
     const auto HasAnalyzableFrames = MultiReport.GetStats().FrameCount > 0;
     const auto Json = FCk_JsonReport::GenerateMultiFrame(
-        _Session,
+        *_Session,
         MultiReport.GetStats(),
         MultiReport.GetConfig());
 
@@ -3455,27 +3650,27 @@ auto
     }
     _SummaryBox->ClearChildren();
 
-    if (NOT _Session.IsOpen())
+    if (NOT _Session->IsOpen())
     {
         return;
     }
 
-    DoAddSummaryTile(TEXT("Trace"), FPaths::GetCleanFilename(_Session.GetFilePath()), CkStyle::Text());
-    DoAddSummaryTile(TEXT("Duration"), FString::Printf(TEXT("%.1fs"), _Session.GetDurationSeconds()), CkStyle::Text());
-    DoAddSummaryTile(TEXT("Game Frames"), FormatWithCommas(_Session.GetFrameCount()), CkStyle::Text());
+    DoAddSummaryTile(TEXT("Trace"), FPaths::GetCleanFilename(_Session->GetFilePath()), CkStyle::Text());
+    DoAddSummaryTile(TEXT("Duration"), FString::Printf(TEXT("%.1fs"), _Session->GetDurationSeconds()), CkStyle::Text());
+    DoAddSummaryTile(TEXT("Game Frames"), FormatWithCommas(_Session->GetFrameCount()), CkStyle::Text());
 
     if (NOT _TraceScreenshots.IsEmpty())
     {
         DoAddSummaryTile(TEXT("Screenshots"), FormatWithCommas(_TraceScreenshots.Num()), CkStyle::Accent());
     }
 
-    if (const uint64 RenderFrames = _Session.GetRenderFrameCount();
+    if (const uint64 RenderFrames = _Session->GetRenderFrameCount();
         RenderFrames > 0)
     {
         DoAddSummaryTile(TEXT("Render Frames"), FormatWithCommas(RenderFrames), CkStyle::Text());
     }
 
-    DoAddSummaryTile(TEXT("Threads"), FormatWithCommas(_Session.GetThreadInfos().Num()), CkStyle::TextDim());
+    DoAddSummaryTile(TEXT("Threads"), FormatWithCommas(_Session->GetThreadInfos().Num()), CkStyle::TextDim());
     DoAddSummaryTile(TEXT("Budget"), FString::Printf(TEXT("%.1fms"), TargetFrameMs), CkStyle::TextDim());
 }
 
@@ -3518,6 +3713,7 @@ auto
     }
 
     DoAddSummaryTile(TEXT("Avg"), FString::Printf(TEXT("%.2fms"), Stats.AvgFrameMs), FrameBudgetColor(Stats.AvgFrameMs));
+    if (_MultiDetailsIntermediate) { return; }
     DoAddSummaryTile(TEXT("P95"), FString::Printf(TEXT("%.2fms"), Stats.P95FrameMs), FrameBudgetColor(Stats.P95FrameMs));
     DoAddSummaryTile(TEXT("P99"), FString::Printf(TEXT("%.2fms"), Stats.P99FrameMs), FrameBudgetColor(Stats.P99FrameMs));
     DoAddSummaryTile(TEXT("Max"), FString::Printf(TEXT("%.2fms"), Stats.MaxFrameMs), FrameBudgetColor(Stats.MaxFrameMs));
@@ -3534,34 +3730,20 @@ auto
 {
     _PendingTracePath = TracePath;
     _LoadingState = ELoadingState::Opening;
-
+    _LoadedFrameCount = 0;
+    _TotalFrameCount = 0;
     DoSetStatus(FString::Printf(TEXT("Opening: %s ..."), *FPaths::GetCleanFilename(TracePath)), ECk_Tone::Info);
 
-    // Prepare analysis service on game thread (FModuleManager is not thread-safe)
-    _PendingSession = MakeShared<FCk_TraceSession>();
-    if (NOT _PendingSession->PrepareAnalysisService())
+    // Trace modules initialize on the game thread; parsing runs on TraceServices' thread.
+    if (!_Session->PrepareAnalysisService() || !_Session->StartAnalysis(TracePath))
     {
-        DoSetStatus(TEXT("Failed to create analysis service."), ECk_Tone::Err);
-        _PendingSession.Reset();
+        DoSetStatus(FString::Printf(TEXT("Failed to open: %s"), *FPaths::GetCleanFilename(TracePath)), ECk_Tone::Err);
         _LoadingState = ELoadingState::Idle;
         return;
     }
-
-    // Must START on the game thread — registered trace modules (e.g. ChaosVD)
-    // ensure(IsInGameThread()) inside OnAnalysisBegin, which StartAnalysis fires synchronously.
-    // The heavy processing then runs on TraceServices' own thread; the ticker polls completion.
-    if (NOT _PendingSession->StartAnalysis(TracePath))
-    {
-        DoSetStatus(FString::Printf(TEXT("Failed to open: %s"),
-            *FPaths::GetCleanFilename(TracePath)), ECk_Tone::Err);
-        _PendingSession.Reset();
-        _LoadingState = ELoadingState::Idle;
-        return;
-    }
-
+    _LoadingState = ELoadingState::ReadingFrames;
     _LoadingTickerHandle = FTSTicker::GetCoreTicker().AddTicker(
-        FTickerDelegate::CreateSP(this, &SCkInsightsAnalyzerTab::DoOnLoadingTick),
-        0.1f);
+        FTickerDelegate::CreateSP(this, &SCkInsightsAnalyzerTab::DoOnLoadingTick), 0.1f);
 }
 
 auto
@@ -3569,56 +3751,13 @@ auto
     DoOnLoadingTick(float DeltaTime)
     -> bool
 {
-    switch (_LoadingState)
+    if (!DoIsLoading()) { return false; }
+    if (DoLoadFrameChunk())
     {
-    case ELoadingState::Opening:
-    {
-        if (ck::Is_NOT_Valid(_PendingSession))
-        {
-            _LoadingState = ELoadingState::Idle;
-            return false; // stop ticking
-        }
-
-        if (NOT _PendingSession->IsAnalysisComplete())
-        {
-            return true; // keep ticking
-        }
-
-        _Session = MoveTemp(*_PendingSession);
-        _PendingSession.Reset();
-
-        _TotalFrameCount = _Session.GetFrameCount();
-        _LoadedFrameCount = 0;
-        _PendingFrameDurations.Reset();
-        _PendingFrameDurations.Reserve(static_cast<int32>(_TotalFrameCount));
-
-        if (_TotalFrameCount == 0)
-        {
-            DoFinishLoading();
-            return false;
-        }
-
-        _LoadingState = ELoadingState::ReadingFrames;
-
-        DoSetStatus(FString::Printf(
-            TEXT("Reading frames: 0 / %llu ..."), _TotalFrameCount), ECk_Tone::Info);
-
-        return true; // continue ticking for frame reading
-    }
-
-    case ELoadingState::ReadingFrames:
-    {
-        if (DoLoadFrameChunk())
-        {
-            DoFinishLoading();
-            return false; // stop ticking
-        }
-        return true; // keep ticking
-    }
-
-    default:
+        DoFinishLoading();
         return false;
     }
+    return DoIsLoading();
 }
 
 auto
@@ -3626,43 +3765,28 @@ auto
     DoLoadFrameChunk()
     -> bool
 {
-    constexpr uint64 ChunkSize = 2000;
-
-    TraceServices::FAnalysisSessionReadScope ReadScope = _Session.CreateReadScope();
-
-    const uint64 EndFrame = FMath::Min(_LoadedFrameCount + ChunkSize, _TotalFrameCount);
-
-    TArray<double> ChunkDurations;
-    ChunkDurations.Reserve(static_cast<int32>(EndFrame - _LoadedFrameCount));
-
-    for (uint64 i = _LoadedFrameCount; i < EndFrame; ++i)
+    auto Batch = _Session->ReadAvailableFrames(_LoadedFrameCount);
+    if (!Batch.Error.IsEmpty())
     {
-        const auto Frame = _Session.GetFrame(i);
-        if (ck::IsValid(Frame, ck::IsValid_Policy_NullptrOnly{}))
-        {
-            const double DurationMs = (Frame->EndTime - Frame->StartTime) * 1000.0;
-            ChunkDurations.Add(DurationMs);
-        }
-        else
-        {
-            ChunkDurations.Add(0.0);
-        }
+        const auto Error = Batch.Error;
+        DoCancelLoading();
+        DoClearResults();
+        _FrameBarChart->ClearFrameData();
+        DoSetStatus(Error, ECk_Tone::Err);
+        return false;
     }
-
-    _PendingFrameDurations.Append(ChunkDurations);
-
-    if (ck::IsValid(_FrameBarChart))
+    _TotalFrameCount = Batch.FrameCount;
+    _LoadedFrameCount += Batch.Durations.Num();
+    if (_FrameBarChart.IsValid() && !Batch.Durations.IsEmpty())
     {
-        _FrameBarChart->AppendFrameData(ChunkDurations);
+        _FrameBarChart->AppendFrameData(Batch.Durations);
     }
-
-    _LoadedFrameCount = EndFrame;
-
-    DoSetStatus(FString::Printf(
-        TEXT("Reading frames: %llu / %llu ..."),
-        _LoadedFrameCount, _TotalFrameCount), ECk_Tone::Info);
-
-    return _LoadedFrameCount >= _TotalFrameCount;
+    if (!_SelectedLiveFrame.IsSet())
+    {
+        DoSetStatus(FString::Printf(TEXT("Loading: %llu frames available — click a frame to inspect provisional details"),
+            _LoadedFrameCount), ECk_Tone::Info);
+    }
+    return Batch.IsAnalysisComplete && _LoadedFrameCount >= Batch.FrameCount;
 }
 
 auto
@@ -3670,31 +3794,23 @@ auto
     DoFinishLoading()
     -> void
 {
-    // The chart already has every frame from the progressive appends; rescaling to P95 here
-    // (rather than SetFrameData) preserves the user's viewport/zoom.
-    if (ck::IsValid(_FrameBarChart))
-    {
-        _FrameBarChart->RecalculateDisplayMax();
-    }
-    _PendingFrameDurations.Reset();
-
+    if (_FrameBarChart.IsValid()) { _FrameBarChart->RecalculateDisplayMax(); }
     DoLoadScreenshots();
-
-    const double DurationSec = _Session.GetDurationSeconds();
-    DoSetStatus(FString::Printf(
-        TEXT("Loaded: %s  |  %llu frames  |  %.1fs duration  |  %d screenshots"),
-        *FPaths::GetCleanFilename(_PendingTracePath),
-        _TotalFrameCount,
-        DurationSec,
-        _TraceScreenshots.Num()),
-        ECk_Tone::Ok);
-
-    DoRebuildSummaryStrip_TraceInfo();
-
     _LoadingState = ELoadingState::Idle;
     _LoadingTickerHandle.Reset();
-
-    if (NOT _PendingAutoReportTracePath.IsEmpty())
+    if (_SelectedLiveFrame.IsSet())
+    {
+        // Tick may already have queued the completed-provider refresh.
+        if (!_FinalFrameRequestQueued) { DoAnalyzeSingleFrame(_SelectedLiveFrame.GetValue()); }
+    }
+    else
+    {
+        DoSetStatus(FString::Printf(TEXT("Loaded: %s | %llu frames | %.1fs duration | %d screenshots"),
+            *FPaths::GetCleanFilename(_PendingTracePath), _TotalFrameCount,
+            _Session->GetDurationSeconds(), _TraceScreenshots.Num()), ECk_Tone::Ok);
+        DoRebuildSummaryStrip_TraceInfo();
+    }
+    if (!_PendingAutoReportTracePath.IsEmpty())
     {
         _AutoOpenReportGenerated = DoGenerateAutomatedCaptureReport();
     }
@@ -3710,9 +3826,16 @@ auto
         FTSTicker::GetCoreTicker().RemoveTicker(_LoadingTickerHandle);
         _LoadingTickerHandle.Reset();
     }
-
-    _PendingSession.Reset();
-    _PendingFrameDurations.Reset();
+    _FrameRequests.Reset();
+    _SelectedLiveFrame.Reset();
+    _Session->RequestStop();
+    // A worker retains the wrapper it reads. The final blocking Close belongs off the UI thread.
+    auto RetiredSession = MoveTemp(_Session);
+    Async(EAsyncExecution::ThreadPool, [RetiredSession = MoveTemp(RetiredSession)]() mutable
+    {
+        RetiredSession.Reset();
+    });
+    _Session = MakeShared<FCk_TraceSession, ESPMode::ThreadSafe>();
     _LoadingState = ELoadingState::Idle;
 }
 

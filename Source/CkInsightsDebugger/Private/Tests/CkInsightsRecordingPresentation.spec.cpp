@@ -158,6 +158,7 @@ namespace ck_insights_recording_presentation_tests
                     _RetainedChild.Reset();
                     _RetainedResults.Reset();
                     _Tab.Reset();
+                    _Deadline = Now + TimeoutSeconds;
                     _Phase = EPhase::StartCloseDuringCapture;
                     return false;
                 }
@@ -166,7 +167,11 @@ namespace ck_insights_recording_presentation_tests
                 {
                     if (UE::Trace::IsTracing())
                     {
-                        _Test->AddError(TEXT("Early-stop cleanup left an active trace."));
+                        // Stop queues writer shutdown; the worker may need more than one frame to drain.
+                        if (Now < _Deadline)
+                        { return false; }
+
+                        _Test->AddError(TEXT("Early-stop trace writer did not finish before timeout."));
                         StopTraceIfNeeded();
                         return true;
                     }

@@ -237,6 +237,7 @@ auto
 {
     _FrameDurationsMs = MoveTemp(InFrameDurationsMs);
     _ViewOffset = 0.0;
+    _bAutoFit = true;
 
     _DisplayMaxMs = FrameBarChart::Get_DisplayMaxMs(_FrameDurationsMs);
     _FramesPerPixel = FrameBarChart::Get_FramesPerPixel_FitAll(_FrameDurationsMs.Num());
@@ -256,9 +257,13 @@ auto
 
     // _DisplayMaxMs deliberately stays at its floor while loading — startup/shutdown outliers
     // would flatten every normal bar; DoFinishLoading calls RecalculateDisplayMax once all
-    // frames are in. Re-fitting the zoom each chunk grows the bars left-to-right, like Insights.
-    _ViewOffset = 0.0;
-    _FramesPerPixel = FrameBarChart::Get_FramesPerPixel_FitAll(_FrameDurationsMs.Num());
+    // frames are in. Follow incremental data only until the user chooses a view: otherwise a
+    // chunk must not discard their pan/zoom, selection anchor, or hover identity.
+    if (_bAutoFit)
+    {
+        _ViewOffset = 0.0;
+        _FramesPerPixel = FrameBarChart::Get_FramesPerPixel_FitAll(_FrameDurationsMs.Num());
+    }
 
     Invalidate(EInvalidateWidgetReason::Paint);
 }
@@ -272,6 +277,7 @@ auto
     ClearScreenshotMarkers();
     _ViewOffset = 0.0;
     _FramesPerPixel = 1.0;
+    _bAutoFit = true;
     _DisplayMaxMs = FrameBarChart::MinDisplayMaxMs;
     ClearSelection();
     Invalidate(EInvalidateWidgetReason::Paint);
@@ -803,6 +809,7 @@ auto
 
     if (_bIsPanning)
     {
+        _bAutoFit = false;
         const float BarStep = GetBarStep(MyGeometry);
         const float DeltaX = LocalPos.X - _PanStartX;
         _ViewOffset = _PanStartOffset - static_cast<double>(DeltaX) / static_cast<double>(BarStep);
@@ -1126,6 +1133,8 @@ auto
     ApplyZoom(const FGeometry& Geometry, float LocalX, float Delta)
     -> void
 {
+    _bAutoFit = false;
+
     const float BarStep = GetBarStep(Geometry);
     const double FrameUnderCursor = _ViewOffset + static_cast<double>(LocalX) / static_cast<double>(BarStep);
 

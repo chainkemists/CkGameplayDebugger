@@ -72,6 +72,15 @@ public:
     /** Get total frame count. */
     auto GetFrameCount() const -> uint64 { return static_cast<uint64>(_FrameDurationsMs.Num()); }
 
+    /** True while incremental data keeps the viewport fitted to every loaded frame. */
+    auto IsAutoFitting() const -> bool { return _bAutoFit; }
+
+    /** Current first visible frame, exposed for focused Slate interaction tests. */
+    auto GetViewOffset() const -> double { return _ViewOffset; }
+
+    /** Current zoom level, exposed for focused Slate interaction tests. */
+    auto GetFramesPerPixel() const -> double { return _FramesPerPixel; }
+
     /** Set the target frame budget in ms. */
     auto SetTargetFrameMs(double InTargetMs) -> void;
 
@@ -167,6 +176,7 @@ private:
     // Viewport state
     double _ViewOffset = 0.0;       // First visible frame (fractional for smooth scrolling)
     double _FramesPerPixel = 1.0;   // Zoom level: how many frames fit in one pixel
+    bool _bAutoFit = true;          // Incremental loading follows new frames until the user pans or zooms.
 
     // Selection — sorted, merged, non-overlapping inclusive runs
     TArray<FCk_FrameRun> _SelectedRuns;

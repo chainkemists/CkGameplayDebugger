@@ -5,6 +5,7 @@
 #include "CkInsightsAnalyzer/Core/CkTraceSession.h"
 #include "CkInsightsAnalyzer/Report/CkFrameReport.h"
 #include "CkInsightsAnalyzer/Report/CkMultiFrameReport.h"
+#include "CkInsightsDebugger/Analysis/CkInsightsFrameRequest.h"
 #include "CkInsightsDebugger/Capture/CkInsightsCaptureController.h"
 #include "CkInsightsDebugger/Widgets/SCkFrameBarChart.h"
 #include "CkInsightsDebugger/Widgets/SCkFramePresenceStrip.h"
@@ -53,6 +54,7 @@ public:
     virtual auto Tick(const FGeometry& InAllottedGeometry, double InCurrentTime, float InDeltaTime) -> void override;
 
 private:
+    friend struct FCkInsightsAnalyzerTabTestAccess;
 
     // ---- Results mode ----
 
@@ -151,15 +153,18 @@ private:
     auto DoSetReport(const FString& ReportText) -> void;
     auto DoClearResults() -> void;
     auto DoAnalyzeSingleFrame(uint64 FrameIndex) -> void;
+    auto DoPollFrameDetails() -> void;
+    auto DoApplyFrameDetails(FCkInsightsFrameDetails Details) -> void;
     auto DoAnalyzeFrameSet(const TArray<FCk_FrameRun>& InRuns) -> void;
+    auto DoQueueMultiFrameAnalysis(const TArray<FCk_FrameRun>& InRuns, bool InWorstFrames) -> void;
     auto DoRerunCurrentSelection() -> void;
-    auto DoPopulateMultiFrame(const FCk_MultiFrameStats& Stats) -> void;
+    auto DoPopulateMultiFrame(FCk_MultiFrameStats Stats, FCkInsightsFrameDetails* Prepared = nullptr) -> void;
 
     /**
      * Fill the hot-path / category / wait / top-timer panels from the selection's synthetic mean
      * frame, or blank them when the analysis produced none (worst-frames runs never do).
      */
-    auto DoPopulateDetailPanels_Averaged(const FCk_MultiFrameStats& Stats) -> void;
+    auto DoPopulateDetailPanels_Averaged(const FCk_MultiFrameStats& Stats, FCkInsightsFrameDetails* Prepared = nullptr) -> void;
     auto DoClearAveragedDetailScope() -> void;
     auto DoGenerateAutomatedCaptureReport() -> bool;
     auto DoLoadScreenshots() -> void;
@@ -196,7 +201,12 @@ private:
     auto DoIsLoading() const -> bool { return _LoadingState != ELoadingState::Idle; }
 
 private:
-    FCk_TraceSession _Session;
+    TSharedPtr<FCk_TraceSession, ESPMode::ThreadSafe> _Session = MakeShared<FCk_TraceSession, ESPMode::ThreadSafe>();
+    FCkInsightsFrameRequestQueue _FrameRequests;
+    TOptional<uint64> _SelectedLiveFrame;
+    bool _SingleDetailsProvisional = false;
+    bool _FinalFrameRequestQueued = false;
+    double _NextFrameRefreshSeconds = 0.0;
 
     TSharedPtr<SCkFrameBarChart> _FrameBarChart;
     TSharedPtr<STextBlock> _StatusText;
@@ -214,6 +224,8 @@ private:
     FString _CurrentReport;
 
     TSharedPtr<SHorizontalBox> _SummaryBox;
+    TSharedPtr<SWidget> _SummaryStrip;
+    bool _MultiDetailsIntermediate = false;
 
     EResultsMode _ResultsMode = EResultsMode::None;
     double _AnalyzedFrameMs = 0.0; // frame duration backing the hot-path %-of-frame column
@@ -273,10 +285,8 @@ private:
     bool _AutoOpenTraceOpeningStarted = false;
     bool _AutoOpenReportGenerated = false;
     double _AutoOpenDeadlineSeconds = 0.0;
-    TSharedPtr<FCk_TraceSession> _PendingSession;
     uint64 _TotalFrameCount = 0;
     uint64 _LoadedFrameCount = 0;
-    TArray<double> _PendingFrameDurations;
     int32 _CaptureDurationSeconds = 30;
     int32 _CaptureScreenshotCount = FCkInsightsCaptureController::DefaultTimedCaptureScreenshotCount;
 };

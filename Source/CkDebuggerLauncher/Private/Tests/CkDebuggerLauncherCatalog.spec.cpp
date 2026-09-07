@@ -39,6 +39,9 @@ bool FCkDebuggerLauncherCatalog_AllDebuggersHaveLaunchableDescriptors::RunTest(c
         TEXT("CkIntentDebugger"),
         TEXT("CkObjectPoolingDebugger"),
         TEXT("CkInsightsAnalyzerTab"),
+#if PLATFORM_WINDOWS
+        TEXT("CkHangMonitor"),
+#endif
         TEXT("CkJoltDebugger"),
         TEXT("CkJoltBakeInspector"),
         TEXT("CkMapDebugger"),
@@ -98,6 +101,20 @@ bool FCkDebuggerLauncherCatalog_AllDebuggersHaveLaunchableDescriptors::RunTest(c
             TestEqual(TEXT("Insights Analyzer descriptor keeps its launcher order"),
                 Tool.Get_SortOrder(), 10);
         }
+
+#if PLATFORM_WINDOWS
+        if (TabId == TEXT("CkHangMonitor"))
+        {
+            TestEqual(TEXT("Hang Monitor descriptor is owned by its debugger module"),
+                Tool.Get_OwnerModule(), FName{TEXT("CkHangMonitor")});
+            TestEqual(TEXT("Hang Monitor descriptor keeps its display name"),
+                Tool.Get_DisplayName().ToString(), FString{TEXT("[CK] Hang Monitor")});
+            TestEqual(TEXT("Hang Monitor descriptor stays in the Tools category"),
+                Tool.Get_Category(), ECkDebuggerToolCategory::Tools);
+            TestEqual(TEXT("Hang Monitor descriptor keeps its launcher order"),
+                Tool.Get_SortOrder(), 15);
+        }
+#endif
 
         const auto OrderSlot = ck::Format_UE(
             TEXT("{}:{}"),
@@ -220,7 +237,17 @@ bool FCkDebuggerLauncherPackaging_DevToolDescriptorsIncludeDevelopmentCookedWin6
     TestExpectedModule(TEXT("CkDebugger"), TEXT("CkTextureDebugger"));
     TestExpectedModule(TEXT("CkDebugger"), TEXT("CkVisualLodDebugger"));
     TestExpectedModule(TEXT("CkDebugger"), TEXT("CkInsightsDebugger"));
+    TestExpectedModule(TEXT("CkDebugger"), TEXT("CkHangMonitor"));
     TestExpectedModule(TEXT("CkDebugger"), TEXT("CkDebuggerLauncher"));
+
+    const auto* HangMonitor = TestModule(TEXT("CkDebugger"), TEXT("CkHangMonitor"));
+    if (ck::IsValid(HangMonitor, ck::IsValid_Policy_NullptrOnly{}))
+    {
+        TestFalse(TEXT("CkHangMonitor remains excluded from Shipping when developer tools are forced on"),
+            HangMonitor->IsCompiledInConfiguration(TEXT("Win64"), EBuildConfiguration::Shipping, TEXT("BusterBlock"), EBuildTargetType::Game, true, true));
+        TestFalse(TEXT("CkHangMonitor remains excluded from Test when developer tools are forced on"),
+            HangMonitor->IsCompiledInConfiguration(TEXT("Win64"), EBuildConfiguration::Test, TEXT("BusterBlock"), EBuildTargetType::Game, true, true));
+    }
     return true;
 }
 

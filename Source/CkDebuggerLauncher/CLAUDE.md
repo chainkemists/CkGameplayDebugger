@@ -23,9 +23,9 @@
 | AI | AI Overview, A*, GOAP, Crowd, EQS, Aggro |
 | Systems | Scheduler, Object Pooling, Jolt Physics, Audio |
 | Interface | UI Layer, Enhanced Input, Intent |
-| Tools | Insights Analyzer, Style Lab, Save, Optimization, Texture & Surface |
+| Tools | Insights Analyzer, Hang Monitor, Style Lab, Save, Optimization, Texture & Surface |
 
-(The exact 22-tool census, categories and sort orders are pinned by
+(The exact catalog census, categories and sort orders are pinned by
 `CkDebuggerLauncherCatalog.spec.cpp` — trust the spec over this table if they ever disagree.)
 
 `CkInsightsDebugger` owns the Insights Analyzer tab spawner and registers its own descriptor.

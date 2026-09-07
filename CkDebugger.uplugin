@@ -307,6 +307,18 @@
 			]
 		},
 		{
+			"Name": "CkHangMonitor",
+			"Type": "DeveloperTool",
+			"LoadingPhase": "Default",
+			"WhitelistPlatforms": [
+				"Win64"
+			],
+			"TargetConfigurationDenyList": [
+				"Shipping",
+				"Test"
+			]
+		},
+		{
 			"Name": "CkStyleLabDebugger",
 			"Type": "DeveloperTool",
 			"LoadingPhase": "Default",

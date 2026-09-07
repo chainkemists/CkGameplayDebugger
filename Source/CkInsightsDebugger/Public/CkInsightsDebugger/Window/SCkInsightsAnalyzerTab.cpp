@@ -886,8 +886,9 @@ auto
         ECk_Icon::Foliage,
         FText::FromString(TEXT("Show all")),
         FText::FromString(TEXT(
-            "Show every child in the hot-path tree instead of folding small ones into "
-            "'(+N below threshold)' rows. Tree depth still follows the Depth preset.")),
+            "Show every child in the hot-path tree. Normally, only small children whose combined "
+            "cost is at most 0.3 ms and 3% of their parent are folded. Averaged selections filter "
+            "after averaging, without changing timer measurements. Tree depth follows the Depth preset.")),
         TAttribute<bool>::CreateLambda([this]() { return DoGet_ShowAllChildren(); }),
         FOnCkDebug_IconToggleChanged::CreateSP(this, &SCkInsightsAnalyzerTab::DoOnShowAllChildrenChanged)});
 

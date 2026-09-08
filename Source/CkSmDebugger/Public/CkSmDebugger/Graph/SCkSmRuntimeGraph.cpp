@@ -95,9 +95,8 @@ namespace ck_sm_runtime_graph
     auto DrawCircle(FSlateWindowElementList& Out, const int32 Layer, const FGeometry& Geo,
                     const FVector2f Pos, const float Size, const FLinearColor& Color) -> void
     {
-        static const auto Brush = FSlateRoundedBoxBrush(FLinearColor::White, 999.0f);
         const auto Child = Geo.MakeChild(FVector2f(Size, Size), FSlateLayoutTransform(Pos));
-        FSlateDrawElement::MakeBox(Out, Layer, Child.ToPaintGeometry(), &Brush,
+        FSlateDrawElement::MakeBox(Out, Layer, Child.ToPaintGeometry(), CkStyle::GetRoundedBrush_Pill(),
             ESlateDrawEffect::None, Color);
     }
 

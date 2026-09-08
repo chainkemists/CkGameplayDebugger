@@ -1,0 +1,16 @@
+<ui version="1">
+  <region name="main">
+    <debug-inspector id="style-lab-profiles-inspector" title-bind="title">
+      <slot name="body">
+        <column id="style-lab-profiles-body" class="style-lab-profiles-body">
+          <text id="profile-purpose" bind="purpose" class="profile-purpose" />
+          <repeat id="style-lab-profiles-repeat" bind="profiles" direction="horizontal" class="profile-actions">
+            <button id="profile-action" bind-field="name" color-field="active-color" tooltip-field="blurb" item-action="apply-profile" class="profile-action" />
+          </repeat>
+          <text id="profile-current" bind="current-profile" color-bind="current-profile-color" class="profile-current" />
+          <text id="profile-layout-error" bind="layout-error" visible="layout-error-visible" class="profile-layout-error" />
+        </column>
+      </slot>
+    </debug-inspector>
+  </region>
+</ui>

@@ -40,7 +40,7 @@ auto
     -> int32
 {
     const auto Size = InAllottedGeometry.GetLocalSize();
-    const auto* Brush = CkStyle::GetRoundedBrush_Small();
+    const auto* Brush = CkStyle::GetRoundedBrush_Pill();
 
     const auto TrackColor = _TrackColor.A > 0.0f ? _TrackColor : CkStyle::BgRoot();
 

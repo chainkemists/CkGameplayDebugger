@@ -392,9 +392,8 @@ static auto DrawFilledCircle(
     FSlateWindowElementList& OutElements, int32 Layer,
     const FGeometry& NodeGeom, FVector2f Pos, float Size, const FLinearColor& Color) -> void
 {
-    static auto Brush = FSlateRoundedBoxBrush(FLinearColor::White, 999.0f);
     auto G = NodeGeom.MakeChild(FVector2f(Size, Size), FSlateLayoutTransform(Pos));
-    FSlateDrawElement::MakeBox(OutElements, Layer, G.ToPaintGeometry(), &Brush, ESlateDrawEffect::None, Color);
+    FSlateDrawElement::MakeBox(OutElements, Layer, G.ToPaintGeometry(), CkStyle::GetRoundedBrush_Pill(), ESlateDrawEffect::None, Color);
 }
 
 // Helper: draw a hollow ring (filled outer, dark inner punch-out)

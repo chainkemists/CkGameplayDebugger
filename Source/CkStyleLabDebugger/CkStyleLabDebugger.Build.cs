@@ -1,4 +1,5 @@
 using UnrealBuildTool;
+using System.IO;
 
 public class CkStyleLabDebugger : CkModuleRules
 {
@@ -20,6 +21,10 @@ public class CkStyleLabDebugger : CkModuleRules
             "CkDebuggerCommon",
             "CkEcs",
             "CkEditorTools",
+            "CkSlateLayout",
+
+            // Resolves the installed CkDebugger plugin resource root for the authored profile view.
+            "Projects",
 
             // The sample renders the REAL overlay focus card from a hand-authored model, so an
             // axis flip is proven against the shipping widget instead of a lookalike.
@@ -28,6 +33,9 @@ public class CkStyleLabDebugger : CkModuleRules
             // The Input HUD preview below is the shipping runtime widget backed by a canned model.
             "CkInputHudOverlay",
         });
+
+        RuntimeDependencies.Add(Path.Combine(PluginDirectory, "Resources", "UI", "StyleLabProfiles.ui.html"), StagedFileType.NonUFS);
+        RuntimeDependencies.Add(Path.Combine(PluginDirectory, "Resources", "UI", "StyleLabProfiles.ui.css"), StagedFileType.NonUFS);
 
         if (Target.bBuildEditor)
         {

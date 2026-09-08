@@ -3,6 +3,7 @@
 #include "CkTextureDebugger/Data/CkTextureDebugger_Types.h"
 
 #include "CoreMinimal.h"
+#include "CkSlateLayout/CkUiDocument.h"
 #include "Styling/SlateBrush.h"
 #include "UObject/ObjectKey.h"
 #include "UObject/StrongObjectPtr.h"
@@ -13,6 +14,9 @@ class STableViewBase;
 class SCkDebug_DualSearchBar;
 class UPrimitiveComponent;
 class UTexture;
+class FCkUiView;
+class FCkUiCollection;
+class SCkUiTable;
 
 // --------------------------------------------------------------------------------------------------------------------
 
@@ -44,9 +48,19 @@ DECLARE_DELEGATE_OneParam(
 class CKTEXTUREDEBUGGER_API SCkTextureDebugger_TextureHealthTable final : public SCompoundWidget
 {
 public:
-    SLATE_BEGIN_ARGS(SCkTextureDebugger_TextureHealthTable) {}
+    SLATE_BEGIN_ARGS(SCkTextureDebugger_TextureHealthTable) : _UseYogaLayout(true) {}
+        SLATE_ARGUMENT(bool, UseYogaLayout)
         SLATE_EVENT(FOnCkTextureDebugger_TextureHealthSelectionChanged, OnSelectionChanged)
     SLATE_END_ARGS()
+
+    /** Designer reload entry points also used by the live file polling path. */
+    auto TryReload_Layout(const FString& InMarkup, const FString& InStylesheet) -> FCkUiLoadResult;
+    auto Reload_LayoutFiles(const FString& InMarkupPath, const FString& InStylesheetPath) -> FCkUiLoadResult;
+    auto Poll_LayoutFiles() -> bool;
+    auto Get_LayoutRevision() const -> int64;
+    auto Get_LayoutError() const -> FText;
+    auto Get_AuthoredTable() const -> TSharedPtr<SCkUiTable>;
+    auto Get_AuthoredSplitter() const -> TSharedPtr<class SCkUiSplitter>;
 
     auto
         Construct(
@@ -106,6 +120,7 @@ public:
     struct FRow
     {
         FRowKey Key;
+        FString UiKey;
         TWeakObjectPtr<UPrimitiveComponent> Component;
         TWeakObjectPtr<UTexture> Texture;
         FString ComponentLabel;
@@ -118,6 +133,9 @@ public:
     };
 
 private:
+    auto Construct_Yoga(const FArguments& InArgs) -> void;
+    auto Construct_Native(const FArguments& InArgs) -> void;
+    auto Tick_LayoutFiles(double InCurrentTime, float InDeltaTime) -> EActiveTimerReturnType;
     auto Rebuild_Rows() -> void;
     auto
         MatchesSearch(
@@ -137,8 +155,14 @@ private:
     auto Clear_PreviewTexture() -> void;
     auto Find_Row(const FRowKey& InKey) const -> TSharedPtr<FRow>;
     auto Get_EmptyStateText() const -> FText;
+    auto Get_FilterText() const -> FText;
+    auto Get_HighlightText() const -> FText;
+    auto Get_RowCountText() const -> FText;
     auto Get_SelectedDetailsText() const -> FText;
     auto Get_PreviewBrush() const -> const FSlateBrush*;
+    auto Has_Selection() const -> bool;
+    auto On_FilterTextChanged(const FText& InText) -> void;
+    auto On_HighlightTextChanged(const FText& InText) -> void;
     auto
         OnGenerateRow(
             TSharedPtr<FRow> InItem,
@@ -150,6 +174,8 @@ private:
             ESelectInfo::Type InSelectInfo)
         -> void;
     auto OnContextMenuOpening() -> TSharedPtr<SWidget>;
+    auto On_CopyTextureDetails(const FString& InKey) -> void;
+    auto On_AuthoredSelectionChanged(TOptional<FString> InKey, ESelectInfo::Type InSelectInfo) -> void;
 
     FOnCkTextureDebugger_TextureHealthSelectionChanged _OnSelectionChanged;
     FCkTextureDebugger_LoadedWorldSnapshot _Snapshot;
@@ -158,6 +184,10 @@ private:
     TArray<TSharedPtr<FRow>> _Rows;
     TSharedPtr<SListView<TSharedPtr<FRow>>> _ListView;
     TSharedPtr<SCkDebug_DualSearchBar> _SearchBar;
+    TSharedPtr<FCkUiView> _LayoutView;
+    TSharedPtr<FCkUiCollection> _UiCollection;
+    TMap<FString, TWeakPtr<FRow>> _UiRows;
+    FString _PublicationError;
     TOptional<FRowKey> _SelectedKey;
     TStrongObjectPtr<UTexture> _PreviewTextureRoot;
     FSlateBrush _PreviewBrush;

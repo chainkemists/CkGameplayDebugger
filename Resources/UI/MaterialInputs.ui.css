@@ -1,0 +1,18 @@
+.fill { flex-grow: 1; flex-shrink: 1; }
+.material-inputs-panel { padding: var(--space-m); gap: var(--space-m); }
+.purpose { color: var(--text); text-wrap: wrap; }
+.context-row { gap: var(--space-s); }
+.search-row { gap: var(--space-s); }
+.search-fields { gap: var(--space-s); }
+.count-pill { flex-shrink: 0; padding: 2px 6px; background-color: var(--surface); vertical-align: center; }
+.count-text { text-wrap: nowrap; font-size: 10px; color: var(--text); }
+.material-inputs-table { min-width: 880px; flex-grow: 1; flex-shrink: 1; }
+.column-parameter { flex-grow: 0.22; }
+.column-texture { flex-grow: 0.25; }
+.column-provenance { flex-grow: 0.20; }
+.column-slot { flex-grow: 0.12; }
+.column-variant { flex-grow: 0.21; }
+.table-cell { padding: 0 var(--space-s); vertical-align: center; }
+.table-text { font-size: 10px; flex-shrink: 1; text-wrap: nowrap; text-overflow: ellipsis; }
+.empty { horizontal-align: center; vertical-align: center; padding: var(--space-m); }
+.empty-copy { color: var(--text); text-wrap: wrap; }

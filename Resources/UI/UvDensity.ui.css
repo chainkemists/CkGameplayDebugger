@@ -1,0 +1,14 @@
+.fill { flex-grow: 1; flex-shrink: 1; }
+.uv-page { padding: var(--space-m); gap: var(--space-m); }
+.card { padding: var(--space-l); gap: var(--space-s); background-color: var(--surface); }
+.purpose { color: var(--text-dim); text-wrap: wrap; }
+.context-row { flex-wrap: wrap; gap: var(--space-s); }
+.section-toggle { horizontal-align: left; flex-shrink: 0; }
+.section-body { gap: var(--space-s); }
+.fact-row { gap: var(--space-m); }
+.fact-label { width: 144px; color: var(--text-dim); }
+.fact-value { flex-grow: 1; color: var(--text-strong); text-wrap: wrap; }
+.result-value-row { gap: var(--space-s); vertical-align: center; }
+.result-value { font-size: 22px; font-weight: bold; }
+.result-unit { color: var(--text-dim); }
+.explanation { color: var(--text-dim); text-wrap: wrap; }

@@ -3,6 +3,8 @@
 #include "CkDebuggerCommon/Styles/CkDebuggerAxes.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_Icon.h"
 
+#include "CkSlateLayout/CkFlexLayoutTypes.h"
+
 #include "CkEditorTools/Style/CkStyle.h"
 
 #include "Widgets/Images/SImage.h"
@@ -42,10 +44,11 @@ auto
 	_StatusPillTone = InArgs._StatusPillTone;
 	_IconBrush = InArgs._IconBrush;
 	_IconColor = InArgs._IconColor;
+	_Body = InArgs._Body.Widget;
 
 	SAssignNew(_HeaderRow, SHorizontalBox);
 
-	auto HeaderButton = SNew(SButton)
+	SAssignNew(_HeaderButton, SButton)
 		.ButtonStyle(FAppStyle::Get(), "HoverHintOnly")
 		.ContentPadding(FMargin(0.0f))
 		.OnClicked(this, &SCkDebug_InspectorPanel::OnHeaderClicked)
@@ -68,7 +71,7 @@ auto
 		+ SVerticalBox::Slot()
 		.AutoHeight()
 		[
-			HeaderButton
+			_HeaderButton.ToSharedRef()
 		]
 
 		+ SVerticalBox::Slot()
@@ -82,12 +85,44 @@ auto
 			.Padding(FMargin(0.0f))
 			.Visibility(_IsExpanded ? EVisibility::Visible : EVisibility::Collapsed)
 			[
-				InArgs._Body.Widget
+				_Body.ToSharedRef()
 			]
 		]
 	];
 
 	RebuildHeader();
+	AddMetadata(MakeShared<FCkFlexMeasureMetaData>(
+		[WeakPanel = TWeakPtr<SCkDebug_InspectorPanel>(SharedThis(this))](const FCkFlexMeasureArgs& Args) -> FVector2D
+		{
+			const TSharedPtr<SCkDebug_InspectorPanel> Panel = WeakPanel.Pin();
+			if (!Panel.IsValid() || !IsValid_CkFlexMeasureArgs(Args)) { return FVector2D::ZeroVector; }
+			const FVector2D Header = Panel->_HeaderButton.IsValid() ? Panel->_HeaderButton->GetDesiredSize() : FVector2D::ZeroVector;
+			FVector2D Body = FVector2D::ZeroVector;
+			if (Panel->_IsExpanded && Panel->_Body.IsValid())
+			{
+				const TSharedPtr<FCkFlexMeasureMetaData> Measure = Panel->_Body->GetMetaData<FCkFlexMeasureMetaData>();
+				auto BodyArgs = Args;
+				BodyArgs.AvailableHeight = YGUndefined;
+				BodyArgs.HeightMode = YGMeasureModeUndefined;
+				Body = Measure.IsValid() ? Measure->Measure(BodyArgs) : Panel->_Body->GetDesiredSize();
+			}
+			FVector2D Result(FMath::Max<double>(Header.X, Body.X), Header.Y + Body.Y);
+			if (Args.WidthMode == YGMeasureModeExactly) { Result.X = Args.AvailableWidth; }
+			else if (Args.WidthMode == YGMeasureModeAtMost) { Result.X = FMath::Min<double>(Result.X, Args.AvailableWidth); }
+			if (Args.HeightMode == YGMeasureModeExactly) { Result.Y = Args.AvailableHeight; }
+			else if (Args.HeightMode == YGMeasureModeAtMost) { Result.Y = FMath::Min<double>(Result.Y, Args.AvailableHeight); }
+			return Result;
+		},
+		[WeakPanel = TWeakPtr<SCkDebug_InspectorPanel>(SharedThis(this))](const float Width, const float Height)
+		{
+			const TSharedPtr<SCkDebug_InspectorPanel> Panel = WeakPanel.Pin();
+			if (!Panel.IsValid() || !Panel->_IsExpanded || !Panel->_Body.IsValid()) { return; }
+			if (const TSharedPtr<FCkFlexMeasureMetaData> Measure = Panel->_Body->GetMetaData<FCkFlexMeasureMetaData>(); Measure.IsValid())
+			{
+				const float HeaderHeight = Panel->_HeaderButton.IsValid() ? Panel->_HeaderButton->GetDesiredSize().Y : 0.0f;
+				Measure->NotifyArranged(Width, FMath::Max(0.0f, Height - HeaderHeight));
+			}
+		}));
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -109,7 +144,11 @@ auto
 			[
 				SNew(SCkDebug_Icon)
 				.Brush(_IconBrush)
-				.Meaning(_Title)
+				.Meaning_Lambda([WeakPanel = TWeakPtr<SCkDebug_InspectorPanel>(SharedThis(this))]()
+				{
+					const TSharedPtr<SCkDebug_InspectorPanel> Panel = WeakPanel.Pin();
+					return Panel.IsValid() ? Panel->_Title.Get(FText::GetEmpty()) : FText::GetEmpty();
+				})
 				.ColorAndOpacity(FSlateColor(_IconColor))
 				.Size(FVector2D(14.0f, 14.0f))
 			];
@@ -119,7 +158,7 @@ auto
 		.AutoWidth()
 		.VAlign(VAlign_Center)
 		[
-			SNew(STextBlock)
+			SAssignNew(_TitleText, STextBlock)
 			.Text(_Title)
 			.Font(FCoreStyle::GetDefaultFontStyle("Bold", CkStyle::PaneHeadingFontSize()))
 			.ColorAndOpacity(FSlateColor(CkStyle::PaneHeadingColor()))
@@ -187,6 +226,17 @@ auto
 	}
 	_OnToggled.ExecuteIfBound(_IsExpanded);
 }
+
+auto
+	SCkDebug_InspectorPanel::
+	Set_Title(TAttribute<FText> InTitle)
+	-> void
+{
+	_Title = MoveTemp(InTitle);
+	if (_TitleText.IsValid()) { _TitleText->SetText(_Title); }
+}
+
+// --------------------------------------------------------------------------------------------------------------------
 
 auto
 	SCkDebug_InspectorPanel::

@@ -1,0 +1,6 @@
+.style-lab-profiles-body { gap: var(--space-s); padding: var(--space-m); }
+.profile-purpose { color: var(--text-dim); text-wrap: wrap; }
+.profile-actions { flex-wrap: wrap; gap: var(--space-s); }
+.profile-action { flex-shrink: 0; }
+.profile-current { color: var(--accent); font-size: 11px; text-wrap: wrap; }
+.profile-layout-error { color: var(--err); text-wrap: wrap; }

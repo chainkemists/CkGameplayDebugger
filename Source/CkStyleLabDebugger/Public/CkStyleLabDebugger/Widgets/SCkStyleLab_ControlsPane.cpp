@@ -9,17 +9,22 @@
 
 #include "CkDebuggerCommon/Settings/CkDebuggerStyleSettings.h"
 #include "CkDebuggerCommon/Styles/CkDebuggerAxes.h"
+#include "CkDebuggerCommon/UI/CkDebug_UiRegistry.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_InspectorPanel.h"
 
 #include "CkEditorTools/Style/CkStyle.h"
 
+#include "CkSlateLayout/CkUiCollection.h"
+#include "CkSlateLayout/SCkUiSurface.h"
+
+#include "Interfaces/IPluginManager.h"
+#include "Misc/Paths.h"
 #include "UObject/UnrealType.h"
 
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/Layout/SSeparator.h"
-#include "Widgets/Layout/SWrapBox.h"
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/Text/STextBlock.h"
 
@@ -31,6 +36,15 @@ namespace ck_style_lab_controls
 {
     constexpr auto ValueLabelWidth = 128.0f;
     constexpr auto AxisNameWidth   = 116.0f;
+
+    auto ProfileUiSchema() -> TArray<FCkUiFieldSchema>
+    {
+        return {
+            {TEXT("name"), ECkUiFieldKind::Text},
+            {TEXT("blurb"), ECkUiFieldKind::Text},
+            {TEXT("active-color"), ECkUiFieldKind::Color},
+        };
+    }
 
     auto Get_AxisEnum(const FProperty* InProperty) -> const UEnum*
     {
@@ -351,68 +365,149 @@ auto
     Build_ProfileControls()
     -> TSharedRef<SWidget>
 {
-    auto Buttons = SNew(SWrapBox).UseAllottedSize(true);
-    const auto& Profiles = ck::debug_axes::Get_StyleProfiles();
-
-    for (auto Index = 0; Index < Profiles.Num(); ++Index)
+    TSharedPtr<const FCkUiWidgetRegistrySnapshot> Registry;
+    const FCkUiLoadResult RegistryResult = FCkDebug_UiRegistry::TryCreate(Registry);
+    const FCkUiLoadResult CollectionResult = FCkUiCollection::TryCreate(
+        ck_style_lab_controls::ProfileUiSchema(), _ProfileCollection);
+    if (NOT RegistryResult.Succeeded || NOT CollectionResult.Succeeded)
     {
-        const auto& Profile = Profiles[Index];
-        Buttons->AddSlot().Padding(0.0f, 0.0f, CkStyle::SpaceS, CkStyle::SpaceS)
-            [
-                SNew(SButton)
-                    .ToolTipText(FText::FromString(Profile.Blurb))
-                    .OnClicked_Lambda([this, Index]() -> FReply
-                    {
-                        Apply_Profile(Index);
-                        return FReply::Handled();
-                    })
-                    [
-                        SNew(STextBlock)
-                            .Text(FText::FromString(Profile.Name))
-                            .Font(CkStyle::BoldFont(CkStyle::FontSizeSmall()))
-                            .ColorAndOpacity_Lambda([Name = Profile.Name]() -> FSlateColor
-                            {
-                                const auto* Settings = UCkDebuggerStyleSettings::Get();
-                                return FSlateColor{Settings != nullptr && Settings->ActiveProfileName == Name
-                                    ? CkStyle::Accent()
-                                    : CkStyle::Text()};
-                            })
-                    ]
-            ];
+        _ProfilePublicationError = FString::Join(RegistryResult.Errors, TEXT("\n"))
+            + FString::Join(CollectionResult.Errors, TEXT("\n"));
+        _ProfileCollection.Reset();
+        return SNew(STextBlock).Text(Get_ProfileLayoutError());
     }
 
-    auto Body = SNew(SVerticalBox)
+    const TWeakPtr<SCkStyleLab_ControlsPane> WeakPane{SharedThis(this)};
+    auto Tokens = FCkUiView::FTokens{};
+    Tokens.Add(TEXT("--space-s"), FString::SanitizeFloat(CkStyle::SpaceS));
+    Tokens.Add(TEXT("--space-m"), FString::SanitizeFloat(CkStyle::SpaceM));
+    Tokens.Add(TEXT("--text-dim"), TEXT("#") + CkStyle::TextDim().ToFColorSRGB().ToHex());
+    Tokens.Add(TEXT("--accent"), TEXT("#") + CkStyle::Accent().ToFColorSRGB().ToHex());
+    Tokens.Add(TEXT("--err"), TEXT("#") + CkStyle::Err().ToFColorSRGB().ToHex());
+    auto Data = FCkUiView::FDataBindings{};
+    Data.Text.Add(TEXT("title"), FText::FromString(TEXT("Curated profiles")));
+    Data.Text.Add(TEXT("purpose"), FText::FromString(TEXT("Profiles apply a complete curated style. Editing any individual control below changes the profile to Custom.")));
+    Data.Text.Add(TEXT("current-profile"), TAttribute<FText>::CreateSP(this, &SCkStyleLab_ControlsPane::Get_ProfileLabel));
+    Data.Text.Add(TEXT("layout-error"), TAttribute<FText>::CreateSP(this, &SCkStyleLab_ControlsPane::Get_ProfileLayoutError));
+    Data.Color.Add(TEXT("current-profile-color"), TAttribute<FLinearColor>::CreateLambda([WeakPane]
+    {
+        return WeakPane.IsValid() ? CkStyle::Accent() : CkStyle::TextDim();
+    }));
+    Data.Visibility.Add(TEXT("layout-error-visible"), TAttribute<bool>::CreateLambda([WeakPane]
+    {
+        const TSharedPtr<SCkStyleLab_ControlsPane> Pane = WeakPane.Pin();
+        return Pane.IsValid() && NOT Pane->Get_ProfileLayoutError().IsEmpty();
+    }));
+    Data.Collections.Add(TEXT("profiles"), _ProfileCollection);
+    Data.ItemActions.Add(TEXT("apply-profile"), FCkUiOnItemAction::CreateLambda([WeakPane](const FString& InProfileName)
+    {
+        if (const TSharedPtr<SCkStyleLab_ControlsPane> Pane = WeakPane.Pin())
+        { Pane->Apply_ProfileByName(InProfileName); }
+    }));
 
-        + SVerticalBox::Slot().AutoHeight().Padding(CkStyle::SpaceM, CkStyle::SpaceS)
-            [
-                SNew(STextBlock)
-                    .Text(FText::FromString(TEXT("Profiles apply a complete curated style. Editing any individual control below changes the profile to Custom.")))
-                    .AutoWrapText(true)
-                    .Font(CkStyle::RegularFont(CkStyle::FontSizeSmall()))
-                    .ColorAndOpacity(FSlateColor{CkStyle::TextDim()})
-            ]
+    const TSharedPtr<IPlugin> Plugin = IPluginManager::Get().FindPlugin(TEXT("CkDebugger"));
+    if (NOT Plugin.IsValid())
+    {
+        _ProfilePublicationError = TEXT("CkDebugger plugin is unavailable; Style Lab profiles cannot load their authored layout.");
+        _ProfileCollection.Reset();
+        return SNew(STextBlock).Text(Get_ProfileLayoutError());
+    }
 
-        + SVerticalBox::Slot().AutoHeight().Padding(CkStyle::SpaceM, 0.0f)
-            [Buttons]
+    _ProfileView = FCkUiView::Create({}, {}, MoveTemp(Tokens), CkStyle::RegularFont(CkStyle::FontSizeBody()), MoveTemp(Data), Registry);
+    const TSharedRef<SWidget> ProfileRegion = _ProfileView->GetRegion(TEXT("main"));
+    const FString UiDirectory = FPaths::Combine(Plugin->GetBaseDir(), TEXT("Resources/UI"));
+    _ProfileView->SetFiles(
+        FPaths::Combine(UiDirectory, TEXT("StyleLabProfiles.ui.html")),
+        FPaths::Combine(UiDirectory, TEXT("StyleLabProfiles.ui.css")));
+    Publish_ProfileRecords();
+    _ProfileView->PollFiles();
+    if (NOT _ProfileView->GetLastResult().Succeeded)
+    { return SNew(STextBlock).Text(Get_ProfileLayoutError()); }
+    RegisterActiveTimer(0.5f, FWidgetActiveTimerDelegate::CreateSP(this, &SCkStyleLab_ControlsPane::Tick_ProfileFiles));
 
-        + SVerticalBox::Slot().AutoHeight().Padding(CkStyle::SpaceM, CkStyle::SpaceS)
-            [
-                SNew(STextBlock)
-                    .Text_Lambda([]() -> FText
-                    {
-                        const auto* Settings = UCkDebuggerStyleSettings::Get();
-                        return FText::FromString(ck::Format_UE(TEXT("Current: {}"),
-                            Settings != nullptr ? Settings->ActiveProfileName : FString{TEXT("Unavailable")}));
-                    })
-                    .Font(CkStyle::BoldFont(CkStyle::FontSizeSmall()))
-                    .ColorAndOpacity(FSlateColor{CkStyle::Accent()})
-            ];
+    return ProfileRegion;
+}
 
-    return SNew(SCkDebug_InspectorPanel)
-        .Title(FText::FromString(TEXT("Curated profiles")))
-        .StartExpanded(true)
-        .Body()
-        [Body];
+// --------------------------------------------------------------------------------------------------------------------
+
+auto SCkStyleLab_ControlsPane::Publish_ProfileRecords() -> void
+{
+    if (NOT _ProfileCollection.IsValid()) { return; }
+
+    const UCkDebuggerStyleSettings* Settings = UCkDebuggerStyleSettings::Get();
+    const FString ActiveProfileName = Settings != nullptr ? Settings->ActiveProfileName : FString{};
+    const FLinearColor Accent = CkStyle::Accent();
+    const FLinearColor Text = CkStyle::Text();
+    if (_HasPublishedProfileRecords && _PublishedProfileName == ActiveProfileName
+        && _PublishedProfileAccent.Equals(Accent) && _PublishedProfileText.Equals(Text))
+    { return; }
+
+    auto Records = TArray<FCkUiRecordData>{};
+    const TArray<FCkDebuggerStyleProfile>& Profiles = ck::debug_axes::Get_StyleProfiles();
+    Records.Reserve(Profiles.Num());
+
+    for (const FCkDebuggerStyleProfile& Profile : Profiles)
+    {
+        const bool IsActive = Settings != nullptr && Settings->ActiveProfileName == Profile.Name;
+        auto Record = FCkUiRecordData{};
+        Record.Key = Profile.Name;
+        Record.Fields.Add(TEXT("name"), FCkUiFieldValue{.Kind = ECkUiFieldKind::Text, .Text = FText::FromString(Profile.Name)});
+        Record.Fields.Add(TEXT("blurb"), FCkUiFieldValue{.Kind = ECkUiFieldKind::Text, .Text = FText::FromString(Profile.Blurb)});
+        Record.Fields.Add(TEXT("active-color"), FCkUiFieldValue{.Kind = ECkUiFieldKind::Color, .Color = IsActive ? Accent : Text});
+        Records.Add(MoveTemp(Record));
+    }
+
+    const FCkUiLoadResult Result = _ProfileCollection->TrySetRecords(MoveTemp(Records));
+    if (NOT Result.Succeeded)
+    {
+        _ProfilePublicationError = FString::Join(Result.Errors, TEXT("\n"));
+        return;
+    }
+    _PublishedProfileName = ActiveProfileName;
+    _PublishedProfileAccent = Accent;
+    _PublishedProfileText = Text;
+    _HasPublishedProfileRecords = true;
+    _ProfilePublicationError.Reset();
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto SCkStyleLab_ControlsPane::Apply_ProfileByName(const FString& InProfileName) -> void
+{
+    const TArray<FCkDebuggerStyleProfile>& Profiles = ck::debug_axes::Get_StyleProfiles();
+    const int32 ProfileIndex = Profiles.IndexOfByPredicate([&InProfileName](const FCkDebuggerStyleProfile& InProfile)
+    {
+        return InProfile.Name == InProfileName;
+    });
+    if (ProfileIndex != INDEX_NONE) { Apply_Profile(ProfileIndex); }
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto SCkStyleLab_ControlsPane::Get_ProfileLabel() const -> FText
+{
+    const UCkDebuggerStyleSettings* Settings = UCkDebuggerStyleSettings::Get();
+    return FText::FromString(ck::Format_UE(TEXT("Current: {}"),
+        Settings != nullptr ? Settings->ActiveProfileName : FString{TEXT("Unavailable")}));
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto SCkStyleLab_ControlsPane::Get_ProfileLayoutError() const -> FText
+{
+    if (NOT _ProfilePublicationError.IsEmpty()) { return FText::FromString(_ProfilePublicationError); }
+    return NOT _ProfileView.IsValid() || _ProfileView->GetLastResult().Succeeded
+        ? FText::GetEmpty()
+        : FText::FromString(FString::Join(_ProfileView->GetLastResult().Errors, TEXT("\n")));
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto SCkStyleLab_ControlsPane::Tick_ProfileFiles(double, float) -> EActiveTimerReturnType
+{
+    if (_ProfileView.IsValid()) { _ProfileView->PollFiles(); }
+    Publish_ProfileRecords();
+    return EActiveTimerReturnType::Continue;
 }
 
 // ====================================================================================================================
@@ -503,6 +598,7 @@ auto
     Notify_SelectionChanged()
     -> void
 {
+    Publish_ProfileRecords();
     RequestPreviewRebuilds();
 
     if (_OnSelectionChanged.IsBound())

@@ -5,12 +5,22 @@
 #include "CkDebuggerCommon/Widgets/SCkDebug_CountBadge.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_MeterBar.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_StatusPill.h"
+#include "CkDebuggerCommon/UI/CkDebug_UiRegistry.h"
 
 #include "CkEditorTools/Style/CkStyle.h"
+#include "CkSlateLayout/CkFlex.h"
+#include "CkSlateLayout/CkFlexText.h"
+#include "CkSlateLayout/SCkUiSurface.h"
+#include "CkSlateLayout/CkUiCollection.h"
+#include "Interfaces/IPluginManager.h"
+#include "Misc/Paths.h"
+#include "Misc/Guid.h"
+#include "Widgets/Layout/SSpacer.h"
 
 #include "Components/PrimitiveComponent.h"
 #include "Engine/Texture.h"
 #include "Framework/MultiBox/MultiBoxBuilder.h"
+#include "HAL/PlatformApplicationMisc.h"
 #include "Styling/StyleDefaults.h"
 #include "Widgets/Images/SImage.h"
 #include "Widgets/Input/SButton.h"
@@ -74,6 +84,46 @@ namespace ck_texture_debugger_texture_health_table
             .ColorAndOpacity_Lambda([Color]() { return FSlateColor{Color.Get(FLinearColor::White)}; })];
     }
 
+    auto UiSchema() -> TArray<FCkUiFieldSchema>
+    {
+        return {{TEXT("texture"), ECkUiFieldKind::Text}, {TEXT("component"), ECkUiFieldKind::Text},
+            {TEXT("material"), ECkUiFieldKind::Text}, {TEXT("cooked"), ECkUiFieldKind::Text},
+            {TEXT("residency"), ECkUiFieldKind::Text}, {TEXT("state"), ECkUiFieldKind::Text},
+            {TEXT("texture-tip"), ECkUiFieldKind::Text}, {TEXT("component-tip"), ECkUiFieldKind::Text},
+            {TEXT("material-tip"), ECkUiFieldKind::Text}, {TEXT("text-color"), ECkUiFieldKind::Color},
+            {TEXT("state-foreground"), ECkUiFieldKind::Color}, {TEXT("state-background"), ECkUiFieldKind::Color},
+            {TEXT("meter-color"), ECkUiFieldKind::Color}, {TEXT("fraction"), ECkUiFieldKind::Number}};
+    }
+
+    auto UiRecord(const SCkTextureDebugger_TextureHealthTable::FRow& Row) -> FCkUiRecordData
+    {
+        auto Result = FCkUiRecordData{};
+        Result.Key = Row.UiKey;
+        const auto Text = [&Result](const TCHAR* Name, FText Value)
+        { Result.Fields.Add(Name, FCkUiFieldValue{.Kind = ECkUiFieldKind::Text, .Text = MoveTemp(Value)}); };
+        const auto Color = [&Result](const TCHAR* Name, FLinearColor Value)
+        { Result.Fields.Add(Name, FCkUiFieldValue{.Kind = ECkUiFieldKind::Color, .Color = Value}); };
+        Text(TEXT("texture"), FText::FromString(Row.ExactDuplicateCount > 1
+            ? FString::Printf(TEXT("%s  x%d"), *Row.Health.DisplayName, Row.ExactDuplicateCount) : Row.Health.DisplayName));
+        Text(TEXT("component"), FText::FromString(Row.ComponentLabel));
+        Text(TEXT("material"), FText::FromString(Row.MaterialLabel));
+        Text(TEXT("cooked"), FText::FromString(FString::Printf(TEXT("%d x %d"), Row.Health.CookedWidth, Row.Health.CookedHeight)));
+        Text(TEXT("residency"), Row.Health.HasStreamingMetrics
+            ? FText::FromString(FString::Printf(TEXT("%d / %d mips"), Row.Health.ResidentMipCount, Row.Health.RequestedMipCount)) : LOCTEXT("ResidencyNone", "—"));
+        Text(TEXT("state"), Get_StreamingText(Row.Health));
+        Text(TEXT("texture-tip"), FText::FromString(Row.Health.AssetPath.ToString()));
+        Text(TEXT("component-tip"), FText::FromString(Row.Key.ComponentPath.ToString()));
+        Text(TEXT("material-tip"), FText::FromString(Row.Key.MaterialPath.ToString()));
+        Color(TEXT("text-color"), Row.IsHighlightMatch ? (Row.IsContextComponent ? CkStyle::TextStrong() : CkStyle::Text()) : CkStyle::TextMute());
+        Color(TEXT("state-foreground"), CkStyle::GetToneColor(Get_StreamingTone(Row.Health)));
+        Color(TEXT("state-background"), CkStyle::GetToneDimColor(Get_StreamingTone(Row.Health)));
+        Color(TEXT("meter-color"), CkStyle::Accent());
+        const float Fraction = Row.Health.HasStreamingMetrics && Row.Health.RequestedMipCount > 0
+            ? FMath::Clamp(static_cast<float>(Row.Health.ResidentMipCount) / Row.Health.RequestedMipCount, 0.0f, 1.0f) : 0.0f;
+        Result.Fields.Add(TEXT("fraction"), FCkUiFieldValue{.Kind = ECkUiFieldKind::Number, .Number = Fraction});
+        return Result;
+    }
+
     class SRow final : public SMultiColumnTableRow<TSharedPtr<SCkTextureDebugger_TextureHealthTable::FRow>>
     {
     public:
@@ -86,6 +136,9 @@ namespace ck_texture_debugger_texture_health_table
             _Row = Args._Row;
             SMultiColumnTableRow<TSharedPtr<SCkTextureDebugger_TextureHealthTable::FRow>>::Construct(
                 FSuperRowType::FArguments().Padding(FMargin{0.0f, 1.0f}).ShowSelection(true), Owner);
+            // SMultiColumnTableRow does not forward the mode argument to STableRow.
+            // Publish mouse-down selection before a snapshot can reconcile the previous key.
+            SignalSelectionMode = ETableRowSignalSelectionMode::Instantaneous;
             SetToolTipText(FText::FromString(_Row.IsValid() ? _Row->Health.AssetPath.ToString() : FString{}));
         }
 
@@ -150,9 +203,132 @@ namespace ck_texture_debugger_texture_health_table
 
 // --------------------------------------------------------------------------------------------------------------------
 
+auto SCkTextureDebugger_TextureHealthTable::Construct(const FArguments& InArgs) -> void
+{
+    if (InArgs._UseYogaLayout)
+    { Construct_Yoga(InArgs); }
+    else
+    { Construct_Native(InArgs); }
+}
+auto SCkTextureDebugger_TextureHealthTable::Construct_Yoga(const FArguments& Args) -> void
+{
+    _OnSelectionChanged = Args._OnSelectionChanged;
+    _PreviewBrush.DrawAs = ESlateBrushDrawType::Image;
+    _PreviewBrush.ImageSize = FVector2D{192.0f, 192.0f};
+
+    TSharedPtr<const FCkUiWidgetRegistrySnapshot> Registry;
+    const FCkUiLoadResult RegistryResult = FCkDebug_UiRegistry::TryCreate(Registry);
+    const FCkUiLoadResult CollectionResult = FCkUiCollection::TryCreate(ck_texture_debugger_texture_health_table::UiSchema(), _UiCollection);
+    if (!RegistryResult.Succeeded || !CollectionResult.Succeeded)
+    {
+        _PublicationError = FString::Join(RegistryResult.Errors, TEXT("\n")) + FString::Join(CollectionResult.Errors, TEXT("\n"));
+        _UiCollection.Reset();
+        ChildSlot[SNew(STextBlock).Text(Get_LayoutError())];
+        return;
+    }
+    auto Actions = FCkUiView::FActions{};
+    Actions.Add(TEXT("clear-selection"), FSimpleDelegate::CreateSP(this, &SCkTextureDebugger_TextureHealthTable::Clear_Selection));
+    auto Tokens = FCkUiView::FTokens{};
+    Tokens.Add(TEXT("--space-s"), FString::SanitizeFloat(CkStyle::SpaceS));
+    Tokens.Add(TEXT("--space-m"), FString::SanitizeFloat(CkStyle::SpaceM));
+    Tokens.Add(TEXT("--font-heading"), FString::FromInt(CkStyle::FontSizeH4()));
+    Tokens.Add(TEXT("--text"), TEXT("#") + CkStyle::Text().ToFColorSRGB().ToHex());
+    Tokens.Add(TEXT("--text-strong"), TEXT("#") + CkStyle::TextStrong().ToFColorSRGB().ToHex());
+    Tokens.Add(TEXT("--surface"), TEXT("#") + CkStyle::Bg2().ToFColorSRGB().ToHex());
+    auto Data = FCkUiView::FDataBindings{};
+    Data.Text.Add(TEXT("filter"), TAttribute<FText>::CreateSP(this, &SCkTextureDebugger_TextureHealthTable::Get_FilterText));
+    Data.Text.Add(TEXT("highlight"), TAttribute<FText>::CreateSP(this, &SCkTextureDebugger_TextureHealthTable::Get_HighlightText));
+    Data.Text.Add(TEXT("count"), TAttribute<FText>::CreateSP(this, &SCkTextureDebugger_TextureHealthTable::Get_RowCountText));
+    Data.Text.Add(TEXT("selected-details"), TAttribute<FText>::CreateSP(this, &SCkTextureDebugger_TextureHealthTable::Get_SelectedDetailsText));
+    Data.Text.Add(TEXT("empty-state"), TAttribute<FText>::CreateSP(this, &SCkTextureDebugger_TextureHealthTable::Get_EmptyStateText));
+    Data.Text.Add(TEXT("filter-placeholder"), LOCTEXT("FilterHint", "Filter textures, components, materials…"));
+    Data.Text.Add(TEXT("highlight-placeholder"), LOCTEXT("HighlightHint", "Highlight…"));
+    Data.Text.Add(TEXT("texture-column-label"), LOCTEXT("TextureColumn", "Texture"));
+    Data.Text.Add(TEXT("component-column-label"), LOCTEXT("ComponentColumn", "Component"));
+    Data.Text.Add(TEXT("material-column-label"), LOCTEXT("MaterialColumn", "Material / slot"));
+    Data.Text.Add(TEXT("cooked-column-label"), LOCTEXT("CookedColumn", "Cooked"));
+    Data.Text.Add(TEXT("residency-column-label"), LOCTEXT("ResidencyColumn", "Resident / requested"));
+    Data.Text.Add(TEXT("state-column-label"), LOCTEXT("StateColumn", "State"));
+    Data.Collections.Add(TEXT("inventory"), _UiCollection);
+    Data.TableSelectionChanged.Add(TEXT("select-texture"), FOnCkUiTableSelectionChanged::CreateSP(this, &SCkTextureDebugger_TextureHealthTable::On_AuthoredSelectionChanged));
+    Data.Text.Add(TEXT("copy-details-label"), LOCTEXT("CopyDetails", "Copy texture details"));
+    Data.Text.Add(TEXT("copy-details-tooltip"), LOCTEXT("CopyDetailsTip", "Copy the selected texture's loaded-world health facts."));
+    Data.ContextActions.Add(TEXT("copy-texture-details"), FOnCkUiContextAction::CreateSP(this, &SCkTextureDebugger_TextureHealthTable::On_CopyTextureDetails));
+    Data.TextChanged.Add(TEXT("filter"), FOnTextChanged::CreateSP(this, &SCkTextureDebugger_TextureHealthTable::On_FilterTextChanged));
+    Data.TextChanged.Add(TEXT("highlight"), FOnTextChanged::CreateSP(this, &SCkTextureDebugger_TextureHealthTable::On_HighlightTextChanged));
+    Data.Images.Add(TEXT("preview"), TAttribute<const FSlateBrush*>::CreateSP(this, &SCkTextureDebugger_TextureHealthTable::Get_PreviewBrush));
+    Data.Visibility.Add(TEXT("has-selection"), TAttribute<bool>::CreateSP(this, &SCkTextureDebugger_TextureHealthTable::Has_Selection));
+    Data.Visibility.Add(TEXT("inventory-empty"), TAttribute<bool>::CreateLambda([WeakTable = TWeakPtr<SCkTextureDebugger_TextureHealthTable>(SharedThis(this))]()
+    { const auto Table = WeakTable.Pin(); return Table.IsValid() && Table->_Rows.IsEmpty(); }));
+    _LayoutView = FCkUiView::Create({}, MoveTemp(Actions), MoveTemp(Tokens),
+        CkStyle::RegularFont(CkStyle::FontSizeBody()), MoveTemp(Data), Registry);
+
+    // The diagnostic host remains available even when the first authored document cannot load.
+    ChildSlot[SNew(SVerticalBox)
+        + SVerticalBox::Slot().AutoHeight()
+        [SNew(STextBlock).Tag(TEXT("Ck.TextureHealth.LayoutError"))
+            .Text(this, &SCkTextureDebugger_TextureHealthTable::Get_LayoutError)
+            .ToolTipText(this, &SCkTextureDebugger_TextureHealthTable::Get_LayoutError)
+            .AutoWrapText(true).ColorAndOpacity(FSlateColor{CkStyle::Err()})
+            .Visibility_Lambda([this]() { return Get_LayoutError().IsEmpty() ? EVisibility::Collapsed : EVisibility::Visible; })]
+        + SVerticalBox::Slot().FillHeight(1.0f)
+        [_LayoutView->GetRegion(TEXT("main"))]];
+
+    const auto Plugin = IPluginManager::Get().FindPlugin(TEXT("CkDebugger"));
+    const auto UiDirectory = Plugin.IsValid() ? FPaths::Combine(Plugin->GetBaseDir(), TEXT("Resources/UI")) : FString{};
+    Reload_LayoutFiles(FPaths::Combine(UiDirectory, TEXT("TextureHealth.ui.html")),
+        FPaths::Combine(UiDirectory, TEXT("TextureHealth.ui.css")));
+    RegisterActiveTimer(0.5f, FWidgetActiveTimerDelegate::CreateSP(this, &SCkTextureDebugger_TextureHealthTable::Tick_LayoutFiles));
+}
+
+auto SCkTextureDebugger_TextureHealthTable::TryReload_Layout(const FString& InMarkup, const FString& InStylesheet) -> FCkUiLoadResult
+{
+    if (!_LayoutView.IsValid()) { return {false, {TEXT("Authored layout is disabled for this table.")}}; }
+    return _LayoutView->TryReload(InMarkup, InStylesheet, TEXT("TextureHealth"));
+}
+
+auto SCkTextureDebugger_TextureHealthTable::Reload_LayoutFiles(const FString& InMarkupPath, const FString& InStylesheetPath) -> FCkUiLoadResult
+{
+    if (!_LayoutView.IsValid()) { return {false, {TEXT("Authored layout is disabled for this table.")}}; }
+    return _LayoutView->ReloadFiles(InMarkupPath, InStylesheetPath);
+}
+
+auto SCkTextureDebugger_TextureHealthTable::Poll_LayoutFiles() -> bool
+{
+    return _LayoutView.IsValid() && _LayoutView->PollFiles();
+}
+
+auto SCkTextureDebugger_TextureHealthTable::Tick_LayoutFiles(double InCurrentTime, float InDeltaTime) -> EActiveTimerReturnType
+{
+    Poll_LayoutFiles();
+    return EActiveTimerReturnType::Continue;
+}
+
+auto SCkTextureDebugger_TextureHealthTable::Get_LayoutRevision() const -> int64
+{
+    return _LayoutView.IsValid() ? _LayoutView->GetRevision() : 0;
+}
+
+auto SCkTextureDebugger_TextureHealthTable::Get_LayoutError() const -> FText
+{
+    if (!_PublicationError.IsEmpty()) { return FText::FromString(_PublicationError); }
+    if (!_LayoutView.IsValid() || _LayoutView->GetLastResult().Succeeded) { return FText::GetEmpty(); }
+    return FText::FromString(FString::Join(_LayoutView->GetLastResult().Errors, TEXT("\n")));
+}
+
+auto SCkTextureDebugger_TextureHealthTable::Get_AuthoredTable() const -> TSharedPtr<SCkUiTable>
+{
+    return _LayoutView.IsValid() ? _LayoutView->GetTable(TEXT("inventory-control")) : nullptr;
+}
+
+auto SCkTextureDebugger_TextureHealthTable::Get_AuthoredSplitter() const -> TSharedPtr<SCkUiSplitter>
+{
+    return _LayoutView.IsValid() ? _LayoutView->GetSplitter(TEXT("health-splitter")) : nullptr;
+}
+
 auto
     SCkTextureDebugger_TextureHealthTable::
-    Construct(
+    Construct_Native(
         const FArguments& Args)
     -> void
 {
@@ -208,6 +384,7 @@ auto
                 + SOverlay::Slot()
                 [
                     SAssignNew(_ListView, SListView<TSharedPtr<FRow>>)
+                    .Tag(TEXT("Ck.TextureHealth.List"))
                     .ListItemsSource(&_Rows)
                     .SelectionMode(ESelectionMode::Single)
                     .ClearSelectionOnClick(true)
@@ -333,6 +510,7 @@ auto SCkTextureDebugger_TextureHealthTable::Clear_Selection() -> void
     Clear_PreviewTexture();
     if (_ListView.IsValid())
     { _ListView->ClearSelection(); }
+    if (const auto Table = Get_AuthoredTable(); Table.IsValid()) { Table->TrySelectKey({}); }
     if (HadSelection)
     { _OnSelectionChanged.ExecuteIfBound({}); }
 }
@@ -348,6 +526,7 @@ auto SCkTextureDebugger_TextureHealthTable::Reconcile_Selection() -> void
         const auto Selected = _ListView->GetSelectedItems();
         if (Selected.Num() != 1 || Selected[0] != Row) { _ListView->SetSelection(Row, ESelectInfo::Direct); }
     }
+    if (const auto Table = Get_AuthoredTable(); Table.IsValid()) { Table->TrySelectKey(Row->UiKey); }
 }
 
 auto SCkTextureDebugger_TextureHealthTable::Get_VisibleRowCount() const -> int32 { return _Rows.Num(); }
@@ -385,39 +564,55 @@ auto SCkTextureDebugger_TextureHealthTable::Rebuild_Rows() -> void
         else { Aggregate.Add(Value.Key, MoveTemp(Value)); }
     }
 
-    _TotalRowCount = Aggregate.Num();
-    auto NewAllRows = TArray<TSharedPtr<FRow>>{};
-    NewAllRows.Reserve(Aggregate.Num());
+    // Prepare domain values and the UI projection before mutating any accepted row.
+    auto Values = TArray<FRow>{};
+    Values.Reserve(Aggregate.Num());
     for (auto& Pair : Aggregate)
     {
-        auto Row = TSharedPtr<FRow>{};
         if (const auto* Found = Existing.Find(Pair.Key))
-        {
-            Row = *Found;
-            *Row = Pair.Value;
-            Existing.Remove(Pair.Key);
-        }
+        { Pair.Value.UiKey = (*Found)->UiKey; }
         else
-        { Row = MakeShared<FRow>(MoveTemp(Pair.Value)); }
-        NewAllRows.Add(MoveTemp(Row));
+        { Pair.Value.UiKey = FGuid::NewGuid().ToString(EGuidFormats::Digits); }
+        Pair.Value.IsHighlightMatch = MatchesSearch(Pair.Value, _HighlightString);
+        Values.Add(MoveTemp(Pair.Value));
     }
 
-    NewAllRows.Sort([](const TSharedPtr<FRow>& A, const TSharedPtr<FRow>& B)
+    Values.Sort([](const FRow& A, const FRow& B)
     {
-        if (A->Key.ComponentPath != B->Key.ComponentPath) { return A->Key.ComponentPath.ToString() < B->Key.ComponentPath.ToString(); }
-        if (A->Key.SlotIndex != B->Key.SlotIndex) { return A->Key.SlotIndex < B->Key.SlotIndex; }
-        if (A->Key.MaterialPath != B->Key.MaterialPath) { return A->Key.MaterialPath.ToString() < B->Key.MaterialPath.ToString(); }
-        return A->Key.TexturePath.ToString() < B->Key.TexturePath.ToString();
+        if (A.Key.ComponentPath != B.Key.ComponentPath) { return A.Key.ComponentPath.ToString() < B.Key.ComponentPath.ToString(); }
+        if (A.Key.SlotIndex != B.Key.SlotIndex) { return A.Key.SlotIndex < B.Key.SlotIndex; }
+        if (A.Key.MaterialPath != B.Key.MaterialPath) { return A.Key.MaterialPath.ToString() < B.Key.MaterialPath.ToString(); }
+        if (A.Key.TexturePath != B.Key.TexturePath) { return A.Key.TexturePath.ToString() < B.Key.TexturePath.ToString(); }
+        return A.UiKey < B.UiKey;
     });
 
-    auto NewRows = TArray<TSharedPtr<FRow>>{};
-    NewRows.Reserve(NewAllRows.Num());
-    for (const auto& Row : NewAllRows)
+    if (_UiCollection.IsValid())
     {
-        if (Row.IsValid() && MatchesSearch(*Row, _FilterString))
+        auto Records = TArray<FCkUiRecordData>{};
+        Records.Reserve(Values.Num());
+        for (const FRow& Value : Values)
+        { if (MatchesSearch(Value, _FilterString)) { Records.Add(ck_texture_debugger_texture_health_table::UiRecord(Value)); } }
+        const FCkUiLoadResult Result = _UiCollection->TrySetRecords(MoveTemp(Records));
+        if (!Result.Succeeded)
+        { _PublicationError = FString::Join(Result.Errors, TEXT("\n")); return; }
+    }
+    _PublicationError.Reset();
+    _TotalRowCount = Values.Num();
+    auto NewAllRows = TArray<TSharedPtr<FRow>>{};
+    auto NewRows = TArray<TSharedPtr<FRow>>{};
+    auto UiRows = TMap<FString, TWeakPtr<FRow>>{};
+    NewAllRows.Reserve(Values.Num());
+    NewRows.Reserve(Values.Num());
+    for (FRow& Value : Values)
+    {
+        TSharedPtr<FRow> Row = Existing.FindRef(Value.Key);
+        if (Row.IsValid()) { *Row = MoveTemp(Value); }
+        else { Row = MakeShared<FRow>(MoveTemp(Value)); }
+        NewAllRows.Add(Row);
+        if (MatchesSearch(*Row, _FilterString))
         {
-            Row->IsHighlightMatch = MatchesSearch(*Row, _HighlightString);
             NewRows.Add(Row);
+            UiRows.Add(Row->UiKey, Row);
         }
     }
 
@@ -432,6 +627,8 @@ auto SCkTextureDebugger_TextureHealthTable::Rebuild_Rows() -> void
     }
     _AllRows = MoveTemp(NewAllRows);
     _Rows = MoveTemp(NewRows);
+    _UiRows = MoveTemp(UiRows);
+    if (const auto Table = Get_AuthoredTable(); Table.IsValid()) { Table->TryRefresh(); }
     if (_ListView.IsValid() && StructureChanged) { _ListView->RequestListRefresh(); }
 }
 
@@ -498,6 +695,21 @@ auto SCkTextureDebugger_TextureHealthTable::Get_EmptyStateText() const -> FText
         : LOCTEXT("EmptyFilter", "No texture rows match the current filter.\nClear or broaden Filter to return to the loaded-world inventory.");
 }
 
+auto SCkTextureDebugger_TextureHealthTable::Get_FilterText() const -> FText
+{
+    return FText::FromString(_FilterString);
+}
+
+auto SCkTextureDebugger_TextureHealthTable::Get_HighlightText() const -> FText
+{
+    return FText::FromString(_HighlightString);
+}
+
+auto SCkTextureDebugger_TextureHealthTable::Get_RowCountText() const -> FText
+{
+    return FText::FromString(FString::Printf(TEXT("%d/%d rows"), Get_VisibleRowCount(), Get_TotalRowCount()));
+}
+
 auto SCkTextureDebugger_TextureHealthTable::Get_SelectedDetailsText() const -> FText
 {
     if (NOT _SelectedKey.IsSet()) { return LOCTEXT("NoSelection", "Select a loaded runtime texture to preview its current resource and streaming facts."); }
@@ -506,6 +718,29 @@ auto SCkTextureDebugger_TextureHealthTable::Get_SelectedDetailsText() const -> F
 }
 
 auto SCkTextureDebugger_TextureHealthTable::Get_PreviewBrush() const -> const FSlateBrush* { return _PreviewTextureRoot.Get() != nullptr ? &_PreviewBrush : FStyleDefaults::GetNoBrush(); }
+
+auto SCkTextureDebugger_TextureHealthTable::Has_Selection() const -> bool
+{
+    return _SelectedKey.IsSet();
+}
+
+auto SCkTextureDebugger_TextureHealthTable::On_FilterTextChanged(const FText& InText) -> void
+{
+    const FString Text = InText.ToString();
+    if (_FilterString == Text) { return; }
+    _FilterString = Text;
+    Rebuild_Rows();
+    Reconcile_Selection();
+}
+
+auto SCkTextureDebugger_TextureHealthTable::On_HighlightTextChanged(const FText& InText) -> void
+{
+    const FString Text = InText.ToString();
+    if (_HighlightString == Text) { return; }
+    _HighlightString = Text;
+    Rebuild_Rows();
+    Reconcile_Selection();
+}
 
 auto SCkTextureDebugger_TextureHealthTable::OnGenerateRow(TSharedPtr<FRow> Item, const TSharedRef<STableViewBase>& Owner) -> TSharedRef<ITableRow>
 { return SNew(ck_texture_debugger_texture_health_table::SRow, Owner).Row(MoveTemp(Item)); }
@@ -519,12 +754,33 @@ auto SCkTextureDebugger_TextureHealthTable::OnSelectionChanged(TSharedPtr<FRow> 
 
 auto SCkTextureDebugger_TextureHealthTable::OnContextMenuOpening() -> TSharedPtr<SWidget>
 {
-    if (NOT _ListView.IsValid()) { return nullptr; }
-    const auto Selected = _ListView->GetSelectedItems();
-    if (Selected.Num() != 1 || NOT Selected[0].IsValid()) { return nullptr; }
+    if (!_SelectedKey.IsSet()) { return nullptr; }
+    const TSharedPtr<FRow> Selected = Find_Row(_SelectedKey.GetValue());
+    if (!Selected.IsValid()) { return nullptr; }
     auto Menu = FMenuBuilder(true, nullptr);
-    ck::DebugCopyMenu::AddCopyEntry(Menu, LOCTEXT("CopyDetails", "Copy texture details"), LOCTEXT("CopyDetailsTip", "Copy the selected texture's loaded-world health facts."), Make_Details(*Selected[0]));
+    ck::DebugCopyMenu::AddCopyEntry(Menu, LOCTEXT("CopyDetails", "Copy texture details"), LOCTEXT("CopyDetailsTip", "Copy the selected texture's loaded-world health facts."), Make_Details(*Selected));
     return Menu.MakeWidget();
+}
+
+auto SCkTextureDebugger_TextureHealthTable::On_CopyTextureDetails(const FString& InKey) -> void
+{
+    const TWeakPtr<FRow>* Found = _UiRows.Find(InKey);
+    const TSharedPtr<FRow> Row = Found != nullptr ? Found->Pin() : nullptr;
+    if (!Row.IsValid() || Find_Row(Row->Key) != Row) { return; }
+    FPlatformApplicationMisc::ClipboardCopy(*Make_Details(*Row));
+}
+
+auto SCkTextureDebugger_TextureHealthTable::On_AuthoredSelectionChanged(TOptional<FString> InKey, ESelectInfo::Type InSelectInfo) -> void
+{
+    if (!InKey.IsSet()) { Clear_Selection(); return; }
+    const TWeakPtr<FRow>* Found = _UiRows.Find(InKey.GetValue());
+    const TSharedPtr<FRow> Row = Found != nullptr ? Found->Pin() : nullptr;
+    if (!Row.IsValid()) { return; }
+    // Direct notifications may represent a generic table selection clear; selecting a key here
+    // is a user action or an explicitly notifying caller, never an echo from Reconcile_Selection.
+    _SelectedKey = Row->Key;
+    Set_PreviewTexture(Row->Texture);
+    _OnSelectionChanged.ExecuteIfBound(Make_Selection(*Row));
 }
 
 #undef LOCTEXT_NAMESPACE

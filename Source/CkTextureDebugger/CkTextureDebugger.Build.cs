@@ -12,16 +12,33 @@ public class CkTextureDebugger : CkModuleRules
             "Engine",
             "Foliage",
             "InputCore",
+            "ImageCore",
+            "ImageWrapper",
             "RHI",
+            "RenderCore",
             "Slate",
             "SlateCore",
+            "UMG",
+            "Projects",
 
             // CkModuleRules selects the shared CkEcs PCH for CK modules; link its implementation module explicitly.
             "CkCore",
             "CkEcs",
             "CkDebuggerCommon",
+            "CkSlateLayout",
             "CkEditorTools",
         });
+
+        RuntimeDependencies.Add(Path.Combine(PluginDirectory, "Resources", "UI", "TextureHealth.ui.html"), StagedFileType.NonUFS);
+        RuntimeDependencies.Add(Path.Combine(PluginDirectory, "Resources", "UI", "TextureHealth.ui.css"), StagedFileType.NonUFS);
+        RuntimeDependencies.Add(Path.Combine(PluginDirectory, "Resources", "UI", "SceneAudit.ui.html"), StagedFileType.NonUFS);
+        RuntimeDependencies.Add(Path.Combine(PluginDirectory, "Resources", "UI", "SceneAudit.ui.css"), StagedFileType.NonUFS);
+        RuntimeDependencies.Add(Path.Combine(PluginDirectory, "Resources", "UI", "UvDensity.ui.html"), StagedFileType.NonUFS);
+        RuntimeDependencies.Add(Path.Combine(PluginDirectory, "Resources", "UI", "UvDensity.ui.css"), StagedFileType.NonUFS);
+        RuntimeDependencies.Add(Path.Combine(PluginDirectory, "Resources", "UI", "MaterialInputs.ui.html"), StagedFileType.NonUFS);
+        RuntimeDependencies.Add(Path.Combine(PluginDirectory, "Resources", "UI", "MaterialInputs.ui.css"), StagedFileType.NonUFS);
+        RuntimeDependencies.Add(Path.Combine(PluginDirectory, "Resources", "UI", "SurfaceLighting.ui.html"), StagedFileType.NonUFS);
+        RuntimeDependencies.Add(Path.Combine(PluginDirectory, "Resources", "UI", "SurfaceLighting.ui.css"), StagedFileType.NonUFS);
 
         // The debugger hard-loads these cooked assets in Development/DebugGame. Staging is deliberately
         // per-package; broad content-directory staging would hide accidental asset additions.
@@ -41,7 +58,6 @@ public class CkTextureDebugger : CkModuleRules
                 "WorkspaceMenuStructure",
 
                 // Opt-in checker asset bootstrap and validation. These dependencies must never enter packaged builds.
-                "Projects",
                 "UnrealEd",
                 "AssetTools",
                 "AssetRegistry",

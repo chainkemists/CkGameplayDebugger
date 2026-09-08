@@ -1,0 +1,45 @@
+<ui version="1">
+  <region name="main">
+    <scroll id="surface-scroll">
+      <column id="surface-page" class="surface-page fill">
+        <column id="purpose-card" class="purpose-card"><text id="purpose" bind="purpose" class="purpose" /></column>
+        <row id="context-row" class="context-row">
+          <debug-status id="component-status" label-bind="component" foreground-bind="component-foreground" background-bind="component-background" show-dot="true" />
+          <debug-status id="texture-status" label-bind="texture-context" foreground-bind="texture-foreground" background-bind="texture-background" show-dot="false" />
+        </row>
+        <overlay id="slots-overlay" class="fill">
+          <repeat id="surface-lighting-control" bind="surface-lighting" class="slots">
+            <row id="slot-card" class="slot-card">
+              <column id="resolved-stripe" visible-field="has-material" class="stripe-resolved" />
+              <column id="unavailable-stripe" visible-field="missing-material" class="stripe-unavailable" />
+              <column id="slot-content" class="slot-content fill">
+                <button id="slot-toggle" bind-field="heading" item-action="toggle-slot" class="slot-toggle" />
+                <row id="slot-summary" class="slot-summary">
+                  <debug-status id="slot-status" label-field="status" foreground-field="status-foreground" background-field="status-background" show-dot="false" />
+                  <text id="material-path" bind-field="material-path" tooltip-field="material-path" class="material-path fill" />
+                </row>
+                <column id="slot-details" visible-field="expanded" class="slot-details">
+                  <text id="material-facts-heading" bind="material-facts-label" class="section-heading" />
+                  <row id="surface-summary" class="status-row"><debug-status id="blend" label-field="blend" foreground-field="status-foreground" background-field="status-background" show-dot="false" /><debug-status id="shading" label-field="shading" foreground-field="status-foreground" background-field="status-background" show-dot="false" /></row>
+                  <row id="two-sided-row" class="fact-row"><text id="two-sided-label" bind="two-sided-label" class="fact-label" /><text id="two-sided" bind-field="two-sided" color-field="two-sided-foreground" class="fact-value" /></row>
+                  <row id="masked-row" class="fact-row"><text id="masked-label" bind="masked-label" class="fact-label" /><text id="masked" bind-field="masked" color-field="masked-foreground" class="fact-value" /></row>
+                  <row id="translucent-row" class="fact-row"><text id="translucent-label" bind="translucent-label" class="fact-label" /><text id="translucent" bind-field="translucent" color-field="translucent-foreground" class="fact-value" /></row>
+                  <text id="lighting-facts-heading" bind="lighting-facts-label" class="section-heading" />
+                  <row id="cast-shadow-row" class="fact-row"><text id="cast-shadow-label" bind="cast-shadow-label" class="fact-label" /><text id="cast-shadow" bind-field="cast-shadow" color-field="cast-shadow-foreground" class="fact-value" /></row>
+                  <row id="dynamic-shadow-row" class="fact-row"><text id="dynamic-shadow-label" bind="dynamic-shadow-label" class="fact-label" /><text id="dynamic-shadow" bind-field="dynamic-shadow" color-field="dynamic-shadow-foreground" class="fact-value" /></row>
+                  <row id="static-shadow-row" class="fact-row"><text id="static-shadow-label" bind="static-shadow-label" class="fact-label" /><text id="static-shadow" bind-field="static-shadow" color-field="static-shadow-foreground" class="fact-value" /></row>
+                  <row id="volumetric-shadow-row" class="fact-row"><text id="volumetric-shadow-label" bind="volumetric-shadow-label" class="fact-label" /><text id="volumetric-shadow" bind-field="volumetric-shadow" color-field="volumetric-shadow-foreground" class="fact-value" /></row>
+                  <row id="receives-decals-row" class="fact-row"><text id="receives-decals-label" bind="receives-decals-label" class="fact-label" /><text id="receives-decals" bind-field="receives-decals" color-field="receives-decals-foreground" class="fact-value" /></row>
+                  <row id="static-lighting-row" class="fact-row"><text id="static-lighting-label" bind="static-lighting-label" class="fact-label" /><text id="static-lighting" bind-field="static-lighting" color-field="static-lighting-foreground" class="fact-value" /></row>
+                  <row id="stats-row" class="stats-row"><column id="opacity-stat" class="stat"><text id="opacity-clip" bind-field="opacity-clip" color-field="fact-foreground" class="stat-value" /><text id="opacity-label" bind="opacity-label" class="stat-label" /></column><column id="lightmap-stat" class="stat"><text id="lightmap" bind-field="lightmap" color-field="fact-foreground" class="stat-value" /><text id="lightmap-label" bind="lightmap-label" class="stat-label" /></column><column id="nanite-stat" class="stat"><text id="nanite" bind-field="nanite" color-field="fact-foreground" class="stat-value" /><text id="nanite-label" bind="nanite-label" class="stat-label" /></column></row>
+                  <text id="caveat" bind-field="caveat" class="caveat" />
+                </column>
+              </column>
+            </row>
+          </repeat>
+          <column id="empty" visible="surface-lighting-empty" class="empty"><text id="empty-copy" bind="empty-state" class="empty-copy" /></column>
+        </overlay>
+      </column>
+    </scroll>
+  </region>
+</ui>

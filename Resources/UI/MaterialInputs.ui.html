@@ -1,0 +1,30 @@
+<ui version="1">
+  <region name="main">
+    <column id="material-inputs-panel" class="material-inputs-panel">
+      <text id="purpose" bind="purpose" class="purpose" />
+      <row id="context-row" class="context-row">
+        <debug-status id="component" label-bind="component" foreground-bind="component-foreground" background-bind="component-background" show-dot="true" />
+        <debug-status id="texture-context" label-bind="texture-context" foreground-bind="texture-foreground" background-bind="texture-background" show-dot="false" />
+      </row>
+      <row id="search-row" class="search-row">
+        <column id="search-fields" class="search-fields fill">
+          <search id="filter" bind="filter" placeholder-bind="filter-hint" />
+          <search id="highlight" bind="highlight" placeholder-bind="highlight-hint" />
+        </column>
+        <row id="count-pill" class="count-pill"><text id="count" bind="count" class="count-text" /></row>
+      </row>
+      <overlay id="table-overlay" class="fill">
+        <scroll id="table-scroll" direction="horizontal" class="fill">
+          <table id="material-inputs-control" bind="material-inputs" selectable="false" row-height="22" class="material-inputs-table">
+            <table-column id="parameter-column" label-bind="parameter-header" class="column-parameter"><row id="parameter-wrap" class="table-cell"><text id="parameter" bind-field="parameter" tooltip-field="detail" color-field="text-color" class="table-text" /></row></table-column>
+            <table-column id="texture-column" label-bind="texture-header" class="column-texture"><row id="texture-wrap" class="table-cell"><text id="texture" bind-field="texture" tooltip-field="texture-tip" color-field="text-color" class="table-text" /></row></table-column>
+            <table-column id="provenance-column" label-bind="provenance-header" class="column-provenance"><row id="provenance-wrap" class="table-cell"><debug-status id="provenance" label-field="provenance" foreground-field="provenance-foreground" background-field="provenance-background" show-dot="false" /></row></table-column>
+            <table-column id="slot-column" label-bind="slot-header" class="column-slot"><row id="slot-wrap" class="table-cell"><text id="slot" bind-field="slot" color-field="text-color" class="table-text" /></row></table-column>
+            <table-column id="variant-column" label-bind="variant-header" class="column-variant"><row id="variant-wrap" class="table-cell"><text id="variant" bind-field="variant" color-field="text-color" class="table-text" /></row></table-column>
+          </table>
+        </scroll>
+        <column id="empty" visible="material-inputs-empty" class="empty"><text id="empty-text" bind="empty-state" class="empty-copy" /></column>
+      </overlay>
+    </column>
+  </region>
+</ui>

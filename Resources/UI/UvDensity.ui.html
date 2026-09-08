@@ -1,0 +1,34 @@
+<ui version="1">
+  <region name="main">
+    <scroll id="uv-scroll">
+      <column id="uv-page" class="uv-page fill">
+        <column id="purpose-card" class="card">
+          <text id="purpose" bind="purpose" class="purpose" />
+        </column>
+        <row id="context-row" class="context-row">
+          <debug-status id="component-status" label-bind="component" foreground-bind="component-foreground" background-bind="component-background" show-dot="false" />
+          <debug-status id="slot-status" label-bind="slot" foreground-bind="slot-foreground" background-bind="slot-background" show-dot="false" />
+          <debug-status id="texture-status" label-bind="texture" foreground-bind="texture-foreground" background-bind="texture-background" show-dot="false" />
+        </row>
+        <column id="inputs-card" class="card">
+          <button id="inputs-toggle" action="toggle-inputs" bind="inputs-title" class="section-toggle" />
+          <column id="inputs-body" visible="inputs-expanded" class="section-body">
+            <row id="component-fact" class="fact-row"><text id="component-label" bind="component-label" class="fact-label" /><text id="component-value" bind="component" class="fact-value" /></row>
+            <row id="slot-fact" class="fact-row"><text id="slot-label" bind="slot-label" class="fact-label" /><text id="slot-value" bind="slot" class="fact-value" /></row>
+            <row id="uv-channel-fact" class="fact-row"><text id="uv-channel-label" bind="channel-label" class="fact-label" /><text id="uv-channel-value" bind="channel-value" class="fact-value" /></row>
+            <row id="triangle-fact" class="fact-row"><text id="triangle-label" bind="triangle-label" class="fact-label" /><text id="triangle-value" bind="triangle-value" class="fact-value" /></row>
+            <row id="texture-fact" class="fact-row"><text id="texture-label" bind="texture-label" class="fact-label" /><text id="texture-value" bind="texture" class="fact-value" /></row>
+          </column>
+        </column>
+        <column id="result-card" class="card">
+          <button id="result-toggle" action="toggle-result" bind="result-title" class="section-toggle" />
+          <column id="result-body" visible="result-expanded" class="section-body">
+            <debug-status id="result-status" label-bind="result-status" foreground-bind="result-foreground" background-bind="result-background" show-dot="false" />
+            <row id="result-value-row" class="result-value-row"><text id="result-value" bind="result-value" color-bind="result-foreground" class="result-value" /><text id="result-unit" bind="result-unit" class="result-unit" /></row>
+            <text id="result-explanation" bind="result-explanation" class="explanation" />
+          </column>
+        </column>
+      </column>
+    </scroll>
+  </region>
+</ui>

@@ -4,26 +4,18 @@
 #include "CkTextureDebugger/Analysis/CkTextureDebugger_SurfaceAnalysis.h"
 
 #include "CkCore/Macros/CkMacros.h"
-#include "CkDebuggerCommon/Search/SCkDebug_DualSearchBar.h"
-#include "CkDebuggerCommon/Widgets/SCkDebug_Card.h"
-#include "CkDebuggerCommon/Widgets/SCkDebug_CountBadge.h"
-#include "CkDebuggerCommon/Widgets/SCkDebug_InspectorPanel.h"
-#include "CkDebuggerCommon/Widgets/SCkDebug_KeyValueRow.h"
-#include "CkDebuggerCommon/Widgets/SCkDebug_SectionHeader.h"
-#include "CkDebuggerCommon/Widgets/SCkDebug_StatPair.h"
-#include "CkDebuggerCommon/Widgets/SCkDebug_StatusPill.h"
-#include "CkDebuggerCommon/Widgets/SCkDebug_ValuePill.h"
+#include "CkDebuggerCommon/UI/CkDebug_UiRegistry.h"
 #include "CkEditorTools/Style/CkStyle.h"
+#include "CkSlateLayout/SCkUiSurface.h"
+#include "CkSlateLayout/CkUiCollection.h"
+#include "CkSlateLayout/SCkUiTable.h"
 
 #include "Components/MeshComponent.h"
 #include "MaterialShaderType.h"
+#include "Interfaces/IPluginManager.h"
+#include "Misc/Paths.h"
 #include "RHIStrings.h"
 #include "UObject/ObjectKey.h"
-#include "Widgets/SOverlay.h"
-#include "Widgets/Layout/SBorder.h"
-#include "Widgets/Layout/SBox.h"
-#include "Widgets/Layout/SScrollBox.h"
-#include "Widgets/Layout/SWrapBox.h"
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/Text/STextBlock.h"
 #include "Widgets/Views/SHeaderRow.h"
@@ -33,12 +25,6 @@
 
 namespace ck_texture_debugger_diagnostic_pages
 {
-    const auto ParameterColumn = FName{TEXT("Parameter")};
-    const auto TextureColumn = FName{TEXT("Texture")};
-    const auto ProvenanceColumn = FName{TEXT("Provenance")};
-    const auto SlotColumn = FName{TEXT("Slot")};
-    const auto VariantColumn = FName{TEXT("Variant")};
-
     auto NormalizeSlots(TArray<int32> InSlots) -> TArray<int32>
     {
         InSlots.RemoveAll([](int32 InSlot) { return InSlot < 0; });
@@ -65,20 +51,6 @@ namespace ck_texture_debugger_diagnostic_pages
         {
             return InSlot.SlotIndex == InSlotIndex;
         });
-    }
-
-    auto MakePurposeText(const FText& InText) -> TSharedRef<SWidget>
-    {
-        return SNew(SBorder)
-            .BorderImage(CkStyle::GetRoundedBrush_Large())
-            .BorderBackgroundColor(FSlateColor{CkStyle::Bg2()})
-            .Padding(CkStyle::SpaceL)
-            [
-                SNew(STextBlock)
-                .Text(InText)
-                .AutoWrapText(true)
-                .ColorAndOpacity(FSlateColor{CkStyle::TextDim()})
-            ];
     }
 
     auto ProvenanceText(ECkTextureDebugger_MaterialTextureProvenance InProvenance) -> FString
@@ -115,118 +87,79 @@ namespace ck_texture_debugger_diagnostic_pages
         return FSlateColor{CkStyle::Text()};
     }
 
-    auto MakeFactRow(FText InLabel, TAttribute<FText> InValue) -> TSharedRef<SWidget>
+    auto MaterialInputsUiSchema() -> TArray<FCkUiFieldSchema>
     {
-        return SNew(SCkDebug_KeyValueRow)
-            .KeyText(MoveTemp(InLabel))
-            .ValueText(MoveTemp(InValue))
-            .Tone(ECkDebug_KeyValueTone::Custom)
-            .CustomValueColor(CkStyle::TextStrong());
+        return {{TEXT("parameter"), ECkUiFieldKind::Text}, {TEXT("detail"), ECkUiFieldKind::Text}, {TEXT("texture"), ECkUiFieldKind::Text},
+            {TEXT("texture-tip"), ECkUiFieldKind::Text}, {TEXT("provenance"), ECkUiFieldKind::Text},
+            {TEXT("slot"), ECkUiFieldKind::Text}, {TEXT("variant"), ECkUiFieldKind::Text},
+            {TEXT("text-color"), ECkUiFieldKind::Color}, {TEXT("provenance-foreground"), ECkUiFieldKind::Color},
+            {TEXT("provenance-background"), ECkUiFieldKind::Color}};
     }
 
-    auto MakeBoolFactRow(FText InLabel, TAttribute<bool> InValue) -> TSharedRef<SWidget>
+    auto MaterialInputsUiRecord(const SCkTextureDebugger_MaterialInputsPage::FRow& InRow) -> FCkUiRecordData
     {
-        return SNew(SCkDebug_KeyValueRow)
-            .KeyText(MoveTemp(InLabel))
-            .Tone(ECkDebug_KeyValueTone::Custom)
-            .CustomValueColor(CkStyle::TextStrong())
-            .ValueWidget()
-            [
-                SNew(SCkDebug_ValuePill)
-                .Value(MoveTemp(InValue))
-                .Editable(false)
-                .TrueText(LOCTEXT("Enabled", "YES"))
-                .FalseText(LOCTEXT("Disabled", "NO"))
-            ];
+        auto Result = FCkUiRecordData{};
+        Result.Key = InRow.StableKey;
+        const auto Text = [&Result](const TCHAR* InName, FText InValue)
+        { Result.Fields.Add(InName, FCkUiFieldValue{.Kind = ECkUiFieldKind::Text, .Text = MoveTemp(InValue)}); };
+        const auto Color = [&Result](const TCHAR* InName, FLinearColor InValue)
+        { Result.Fields.Add(InName, FCkUiFieldValue{.Kind = ECkUiFieldKind::Color, .Color = InValue}); };
+        Text(TEXT("parameter"), FText::FromString(InRow.Parameter));
+        Text(TEXT("detail"), FText::FromString(InRow.Detail));
+        Text(TEXT("texture"), FText::FromString(InRow.Texture));
+        Text(TEXT("texture-tip"), FText::FromString(InRow.TexturePath));
+        Text(TEXT("provenance"), FText::FromString(InRow.Provenance));
+        Text(TEXT("slot"), FText::FromString(InRow.Slot));
+        Text(TEXT("variant"), FText::FromString(InRow.Variant));
+        Color(TEXT("text-color"), TextColor(InRow.IsHighlighted, InRow.IsDimmed).GetSpecifiedColor());
+        const auto Tone = ProvenanceTone(InRow.ProvenanceKind);
+        Color(TEXT("provenance-foreground"), CkStyle::GetToneColor(Tone));
+        Color(TEXT("provenance-background"), CkStyle::GetToneDimColor(Tone));
+        return Result;
     }
 
-    class SMaterialInputRow final
-        : public SMultiColumnTableRow<TSharedPtr<SCkTextureDebugger_MaterialInputsPage::FRow>>
+    auto SurfaceLightingUiSchema() -> TArray<FCkUiFieldSchema>
     {
-    public:
-        SLATE_BEGIN_ARGS(SMaterialInputRow) {}
-            SLATE_ARGUMENT(TSharedPtr<SCkTextureDebugger_MaterialInputsPage::FRow>, Row)
-        SLATE_END_ARGS()
+        return {
+            {TEXT("heading"), ECkUiFieldKind::Text},
+            {TEXT("material"), ECkUiFieldKind::Text},
+            {TEXT("material-path"), ECkUiFieldKind::Text},
+            {TEXT("status"), ECkUiFieldKind::Text},
+            {TEXT("blend"), ECkUiFieldKind::Text},
+            {TEXT("shading"), ECkUiFieldKind::Text},
+            {TEXT("two-sided"), ECkUiFieldKind::Text},
+            {TEXT("masked"), ECkUiFieldKind::Text},
+            {TEXT("translucent"), ECkUiFieldKind::Text},
+            {TEXT("cast-shadow"), ECkUiFieldKind::Text},
+            {TEXT("dynamic-shadow"), ECkUiFieldKind::Text},
+            {TEXT("static-shadow"), ECkUiFieldKind::Text},
+            {TEXT("volumetric-shadow"), ECkUiFieldKind::Text},
+            {TEXT("receives-decals"), ECkUiFieldKind::Text},
+            {TEXT("static-lighting"), ECkUiFieldKind::Text},
+            {TEXT("opacity-clip"), ECkUiFieldKind::Text},
+            {TEXT("lightmap"), ECkUiFieldKind::Text},
+            {TEXT("nanite"), ECkUiFieldKind::Text},
+            {TEXT("caveat"), ECkUiFieldKind::Text},
+            {TEXT("expanded"), ECkUiFieldKind::Bool},
+            {TEXT("has-material"), ECkUiFieldKind::Bool},
+            {TEXT("missing-material"), ECkUiFieldKind::Bool},
+            {TEXT("status-foreground"), ECkUiFieldKind::Color},
+            {TEXT("status-background"), ECkUiFieldKind::Color},
+            {TEXT("fact-foreground"), ECkUiFieldKind::Color},
+            {TEXT("fact-background"), ECkUiFieldKind::Color},
+            {TEXT("two-sided-foreground"), ECkUiFieldKind::Color},
+            {TEXT("masked-foreground"), ECkUiFieldKind::Color},
+            {TEXT("translucent-foreground"), ECkUiFieldKind::Color},
+            {TEXT("cast-shadow-foreground"), ECkUiFieldKind::Color},
+            {TEXT("dynamic-shadow-foreground"), ECkUiFieldKind::Color},
+            {TEXT("static-shadow-foreground"), ECkUiFieldKind::Color},
+            {TEXT("volumetric-shadow-foreground"), ECkUiFieldKind::Color},
+            {TEXT("receives-decals-foreground"), ECkUiFieldKind::Color},
+            {TEXT("static-lighting-foreground"), ECkUiFieldKind::Color},
+        };
+    }
 
-        auto
-        Construct(
-            const FArguments& InArgs,
-            const TSharedRef<STableViewBase>& InOwnerTable) -> void
-        {
-            _Row = InArgs._Row;
-            FSuperRowType::Construct(
-                FSuperRowType::FArguments()
-                    .Padding(FMargin{0.0f, 2.0f})
-                    .ShowSelection(false),
-                InOwnerTable);
-        }
 
-        virtual auto
-        GenerateWidgetForColumn(
-            const FName& InColumnName) -> TSharedRef<SWidget> override
-        {
-            const auto WeakRow = TWeakPtr<SCkTextureDebugger_MaterialInputsPage::FRow>{_Row};
-            if (InColumnName == ProvenanceColumn)
-            {
-                return SNew(SBox)
-                    .VAlign(VAlign_Center)
-                    .HAlign(HAlign_Left)
-                    .Padding(FMargin{CkStyle::SpaceS, 0.0f})
-                    [
-                        SNew(SCkDebug_StatusPill)
-                        .Text_Lambda([WeakRow]()
-                        {
-                            const auto Row = WeakRow.Pin();
-                            return Row.IsValid() ? FText::FromString(Row->Provenance) : FText::GetEmpty();
-                        })
-                        .Tone_Lambda([WeakRow]()
-                        {
-                            const auto Row = WeakRow.Pin();
-                            return Row.IsValid() ? ProvenanceTone(Row->ProvenanceKind) : ECk_Tone::Neutral;
-                        })
-                        .ShowDot(false)
-                    ];
-            }
-
-            const auto Text = TAttribute<FText>::CreateLambda([WeakRow, InColumnName]() -> FText
-            {
-                const auto Row = WeakRow.Pin();
-                if (NOT Row.IsValid()) { return FText::GetEmpty(); }
-                if (InColumnName == ParameterColumn) { return FText::FromString(Row->Parameter); }
-                if (InColumnName == TextureColumn) { return FText::FromString(Row->Texture); }
-                if (InColumnName == SlotColumn) { return FText::FromString(Row->Slot); }
-                if (InColumnName == VariantColumn) { return FText::FromString(Row->Variant); }
-                return FText::GetEmpty();
-            });
-            const auto Tooltip = TAttribute<FText>::CreateLambda([WeakRow, InColumnName]() -> FText
-            {
-                const auto Row = WeakRow.Pin();
-                if (NOT Row.IsValid()) { return FText::GetEmpty(); }
-                if (InColumnName == ParameterColumn) { return FText::FromString(Row->Detail); }
-                if (InColumnName == TextureColumn) { return FText::FromString(Row->TexturePath); }
-                return FText::GetEmpty();
-            });
-
-            return SNew(SBox)
-                .VAlign(VAlign_Center)
-                .Padding(FMargin{CkStyle::SpaceS, 0.0f})
-                [
-                    SNew(STextBlock)
-                    .Text(Text)
-                    .ToolTipText(Tooltip)
-                    .ColorAndOpacity_Lambda([WeakRow]()
-                    {
-                        const auto Row = WeakRow.Pin();
-                        return Row.IsValid()
-                            ? TextColor(Row->IsHighlighted, Row->IsDimmed)
-                            : FSlateColor{CkStyle::TextMute()};
-                    })
-                ];
-        }
-
-    private:
-        TSharedPtr<SCkTextureDebugger_MaterialInputsPage::FRow> _Row;
-    };
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -238,121 +171,176 @@ auto
 {
     _Result.Availability = ECkTextureDebugger_UvDensityAvailability::InvalidComponent;
     _Result.UnavailableReason = TEXT("Select a checker-capable mesh component and an explicit material slot.");
+    auto Registry = TSharedPtr<const FCkUiWidgetRegistrySnapshot>{};
+    const auto RegistryResult = FCkDebug_UiRegistry::TryCreate(Registry);
+    if (NOT RegistryResult.Succeeded)
+    {
+        _PublicationError = FString::Join(RegistryResult.Errors, TEXT("\n"));
+        ChildSlot[SNew(STextBlock).Text(Get_LayoutError())];
+        return;
+    }
 
-    ChildSlot
-    [
-        SNew(SScrollBox)
-        + SScrollBox::Slot().Padding(CkStyle::SpaceM)
-        [
-            SNew(SVerticalBox)
-            + SVerticalBox::Slot().AutoHeight()
-            [
-                ck_texture_debugger_diagnostic_pages::MakePurposeText(
-                    LOCTEXT("UvPurpose",
-                        "Measures texels per centimetre only when the selected triangle, UV area, texture binding, texture transform, and cooked dimensions are authoritative. Missing proof is reported instead of estimated."))
-            ]
-            + SVerticalBox::Slot().AutoHeight().Padding(0.0f, CkStyle::SpaceM)
-            [
-                SNew(SWrapBox).UseAllottedSize(true)
-                + SWrapBox::Slot().Padding(0.0f, 0.0f, CkStyle::SpaceS, CkStyle::SpaceS)
-                [
-                    SNew(SCkDebug_StatusPill)
-                    .Text_Lambda([this] { return Get_ComponentContextText(); })
-                    .Tone_Lambda([this]
-                    {
-                        return _Component.IsSet() && _Component->NavigationTarget.IsValid()
-                            ? ECk_Tone::Info
-                            : ECk_Tone::Neutral;
-                    })
-                ]
-                + SWrapBox::Slot().Padding(0.0f, 0.0f, CkStyle::SpaceS, CkStyle::SpaceS)
-                [
-                    SNew(SCkDebug_StatusPill)
-                    .Text_Lambda([this] { return Get_SlotContextText(); })
-                    .Tone_Lambda([this] { return _ExplicitSlotIndices.IsEmpty() ? ECk_Tone::Neutral : ECk_Tone::Accent; })
-                ]
-                + SWrapBox::Slot().Padding(0.0f, 0.0f, CkStyle::SpaceS, CkStyle::SpaceS)
-                [
-                    SNew(SCkDebug_StatusPill)
-                    .Text_Lambda([this] { return Get_TextureContextText(); })
-                    .Tone_Lambda([this] { return _SelectedTexture.IsSet() ? ECk_Tone::Info : ECk_Tone::Neutral; })
-                ]
-            ]
-            + SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, CkStyle::SpaceM)
-            [
-                SNew(SCkDebug_InspectorPanel)
-                .Title(LOCTEXT("UvInputs", "Measurement inputs"))
-                .StartExpanded(true)
-                .Body()
-                [
-                    SNew(SVerticalBox)
-                    + SVerticalBox::Slot().AutoHeight()
-                    [
-                        ck_texture_debugger_diagnostic_pages::MakeFactRow(
-                            LOCTEXT("UvComponent", "Component"),
-                            TAttribute<FText>::CreateLambda([this] { return Get_ComponentContextText(); }))
-                    ]
-                    + SVerticalBox::Slot().AutoHeight()
-                    [
-                        ck_texture_debugger_diagnostic_pages::MakeFactRow(
-                            LOCTEXT("UvSlot", "Material slot"),
-                            TAttribute<FText>::CreateLambda([this] { return Get_SlotContextText(); }))
-                    ]
-                    + SVerticalBox::Slot().AutoHeight()
-                    [
-                        ck_texture_debugger_diagnostic_pages::MakeFactRow(
-                            LOCTEXT("UvChannel", "UV channel"), FText::FromString(TEXT("UV0")))
-                    ]
-                    + SVerticalBox::Slot().AutoHeight()
-                    [
-                        ck_texture_debugger_diagnostic_pages::MakeFactRow(
-                            LOCTEXT("UvTriangle", "Triangle / section"),
-                            FText::FromString(TEXT("Unavailable — no authoritative triangle mapping")))
-                    ]
-                    + SVerticalBox::Slot().AutoHeight()
-                    [
-                        ck_texture_debugger_diagnostic_pages::MakeFactRow(
-                            LOCTEXT("UvTexture", "Selected texture"),
-                            TAttribute<FText>::CreateLambda([this] { return Get_TextureContextText(); }))
-                    ]
-                ]
-            ]
-            + SVerticalBox::Slot().AutoHeight()
-            [
-                SNew(SCkDebug_InspectorPanel)
-                .Title(LOCTEXT("UvResult", "Authoritative result"))
-                .StartExpanded(true)
-                .Body()
-                [
-                    SNew(SVerticalBox)
-                    + SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Left)
-                    [
-                        SNew(SCkDebug_StatusPill)
-                        .Text_Lambda([this] { return Get_ResultStatusText(); })
-                        .Tone_Lambda([this] { return Get_ResultTone(); })
-                    ]
-                    + SVerticalBox::Slot().AutoHeight().Padding(0.0f, CkStyle::SpaceM)
-                    [
-                        SNew(SCkDebug_StatPair)
-                        .Value_Lambda([this] { return Get_ResultValueText(); })
-                        .Label(LOCTEXT("TexelsPerCm", "Texels / cm"))
-                        .Layout(ECkDebug_StatPairLayout::Stacked_ValueOnTop)
-                        .ValueColor_Lambda([this]
-                        {
-                            return FSlateColor{Get_ResultTone() == ECk_Tone::Ok ? CkStyle::Ok() : CkStyle::Warn()};
-                        })
-                    ]
-                    + SVerticalBox::Slot().AutoHeight()
-                    [
-                        SNew(STextBlock)
-                        .Text_Lambda([this] { return Get_ResultExplanationText(); })
-                        .AutoWrapText(true)
-                        .ColorAndOpacity(FSlateColor{CkStyle::TextDim()})
-                    ]
-                ]
-            ]
-        ]
-    ];
+    const auto WeakPage = TWeakPtr<SCkTextureDebugger_UvDensityPage>{SharedThis(this)};
+    auto Tokens = FCkUiView::FTokens{};
+    Tokens.Add(TEXT("--space-s"), FString::SanitizeFloat(CkStyle::SpaceS));
+    Tokens.Add(TEXT("--space-m"), FString::SanitizeFloat(CkStyle::SpaceM));
+    Tokens.Add(TEXT("--space-l"), FString::SanitizeFloat(CkStyle::SpaceL));
+    Tokens.Add(TEXT("--text"), TEXT("#") + CkStyle::Text().ToFColorSRGB().ToHex());
+    Tokens.Add(TEXT("--text-strong"), TEXT("#") + CkStyle::TextStrong().ToFColorSRGB().ToHex());
+    Tokens.Add(TEXT("--text-dim"), TEXT("#") + CkStyle::TextDim().ToFColorSRGB().ToHex());
+    Tokens.Add(TEXT("--surface"), TEXT("#") + CkStyle::Bg2().ToFColorSRGB().ToHex());
+
+    auto Data = FCkUiView::FDataBindings{};
+    Data.Text.Add(TEXT("purpose"), LOCTEXT("UvPurpose", "Measures texels per centimetre only when the selected triangle, UV area, texture binding, texture transform, and cooked dimensions are authoritative. Missing proof is reported instead of estimated."));
+    Data.Text.Add(TEXT("component-label"), LOCTEXT("UvComponent", "Component"));
+    Data.Text.Add(TEXT("slot-label"), LOCTEXT("UvSlot", "Material slot"));
+    Data.Text.Add(TEXT("channel-label"), LOCTEXT("UvChannel", "UV channel"));
+    Data.Text.Add(TEXT("triangle-label"), LOCTEXT("UvTriangle", "Triangle / section"));
+    Data.Text.Add(TEXT("texture-label"), LOCTEXT("UvTexture", "Selected texture"));
+    Data.Text.Add(TEXT("channel-value"), FText::FromString(TEXT("UV0")));
+    Data.Text.Add(TEXT("triangle-value"), FText::FromString(TEXT("Unavailable — no authoritative triangle mapping")));
+    Data.Text.Add(TEXT("result-unit"), LOCTEXT("TexelsPerCm", "Texels / cm"));
+    Data.Text.Add(TEXT("component"), TAttribute<FText>::CreateSP(this, &SCkTextureDebugger_UvDensityPage::Get_ComponentContextText));
+    Data.Text.Add(TEXT("slot"), TAttribute<FText>::CreateSP(this, &SCkTextureDebugger_UvDensityPage::Get_SlotContextText));
+    Data.Text.Add(TEXT("texture"), TAttribute<FText>::CreateSP(this, &SCkTextureDebugger_UvDensityPage::Get_TextureContextText));
+    Data.Text.Add(TEXT("inputs-title"), TAttribute<FText>::CreateSP(this, &SCkTextureDebugger_UvDensityPage::Get_InputsTitleText));
+    Data.Text.Add(TEXT("result-title"), TAttribute<FText>::CreateSP(this, &SCkTextureDebugger_UvDensityPage::Get_ResultTitleText));
+    Data.Text.Add(TEXT("result-status"), TAttribute<FText>::CreateSP(this, &SCkTextureDebugger_UvDensityPage::Get_ResultStatusText));
+    Data.Text.Add(TEXT("result-value"), TAttribute<FText>::CreateSP(this, &SCkTextureDebugger_UvDensityPage::Get_ResultValueText));
+    Data.Text.Add(TEXT("result-explanation"), TAttribute<FText>::CreateSP(this, &SCkTextureDebugger_UvDensityPage::Get_ResultExplanationText));
+    Data.Color.Add(TEXT("component-foreground"), TAttribute<FLinearColor>::CreateLambda([WeakPage]
+    {
+        const auto Page = WeakPage.Pin();
+        const auto Tone = Page.IsValid() && Page->_Component.IsSet() && Page->_Component->NavigationTarget.IsValid() ? ECk_Tone::Info : ECk_Tone::Neutral;
+        return CkStyle::GetToneColor(Tone);
+    }));
+    Data.Color.Add(TEXT("component-background"), TAttribute<FLinearColor>::CreateLambda([WeakPage]
+    {
+        const auto Page = WeakPage.Pin();
+        const auto Tone = Page.IsValid() && Page->_Component.IsSet() && Page->_Component->NavigationTarget.IsValid() ? ECk_Tone::Info : ECk_Tone::Neutral;
+        return CkStyle::GetToneDimColor(Tone);
+    }));
+    Data.Color.Add(TEXT("slot-foreground"), TAttribute<FLinearColor>::CreateLambda([WeakPage]
+    {
+        const auto Page = WeakPage.Pin();
+        const auto Tone = Page.IsValid() && NOT Page->_ExplicitSlotIndices.IsEmpty() ? ECk_Tone::Accent : ECk_Tone::Neutral;
+        return CkStyle::GetToneColor(Tone);
+    }));
+    Data.Color.Add(TEXT("slot-background"), TAttribute<FLinearColor>::CreateLambda([WeakPage]
+    {
+        const auto Page = WeakPage.Pin();
+        const auto Tone = Page.IsValid() && NOT Page->_ExplicitSlotIndices.IsEmpty() ? ECk_Tone::Accent : ECk_Tone::Neutral;
+        return CkStyle::GetToneDimColor(Tone);
+    }));
+    Data.Color.Add(TEXT("texture-foreground"), TAttribute<FLinearColor>::CreateLambda([WeakPage]
+    {
+        const auto Page = WeakPage.Pin();
+        const auto Tone = Page.IsValid() && Page->_SelectedTexture.IsSet() ? ECk_Tone::Info : ECk_Tone::Neutral;
+        return CkStyle::GetToneColor(Tone);
+    }));
+    Data.Color.Add(TEXT("texture-background"), TAttribute<FLinearColor>::CreateLambda([WeakPage]
+    {
+        const auto Page = WeakPage.Pin();
+        const auto Tone = Page.IsValid() && Page->_SelectedTexture.IsSet() ? ECk_Tone::Info : ECk_Tone::Neutral;
+        return CkStyle::GetToneDimColor(Tone);
+    }));
+    Data.Color.Add(TEXT("result-foreground"), TAttribute<FLinearColor>::CreateLambda([WeakPage]
+    {
+        const auto Page = WeakPage.Pin();
+        return CkStyle::GetToneColor(Page.IsValid() ? Page->Get_ResultTone() : ECk_Tone::Neutral);
+    }));
+    Data.Color.Add(TEXT("result-background"), TAttribute<FLinearColor>::CreateLambda([WeakPage]
+    {
+        const auto Page = WeakPage.Pin();
+        return CkStyle::GetToneDimColor(Page.IsValid() ? Page->Get_ResultTone() : ECk_Tone::Neutral);
+    }));
+    Data.Visibility.Add(TEXT("inputs-expanded"), TAttribute<bool>::CreateSP(this, &SCkTextureDebugger_UvDensityPage::Are_InputsExpanded));
+    Data.Visibility.Add(TEXT("result-expanded"), TAttribute<bool>::CreateSP(this, &SCkTextureDebugger_UvDensityPage::Is_ResultExpanded));
+
+    auto Actions = FCkUiView::FActions{};
+    Actions.Add(TEXT("toggle-inputs"), FSimpleDelegate::CreateSP(this, &SCkTextureDebugger_UvDensityPage::Toggle_InputsExpanded));
+    Actions.Add(TEXT("toggle-result"), FSimpleDelegate::CreateSP(this, &SCkTextureDebugger_UvDensityPage::Toggle_ResultExpanded));
+    _LayoutView = FCkUiView::Create({}, MoveTemp(Actions), MoveTemp(Tokens), CkStyle::RegularFont(CkStyle::FontSizeBody()), MoveTemp(Data), Registry);
+    ChildSlot[SNew(SVerticalBox)
+        + SVerticalBox::Slot().AutoHeight()
+        [SNew(STextBlock)
+            .Tag(TEXT("Ck.UvDensity.LayoutError"))
+            .Text(this, &SCkTextureDebugger_UvDensityPage::Get_LayoutError)
+            .ToolTipText(this, &SCkTextureDebugger_UvDensityPage::Get_LayoutError)
+            .AutoWrapText(true)
+            .ColorAndOpacity(FSlateColor{CkStyle::Err()})
+            .Visibility_Lambda([WeakPage]
+            {
+                const auto Page = WeakPage.Pin();
+                return NOT Page.IsValid() || Page->Get_LayoutError().IsEmpty() ? EVisibility::Collapsed : EVisibility::Visible;
+            })]
+        + SVerticalBox::Slot().FillHeight(1.0f)
+        [_LayoutView->GetRegion(TEXT("main"))]];
+
+    const auto Plugin = IPluginManager::Get().FindPlugin(TEXT("CkDebugger"));
+    const auto UiDirectory = Plugin.IsValid() ? FPaths::Combine(Plugin->GetBaseDir(), TEXT("Resources/UI")) : FString{};
+    Reload_LayoutFiles(FPaths::Combine(UiDirectory, TEXT("UvDensity.ui.html")), FPaths::Combine(UiDirectory, TEXT("UvDensity.ui.css")));
+    RegisterActiveTimer(0.5f, FWidgetActiveTimerDelegate::CreateSP(this, &SCkTextureDebugger_UvDensityPage::Tick_LayoutFiles));
+}
+
+auto
+    SCkTextureDebugger_UvDensityPage::
+    TryReload_Layout(
+        const FString& InMarkup,
+        const FString& InStylesheet)
+    -> FCkUiLoadResult
+{
+    if (NOT _LayoutView.IsValid()) { return {false, {TEXT("Authored layout is disabled for UV & Density.")}}; }
+    return _LayoutView->TryReload(InMarkup, InStylesheet, TEXT("UvDensity"));
+}
+
+auto
+    SCkTextureDebugger_UvDensityPage::
+    Reload_LayoutFiles(
+        const FString& InMarkupPath,
+        const FString& InStylesheetPath)
+    -> FCkUiLoadResult
+{
+    if (NOT _LayoutView.IsValid()) { return {false, {TEXT("Authored layout is disabled for UV & Density.")}}; }
+    return _LayoutView->ReloadFiles(InMarkupPath, InStylesheetPath);
+}
+
+auto
+    SCkTextureDebugger_UvDensityPage::
+    Poll_LayoutFiles()
+    -> bool
+{
+    return _LayoutView.IsValid() && _LayoutView->PollFiles();
+}
+
+auto
+    SCkTextureDebugger_UvDensityPage::
+    Get_LayoutRevision() const
+    -> int64
+{
+    return _LayoutView.IsValid() ? _LayoutView->GetRevision() : 0;
+}
+
+auto
+    SCkTextureDebugger_UvDensityPage::
+    Get_LayoutError() const
+    -> FText
+{
+    if (NOT _PublicationError.IsEmpty()) { return FText::FromString(_PublicationError); }
+    return NOT _LayoutView.IsValid() || _LayoutView->GetLastResult().Succeeded
+        ? FText::GetEmpty()
+        : FText::FromString(FString::Join(_LayoutView->GetLastResult().Errors, TEXT("\n")));
+}
+
+auto
+    SCkTextureDebugger_UvDensityPage::
+    Tick_LayoutFiles(
+        double,
+        float)
+    -> EActiveTimerReturnType
+{
+    Poll_LayoutFiles();
+    return EActiveTimerReturnType::Continue;
 }
 
 auto
@@ -438,6 +426,20 @@ auto SCkTextureDebugger_UvDensityPage::Get_TextureContextText() const -> FText
         : LOCTEXT("NoUvTexture", "No texture selected");
 }
 
+auto SCkTextureDebugger_UvDensityPage::Get_InputsTitleText() const -> FText
+{
+    return _InputsExpanded
+        ? LOCTEXT("UvInputs", "Measurement inputs")
+        : LOCTEXT("ExpandMeasurementInputs", "Measurement inputs (collapsed)");
+}
+
+auto SCkTextureDebugger_UvDensityPage::Get_ResultTitleText() const -> FText
+{
+    return _ResultExpanded
+        ? LOCTEXT("UvResult", "Authoritative result")
+        : LOCTEXT("ExpandAuthoritativeResult", "Authoritative result (collapsed)");
+}
+
 auto SCkTextureDebugger_UvDensityPage::Get_ResultStatusText() const -> FText
 {
     return _Result.Availability == ECkTextureDebugger_UvDensityAvailability::Available
@@ -468,6 +470,26 @@ auto SCkTextureDebugger_UvDensityPage::Get_ResultExplanationText() const -> FTex
             : _Result.UnavailableReason);
 }
 
+auto SCkTextureDebugger_UvDensityPage::Are_InputsExpanded() const -> bool
+{
+    return _InputsExpanded;
+}
+
+auto SCkTextureDebugger_UvDensityPage::Is_ResultExpanded() const -> bool
+{
+    return _ResultExpanded;
+}
+
+auto SCkTextureDebugger_UvDensityPage::Toggle_InputsExpanded() -> void
+{
+    _InputsExpanded = NOT _InputsExpanded;
+}
+
+auto SCkTextureDebugger_UvDensityPage::Toggle_ResultExpanded() -> void
+{
+    _ResultExpanded = NOT _ResultExpanded;
+}
+
 // --------------------------------------------------------------------------------------------------------------------
 
 auto
@@ -475,100 +497,131 @@ auto
     Construct(
         const FArguments&) -> void
 {
+    using namespace ck_texture_debugger_diagnostic_pages;
+    TSharedPtr<const FCkUiWidgetRegistrySnapshot> Registry;
+    const FCkUiLoadResult RegistryResult = FCkDebug_UiRegistry::TryCreate(Registry);
+    const FCkUiLoadResult CollectionResult = FCkUiCollection::TryCreate(MaterialInputsUiSchema(), _UiCollection);
+    if (!RegistryResult.Succeeded || !CollectionResult.Succeeded)
+    {
+        _PublicationError = FString::Join(RegistryResult.Errors, TEXT("\n")) + FString::Join(CollectionResult.Errors, TEXT("\n"));
+        _UiCollection.Reset();
+        ChildSlot[SNew(STextBlock).Text(Get_LayoutError())];
+        return;
+    }
+    const auto WeakPage = TWeakPtr<SCkTextureDebugger_MaterialInputsPage>{SharedThis(this)};
+    auto Tokens = FCkUiView::FTokens{};
+    Tokens.Add(TEXT("--space-s"), FString::SanitizeFloat(CkStyle::SpaceS));
+    Tokens.Add(TEXT("--space-m"), FString::SanitizeFloat(CkStyle::SpaceM));
+    Tokens.Add(TEXT("--text"), TEXT("#") + CkStyle::Text().ToFColorSRGB().ToHex());
+    Tokens.Add(TEXT("--surface"), TEXT("#") + CkStyle::Bg2().ToFColorSRGB().ToHex());
+    auto Data = FCkUiView::FDataBindings{};
+    Data.Text.Add(TEXT("filter-hint"), LOCTEXT("MaterialFilter", "Filter parameter, texture, slot, or provenance…"));
+    Data.Text.Add(TEXT("highlight-hint"), LOCTEXT("MaterialHighlight", "Highlight matches…"));
+    Data.Text.Add(TEXT("parameter-header"), LOCTEXT("ParameterColumn", "Parameter"));
+    Data.Text.Add(TEXT("texture-header"), LOCTEXT("TextureColumn", "Texture"));
+    Data.Text.Add(TEXT("provenance-header"), LOCTEXT("ProvenanceColumn", "Provenance"));
+    Data.Text.Add(TEXT("slot-header"), LOCTEXT("SlotColumn", "Slot"));
+    Data.Text.Add(TEXT("variant-header"), LOCTEXT("VariantColumn", "Quality / platform"));
+    Data.Text.Add(TEXT("purpose"), LOCTEXT("MaterialPurpose",
+        "Shows texture parameters resolved through the active material-instance chain and separately labels active-quality/platform used textures as potential references. Potential rows do not claim a sampler or slot binding."));
+    Data.Text.Add(TEXT("component"), TAttribute<FText>::CreateLambda([WeakPage]
+    {
+        const auto Page = WeakPage.Pin();
+        return Page.IsValid() && Page->_Component.IsSet()
+            ? FText::FromString(FString::Printf(TEXT("%s · %s"), *Page->_Component->ActorDisplayName, *Page->_Component->ComponentDisplayName))
+            : LOCTEXT("MaterialContextNone", "No component");
+    }));
+    Data.Text.Add(TEXT("texture-context"), TAttribute<FText>::CreateLambda([WeakPage]
+    {
+        const auto Page = WeakPage.Pin();
+        return Page.IsValid() && Page->_SelectedTexture.IsSet() && !Page->_SelectedTexture->DisplayName.IsEmpty()
+            ? FText::FromString(FString::Printf(TEXT("Selected texture · %s"), *Page->_SelectedTexture->DisplayName))
+            : LOCTEXT("MaterialTextureNone", "Selected texture · none");
+    }));
+    Data.Text.Add(TEXT("filter"), TAttribute<FText>::CreateLambda([WeakPage]
+    {
+        const auto Page = WeakPage.Pin();
+        return Page.IsValid() ? FText::FromString(Page->_FilterText) : FText::GetEmpty();
+    }));
+    Data.Text.Add(TEXT("highlight"), TAttribute<FText>::CreateLambda([WeakPage]
+    {
+        const auto Page = WeakPage.Pin();
+        return Page.IsValid() ? FText::FromString(Page->_HighlightText) : FText::GetEmpty();
+    }));
+    Data.Text.Add(TEXT("count"), TAttribute<FText>::CreateLambda([WeakPage]
+    {
+        const auto Page = WeakPage.Pin();
+        return Page.IsValid()
+            ? FText::Format(LOCTEXT("MaterialRowCountFormat", "{0}/{1} {2}"), Page->_VisibleRows.Num(), Page->_AllRows.Num(), LOCTEXT("MaterialRows", "rows"))
+            : FText::GetEmpty();
+    }));
+    Data.Text.Add(TEXT("empty-state"), TAttribute<FText>::CreateLambda([WeakPage]
+    {
+        const auto Page = WeakPage.Pin();
+        return Page.IsValid() ? Page->Get_EmptyStateText() : FText::GetEmpty();
+    }));
+    Data.Visibility.Add(TEXT("material-inputs-empty"), TAttribute<bool>::CreateLambda([WeakPage]
+    {
+        const auto Page = WeakPage.Pin();
+        return Page.IsValid() && Page->_VisibleRows.IsEmpty();
+    }));
+    Data.Color.Add(TEXT("component-foreground"), TAttribute<FLinearColor>::CreateLambda([WeakPage]
+    {
+        const auto Page = WeakPage.Pin();
+        const bool HasLiveComponent = Page.IsValid() && Page->_Component.IsSet() && Page->_Component->NavigationTarget.IsValid();
+        return CkStyle::GetToneColor(HasLiveComponent ? ECk_Tone::Info : ECk_Tone::Neutral);
+    }));
+    Data.Color.Add(TEXT("component-background"), TAttribute<FLinearColor>::CreateLambda([WeakPage]
+    {
+        const auto Page = WeakPage.Pin();
+        const bool HasLiveComponent = Page.IsValid() && Page->_Component.IsSet() && Page->_Component->NavigationTarget.IsValid();
+        return CkStyle::GetToneDimColor(HasLiveComponent ? ECk_Tone::Info : ECk_Tone::Neutral);
+    }));
+    Data.Color.Add(TEXT("texture-foreground"), TAttribute<FLinearColor>::CreateLambda([WeakPage]
+    {
+        const auto Page = WeakPage.Pin();
+        return CkStyle::GetToneColor(Page.IsValid() && Page->_SelectedTexture.IsSet() ? ECk_Tone::Accent : ECk_Tone::Neutral);
+    }));
+    Data.Color.Add(TEXT("texture-background"), TAttribute<FLinearColor>::CreateLambda([WeakPage]
+    {
+        const auto Page = WeakPage.Pin();
+        return CkStyle::GetToneDimColor(Page.IsValid() && Page->_SelectedTexture.IsSet() ? ECk_Tone::Accent : ECk_Tone::Neutral);
+    }));
+    Data.Collections.Add(TEXT("material-inputs"), _UiCollection);
+    Data.TextChanged.Add(TEXT("filter"), FOnTextChanged::CreateLambda([WeakPage](const FText& Text)
+    {
+        if (const auto Page = WeakPage.Pin()) { Page->OnFilterTextChanged(Text.ToString()); }
+    }));
+    Data.TextChanged.Add(TEXT("highlight"), FOnTextChanged::CreateLambda([WeakPage](const FText& Text)
+    {
+        if (const auto Page = WeakPage.Pin()) { Page->OnHighlightTextChanged(Text.ToString()); }
+    }));
+    _LayoutView = FCkUiView::Create({}, {}, MoveTemp(Tokens), CkStyle::RegularFont(CkStyle::FontSizeBody()), MoveTemp(Data), Registry);
     ChildSlot
     [
         SNew(SVerticalBox)
-        + SVerticalBox::Slot().AutoHeight().Padding(CkStyle::SpaceM)
+        + SVerticalBox::Slot().AutoHeight()
         [
-            ck_texture_debugger_diagnostic_pages::MakePurposeText(
-                LOCTEXT("MaterialPurpose",
-                    "Shows texture parameters resolved through the active material-instance chain and separately labels active-quality/platform used textures as potential references. Potential rows do not claim a sampler or slot binding."))
+            SNew(STextBlock)
+            .Tag(TEXT("Ck.MaterialInputs.LayoutError"))
+            .Text(this, &SCkTextureDebugger_MaterialInputsPage::Get_LayoutError)
+            .AutoWrapText(true)
+            .ColorAndOpacity(FSlateColor{CkStyle::Err()})
+            .Visibility_Lambda([WeakPage]
+            {
+                const auto Page = WeakPage.Pin();
+                return !Page.IsValid() || Page->Get_LayoutError().IsEmpty() ? EVisibility::Collapsed : EVisibility::Visible;
+            })
         ]
-        + SVerticalBox::Slot().AutoHeight().Padding(CkStyle::SpaceM, 0.0f)
+        + SVerticalBox::Slot().FillHeight(1.0f)
         [
-            SNew(SWrapBox).UseAllottedSize(true)
-            + SWrapBox::Slot().Padding(0.0f, 0.0f, CkStyle::SpaceS, CkStyle::SpaceS)
-            [
-                SNew(SCkDebug_StatusPill)
-                .Text_Lambda([this]
-                {
-                    return _Component.IsSet()
-                        ? FText::FromString(FString::Printf(TEXT("%s · %s"),
-                            *_Component->ActorDisplayName, *_Component->ComponentDisplayName))
-                        : LOCTEXT("MaterialContextNone", "No component");
-                })
-                .Tone_Lambda([this]
-                {
-                    return _Component.IsSet() && _Component->NavigationTarget.IsValid()
-                        ? ECk_Tone::Info
-                        : ECk_Tone::Neutral;
-                })
-            ]
-            + SWrapBox::Slot().Padding(0.0f, 0.0f, CkStyle::SpaceS, CkStyle::SpaceS)
-            [
-                SNew(SCkDebug_StatusPill)
-                .Text_Lambda([this]
-                {
-                    return _SelectedTexture.IsSet() && NOT _SelectedTexture->DisplayName.IsEmpty()
-                        ? FText::FromString(FString::Printf(TEXT("Selected texture · %s"), *_SelectedTexture->DisplayName))
-                        : LOCTEXT("MaterialTextureNone", "Selected texture · none");
-                })
-                .Tone_Lambda([this] { return _SelectedTexture.IsSet() ? ECk_Tone::Accent : ECk_Tone::Neutral; })
-                .ShowDot(false)
-            ]
-        ]
-        + SVerticalBox::Slot().AutoHeight().Padding(CkStyle::SpaceM, 0.0f)
-        [
-            SNew(SHorizontalBox)
-            + SHorizontalBox::Slot().FillWidth(1.0f)
-            [
-                SNew(SCkDebug_DualSearchBar)
-                .FilterHintText(LOCTEXT("MaterialFilter", "Filter parameter, texture, slot, or provenance…"))
-                .HighlightHintText(LOCTEXT("MaterialHighlight", "Highlight matches…"))
-                .OnFilterTextChanged(this, &SCkTextureDebugger_MaterialInputsPage::OnFilterTextChanged)
-                .OnHighlightTextChanged(this, &SCkTextureDebugger_MaterialInputsPage::OnHighlightTextChanged)
-            ]
-            + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(CkStyle::SpaceS, 0.0f)
-            [
-                SNew(SCkDebug_CountBadge)
-                .ValueText_Lambda([this]()
-                {
-                    return FText::FromString(FString::Printf(
-                        TEXT("%d/%d"),
-                        _VisibleRows.Num(),
-                        _AllRows.Num()));
-                })
-                .SuffixText(LOCTEXT("MaterialRows", "rows"))
-            ]
-        ]
-        + SVerticalBox::Slot().FillHeight(1.0f).Padding(CkStyle::SpaceM)
-        [
-            SNew(SOverlay)
-            + SOverlay::Slot()
-            [
-                SAssignNew(_ListView, SListView<TSharedPtr<FRow>>)
-                .ListItemsSource(&_VisibleRows)
-                .SelectionMode(ESelectionMode::None)
-                .OnGenerateRow(this, &SCkTextureDebugger_MaterialInputsPage::OnGenerateRow)
-                .HeaderRow(
-                    SNew(SHeaderRow)
-                    + SHeaderRow::Column(ck_texture_debugger_diagnostic_pages::ParameterColumn).DefaultLabel(LOCTEXT("ParameterColumn", "Parameter")).FillWidth(0.22f)
-                    + SHeaderRow::Column(ck_texture_debugger_diagnostic_pages::TextureColumn).DefaultLabel(LOCTEXT("TextureColumn", "Texture")).FillWidth(0.25f)
-                    + SHeaderRow::Column(ck_texture_debugger_diagnostic_pages::ProvenanceColumn).DefaultLabel(LOCTEXT("ProvenanceColumn", "Provenance")).FillWidth(0.20f)
-                    + SHeaderRow::Column(ck_texture_debugger_diagnostic_pages::SlotColumn).DefaultLabel(LOCTEXT("SlotColumn", "Slot")).FillWidth(0.12f)
-                    + SHeaderRow::Column(ck_texture_debugger_diagnostic_pages::VariantColumn).DefaultLabel(LOCTEXT("VariantColumn", "Quality / platform")).FillWidth(0.21f))
-            ]
-            + SOverlay::Slot().HAlign(HAlign_Center).VAlign(VAlign_Center)
-            [
-                SNew(STextBlock)
-                .Text_Lambda([this] { return Get_EmptyStateText(); })
-                .AutoWrapText(true)
-                .Justification(ETextJustify::Center)
-                .ColorAndOpacity(FSlateColor{CkStyle::TextMute()})
-                .Visibility_Lambda([this] { return _VisibleRows.IsEmpty() ? EVisibility::Visible : EVisibility::Collapsed; })
-            ]
+            _LayoutView->GetRegion(TEXT("main"))
         ]
     ];
+    const auto Plugin = IPluginManager::Get().FindPlugin(TEXT("CkDebugger"));
+    const auto UiDirectory = Plugin.IsValid() ? FPaths::Combine(Plugin->GetBaseDir(), TEXT("Resources/UI")) : FString{};
+    Reload_LayoutFiles(FPaths::Combine(UiDirectory, TEXT("MaterialInputs.ui.html")), FPaths::Combine(UiDirectory, TEXT("MaterialInputs.ui.css")));
+    RegisterActiveTimer(0.5f, FWidgetActiveTimerDelegate::CreateSP(this, &SCkTextureDebugger_MaterialInputsPage::Tick_LayoutFiles));
 }
 
 auto
@@ -582,6 +635,35 @@ auto
     _SelectedTexture = MoveTemp(InSelectedTexture);
     _ExplicitSlotIndices = ck_texture_debugger_diagnostic_pages::NormalizeSlots(MoveTemp(InExplicitSlotIndices));
     Rebuild_Rows();
+}
+
+auto SCkTextureDebugger_MaterialInputsPage::TryReload_Layout(const FString& InMarkup, const FString& InStylesheet) -> FCkUiLoadResult
+{
+    return _LayoutView.IsValid() ? _LayoutView->TryReload(InMarkup, InStylesheet, TEXT("MaterialInputs"))
+                                 : FCkUiLoadResult{false, {TEXT("Authored layout is disabled for Material Inputs.")}};
+}
+
+auto SCkTextureDebugger_MaterialInputsPage::Reload_LayoutFiles(const FString& InMarkupPath, const FString& InStylesheetPath) -> FCkUiLoadResult
+{
+    return _LayoutView.IsValid() ? _LayoutView->ReloadFiles(InMarkupPath, InStylesheetPath)
+                                 : FCkUiLoadResult{false, {TEXT("Authored layout is disabled for Material Inputs.")}};
+}
+
+auto SCkTextureDebugger_MaterialInputsPage::Poll_LayoutFiles() -> bool { return _LayoutView.IsValid() && _LayoutView->PollFiles(); }
+auto SCkTextureDebugger_MaterialInputsPage::Get_LayoutRevision() const -> int64 { return _LayoutView.IsValid() ? _LayoutView->GetRevision() : 0; }
+auto SCkTextureDebugger_MaterialInputsPage::Get_LayoutError() const -> FText
+{
+    if (!_PublicationError.IsEmpty()) { return FText::FromString(_PublicationError); }
+    return !_LayoutView.IsValid() || _LayoutView->GetLastResult().Succeeded ? FText::GetEmpty() : FText::FromString(FString::Join(_LayoutView->GetLastResult().Errors, TEXT("\n")));
+}
+auto SCkTextureDebugger_MaterialInputsPage::Get_AuthoredTable() const -> TSharedPtr<SCkUiTable>
+{
+    return _LayoutView.IsValid() ? _LayoutView->GetTable(TEXT("material-inputs-control")) : nullptr;
+}
+auto SCkTextureDebugger_MaterialInputsPage::Tick_LayoutFiles(double, float) -> EActiveTimerReturnType
+{
+    Poll_LayoutFiles();
+    return EActiveTimerReturnType::Continue;
 }
 
 auto SCkTextureDebugger_MaterialInputsPage::Rebuild_Rows() -> void
@@ -694,21 +776,8 @@ auto SCkTextureDebugger_MaterialInputsPage::Apply_Search() -> void
         NewVisible.Add(Row);
     }
 
-    auto StructureChanged = _VisibleRows.Num() != NewVisible.Num();
-    if (NOT StructureChanged)
-    {
-        for (auto Index = 0; Index < _VisibleRows.Num(); ++Index)
-        {
-            if (_VisibleRows[Index] != NewVisible[Index])
-            {
-                StructureChanged = true;
-                break;
-            }
-        }
-    }
-
     _VisibleRows = MoveTemp(NewVisible);
-    if (StructureChanged && _ListView.IsValid()) { _ListView->RequestListRefresh(); }
+    Publish_Rows();
 }
 
 auto SCkTextureDebugger_MaterialInputsPage::OnFilterTextChanged(const FString& InText) -> void
@@ -738,14 +807,20 @@ auto SCkTextureDebugger_MaterialInputsPage::Get_EmptyStateText() const -> FText
     return LOCTEXT("MaterialNoRows", "No runtime material-input rows are available for the selected slots.");
 }
 
-auto
-    SCkTextureDebugger_MaterialInputsPage::
-    OnGenerateRow(
-        TSharedPtr<FRow> InItem,
-        const TSharedRef<STableViewBase>& InOwnerTable) -> TSharedRef<ITableRow>
+auto SCkTextureDebugger_MaterialInputsPage::Publish_Rows() -> void
 {
-    return SNew(ck_texture_debugger_diagnostic_pages::SMaterialInputRow, InOwnerTable)
-        .Row(MoveTemp(InItem));
+    if (!_UiCollection.IsValid()) { return; }
+    auto Records = TArray<FCkUiRecordData>{};
+    Records.Reserve(_VisibleRows.Num());
+    for (const TSharedPtr<FRow>& Row : _VisibleRows)
+    {
+        if (Row.IsValid()) { Records.Add(ck_texture_debugger_diagnostic_pages::MaterialInputsUiRecord(*Row)); }
+    }
+    const FCkUiLoadResult Result = _UiCollection->TrySetRecords(MoveTemp(Records));
+    if (!Result.Succeeded)
+    { _PublicationError = FString::Join(Result.Errors, TEXT("\n")); }
+    else
+    { _PublicationError.Reset(); }
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -755,74 +830,122 @@ auto
     Construct(
         const FArguments&) -> void
 {
+    using namespace ck_texture_debugger_diagnostic_pages;
+    TSharedPtr<const FCkUiWidgetRegistrySnapshot> Registry;
+    const FCkUiLoadResult RegistryResult = FCkDebug_UiRegistry::TryCreate(Registry);
+    const FCkUiLoadResult CollectionResult = FCkUiCollection::TryCreate(SurfaceLightingUiSchema(), _UiCollection);
+    if (NOT RegistryResult.Succeeded || NOT CollectionResult.Succeeded)
+    {
+        _PublicationError = FString::Join(RegistryResult.Errors, TEXT("\n")) + FString::Join(CollectionResult.Errors, TEXT("\n"));
+        _UiCollection.Reset();
+        ChildSlot[SNew(STextBlock).Text(Get_LayoutError())];
+        return;
+    }
+
+    const auto WeakPage = TWeakPtr<SCkTextureDebugger_SurfaceLightingPage>{SharedThis(this)};
+    auto Tokens = FCkUiView::FTokens{};
+    Tokens.Add(TEXT("--space-s"), FString::SanitizeFloat(CkStyle::SpaceS));
+    Tokens.Add(TEXT("--space-m"), FString::SanitizeFloat(CkStyle::SpaceM));
+    Tokens.Add(TEXT("--space-l"), FString::SanitizeFloat(CkStyle::SpaceL));
+    Tokens.Add(TEXT("--text"), TEXT("#") + CkStyle::Text().ToFColorSRGB().ToHex());
+    Tokens.Add(TEXT("--text-strong"), TEXT("#") + CkStyle::TextStrong().ToFColorSRGB().ToHex());
+    Tokens.Add(TEXT("--text-dim"), TEXT("#") + CkStyle::TextDim().ToFColorSRGB().ToHex());
+    Tokens.Add(TEXT("--surface"), TEXT("#") + CkStyle::Bg2().ToFColorSRGB().ToHex());
+    Tokens.Add(TEXT("--info"), TEXT("#") + CkStyle::Info().ToFColorSRGB().ToHex());
+    Tokens.Add(TEXT("--warn"), TEXT("#") + CkStyle::Warn().ToFColorSRGB().ToHex());
+
+    auto Data = FCkUiView::FDataBindings{};
+    Data.Text.Add(TEXT("purpose"), LOCTEXT("SurfacePurpose",
+        "Reports public runtime material and component facts for the selected slots. These facts do not diagnose Lumen, VSM, light leaks, blurry textures, or final rendered appearance."));
+    Data.Text.Add(TEXT("material-facts-label"), LOCTEXT("MaterialFacts", "Material facts"));
+    Data.Text.Add(TEXT("two-sided-label"), LOCTEXT("TwoSided", "Two-sided"));
+    Data.Text.Add(TEXT("masked-label"), LOCTEXT("Masked", "Masked"));
+    Data.Text.Add(TEXT("translucent-label"), LOCTEXT("Translucent", "Translucent"));
+    Data.Text.Add(TEXT("lighting-facts-label"), LOCTEXT("LightingFacts", "Component lighting and shadow facts"));
+    Data.Text.Add(TEXT("cast-shadow-label"), LOCTEXT("CastShadow", "Cast shadow"));
+    Data.Text.Add(TEXT("dynamic-shadow-label"), LOCTEXT("DynamicShadow", "Dynamic shadow"));
+    Data.Text.Add(TEXT("static-shadow-label"), LOCTEXT("StaticShadow", "Static shadow"));
+    Data.Text.Add(TEXT("volumetric-shadow-label"), LOCTEXT("VolumetricShadow", "Volumetric translucent shadow"));
+    Data.Text.Add(TEXT("receives-decals-label"), LOCTEXT("ReceivesDecals", "Receives decals"));
+    Data.Text.Add(TEXT("static-lighting-label"), LOCTEXT("StaticLighting", "Has static lighting"));
+    Data.Text.Add(TEXT("opacity-label"), LOCTEXT("OpacityClip", "Opacity mask clip"));
+    Data.Text.Add(TEXT("lightmap-label"), LOCTEXT("Lightmap", "Lightmap resolution"));
+    Data.Text.Add(TEXT("nanite-label"), LOCTEXT("Nanite", "Nanite data"));
+    Data.Text.Add(TEXT("component"), TAttribute<FText>::CreateLambda([WeakPage]
+    {
+        const auto Page = WeakPage.Pin();
+        return Page.IsValid() && Page->_Component.IsSet()
+            ? FText::FromString(FString::Printf(TEXT("%s · %s"), *Page->_Component->ActorDisplayName, *Page->_Component->ComponentDisplayName))
+            : LOCTEXT("SurfaceContextNone", "No component");
+    }));
+    Data.Text.Add(TEXT("texture-context"), TAttribute<FText>::CreateLambda([WeakPage]
+    {
+        const auto Page = WeakPage.Pin();
+        return Page.IsValid() && Page->_SelectedTexture.IsSet() && NOT Page->_SelectedTexture->DisplayName.IsEmpty()
+            ? FText::FromString(FString::Printf(TEXT("Selected texture · %s"), *Page->_SelectedTexture->DisplayName))
+            : LOCTEXT("SurfaceTextureNone", "Selected texture · none");
+    }));
+    Data.Text.Add(TEXT("empty-state"), TAttribute<FText>::CreateLambda([WeakPage]
+    {
+        const auto Page = WeakPage.Pin();
+        return Page.IsValid() ? Page->Get_EmptyStateText() : FText::GetEmpty();
+    }));
+    Data.Visibility.Add(TEXT("surface-lighting-empty"), TAttribute<bool>::CreateLambda([WeakPage]
+    {
+        const auto Page = WeakPage.Pin();
+        return Page.IsValid() && Page->_SlotFacts.IsEmpty();
+    }));
+    Data.Color.Add(TEXT("component-foreground"), TAttribute<FLinearColor>::CreateLambda([WeakPage]
+    {
+        const auto Page = WeakPage.Pin();
+        return CkStyle::GetToneColor(Page.IsValid() && Page->_Component.IsSet() && Page->_Component->NavigationTarget.IsValid() ? ECk_Tone::Info : ECk_Tone::Neutral);
+    }));
+    Data.Color.Add(TEXT("component-background"), TAttribute<FLinearColor>::CreateLambda([WeakPage]
+    {
+        const auto Page = WeakPage.Pin();
+        return CkStyle::GetToneDimColor(Page.IsValid() && Page->_Component.IsSet() && Page->_Component->NavigationTarget.IsValid() ? ECk_Tone::Info : ECk_Tone::Neutral);
+    }));
+    Data.Color.Add(TEXT("texture-foreground"), TAttribute<FLinearColor>::CreateLambda([WeakPage]
+    {
+        const auto Page = WeakPage.Pin();
+        return CkStyle::GetToneColor(Page.IsValid() && Page->_SelectedTexture.IsSet() ? ECk_Tone::Accent : ECk_Tone::Neutral);
+    }));
+    Data.Color.Add(TEXT("texture-background"), TAttribute<FLinearColor>::CreateLambda([WeakPage]
+    {
+        const auto Page = WeakPage.Pin();
+        return CkStyle::GetToneDimColor(Page.IsValid() && Page->_SelectedTexture.IsSet() ? ECk_Tone::Accent : ECk_Tone::Neutral);
+    }));
+    Data.Collections.Add(TEXT("surface-lighting"), _UiCollection);
+    Data.ItemActions.Add(TEXT("toggle-slot"), FCkUiOnItemAction::CreateLambda([WeakPage](const FString& InStableKey)
+    {
+        if (const auto Page = WeakPage.Pin()) { Page->Toggle_Slot(InStableKey); }
+    }));
+    _LayoutView = FCkUiView::Create({}, {}, MoveTemp(Tokens), CkStyle::RegularFont(CkStyle::FontSizeBody()), MoveTemp(Data), Registry);
     ChildSlot
     [
         SNew(SVerticalBox)
-        + SVerticalBox::Slot().AutoHeight().Padding(CkStyle::SpaceM)
+        + SVerticalBox::Slot().AutoHeight()
         [
-            ck_texture_debugger_diagnostic_pages::MakePurposeText(
-                LOCTEXT("SurfacePurpose",
-                    "Reports public runtime material and component facts for the selected slots. These facts do not diagnose Lumen, VSM, light leaks, blurry textures, or final rendered appearance."))
+            SNew(STextBlock)
+            .Tag(TEXT("Ck.SurfaceLighting.LayoutError"))
+            .Text(this, &SCkTextureDebugger_SurfaceLightingPage::Get_LayoutError)
+            .AutoWrapText(true)
+            .ColorAndOpacity(FSlateColor{CkStyle::Err()})
+            .Visibility_Lambda([WeakPage]
+            {
+                const auto Page = WeakPage.Pin();
+                return NOT Page.IsValid() || Page->Get_LayoutError().IsEmpty() ? EVisibility::Collapsed : EVisibility::Visible;
+            })
         ]
-        + SVerticalBox::Slot().FillHeight(1.0f).Padding(CkStyle::SpaceM, 0.0f, CkStyle::SpaceM, CkStyle::SpaceM)
+        + SVerticalBox::Slot().FillHeight(1.0f)
         [
-            SNew(SVerticalBox)
-            + SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, CkStyle::SpaceS)
-            [
-                SNew(SWrapBox).UseAllottedSize(true)
-                + SWrapBox::Slot().Padding(0.0f, 0.0f, CkStyle::SpaceS, CkStyle::SpaceS)
-                [
-                    SNew(SCkDebug_StatusPill)
-                    .Text_Lambda([this]
-                    {
-                        return _Component.IsSet()
-                            ? FText::FromString(FString::Printf(TEXT("%s · %s"),
-                                *_Component->ActorDisplayName, *_Component->ComponentDisplayName))
-                            : LOCTEXT("SurfaceContextNone", "No component");
-                    })
-                    .Tone_Lambda([this]
-                    {
-                        return _Component.IsSet() && _Component->NavigationTarget.IsValid()
-                            ? ECk_Tone::Info
-                            : ECk_Tone::Neutral;
-                    })
-                ]
-                + SWrapBox::Slot().Padding(0.0f, 0.0f, CkStyle::SpaceS, CkStyle::SpaceS)
-                [
-                    SNew(SCkDebug_StatusPill)
-                    .Text_Lambda([this]
-                    {
-                        return _SelectedTexture.IsSet() && NOT _SelectedTexture->DisplayName.IsEmpty()
-                            ? FText::FromString(FString::Printf(TEXT("Selected texture · %s"), *_SelectedTexture->DisplayName))
-                            : LOCTEXT("SurfaceTextureNone", "Selected texture · none");
-                    })
-                    .Tone_Lambda([this] { return _SelectedTexture.IsSet() ? ECk_Tone::Accent : ECk_Tone::Neutral; })
-                    .ShowDot(false)
-                ]
-            ]
-            + SVerticalBox::Slot().FillHeight(1.0f)
-            [
-                SNew(SOverlay)
-                + SOverlay::Slot()
-                [
-                    SNew(SScrollBox)
-                    + SScrollBox::Slot()
-                    [
-                        SAssignNew(_SlotBox, SVerticalBox)
-                    ]
-                ]
-                + SOverlay::Slot().HAlign(HAlign_Center).VAlign(VAlign_Center)
-                [
-                    SNew(STextBlock)
-                    .Text_Lambda([this] { return Get_EmptyStateText(); })
-                    .AutoWrapText(true)
-                    .Justification(ETextJustify::Center)
-                    .ColorAndOpacity(FSlateColor{CkStyle::TextMute()})
-                    .Visibility_Lambda([this] { return _SlotFacts.IsEmpty() ? EVisibility::Visible : EVisibility::Collapsed; })
-                ]
-            ]
+            _LayoutView->GetRegion(TEXT("main"))
         ]
     ];
+    const auto Plugin = IPluginManager::Get().FindPlugin(TEXT("CkDebugger"));
+    const auto UiDirectory = Plugin.IsValid() ? FPaths::Combine(Plugin->GetBaseDir(), TEXT("Resources/UI")) : FString{};
+    Reload_LayoutFiles(FPaths::Combine(UiDirectory, TEXT("SurfaceLighting.ui.html")), FPaths::Combine(UiDirectory, TEXT("SurfaceLighting.ui.css")));
+    RegisterActiveTimer(0.5f, FWidgetActiveTimerDelegate::CreateSP(this, &SCkTextureDebugger_SurfaceLightingPage::Tick_LayoutFiles));
 }
 
 auto
@@ -850,9 +973,8 @@ auto SCkTextureDebugger_SurfaceLightingPage::Rebuild_Facts() -> void
     auto* Component = _Component.IsSet() ? _Component->NavigationTarget.Get() : nullptr;
     if (Component == nullptr)
     {
-        const auto HadFacts = NOT _SlotFacts.IsEmpty();
         _SlotFacts.Reset();
-        if (HadFacts) { Rebuild_SlotWidgets(); }
+        Publish_Facts();
         return;
     }
 
@@ -911,177 +1033,115 @@ auto SCkTextureDebugger_SurfaceLightingPage::Rebuild_Facts() -> void
         return InLeft->SlotIndex < InRight->SlotIndex;
     });
 
-    auto StructureChanged = _SlotFacts.Num() != NewFacts.Num();
-    if (NOT StructureChanged)
-    {
-        for (auto Index = 0; Index < _SlotFacts.Num(); ++Index)
-        {
-            if (_SlotFacts[Index] != NewFacts[Index])
-            {
-                StructureChanged = true;
-                break;
-            }
-        }
-    }
-
     _SlotFacts = MoveTemp(NewFacts);
-    if (StructureChanged) { Rebuild_SlotWidgets(); }
+    Publish_Facts();
 }
 
-auto SCkTextureDebugger_SurfaceLightingPage::Rebuild_SlotWidgets() -> void
+auto SCkTextureDebugger_SurfaceLightingPage::TryReload_Layout(const FString& InMarkup, const FString& InStylesheet) -> FCkUiLoadResult
 {
-    if (NOT _SlotBox.IsValid()) { return; }
-    _SlotBox->ClearChildren();
-    for (const auto& Facts : _SlotFacts)
+    return _LayoutView.IsValid() ? _LayoutView->TryReload(InMarkup, InStylesheet, TEXT("SurfaceLighting"))
+                                 : FCkUiLoadResult{false, {TEXT("Authored layout is disabled for Surface & Lighting.")}};
+}
+
+auto SCkTextureDebugger_SurfaceLightingPage::Reload_LayoutFiles(const FString& InMarkupPath, const FString& InStylesheetPath) -> FCkUiLoadResult
+{
+    return _LayoutView.IsValid() ? _LayoutView->ReloadFiles(InMarkupPath, InStylesheetPath)
+                                 : FCkUiLoadResult{false, {TEXT("Authored layout is disabled for Surface & Lighting.")}};
+}
+
+auto SCkTextureDebugger_SurfaceLightingPage::Poll_LayoutFiles() -> bool { return _LayoutView.IsValid() && _LayoutView->PollFiles(); }
+auto SCkTextureDebugger_SurfaceLightingPage::Get_LayoutRevision() const -> int64 { return _LayoutView.IsValid() ? _LayoutView->GetRevision() : 0; }
+auto SCkTextureDebugger_SurfaceLightingPage::Get_LayoutError() const -> FText
+{
+    if (NOT _PublicationError.IsEmpty()) { return FText::FromString(_PublicationError); }
+    return NOT _LayoutView.IsValid() || _LayoutView->GetLastResult().Succeeded ? FText::GetEmpty()
+        : FText::FromString(FString::Join(_LayoutView->GetLastResult().Errors, TEXT("\n")));
+}
+
+auto SCkTextureDebugger_SurfaceLightingPage::Get_AuthoredRepeat() const -> TSharedPtr<SCkUiRepeat>
+{
+    return _LayoutView.IsValid() ? _LayoutView->GetRepeat(TEXT("surface-lighting-control")) : nullptr;
+}
+
+auto SCkTextureDebugger_SurfaceLightingPage::Tick_LayoutFiles(double, float) -> EActiveTimerReturnType
+{
+    Poll_LayoutFiles();
+    return EActiveTimerReturnType::Continue;
+}
+
+auto SCkTextureDebugger_SurfaceLightingPage::Toggle_Slot(const FString& InStableKey) -> void
+{
+    const TSharedPtr<FSlotFacts>* Found = _SlotFacts.FindByPredicate([&InStableKey](const TSharedPtr<FSlotFacts>& InFacts)
     {
-        _SlotBox->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, CkStyle::SpaceM)
-        [
-            Build_SlotWidget(Facts)
-        ];
-    }
+        return InFacts.IsValid() && InFacts->StableKey == InStableKey;
+    });
+    if (Found == nullptr || NOT Found->IsValid()) { return; }
+    (*Found)->Expanded = NOT (*Found)->Expanded;
+    Publish_Facts();
 }
 
-auto
-    SCkTextureDebugger_SurfaceLightingPage::
-    Build_SlotWidget(
-        TSharedPtr<FSlotFacts> Facts) -> TSharedRef<SWidget>
+auto SCkTextureDebugger_SurfaceLightingPage::Publish_Facts() -> void
 {
-    return SNew(SCkDebug_Card)
-        .StripeColor_Lambda([Facts] { return Facts.IsValid() && Facts->HasMaterial ? CkStyle::Info() : CkStyle::Warn(); })
-        [
-            SNew(SCkDebug_InspectorPanel)
-            .Title(FText::FromString(FString::Printf(TEXT("Slot %d · %s"), Facts->SlotIndex, *Facts->MaterialName)))
-            .CountText(FText::FromString(Facts->MaterialPath))
-            .StatusPillText(Facts->HasMaterial ? LOCTEXT("SurfaceResolved", "RESOLVED") : LOCTEXT("SurfaceUnavailable", "UNAVAILABLE"))
-            .StatusPillTone(Facts->HasMaterial ? ECk_Tone::Ok : ECk_Tone::Warn)
-            .StartExpanded(true)
-            .Body()
-            [
-                SNew(SVerticalBox)
-                + SVerticalBox::Slot().AutoHeight()
-                [
-                    SNew(SCkDebug_SectionHeader)
-                    .Label(LOCTEXT("MaterialFacts", "Material facts"))
-                    .Underline(true)
-                ]
-                + SVerticalBox::Slot().AutoHeight().Padding(0.0f, CkStyle::SpaceS)
-                [
-                    SNew(SWrapBox).UseAllottedSize(true)
-                    + SWrapBox::Slot().Padding(0.0f, 0.0f, CkStyle::SpaceS, CkStyle::SpaceS)
-                    [
-                        SNew(SCkDebug_StatusPill)
-                        .Text_Lambda([Facts] { return FText::FromString(FString::Printf(TEXT("Blend · %s"), *Facts->BlendMode)); })
-                        .Tone(Facts->HasMaterial ? ECk_Tone::Info : ECk_Tone::Warn)
-                        .ShowDot(false)
-                    ]
-                    + SWrapBox::Slot().Padding(0.0f, 0.0f, CkStyle::SpaceS, CkStyle::SpaceS)
-                    [
-                        SNew(SCkDebug_StatusPill)
-                        .Text_Lambda([Facts] { return FText::FromString(FString::Printf(TEXT("Shading · %s"), *Facts->ShadingModels)); })
-                        .Tone(Facts->HasMaterial ? ECk_Tone::Info : ECk_Tone::Warn)
-                        .ShowDot(false)
-                    ]
-                ]
-                + SVerticalBox::Slot().AutoHeight()
-                [
-                    ck_texture_debugger_diagnostic_pages::MakeBoolFactRow(
-                        LOCTEXT("TwoSided", "Two-sided"),
-                        TAttribute<bool>::CreateLambda([Facts] { return Facts->IsTwoSided; }))
-                ]
-                + SVerticalBox::Slot().AutoHeight()
-                [
-                    ck_texture_debugger_diagnostic_pages::MakeBoolFactRow(
-                        LOCTEXT("Masked", "Masked"),
-                        TAttribute<bool>::CreateLambda([Facts] { return Facts->IsMasked; }))
-                ]
-                + SVerticalBox::Slot().AutoHeight()
-                [
-                    ck_texture_debugger_diagnostic_pages::MakeBoolFactRow(
-                        LOCTEXT("Translucent", "Translucent"),
-                        TAttribute<bool>::CreateLambda([Facts] { return Facts->IsTranslucent; }))
-                ]
-                + SVerticalBox::Slot().AutoHeight().Padding(0.0f, CkStyle::SpaceM, 0.0f, CkStyle::SpaceS)
-                [
-                    SNew(SCkDebug_SectionHeader)
-                    .Label(LOCTEXT("LightingFacts", "Component lighting and shadow facts"))
-                    .Underline(true)
-                ]
-                + SVerticalBox::Slot().AutoHeight()
-                [
-                    ck_texture_debugger_diagnostic_pages::MakeBoolFactRow(
-                        LOCTEXT("CastShadow", "Cast shadow"),
-                        TAttribute<bool>::CreateLambda([Facts] { return Facts->CastsShadow; }))
-                ]
-                + SVerticalBox::Slot().AutoHeight()
-                [
-                    ck_texture_debugger_diagnostic_pages::MakeBoolFactRow(
-                        LOCTEXT("DynamicShadow", "Dynamic shadow"),
-                        TAttribute<bool>::CreateLambda([Facts] { return Facts->CastsDynamicShadow; }))
-                ]
-                + SVerticalBox::Slot().AutoHeight()
-                [
-                    ck_texture_debugger_diagnostic_pages::MakeBoolFactRow(
-                        LOCTEXT("StaticShadow", "Static shadow"),
-                        TAttribute<bool>::CreateLambda([Facts] { return Facts->CastsStaticShadow; }))
-                ]
-                + SVerticalBox::Slot().AutoHeight()
-                [
-                    ck_texture_debugger_diagnostic_pages::MakeBoolFactRow(
-                        LOCTEXT("VolumetricShadow", "Volumetric translucent shadow"),
-                        TAttribute<bool>::CreateLambda([Facts] { return Facts->CastsVolumetricTranslucentShadow; }))
-                ]
-                + SVerticalBox::Slot().AutoHeight()
-                [
-                    ck_texture_debugger_diagnostic_pages::MakeBoolFactRow(
-                        LOCTEXT("ReceivesDecals", "Receives decals"),
-                        TAttribute<bool>::CreateLambda([Facts] { return Facts->ReceivesDecals; }))
-                ]
-                + SVerticalBox::Slot().AutoHeight()
-                [
-                    ck_texture_debugger_diagnostic_pages::MakeBoolFactRow(
-                        LOCTEXT("StaticLighting", "Has static lighting"),
-                        TAttribute<bool>::CreateLambda([Facts] { return Facts->HasStaticLighting; }))
-                ]
-                + SVerticalBox::Slot().AutoHeight().Padding(0.0f, CkStyle::SpaceM, 0.0f, 0.0f)
-                [
-                    SNew(SHorizontalBox)
-                    + SHorizontalBox::Slot().FillWidth(1.0f).HAlign(HAlign_Center)
-                    [
-                        SNew(SCkDebug_StatPair)
-                        .Value_Lambda([Facts]
-                        {
-                            return Facts->IsMasked
-                                ? FText::AsNumber(Facts->OpacityMaskClipValue)
-                                : FText::FromString(TEXT("N/A"));
-                        })
-                        .Label(LOCTEXT("OpacityClip", "Opacity mask clip"))
-                        .Layout(ECkDebug_StatPairLayout::Stacked_ValueOnTop)
-                    ]
-                    + SHorizontalBox::Slot().FillWidth(1.0f).HAlign(HAlign_Center)
-                    [
-                        SNew(SCkDebug_StatPair)
-                        .Value_Lambda([Facts] { return FText::FromString(Facts->LightMapResolution); })
-                        .Label(LOCTEXT("Lightmap", "Lightmap resolution"))
-                        .Layout(ECkDebug_StatPairLayout::Stacked_ValueOnTop)
-                    ]
-                    + SHorizontalBox::Slot().FillWidth(1.0f).HAlign(HAlign_Center)
-                    [
-                        SNew(SCkDebug_StatPair)
-                        .Value_Lambda([Facts] { return FText::FromString(Facts->Nanite); })
-                        .Label(LOCTEXT("Nanite", "Nanite data"))
-                        .Layout(ECkDebug_StatPairLayout::Stacked_ValueOnTop)
-                    ]
-                ]
-                + SVerticalBox::Slot().AutoHeight().Padding(0.0f, CkStyle::SpaceM, 0.0f, 0.0f)
-                [
-                    SNew(STextBlock)
-                    .Text(LOCTEXT("NoSurfaceDiagnosis",
-                        "These values are direct runtime facts. They do not prove whether a lighting artifact, shadow leak, blurry texture, or final surface appearance is correct."))
-                    .AutoWrapText(true)
-                    .ColorAndOpacity(FSlateColor{CkStyle::TextMute()})
-                ]
-            ]
-        ];
+    if (NOT _UiCollection.IsValid()) { return; }
+    auto Records = TArray<FCkUiRecordData>{};
+    Records.Reserve(_SlotFacts.Num());
+    const auto Text = [](FCkUiRecordData& InRecord, const TCHAR* InName, const FText& InValue)
+    {
+        InRecord.Fields.Add(InName, FCkUiFieldValue{.Kind = ECkUiFieldKind::Text, .Text = InValue});
+    };
+    const auto Color = [](FCkUiRecordData& InRecord, const TCHAR* InName, const FLinearColor& InValue)
+    {
+        InRecord.Fields.Add(InName, FCkUiFieldValue{.Kind = ECkUiFieldKind::Color, .Color = InValue});
+    };
+    const auto Bool = [](bool InValue) -> FText { return InValue ? LOCTEXT("Enabled", "YES") : LOCTEXT("Disabled", "NO"); };
+    const auto BoolColor = [](bool InValue) -> FLinearColor { return InValue ? CkStyle::Ok() : CkStyle::TextMute(); };
+    for (const TSharedPtr<FSlotFacts>& Facts : _SlotFacts)
+    {
+        if (NOT Facts.IsValid()) { continue; }
+        auto Record = FCkUiRecordData{};
+        Record.Key = Facts->StableKey;
+        const ECk_Tone Tone = Facts->HasMaterial ? ECk_Tone::Ok : ECk_Tone::Warn;
+        Text(Record, TEXT("heading"), FText::FromString(FString::Printf(TEXT("Slot %d · %s"), Facts->SlotIndex, *Facts->MaterialName)));
+        Text(Record, TEXT("material"), FText::FromString(Facts->MaterialName));
+        Text(Record, TEXT("material-path"), FText::FromString(Facts->MaterialPath));
+        Text(Record, TEXT("status"), Facts->HasMaterial ? LOCTEXT("SurfaceResolved", "RESOLVED") : LOCTEXT("SurfaceUnavailable", "UNAVAILABLE"));
+        Text(Record, TEXT("blend"), FText::FromString(FString::Printf(TEXT("Blend · %s"), *Facts->BlendMode)));
+        Text(Record, TEXT("shading"), FText::FromString(FString::Printf(TEXT("Shading · %s"), *Facts->ShadingModels)));
+        Text(Record, TEXT("two-sided"), Bool(Facts->IsTwoSided));
+        Text(Record, TEXT("masked"), Bool(Facts->IsMasked));
+        Text(Record, TEXT("translucent"), Bool(Facts->IsTranslucent));
+        Text(Record, TEXT("cast-shadow"), Bool(Facts->CastsShadow));
+        Text(Record, TEXT("dynamic-shadow"), Bool(Facts->CastsDynamicShadow));
+        Text(Record, TEXT("static-shadow"), Bool(Facts->CastsStaticShadow));
+        Text(Record, TEXT("volumetric-shadow"), Bool(Facts->CastsVolumetricTranslucentShadow));
+        Text(Record, TEXT("receives-decals"), Bool(Facts->ReceivesDecals));
+        Text(Record, TEXT("static-lighting"), Bool(Facts->HasStaticLighting));
+        Text(Record, TEXT("opacity-clip"), Facts->IsMasked ? FText::AsNumber(Facts->OpacityMaskClipValue) : FText::FromString(TEXT("N/A")));
+        Text(Record, TEXT("lightmap"), FText::FromString(Facts->LightMapResolution));
+        Text(Record, TEXT("nanite"), FText::FromString(Facts->Nanite));
+        Text(Record, TEXT("caveat"), LOCTEXT("NoSurfaceDiagnosis",
+            "These values are direct runtime facts. They do not prove whether a lighting artifact, shadow leak, blurry texture, or final surface appearance is correct."));
+        Record.Fields.Add(TEXT("expanded"), FCkUiFieldValue{.Kind = ECkUiFieldKind::Bool, .Bool = Facts->Expanded});
+        Record.Fields.Add(TEXT("has-material"), FCkUiFieldValue{.Kind = ECkUiFieldKind::Bool, .Bool = Facts->HasMaterial});
+        Record.Fields.Add(TEXT("missing-material"), FCkUiFieldValue{.Kind = ECkUiFieldKind::Bool, .Bool = NOT Facts->HasMaterial});
+        Color(Record, TEXT("status-foreground"), CkStyle::GetToneColor(Tone));
+        Color(Record, TEXT("status-background"), CkStyle::GetToneDimColor(Tone));
+        Color(Record, TEXT("fact-foreground"), CkStyle::TextStrong());
+        Color(Record, TEXT("fact-background"), CkStyle::Bg2());
+        Color(Record, TEXT("two-sided-foreground"), BoolColor(Facts->IsTwoSided));
+        Color(Record, TEXT("masked-foreground"), BoolColor(Facts->IsMasked));
+        Color(Record, TEXT("translucent-foreground"), BoolColor(Facts->IsTranslucent));
+        Color(Record, TEXT("cast-shadow-foreground"), BoolColor(Facts->CastsShadow));
+        Color(Record, TEXT("dynamic-shadow-foreground"), BoolColor(Facts->CastsDynamicShadow));
+        Color(Record, TEXT("static-shadow-foreground"), BoolColor(Facts->CastsStaticShadow));
+        Color(Record, TEXT("volumetric-shadow-foreground"), BoolColor(Facts->CastsVolumetricTranslucentShadow));
+        Color(Record, TEXT("receives-decals-foreground"), BoolColor(Facts->ReceivesDecals));
+        Color(Record, TEXT("static-lighting-foreground"), BoolColor(Facts->HasStaticLighting));
+        Records.Add(MoveTemp(Record));
+    }
+    const FCkUiLoadResult Result = _UiCollection->TrySetRecords(MoveTemp(Records));
+    if (NOT Result.Succeeded) { _PublicationError = FString::Join(Result.Errors, TEXT("\n")); }
+    else { _PublicationError.Reset(); }
 }
 
 auto SCkTextureDebugger_SurfaceLightingPage::Get_EmptyStateText() const -> FText

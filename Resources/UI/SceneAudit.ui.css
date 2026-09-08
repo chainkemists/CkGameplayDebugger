@@ -1,0 +1,18 @@
+.audit-panel { gap: var(--space-m); padding: var(--space-s); }
+.search-row { gap: var(--space-s); }
+.search-fields { gap: 4px; }
+.fill { flex-grow: 1; flex-shrink: 1; }
+.count-pill { flex-shrink: 0; padding: 2px 6px; background-color: var(--surface); vertical-align: center; }
+.count-text { text-wrap: nowrap; font-size: 10px; color: var(--text-strong); }
+.audit-table { min-width: 720px; flex-grow: 1; flex-shrink: 1; }
+.column-actor { flex-grow: 0.22; }
+.column-component { flex-grow: 0.23; }
+.column-kind { flex-grow: 0.16; }
+.column-slots { width: 56px; }
+.column-textures { width: 76px; }
+.column-state { flex-grow: 0.39; }
+.table-cell { padding: 0 var(--space-s); vertical-align: center; }
+.table-text { font-size: 10px; flex-shrink: 1; text-wrap: nowrap; text-overflow: ellipsis; }
+.table-right { horizontal-align: right; }
+.audit-empty { horizontal-align: center; vertical-align: center; padding: var(--space-m); }
+.empty-copy { color: var(--text); }

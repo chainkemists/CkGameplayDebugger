@@ -1,0 +1,57 @@
+<ui version="1">
+  <menu id="texture-menu">
+    <menu-item key="copy-details" label-bind="copy-details-label" tooltip-bind="copy-details-tooltip" action="copy-texture-details" />
+  </menu>
+  <region name="main">
+    <splitter id="health-splitter" direction="horizontal">
+    <column id="inventory-panel" class="inventory-panel inventory-pane">
+      <row id="search-row" class="search-row">
+        <column id="search-fields" class="search-fields fill">
+          <search id="filter" bind="filter" placeholder-bind="filter-placeholder" />
+          <search id="highlight" bind="highlight" placeholder-bind="highlight-placeholder" />
+        </column>
+        <row id="count-pill" class="count-pill">
+          <text id="count-text" bind="count" class="count-text" />
+        </row>
+      </row>
+      <overlay id="inventory-overlay" class="fill">
+        <scroll id="inventory-scroll" direction="horizontal" class="fill">
+          <table id="inventory-control" bind="inventory" selection-action="select-texture" context-menu="texture-menu" row-height="22" class="inventory-table">
+            <table-column id="texture-column" label-bind="texture-column-label" class="column-texture">
+              <row id="texture-cell-wrap" class="table-cell"><text id="texture-cell" bind-field="texture" tooltip-field="texture-tip" color-field="text-color" class="table-text" /></row>
+            </table-column>
+            <table-column id="component-column" label-bind="component-column-label" class="column-component">
+              <row id="component-cell-wrap" class="table-cell"><text id="component-cell" bind-field="component" tooltip-field="component-tip" color-field="text-color" class="table-text" /></row>
+            </table-column>
+            <table-column id="material-column" label-bind="material-column-label" class="column-material">
+              <row id="material-cell-wrap" class="table-cell"><text id="material-cell" bind-field="material" tooltip-field="material-tip" color-field="text-color" class="table-text" /></row>
+            </table-column>
+            <table-column id="cooked-column" label-bind="cooked-column-label" class="column-cooked">
+              <row id="cooked-cell-wrap" class="table-cell"><text id="cooked-cell" bind-field="cooked" color-field="text-color" class="table-text table-right" /></row>
+            </table-column>
+            <table-column id="residency-column" label-bind="residency-column-label" class="column-residency">
+              <row id="residency-cell-wrap" class="table-cell"><column id="residency-cell" class="table-meter"><text id="residency-text" bind-field="residency" color-field="text-color" class="table-text table-right" /><debug-meter id="residency-meter" fraction-field="fraction" fill-field="meter-color" /></column></row>
+            </table-column>
+            <table-column id="state-column" label-bind="state-column-label" class="column-state">
+              <row id="state-cell-wrap" class="table-cell"><debug-status id="state-cell" label-field="state" foreground-field="state-foreground" background-field="state-background" /></row>
+            </table-column>
+          </table>
+        </scroll>
+        <column id="inventory-empty" visible="inventory-empty" class="inventory-empty">
+          <text id="inventory-empty-text" bind="empty-state" class="empty-copy" />
+        </column>
+      </overlay>
+    </column>
+    <column id="detail-panel" class="detail-panel detail-pane">
+      <row id="detail-header" class="search-row">
+        <text id="detail-title" class="fill heading">Selected texture</text>
+        <button id="clear-selection" action="clear-selection">Clear</button>
+      </row>
+      <image id="preview" bind="preview" visible="has-selection" class="preview" />
+      <scroll id="selected-details-scroll" class="fill">
+        <text id="selected-details" bind="selected-details" class="details" />
+      </scroll>
+    </column>
+    </splitter>
+  </region>
+</ui>

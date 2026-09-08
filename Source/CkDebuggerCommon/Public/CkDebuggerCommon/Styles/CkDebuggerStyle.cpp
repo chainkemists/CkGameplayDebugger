@@ -129,11 +129,12 @@ auto
         FLinearColor::White, CkStyle::RadiusS()));
 
     // The two ends of the CornerStyle axis. Rounded is CkStyle's own family, so only square and
-    // pill need registering — white, tinted at the use site like everything else here.
+    // pill need registering — white, tinted at the use site like everything else here. The pill
+    // deliberately uses the no-radius constructor: Slate then derives a half-height radius at
+    // paint time, so the same brush remains a capsule in every allocated height.
     InStyle->Set("CkDebugger.Corner.Square", new FSlateRoundedBoxBrush(
         FLinearColor::White, 0.0f));
-    InStyle->Set("CkDebugger.Corner.Pill", new FSlateRoundedBoxBrush(
-        FLinearColor::White, CkStyle::RadiusPill()));
+    InStyle->Set("CkDebugger.Corner.Pill", new FSlateRoundedBoxBrush(FLinearColor::White));
 
     // Ring counterparts of the same three shapes: the fill is transparent at ANY tint (alpha zero
     // multiplies to zero), so the widget's BorderBackgroundColor selects the ring color alone.
@@ -142,7 +143,7 @@ auto
     InStyle->Set("CkDebugger.Corner.Rounded.Outline", new FSlateRoundedBoxBrush(
         FLinearColor::Transparent, CkStyle::RadiusM(), FLinearColor::White, CkStyle::RingWidth()));
     InStyle->Set("CkDebugger.Corner.Pill.Outline", new FSlateRoundedBoxBrush(
-        FLinearColor::Transparent, CkStyle::RadiusPill(), FLinearColor::White, CkStyle::RingWidth()));
+        FLinearColor::Transparent, FLinearColor::White, CkStyle::RingWidth()));
 
     // Tintable icon backdrops — white so BorderBackgroundColor carries the tint.
     InStyle->Set("CkDebugger.Card.IconWell", new FSlateRoundedBoxBrush(

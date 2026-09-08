@@ -2,6 +2,7 @@
 
 #include "CkEditorTools/Style/CkStyle.h"
 #include "CkTextureDebugger/Data/CkTextureDebugger_Types.h"
+#include "CkSlateLayout/CkUiDocument.h"
 #include "UObject/ObjectKey.h"
 #include "Widgets/SCompoundWidget.h"
 
@@ -9,6 +10,9 @@ class ITableRow;
 class STableViewBase;
 template<typename T> class SListView;
 class UPrimitiveComponent;
+class FCkUiCollection;
+class FCkUiView;
+class SCkUiTable;
 
 class SCkTextureDebugger_SceneAuditTable final : public SCompoundWidget
 {
@@ -35,6 +39,7 @@ public:
     struct FRow
     {
         FRowKey Key;
+        FString UiKey;
         FString ActorPath;
         FString Actor;
         FString Component;
@@ -57,6 +62,13 @@ public:
     auto SetSnapshot(const FCkTextureDebugger_LoadedWorldSnapshot& InSnapshot) -> void;
     auto SetSelectedComponent(TWeakObjectPtr<UPrimitiveComponent> InComponent) -> void;
 
+    auto TryReload_Layout(const FString& InMarkup, const FString& InStylesheet) -> FCkUiLoadResult;
+    auto Reload_LayoutFiles(const FString& InMarkupPath, const FString& InStylesheetPath) -> FCkUiLoadResult;
+    auto Poll_LayoutFiles() -> bool;
+    auto Get_LayoutRevision() const -> int64;
+    auto Get_LayoutError() const -> FText;
+    auto Get_AuthoredTable() const -> TSharedPtr<SCkUiTable>;
+
     auto Get_VisibleRowCount() const -> int32;
     auto Get_TotalRowCount() const -> int32;
     auto Get_SelectedRowCount() const -> int32;
@@ -73,20 +85,19 @@ private:
     auto MakeCopyText(const FRow& InRow) const -> FString;
     auto OnFilter(const FString& InText) -> void;
     auto OnHighlight(const FString& InText) -> void;
-    auto OnClear() -> FReply;
-    auto OnContextMenu() -> TSharedPtr<SWidget>;
-    auto OnGenerateRow(
-        TSharedPtr<FRow> InItem,
-        const TSharedRef<STableViewBase>& InOwner)
-        -> TSharedRef<ITableRow>;
-    auto OnSelectionChanged(
-        TSharedPtr<FRow> InItem,
-        ESelectInfo::Type InType)
-        -> void;
+    auto On_AuthoredSelectionChanged(TOptional<FString> InKey, ESelectInfo::Type InType) -> void;
+    auto On_CopyComponentPath(const FString& InKey) -> void;
+    auto On_CopyAuditSummary(const FString& InKey) -> void;
+    auto Find_Row(const FRowKey& InKey) const -> TSharedPtr<FRow>;
+    auto Find_RowByUiKey(const FString& InKey) const -> TSharedPtr<FRow>;
+    auto Tick_LayoutFiles(double InCurrentTime, float InDeltaTime) -> EActiveTimerReturnType;
 
     TArray<TSharedPtr<FRow>> _All;
     TArray<TSharedPtr<FRow>> _Visible;
-    TSharedPtr<SListView<TSharedPtr<FRow>>> _List;
+    TSharedPtr<FCkUiView> _LayoutView;
+    TSharedPtr<FCkUiCollection> _UiCollection;
+    TMap<FString, TWeakPtr<FRow>> _UiRows;
+    FString _PublicationError;
     TWeakObjectPtr<UPrimitiveComponent> _Selected;
     TFunction<void(TWeakObjectPtr<UPrimitiveComponent>)> _OnSelected;
     FString _Filter;

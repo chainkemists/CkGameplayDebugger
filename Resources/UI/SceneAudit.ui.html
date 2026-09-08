@@ -1,0 +1,32 @@
+<ui version="1">
+  <menu id="audit-context">
+    <menu-item key="copy-component-path" label-bind="copy-component-path-label" tooltip-bind="copy-component-path-tip" action="copy-component-path" />
+    <menu-item key="copy-audit-summary" label-bind="copy-audit-summary-label" tooltip-bind="copy-audit-summary-tip" action="copy-audit-summary" />
+  </menu>
+  <region name="main">
+    <column id="audit-panel" class="audit-panel">
+      <row id="search-row" class="search-row">
+        <column id="search-fields" class="search-fields fill">
+          <search id="filter" bind="filter" placeholder-bind="filter-placeholder" />
+          <search id="highlight" bind="highlight" placeholder-bind="highlight-placeholder" />
+        </column>
+        <row id="count-pill" class="count-pill"><text id="count-text" bind="count" class="count-text" /></row>
+        <button id="clear-selection" action="clear-selection" enabled-bind="has-selection">Clear selection</button>
+      </row>
+      <debug-status id="selection-status" label-bind="selection" foreground-bind="selection-foreground" background-bind="selection-background" show-dot="false" />
+      <overlay id="audit-overlay" class="fill">
+        <scroll id="audit-scroll" direction="horizontal" class="fill">
+          <table id="audit-control" bind="audit" selection-action="select-component" context-menu="audit-context" row-height="22" class="audit-table">
+            <table-column id="actor-column" label-bind="actor-column-label" class="column-actor"><row id="actor-cell-wrap" class="table-cell"><text id="actor-cell" bind-field="actor" tooltip-field="actor-tip" color-field="text-color" class="table-text" /></row></table-column>
+            <table-column id="component-column" label-bind="component-column-label" class="column-component"><row id="component-cell-wrap" class="table-cell"><text id="component-cell" bind-field="component" tooltip-field="component-tip" color-field="text-color" class="table-text" /></row></table-column>
+            <table-column id="kind-column" label-bind="kind-column-label" class="column-kind"><row id="kind-cell-wrap" class="table-cell"><text id="kind-cell" bind-field="kind" tooltip-field="class-tip" color-field="text-color" class="table-text" /></row></table-column>
+            <table-column id="slots-column" label-bind="slots-column-label" class="column-slots"><row id="slots-cell-wrap" class="table-cell"><text id="slots-cell" bind-field="slots" tooltip-field="class-tip" color-field="text-color" class="table-text table-right" /></row></table-column>
+            <table-column id="textures-column" label-bind="textures-column-label" class="column-textures"><row id="textures-cell-wrap" class="table-cell"><text id="textures-cell" bind-field="textures" tooltip-field="class-tip" color-field="text-color" class="table-text table-right" /></row></table-column>
+            <table-column id="state-column" label-bind="state-column-label" class="column-state"><row id="state-cell-wrap" class="table-cell"><debug-status id="state-cell" label-field="state" foreground-field="state-foreground" background-field="state-background" show-dot="false" /></row></table-column>
+          </table>
+        </scroll>
+        <column id="audit-empty" visible="audit-empty" class="audit-empty"><text id="audit-empty-text" bind="empty-state" class="empty-copy" /></column>
+      </overlay>
+    </column>
+  </region>
+</ui>

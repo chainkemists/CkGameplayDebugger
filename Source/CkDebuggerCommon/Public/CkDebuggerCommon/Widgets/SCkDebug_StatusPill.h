@@ -25,6 +25,9 @@ public:
 	{}
 		SLATE_ATTRIBUTE(FText, Text)
 		SLATE_ATTRIBUTE(ECk_Tone, Tone)
+		/** Optional live overrides. When unset, the tone palette remains authoritative. */
+		SLATE_ATTRIBUTE(FLinearColor, ForegroundColor)
+		SLATE_ATTRIBUTE(FLinearColor, BackgroundColor)
 		SLATE_ARGUMENT(bool, ShowDot)
 	SLATE_END_ARGS()
 

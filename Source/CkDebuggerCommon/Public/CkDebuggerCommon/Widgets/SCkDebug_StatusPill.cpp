@@ -14,18 +14,24 @@ auto
 	-> void
 {
 	const auto Tone = InArgs._Tone;
+	const auto ForegroundColor = InArgs._ForegroundColor;
+	const auto BackgroundColor = InArgs._BackgroundColor;
 
-	const auto ToneColor = [Tone]() -> FSlateColor
+	const auto ToneColor = [Tone, ForegroundColor]() -> FSlateColor
 	{
+		if (ForegroundColor.IsSet()) { return FSlateColor(ForegroundColor.Get()); }
 		return FSlateColor(CkStyle::GetToneColor(Tone.Get(ECk_Tone::Neutral)));
 	};
-	const auto DimColor = [Tone]() -> FSlateColor
+	const auto DimColor = [Tone, BackgroundColor]() -> FSlateColor
 	{
+		if (BackgroundColor.IsSet()) { return FSlateColor(BackgroundColor.Get()); }
 		return FSlateColor(CkStyle::GetToneDimColor(Tone.Get(ECk_Tone::Neutral)));
 	};
-	const auto BorderColor = [Tone]() -> FSlateColor
+	const auto BorderColor = [Tone, ForegroundColor]() -> FSlateColor
 	{
-		auto Color = CkStyle::GetToneColor(Tone.Get(ECk_Tone::Neutral));
+		auto Color = ForegroundColor.IsSet()
+			? ForegroundColor.Get()
+			: CkStyle::GetToneColor(Tone.Get(ECk_Tone::Neutral));
 		Color.A = 0.5f;
 		return FSlateColor(Color);
 	};

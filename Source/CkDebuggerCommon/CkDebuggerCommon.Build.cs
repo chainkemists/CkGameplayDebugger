@@ -33,6 +33,7 @@ public class CkDebuggerCommon : CkModuleRules
             "CkIskmRenderer", // ISKM-proxy detection in the shared viewport picker (CkDebug_ViewportPicker)
             "CkPmg",       // PMG debug-shape exclusion in the shared entity-marker preview + gizmo set
             "CkSettings",
+            "CkSlateLayout", // Shared authored debug-widget registry.
         });
 
         if (Target.bBuildEditor)

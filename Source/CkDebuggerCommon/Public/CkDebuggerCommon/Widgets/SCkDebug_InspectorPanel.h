@@ -25,7 +25,7 @@ public:
 		, _IconBrush(nullptr)
 		, _IconColor(FLinearColor::White)
 	{}
-		SLATE_ARGUMENT(FText, Title)
+		SLATE_ATTRIBUTE(FText, Title)
 		SLATE_ARGUMENT(FText, CountText)
 		SLATE_ARGUMENT(FText, StatusPillText)
 		SLATE_ARGUMENT(ECk_Tone, StatusPillTone)
@@ -46,6 +46,9 @@ public:
 	auto Set_Expanded(bool InExpanded) -> void;
 	auto Is_Expanded() const -> bool { return _IsExpanded; }
 
+	// Rebind the retained header title without rebuilding its chrome.
+	auto Set_Title(TAttribute<FText> InTitle) -> void;
+
 	// Update the header pill / count dynamically (data binding).
 	auto Set_CountText(const FText& InText) -> void;
 	auto Set_StatusPill(const FText& InText, ECk_Tone InTone) -> void;
@@ -59,13 +62,16 @@ private:
 	FOnCkDebugInspectorToggled _OnToggled;
 
 	TSharedPtr<class SBorder> _BodyBorder;
+	TSharedPtr<class SButton> _HeaderButton;
 	TSharedPtr<class STextBlock> _CountBadge;
+	TSharedPtr<class STextBlock> _TitleText;
 	TSharedPtr<class SImage> _ChevronIcon;
 
 	TSharedPtr<class SHorizontalBox> _HeaderRow;
 	TSharedPtr<SCkDebug_StatusPill> _StatusPill;
+	TSharedPtr<SWidget> _Body;
 
-	FText _Title;
+	TAttribute<FText> _Title;
 	FText _CountText;
 	FText _StatusPillText;
 	ECk_Tone _StatusPillTone = ECk_Tone::Neutral;

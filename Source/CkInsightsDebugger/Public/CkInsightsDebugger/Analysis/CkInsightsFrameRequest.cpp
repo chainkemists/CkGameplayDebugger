@@ -1,7 +1,113 @@
 #include "CkInsightsDebugger/Analysis/CkInsightsFrameRequest.h"
 
+#include "CkInsightsAnalyzer/Core/CkTimerCategorizer.h"
+#include "CkCore/Format/CkFormat.h"
+
 #include <Async/Async.h>
 #include <Misc/ScopeLock.h>
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto FCkInsightsFrameTimingView::IsValid() const -> bool
+{
+    return FMath::IsFinite(FrameDurationMs)
+        && FrameDurationMs > 0.0
+        && NOT Events.IsEmpty();
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto FCkInsightsFrameTimingView::Build(
+    const FCk_FrameAnalysisResult& InResult,
+    const TMap<uint32, FString>& InTimerNames,
+    uint64 InSelectedFrameCount,
+    bool InIsProvisional)
+    -> TSharedPtr<const FCkInsightsFrameTimingView, ESPMode::ThreadSafe>
+{
+    const auto HasFiniteFrameWindow = FMath::IsFinite(InResult.FrameStartTime)
+        && FMath::IsFinite(InResult.FrameEndTime)
+        && InResult.FrameEndTime > InResult.FrameStartTime;
+    if (NOT HasFiniteFrameWindow || InResult.Events.IsEmpty())
+    {
+        return {};
+    }
+
+    auto View = MakeShared<FCkInsightsFrameTimingView, ESPMode::ThreadSafe>();
+    View->FrameIndex = InResult.FrameIndex;
+    View->FrameDurationMs = (InResult.FrameEndTime - InResult.FrameStartTime) * 1000.0;
+    View->SelectedFrameCount = FMath::Max<uint64>(1, InSelectedFrameCount);
+    View->IsProvisional = InIsProvisional;
+    View->Events.Reserve(InResult.Events.Num());
+    View->HeaderText = View->SelectedFrameCount > 1
+        ? ck::Format_UE(TEXT("Frame {} | first of {} selected | {:.2f} ms{}"),
+            View->FrameIndex,
+            View->SelectedFrameCount,
+            View->FrameDurationMs,
+            View->IsProvisional ? TEXT(" | provisional") : TEXT(""))
+        : ck::Format_UE(TEXT("Frame {} | {:.2f} ms{}"),
+            View->FrameIndex,
+            View->FrameDurationMs,
+            View->IsProvisional ? TEXT(" | provisional") : TEXT(""));
+    View->TimeScaleLabels.Reserve(5);
+    for (auto Tick = 0; Tick <= 4; ++Tick)
+    {
+        View->TimeScaleLabels.Add(ck::Format_UE(
+            TEXT("{:.1f}"),
+            View->FrameDurationMs * static_cast<double>(Tick) / 4.0));
+    }
+
+    auto MinimumDepth = MAX_uint32;
+    for (const auto& Event : InResult.Events)
+    {
+        if (NOT FMath::IsFinite(Event.StartTime) || NOT FMath::IsFinite(Event.EndTime))
+        {
+            continue;
+        }
+
+        const auto StartTime = FMath::Max(Event.StartTime, InResult.FrameStartTime);
+        const auto EndTime = FMath::Min(Event.EndTime, InResult.FrameEndTime);
+        if (EndTime <= StartTime)
+        {
+            continue;
+        }
+
+        auto& TimingEvent = View->Events.AddDefaulted_GetRef();
+        TimingEvent.TimerIndex = Event.TimerIndex;
+        TimingEvent.StartMs = (StartTime - InResult.FrameStartTime) * 1000.0;
+        TimingEvent.EndMs = (EndTime - InResult.FrameStartTime) * 1000.0;
+        TimingEvent.Depth = Event.Depth;
+        MinimumDepth = FMath::Min(MinimumDepth, Event.Depth);
+
+        if (NOT View->Timers.Contains(Event.TimerIndex))
+        {
+            const auto* RawName = InTimerNames.Find(Event.TimerIndex);
+            const auto Name = RawName != nullptr
+                ? *RawName
+                : FString{TEXT("Unknown")};
+            View->Timers.Add(Event.TimerIndex, FCkInsightsFrameTimingTimer{
+                Name,
+                FCk_TimerCategorizer::SimplifyName(Name),
+            });
+        }
+    }
+
+    if (View->Events.IsEmpty())
+    {
+        return {};
+    }
+
+    constexpr auto MaximumRenderedDepth = uint32{1023};
+    for (auto& Event : View->Events)
+    {
+        const auto RelativeDepth = Event.Depth >= MinimumDepth
+            ? Event.Depth - MinimumDepth
+            : 0;
+        Event.Depth = FMath::Min(RelativeDepth, MaximumRenderedDepth);
+        View->MaxDepth = FMath::Max(View->MaxDepth, Event.Depth);
+    }
+
+    return View;
+}
 
 // --------------------------------------------------------------------------------------------------------------------
 

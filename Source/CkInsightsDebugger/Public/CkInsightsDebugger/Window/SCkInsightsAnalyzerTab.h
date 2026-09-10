@@ -9,6 +9,7 @@
 #include "CkInsightsDebugger/Capture/CkInsightsCaptureController.h"
 #include "CkInsightsDebugger/Widgets/SCkFrameBarChart.h"
 #include "CkInsightsDebugger/Widgets/SCkFramePresenceStrip.h"
+#include "CkInsightsDebugger/Widgets/SCkFrameTimingGraph.h"
 
 #include "CkEditorTools/Style/CkStyle.h"
 
@@ -33,8 +34,8 @@ struct FSlateDynamicImageBrush;
  *   1. Common chrome — Debuggers menu, analyzer toolbar, and trace-analysis status
  *   2. Summary strip — stat tiles (trace info; frame/aggregate numbers after analysis)
  *   3. Frame bar chart (SCkFrameBarChart, ~200px)
- *   4. Results       — splitter: hot-path tree (left) | categories / waits / top timers /
- *                      worst frames / category averages (right)
+ *   4. Results       — splitter: selected-frame timing + hot-path tree (left) |
+ *                      categories / waits / top timers / worst frames / category averages (right)
  *   5. Raw report    — collapsed expandable area with the markdown text (also what
  *                      "Copy Report" puts on the clipboard)
  *
@@ -51,8 +52,6 @@ public:
     auto Construct(const FArguments& InArgs) -> void;
     virtual ~SCkInsightsAnalyzerTab() override;
 
-    virtual auto Tick(const FGeometry& InAllottedGeometry, double InCurrentTime, float InDeltaTime) -> void override;
-
 private:
     friend struct FCkInsightsAnalyzerTabTestAccess;
 
@@ -63,6 +62,12 @@ private:
         None,
         SingleFrame,
         MultiFrame,
+    };
+
+    enum class ETraceOpenSource : uint8
+    {
+        Manual,
+        AutomatedCapture,
     };
 
     // ---- UI Construction ----
@@ -118,6 +123,10 @@ private:
     // ---- Button Handlers ----
 
     auto DoOnOpenTraceClicked() -> FReply;
+    auto DoCanOpenLoadedTraceInUnrealInsights() const -> bool;
+    auto DoOnOpenLoadedTraceInUnrealInsightsClicked() -> FReply;
+    static auto DoGet_UnrealInsightsExecutablePath() -> FString;
+    static auto DoGet_UnrealInsightsOpenTraceArguments(const FString& InTracePath) -> FString;
 
     /** Build the "Recent" dropdown menu — newest-first .utrace files from Saved/Profiling and the local trace store. */
     auto DoMakeRecentTracesMenu() -> TSharedRef<SWidget>;
@@ -125,6 +134,9 @@ private:
     /** Close the current session and start async-opening the given trace. Shared by the file dialog
      *  and the Recent menu. By-value: bound as a delegate payload, which decays reference types. */
     auto DoOpenTracePath(FString TracePath) -> void;
+    auto DoOpenAutomatedCaptureTracePath(FString TracePath) -> void;
+    auto DoOpenTracePath_Internal(FString TracePath, ETraceOpenSource InSource) -> void;
+    auto DoSupersedePendingAutoOpenForManualTrace(FGuid InRetainedCaptureGuid) -> void;
     auto DoOnCaptureClicked() -> FReply;
     auto DoOnCaptureUiTick(float DeltaTime) -> bool;
     auto DoCancelCaptureUiTick() -> void;
@@ -146,6 +158,9 @@ private:
     // ---- Chart Delegate ----
 
     auto DoOnFrameSelectionChanged(const TArray<FCk_FrameRun>& InRuns) -> void;
+    auto DoOnFrameTimingTimerSelectionChanged(TOptional<uint32> InTimerIndex) -> void;
+    auto DoOnHotPathSelectionChanged(TSharedPtr<FCk_HotPathNode> InNode, ESelectInfo::Type InSelectInfo) -> void;
+    auto DoOnMergedHotPathSelectionChanged(TSharedPtr<FCk_MergedHotPathNode> InNode, ESelectInfo::Type InSelectInfo) -> void;
 
     // ---- Helpers ----
 
@@ -166,7 +181,7 @@ private:
      */
     auto DoPopulateDetailPanels_Averaged(const FCk_MultiFrameStats& Stats, FCkInsightsFrameDetails* Prepared = nullptr) -> void;
     auto DoClearAveragedDetailScope() -> void;
-    auto DoGenerateAutomatedCaptureReport() -> bool;
+    auto DoQueueAutomatedCaptureReport() -> void;
     auto DoLoadScreenshots() -> void;
     auto DoClearScreenshots() -> void;
     auto DoClearScreenshotSelection() -> void;
@@ -176,6 +191,8 @@ private:
                                  int32 MaxWidth,
                                  int32 MaxHeight,
                                  const TCHAR* ResourceSuffix) -> TSharedPtr<FSlateDynamicImageBrush>;
+    auto DoMakeScreenshotResourceName(uint32 ScreenshotId, const TCHAR* ResourceSuffix) -> FName;
+    auto DoRetireScreenshotBrush(TSharedPtr<FSlateDynamicImageBrush> InBrush) -> void;
 
     // ---- Summary strip ----
 
@@ -209,6 +226,7 @@ private:
     double _NextFrameRefreshSeconds = 0.0;
 
     TSharedPtr<SCkFrameBarChart> _FrameBarChart;
+    TSharedPtr<SCkFrameTimingGraph> _FrameTimingGraph;
     TSharedPtr<STextBlock> _StatusText;
     TSharedPtr<SMultiLineEditableText> _ReportText;
 
@@ -237,6 +255,7 @@ private:
 
     TArray<TSharedPtr<FCk_HotPathNode>> _HotPathRoots;
     TSharedPtr<STreeView<TSharedPtr<FCk_HotPathNode>>> _HotPathTree;
+    uint64 _HotPathScrollRequestGeneration = 0;
 
     // Averaged details render merged nodes instead: one row per timer across the whole selection,
     // carrying the per-frame presence the single-frame node has no place for.
@@ -257,6 +276,7 @@ private:
     TSharedPtr<FSlateDynamicImageBrush> _SelectedScreenshotBrush;
     TOptional<uint32> _SelectedScreenshotId;
     FString _SelectedScreenshotError;
+    FGuid _ScreenshotBrushOwnerId = FGuid::NewGuid();
     uint64 _ScreenshotBrushGeneration = 0;
 
     // Last analysis, retained so Export JSON can regenerate without re-analyzing
@@ -283,6 +303,7 @@ private:
     bool _PendingAutoOpenWriterFinalized = false;
     bool _AutoOpenDelayWarningShown = false;
     bool _AutoOpenTraceOpeningStarted = false;
+    bool _AutoOpenReportPending = false;
     bool _AutoOpenReportGenerated = false;
     double _AutoOpenDeadlineSeconds = 0.0;
     uint64 _TotalFrameCount = 0;

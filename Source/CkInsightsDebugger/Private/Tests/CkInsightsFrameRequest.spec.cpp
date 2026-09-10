@@ -389,3 +389,66 @@ bool FCkInsightsFrameRequestQueue_PublishesIntermediateDetails::RunTest(const FS
 }
 
 // --------------------------------------------------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FCkInsightsFrameTimingView_ClipsAndNormalizesExactEvents,
+    "Ck.InsightsDebugger.AnalyzerTab.FrameTimingViewClipsAndNormalizesExactEvents",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCkInsightsFrameTimingView_ClipsAndNormalizesExactEvents::RunTest(const FString& Parameters)
+{
+    auto Result = FCk_FrameAnalysisResult{};
+    Result.FrameIndex = 42;
+    Result.FrameStartTime = 10.0;
+    Result.FrameEndTime = 10.02;
+    Result.FrameDurationMs = 20.0;
+    Result.HasValidTimeRange = true;
+    Result.Events = {
+        FCk_TimingEvent{1, 9.999, 10.005, 4},
+        FCk_TimingEvent{70000, 10.004, 10.025, 6},
+        FCk_TimingEvent{3, 10.03, 10.04, 7},
+    };
+
+    const auto Names = TMap<uint32, FString>{
+        {1, TEXT("UCharacterMovementComponent_TickComponent")},
+    };
+    const auto View = FCkInsightsFrameTimingView::Build(Result, Names, 3, false);
+    if (NOT TestTrue(TEXT("A finite real frame produces a timing view"), View.IsValid()))
+    {
+        return false;
+    }
+
+    TestEqual(TEXT("The timing view retains the exact first selected frame"), View->FrameIndex, uint64{42});
+    TestEqual(TEXT("The timing view records the whole selection for its label"), View->SelectedFrameCount, uint64{3});
+    TestTrue(TEXT("The timing view explicitly labels the first frame of a multi-selection"),
+        View->HeaderText.Contains(TEXT("first of 3 selected")));
+    if (NOT TestEqual(TEXT("Events outside the frame are rejected"), View->Events.Num(), 2))
+    {
+        return false;
+    }
+    TestTrue(TEXT("The first event is clipped to the frame start"), FMath::IsNearlyEqual(View->Events[0].StartMs, 0.0));
+    TestTrue(TEXT("The first event keeps its in-frame end"), FMath::IsNearlyEqual(View->Events[0].EndMs, 5.0));
+    TestTrue(TEXT("The second event keeps its in-frame start"), FMath::IsNearlyEqual(View->Events[1].StartMs, 4.0));
+    TestTrue(TEXT("The second event is clipped to the frame end"), FMath::IsNearlyEqual(View->Events[1].EndMs, 20.0));
+    TestEqual(TEXT("Depth is normalized from the shallowest captured event"), View->Events[0].Depth, uint32{0});
+    TestEqual(TEXT("Relative nesting depth is preserved"), View->Events[1].Depth, uint32{2});
+    TestEqual(TEXT("The view exposes its deepest rendered row"), View->MaxDepth, uint32{2});
+
+    const auto* RootTimer = View->Timers.Find(1);
+    if (TestNotNull(TEXT("Used timer labels are copied into the view"), RootTimer))
+    {
+        TestEqual(TEXT("The raw timer name remains available for hover details"),
+            RootTimer->RawName, TEXT("UCharacterMovementComponent_TickComponent"));
+        TestTrue(TEXT("The visible timer name is simplified before Slate paint"),
+            RootTimer->DisplayName != RootTimer->RawName);
+    }
+    const auto* UnknownTimer = View->Timers.Find(70000);
+    if (TestNotNull(TEXT("Sparse timer indices remain addressable without array indexing"), UnknownTimer))
+    {
+        TestEqual(TEXT("A missing trace timer name gets an explicit fallback"),
+            UnknownTimer->RawName, TEXT("Unknown"));
+    }
+    return true;
+}
+
+// --------------------------------------------------------------------------------------------------------------------

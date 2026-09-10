@@ -11,6 +11,59 @@
 
 // --------------------------------------------------------------------------------------------------------------------
 
+/** Outcome of the automatic post-capture report export performed by a frame-analysis worker. */
+struct CKINSIGHTSDEBUGGER_API FCkInsightsAutomatedReportResult
+{
+    bool Succeeded = false;
+    bool HasAnalyzableFrames = false;
+    FString MarkdownPath;
+    FString JsonPath;
+    FString Error;
+};
+
+/** One exact timer occurrence, clipped to a selected frame and expressed relative to its start. */
+struct CKINSIGHTSDEBUGGER_API FCkInsightsFrameTimingEvent
+{
+    uint32 TimerIndex = 0;
+    double StartMs = 0.0;
+    double EndMs = 0.0;
+    uint32 Depth = 0;
+};
+
+/** Display strings copied out of TraceServices before the timing view reaches Slate. */
+struct CKINSIGHTSDEBUGGER_API FCkInsightsFrameTimingTimer
+{
+    FString RawName;
+    FString DisplayName;
+};
+
+/**
+ * Immutable, UI-ready occurrence hierarchy for one real trace frame.
+ *
+ * Multi-frame analyses deliberately attach the first selected real frame rather than inventing
+ * an averaged call topology which never occurred. Slate only reads these copied values.
+ */
+struct CKINSIGHTSDEBUGGER_API FCkInsightsFrameTimingView
+{
+    uint64 FrameIndex = 0;
+    double FrameDurationMs = 0.0;
+    uint64 SelectedFrameCount = 0;
+    bool IsProvisional = false;
+    TArray<FCkInsightsFrameTimingEvent> Events;
+    TMap<uint32, FCkInsightsFrameTimingTimer> Timers;
+    uint32 MaxDepth = 0;
+    FString HeaderText;
+    TArray<FString> TimeScaleLabels;
+
+    auto IsValid() const -> bool;
+
+    static auto Build(const FCk_FrameAnalysisResult& InResult,
+                      const TMap<uint32, FString>& InTimerNames,
+                      uint64 InSelectedFrameCount,
+                      bool InIsProvisional)
+        -> TSharedPtr<const FCkInsightsFrameTimingView, ESPMode::ThreadSafe>;
+};
+
 /** The complete, UI-ready result of one interactive frame analysis. */
 struct CKINSIGHTSDEBUGGER_API FCkInsightsFrameDetails
 {
@@ -27,6 +80,8 @@ struct CKINSIGHTSDEBUGGER_API FCkInsightsFrameDetails
     TArray<FCk_CategorySummaryEntry> Categories;
     TArray<FCk_TopTimerEntry> TopTimers;
     TArray<FCk_WaitThreadSummary> WaitRows;
+    TSharedPtr<const FCkInsightsFrameTimingView, ESPMode::ThreadSafe> TimingView;
+    TOptional<FCkInsightsAutomatedReportResult> AutomatedReport;
     FString Report;
     uint64 ProcessedFrames = 0;
     uint64 RequestedFrames = 0;

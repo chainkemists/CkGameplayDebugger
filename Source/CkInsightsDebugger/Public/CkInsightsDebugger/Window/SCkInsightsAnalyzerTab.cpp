@@ -13,6 +13,7 @@
 
 #include "CkDebuggerCommon/Settings/CkDebuggerStyleSettings.h"
 #include "CkDebuggerCommon/Styles/CkDebuggerAxes.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_IconButton.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_PaneHost.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_IconToggle.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_SectionHeader.h"
@@ -22,14 +23,17 @@
 #include <Async/Async.h>
 #include <Brushes/SlateDynamicImageBrush.h>
 #include <DesktopPlatformModule.h>
+#include <Framework/Application/SlateApplication.h>
 #include <Framework/MultiBox/MultiBoxBuilder.h>
 #include <HAL/FileManager.h>
 #include <HAL/PlatformApplicationMisc.h>
+#include <HAL/PlatformProcess.h>
 #include <HAL/PlatformTime.h>
 #include <IImageWrapperModule.h>
 #include <ImageCore.h>
 #include <Misc/FileHelper.h>
 #include <Modules/ModuleManager.h>
+#include <Rendering/SlateRenderer.h>
 #include <Styling/AppStyle.h>
 #include <Widgets/Images/SImage.h>
 #include <Widgets/Input/SComboButton.h>
@@ -1170,6 +1174,18 @@ auto
             ]
         ]
 
+        + SHorizontalBox::Slot()
+        .AutoWidth()
+        .VAlign(VAlign_Center)
+        .Padding(CkStyle::SpaceS, 0.0f, 0.0f, 0.0f)
+        [
+            SNew(SCkDebug_IconButton)
+            .IconId(ECk_Icon::ProfileTiming)
+            .Label(FText::FromString(TEXT("Open this exact trace in Unreal Insights")))
+            .IsEnabled(this, &SCkInsightsAnalyzerTab::DoCanOpenLoadedTraceInUnrealInsights)
+            .OnClicked(this, &SCkInsightsAnalyzerTab::DoOnOpenLoadedTraceInUnrealInsightsClicked)
+        ]
+
         ;
 }
 
@@ -1226,9 +1242,14 @@ auto
         [
             SNew(SButton)
             .Text(FText::FromString(TEXT("Cancel analysis")))
-            .IsEnabled_Lambda([this]() { return _FrameRequests.IsBusy(); })
+            .IsEnabled_Lambda([this]() { return _FrameRequests.IsBusy() && NOT _AutoOpenReportPending; })
             .OnClicked_Lambda([this]()
             {
+                if (_AutoOpenReportPending)
+                {
+                    DoSetStatus(TEXT("Finishing the automatic capture report..."), ECk_Tone::Info);
+                    return FReply::Handled();
+                }
                 DoClearResults();
                 DoSetStatus(TEXT("Analysis cancelled."), ECk_Tone::Info);
                 return FReply::Handled();
@@ -1358,6 +1379,7 @@ auto
         .TreeItemsSource(&_HotPathRoots)
         .SelectionMode(ESelectionMode::Single)
         .OnGenerateRow(this, &SCkInsightsAnalyzerTab::DoGenerateHotPathRow)
+        .OnSelectionChanged(this, &SCkInsightsAnalyzerTab::DoOnHotPathSelectionChanged)
         .OnGetChildren_Lambda([](TSharedPtr<FCk_HotPathNode> InNode, TArray<TSharedPtr<FCk_HotPathNode>>& OutChildren)
         {
             if (InNode.IsValid())
@@ -1392,6 +1414,7 @@ auto
         .TreeItemsSource(&_MergedHotPathRoots)
         .SelectionMode(ESelectionMode::Single)
         .OnGenerateRow(this, &SCkInsightsAnalyzerTab::DoGenerateMergedHotPathRow)
+        .OnSelectionChanged(this, &SCkInsightsAnalyzerTab::DoOnMergedHotPathSelectionChanged)
         .OnGetChildren_Lambda([](TSharedPtr<FCk_MergedHotPathNode> InNode, TArray<TSharedPtr<FCk_MergedHotPathNode>>& OutChildren)
         {
             if (InNode.IsValid())
@@ -1433,6 +1456,35 @@ auto
         .Padding(CkStyle::SpaceM)
         [
             SNew(SVerticalBox)
+            + SVerticalBox::Slot()
+            .AutoHeight()
+            .Padding(0.0f, 0.0f, 0.0f, SectionSpacing)
+            [
+                SNew(SBox)
+                .HeightOverride(260.0f)
+                .Visibility_Lambda([this]() -> EVisibility
+                {
+                    return ck::IsValid(_FrameTimingGraph) && _FrameTimingGraph->HasData()
+                        ? EVisibility::Visible
+                        : EVisibility::Collapsed;
+                })
+                [
+                    SNew(SVerticalBox)
+                    + SVerticalBox::Slot()
+                    .AutoHeight()
+                    [
+                        MakeHeading(TEXT("Selected Frame Timing"))
+                    ]
+                    + SVerticalBox::Slot()
+                    .FillHeight(1.0f)
+                    [
+                        SAssignNew(_FrameTimingGraph, SCkFrameTimingGraph)
+                        .OnTimerSelectionChanged(FOnFrameTimingTimerSelectionChanged::CreateSP(
+                            this,
+                            &SCkInsightsAnalyzerTab::DoOnFrameTimingTimerSelectionChanged))
+                    ]
+                ]
+            ]
             + SVerticalBox::Slot()
             .AutoHeight()
             [
@@ -2282,6 +2334,12 @@ auto
     DoOnOpenTraceClicked()
     -> FReply
 {
+    if (_AutoOpenReportPending)
+    {
+        DoSetStatus(TEXT("Finishing the automatic capture report..."), ECk_Tone::Info);
+        return FReply::Handled();
+    }
+
     const auto DesktopPlatform = FDesktopPlatformModule::Get();
     if (ck::Is_NOT_Valid(DesktopPlatform, ck::IsValid_Policy_NullptrOnly{}))
     {
@@ -2313,12 +2371,139 @@ auto
     DoOpenTracePath(FString TracePath)
     -> void
 {
+    DoOpenTracePath_Internal(MoveTemp(TracePath), ETraceOpenSource::Manual);
+}
+
+auto
+    SCkInsightsAnalyzerTab::
+    DoOpenAutomatedCaptureTracePath(FString TracePath)
+    -> void
+{
+    DoOpenTracePath_Internal(MoveTemp(TracePath), ETraceOpenSource::AutomatedCapture);
+}
+
+auto
+    SCkInsightsAnalyzerTab::
+    DoOpenTracePath_Internal(FString TracePath, ETraceOpenSource InSource)
+    -> void
+{
+    if (_AutoOpenReportPending)
+    {
+        DoSetStatus(TEXT("Finishing the automatic capture report..."), ECk_Tone::Info);
+        return;
+    }
+
+    if (InSource == ETraceOpenSource::Manual)
+    {
+        auto RetainedCapturePath = FString{};
+        auto RetainedCaptureGuid = FGuid{};
+        FCkInsightsDebuggerModule::Get().Get_CaptureController().Get_CompletedCapture(
+            RetainedCapturePath,
+            RetainedCaptureGuid);
+        DoSupersedePendingAutoOpenForManualTrace(RetainedCaptureGuid);
+    }
+    else
+    {
+        // Establish the report target in the same transition that starts its trace. A later manual
+        // open cancels this state before replacing the session, so DoFinishLoading cannot consume a
+        // target belonging to a superseded load.
+        _PendingAutoReportTracePath = TracePath;
+    }
+
     DoCancelLoading();
     DoClearScreenshots();
     _FrameBarChart->ClearFrameData();
     DoClearResults();
 
     DoStartAsyncOpen(TracePath);
+}
+
+auto
+    SCkInsightsAnalyzerTab::
+    DoSupersedePendingAutoOpenForManualTrace(FGuid InRetainedCaptureGuid)
+    -> void
+{
+    // A user-selected trace owns the next load. Suppress the retained capture in this tab before
+    // cancelling its local attempt, otherwise the capture UI ticker immediately queues it again.
+    const auto TraceGuidToSuppress = InRetainedCaptureGuid.IsValid()
+        ? InRetainedCaptureGuid
+        : _PendingAutoOpenTraceGuid;
+    if (TraceGuidToSuppress.IsValid())
+    {
+        _SuppressedAutoOpenTraceGuid = TraceGuidToSuppress;
+    }
+    DoCancelAutoOpenTrace();
+}
+
+auto
+    SCkInsightsAnalyzerTab::
+    DoCanOpenLoadedTraceInUnrealInsights() const
+    -> bool
+{
+    return NOT DoIsLoading()
+        && _Session->IsOpen()
+        && IFileManager::Get().FileSize(*_Session->GetFilePath()) > 0;
+}
+
+auto
+    SCkInsightsAnalyzerTab::
+    DoOnOpenLoadedTraceInUnrealInsightsClicked()
+    -> FReply
+{
+    if (NOT DoCanOpenLoadedTraceInUnrealInsights())
+    {
+        DoSetStatus(TEXT("No completed trace is available to open in Unreal Insights."), ECk_Tone::Warn);
+        return FReply::Handled();
+    }
+
+    const auto TracePath = FPaths::ConvertRelativePathToFull(_Session->GetFilePath());
+    const auto ExecutablePath = DoGet_UnrealInsightsExecutablePath();
+    if (IFileManager::Get().FileSize(*ExecutablePath) <= 0)
+    {
+        DoSetStatus(
+            FString::Printf(TEXT("Unreal Insights is not built at: %s"), *ExecutablePath),
+            ECk_Tone::Err);
+        return FReply::Handled();
+    }
+
+    const auto Arguments = DoGet_UnrealInsightsOpenTraceArguments(TracePath);
+    auto Process = FPlatformProcess::CreateProc(
+        *ExecutablePath,
+        *Arguments,
+        true,
+        false,
+        false,
+        nullptr,
+        0,
+        nullptr,
+        nullptr);
+    if (NOT Process.IsValid())
+    {
+        DoSetStatus(
+            FString::Printf(
+                TEXT("Failed to launch Unreal Insights for: %s"),
+                *FPaths::GetCleanFilename(TracePath)),
+            ECk_Tone::Err);
+        return FReply::Handled();
+    }
+
+    FPlatformProcess::CloseProc(Process);
+    DoSetStatus(
+        FString::Printf(TEXT("Opened in Unreal Insights: %s"), *FPaths::GetCleanFilename(TracePath)),
+        ECk_Tone::Ok);
+    return FReply::Handled();
+}
+
+auto SCkInsightsAnalyzerTab::DoGet_UnrealInsightsExecutablePath() -> FString
+{
+    return FPlatformProcess::GenerateApplicationPath(TEXT("UnrealInsights"), EBuildConfiguration::Development);
+}
+
+auto SCkInsightsAnalyzerTab::DoGet_UnrealInsightsOpenTraceArguments(const FString& InTracePath) -> FString
+{
+    return FString::Printf(
+        TEXT("-OpenTraceFile=\"%s\""),
+        *FPaths::ConvertRelativePathToFull(InTracePath));
 }
 
 auto
@@ -2370,6 +2555,9 @@ auto
     DoOnCaptureUiTick(float)
     -> bool
 {
+    Poll_StyleRevision();
+    DoPollFrameDetails();
+
     if (_AutoOpenTickerHandle.IsValid() || DoIsLoading())
     { return true; }
 
@@ -2416,6 +2604,7 @@ auto
     _PendingAutoOpenWriterFinalized = false;
     _AutoOpenDelayWarningShown = false;
     _AutoOpenTraceOpeningStarted = false;
+    _AutoOpenReportPending = false;
     _AutoOpenReportGenerated = false;
     _AutoOpenDeadlineSeconds = FPlatformTime::Seconds() + 30.0;
     DoSetStatus(TEXT("Trace stopped. Finalizing and opening the capture..."), ECk_Tone::Ok);
@@ -2433,7 +2622,7 @@ auto
 
     if (_AutoOpenTraceOpeningStarted)
     {
-        if (DoIsLoading())
+        if (DoIsLoading() || _AutoOpenReportPending)
         {
             return true;
         }
@@ -2497,8 +2686,7 @@ auto
         return true;
     }
 
-    _PendingAutoReportTracePath = _PendingAutoOpenTracePath;
-    DoOpenTracePath(_PendingAutoOpenTracePath);
+    DoOpenAutomatedCaptureTracePath(_PendingAutoOpenTracePath);
     if (NOT DoIsLoading())
     {
         _PendingAutoReportTracePath.Reset();
@@ -2512,10 +2700,9 @@ auto
     }
 
     _AutoOpenTraceOpeningStarted = true;
-    // Keep the completion record throughout async loading. DoFinishLoading generates the
-    // automatic report before the opening-started branch above observes DoIsLoading() == false
-    // and acknowledges the record. Closing this tab at any earlier point therefore leaves the
-    // controller record available for the next tab instance to recover.
+    // Keep the completion record throughout async loading and background report generation. The
+    // opening-started branch waits on both states before acknowledging it, so closing this tab at
+    // any earlier point leaves the controller record available for the next tab instance to recover.
     return true;
 }
 
@@ -2528,10 +2715,12 @@ auto SCkInsightsAnalyzerTab::DoCancelAutoOpenTrace() -> void
     }
 
     _PendingAutoOpenTracePath.Reset();
+    _PendingAutoReportTracePath.Reset();
     _PendingAutoOpenTraceGuid.Invalidate();
     _PendingAutoOpenWriterFinalized = false;
     _AutoOpenDelayWarningShown = false;
     _AutoOpenTraceOpeningStarted = false;
+    _AutoOpenReportPending = false;
     _AutoOpenReportGenerated = false;
     _AutoOpenDeadlineSeconds = 0.0;
 }
@@ -2612,6 +2801,12 @@ auto
     -> FReply
 {
     using namespace ck_insights_analyzer_tab;
+
+    if (_AutoOpenReportPending)
+    {
+        DoSetStatus(TEXT("Finishing the automatic capture report..."), ECk_Tone::Info);
+        return FReply::Handled();
+    }
 
     if (NOT _Session->IsOpen() || DoIsLoading())
     {
@@ -2750,6 +2945,12 @@ auto
         return;
     }
 
+    if (_AutoOpenReportPending)
+    {
+        DoSetStatus(TEXT("Finishing the automatic capture report..."), ECk_Tone::Info);
+        return;
+    }
+
     const auto Screenshot = DoFindScreenshot(ScreenshotId);
     const auto IsMappedFrame = Screenshot != nullptr
         && Screenshot->GameFrameIndex != INDEX_NONE
@@ -2814,6 +3015,16 @@ auto
 {
     if (NOT _Session->IsOpen() && NOT DoIsLoading()) return;
 
+    if (_AutoOpenReportPending)
+    {
+        if (ck::IsValid(_FrameBarChart))
+        {
+            _FrameBarChart->ClearSelection();
+        }
+        DoSetStatus(TEXT("Finishing the automatic capture report..."), ECk_Tone::Info);
+        return;
+    }
+
     DoClearScreenshotSelection();
 
     if (InRuns.IsEmpty())
@@ -2837,6 +3048,196 @@ auto
         return;
     }
     DoAnalyzeFrameSet(InRuns);
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkInsightsAnalyzerTab::
+    DoOnFrameTimingTimerSelectionChanged(TOptional<uint32> InTimerIndex)
+    -> void
+{
+    if (ck::IsValid(_HotPathTree))
+    {
+        _HotPathTree->ClearSelection();
+    }
+    if (ck::IsValid(_MergedHotPathTree))
+    {
+        _MergedHotPathTree->ClearSelection();
+    }
+    const auto ScrollRequestGeneration = ++_HotPathScrollRequestGeneration;
+    if (NOT InTimerIndex.IsSet())
+    {
+        return;
+    }
+
+    const auto TimerIndex = InTimerIndex.GetValue();
+    if (_DetailsAreAveraged && ck::IsValid(_MergedHotPathTree))
+    {
+        TFunction<TSharedPtr<FCk_MergedHotPathNode>(const TArray<TSharedPtr<FCk_MergedHotPathNode>>&)> FindNode;
+        FindNode = [this, TimerIndex, &FindNode](const auto& Nodes) -> TSharedPtr<FCk_MergedHotPathNode>
+        {
+            for (const auto& Node : Nodes)
+            {
+                if (ck::Is_NOT_Valid(Node))
+                {
+                    continue;
+                }
+                if (NOT Node->bIsAggregate && Node->TimerIndex == TimerIndex)
+                {
+                    return Node;
+                }
+                if (const auto Found = FindNode(Node->Children); ck::IsValid(Found))
+                {
+                    _MergedHotPathTree->SetItemExpansion(Node, true);
+                    return Found;
+                }
+            }
+            return nullptr;
+        };
+
+        if (const auto Found = FindNode(_MergedHotPathRoots); ck::IsValid(Found))
+        {
+            _MergedHotPathTree->RequestTreeRefresh();
+            _MergedHotPathTree->SetItemSelection(Found, true, ESelectInfo::Direct);
+            auto WaitedForTreeRefresh = false;
+            const auto WeakTab = TWeakPtr<SCkInsightsAnalyzerTab>{SharedThis(this)};
+            const auto WeakTree = TWeakPtr<STreeView<TSharedPtr<FCk_MergedHotPathNode>>>{_MergedHotPathTree};
+            RegisterActiveTimer(0.0f, FWidgetActiveTimerDelegate::CreateLambda(
+                [WeakTab, WeakTree, Found, ScrollRequestGeneration, WaitedForTreeRefresh](double, float) mutable
+                {
+                    const auto Tab = WeakTab.Pin();
+                    if (ck::Is_NOT_Valid(Tab)
+                        || Tab->_HotPathScrollRequestGeneration != ScrollRequestGeneration)
+                    {
+                        return EActiveTimerReturnType::Stop;
+                    }
+                    if (NOT WaitedForTreeRefresh)
+                    {
+                        WaitedForTreeRefresh = true;
+                        return EActiveTimerReturnType::Continue;
+                    }
+                    if (const auto Tree = WeakTree.Pin(); ck::IsValid(Tree))
+                    {
+                        Tree->RequestScrollIntoView(Found);
+                    }
+                    return EActiveTimerReturnType::Stop;
+                }));
+        }
+        return;
+    }
+
+    if (ck::Is_NOT_Valid(_HotPathTree))
+    {
+        return;
+    }
+
+    TFunction<TSharedPtr<FCk_HotPathNode>(const TArray<TSharedPtr<FCk_HotPathNode>>&)> FindNode;
+    FindNode = [this, TimerIndex, &FindNode](const auto& Nodes) -> TSharedPtr<FCk_HotPathNode>
+    {
+        for (const auto& Node : Nodes)
+        {
+            if (ck::Is_NOT_Valid(Node))
+            {
+                continue;
+            }
+            if (NOT Node->bIsAggregate && Node->TimerIndex == TimerIndex)
+            {
+                return Node;
+            }
+            if (const auto Found = FindNode(Node->Children); ck::IsValid(Found))
+            {
+                _HotPathTree->SetItemExpansion(Node, true);
+                return Found;
+            }
+        }
+        return nullptr;
+    };
+
+    if (const auto Found = FindNode(_HotPathRoots); ck::IsValid(Found))
+    {
+        _HotPathTree->RequestTreeRefresh();
+        _HotPathTree->SetItemSelection(Found, true, ESelectInfo::Direct);
+        auto WaitedForTreeRefresh = false;
+        const auto WeakTab = TWeakPtr<SCkInsightsAnalyzerTab>{SharedThis(this)};
+        const auto WeakTree = TWeakPtr<STreeView<TSharedPtr<FCk_HotPathNode>>>{_HotPathTree};
+        RegisterActiveTimer(0.0f, FWidgetActiveTimerDelegate::CreateLambda(
+            [WeakTab, WeakTree, Found, ScrollRequestGeneration, WaitedForTreeRefresh](double, float) mutable
+            {
+                const auto Tab = WeakTab.Pin();
+                if (ck::Is_NOT_Valid(Tab)
+                    || Tab->_HotPathScrollRequestGeneration != ScrollRequestGeneration)
+                {
+                    return EActiveTimerReturnType::Stop;
+                }
+                if (NOT WaitedForTreeRefresh)
+                {
+                    WaitedForTreeRefresh = true;
+                    return EActiveTimerReturnType::Continue;
+                }
+                if (const auto Tree = WeakTree.Pin(); ck::IsValid(Tree))
+                {
+                    Tree->RequestScrollIntoView(Found);
+                }
+                return EActiveTimerReturnType::Stop;
+            }));
+    }
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkInsightsAnalyzerTab::
+    DoOnHotPathSelectionChanged(
+        TSharedPtr<FCk_HotPathNode> InNode,
+        ESelectInfo::Type InSelectInfo)
+    -> void
+{
+    if (InSelectInfo == ESelectInfo::Direct || ck::Is_NOT_Valid(_FrameTimingGraph))
+    {
+        return;
+    }
+
+    const auto HasTimerIdentity = ck::IsValid(InNode)
+        && NOT InNode->bIsAggregate
+        && InNode->TimerIndex != static_cast<uint32>(INDEX_NONE);
+    if (HasTimerIdentity)
+    {
+        _FrameTimingGraph->SetTimerSelection(InNode->TimerIndex);
+        _FrameTimingGraph->FocusTimer(InNode->TimerIndex);
+    }
+    else
+    {
+        _FrameTimingGraph->SetTimerSelection({});
+    }
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkInsightsAnalyzerTab::
+    DoOnMergedHotPathSelectionChanged(
+        TSharedPtr<FCk_MergedHotPathNode> InNode,
+        ESelectInfo::Type InSelectInfo)
+    -> void
+{
+    if (InSelectInfo == ESelectInfo::Direct || ck::Is_NOT_Valid(_FrameTimingGraph))
+    {
+        return;
+    }
+
+    const auto HasTimerIdentity = ck::IsValid(InNode)
+        && NOT InNode->bIsAggregate
+        && InNode->TimerIndex != static_cast<uint32>(INDEX_NONE);
+    if (HasTimerIdentity)
+    {
+        _FrameTimingGraph->SetTimerSelection(InNode->TimerIndex);
+        _FrameTimingGraph->FocusTimer(InNode->TimerIndex);
+    }
+    else
+    {
+        _FrameTimingGraph->SetTimerSelection({});
+    }
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -2876,6 +3277,7 @@ auto
     _SelectedLiveFrame.Reset();
     _SingleDetailsProvisional = false;
     _MultiDetailsIntermediate = false;
+    _AutoOpenReportPending = false;
     _FinalFrameRequestQueued = false;
     DoSetReport(TEXT(""));
 
@@ -2891,6 +3293,8 @@ auto
     _WaitRows.Reset();
     _LastSingleResult.Reset();
     _LastMultiStats.Reset();
+
+    if (ck::IsValid(_FrameTimingGraph)) { _FrameTimingGraph->ClearView(); }
 
     if (ck::IsValid(_HotPathTree)) { _HotPathTree->RequestTreeRefresh(); }
     DoRebuildAllSidePanelRows();
@@ -2913,20 +3317,6 @@ auto
 }
 
 // --------------------------------------------------------------------------------------------------------------------
-
-auto
-    SCkInsightsAnalyzerTab::
-    Tick(
-        const FGeometry& InAllottedGeometry,
-        double           InCurrentTime,
-        float            InDeltaTime)
-    -> void
-{
-    SCompoundWidget::Tick(InAllottedGeometry, InCurrentTime, InDeltaTime);
-
-    Poll_StyleRevision();
-    DoPollFrameDetails();
-}
 
 auto
     SCkInsightsAnalyzerTab::
@@ -3019,6 +3409,10 @@ auto
         _FrameBarChart->ClearScreenshotMarkers();
     }
     DoClearScreenshotSelection();
+    for (auto& ScreenshotBrush : _ScreenshotThumbnailBrushes)
+    {
+        DoRetireScreenshotBrush(MoveTemp(ScreenshotBrush.Value));
+    }
     _ScreenshotThumbnailBrushes.Reset();
     _TraceScreenshots.Reset();
 }
@@ -3028,7 +3422,10 @@ auto
     DoClearScreenshotSelection()
     -> void
 {
-    _SelectedScreenshotBrush.Reset();
+    if (ck::IsValid(_SelectedScreenshotBrush))
+    {
+        DoRetireScreenshotBrush(MoveTemp(_SelectedScreenshotBrush));
+    }
     _SelectedScreenshotId.Reset();
     _SelectedScreenshotError.Reset();
 }
@@ -3128,15 +3525,55 @@ auto
         ERawImageFormat::BGRA8,
         EGammaSpace::sRGB);
 
-    const auto ResourceName = FName{*FString::Printf(
-        TEXT("CkInsightsScreenshot_%u_%s_%llu"),
-        ScreenshotId,
-        ResourceSuffix,
-        ++_ScreenshotBrushGeneration)};
+    const auto ResourceName = DoMakeScreenshotResourceName(ScreenshotId, ResourceSuffix);
     return FSlateDynamicImageBrush::CreateWithImageData(
         ResourceName,
         FVector2D{static_cast<float>(DisplayWidth), static_cast<float>(DisplayHeight)},
         TArray<uint8>(DisplayImage.RawData));
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkInsightsAnalyzerTab::
+    DoMakeScreenshotResourceName(uint32 ScreenshotId, const TCHAR* ResourceSuffix)
+    -> FName
+{
+    const auto HasValidSuffix = ResourceSuffix != nullptr;
+    CK_ENSURE_IF_NOT(HasValidSuffix, TEXT("Screenshot resource suffix must be valid"))
+    {
+        return NAME_None;
+    }
+
+    return FName{*FString::Printf(
+        TEXT("CkInsightsScreenshot_%s_%u_%s_%llu"),
+        *_ScreenshotBrushOwnerId.ToString(EGuidFormats::Digits),
+        ScreenshotId,
+        ResourceSuffix,
+        ++_ScreenshotBrushGeneration)};
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkInsightsAnalyzerTab::
+    DoRetireScreenshotBrush(TSharedPtr<FSlateDynamicImageBrush> InBrush)
+    -> void
+{
+    if (ck::Is_NOT_Valid(InBrush))
+    {
+        return;
+    }
+
+    if (FSlateApplication::IsInitialized())
+    {
+        if (auto* Renderer = FSlateApplication::Get().GetRenderer())
+        {
+            // The renderer pins the brush to the current draw-buffer generation, then releases it
+            // only when that buffer is safe to reuse. This is the Slate-owned render lifetime.
+            Renderer->RemoveDynamicBrushResource(MoveTemp(InBrush));
+        }
+    }
 }
 
 auto
@@ -3145,6 +3582,12 @@ auto
     -> void
 {
     using namespace ck_insights_analyzer_tab;
+
+    if (_AutoOpenReportPending)
+    {
+        DoSetStatus(TEXT("Finishing the automatic capture report..."), ECk_Tone::Info);
+        return;
+    }
 
     DoSetStatus(FString::Printf(TEXT("Analyzing frame %llu..."), FrameIndex), ECk_Tone::Info);
 
@@ -3175,6 +3618,11 @@ auto
         }
         Details.Result = MoveTemp(Snapshot.Result);
         Details.IsProvisional = Snapshot.IsProvisional;
+        Details.TimingView = FCkInsightsFrameTimingView::Build(
+            Details.Result,
+            Snapshot.TimerNames,
+            1,
+            Details.IsProvisional);
         if (Cancelled->Load()) { return Details; }
         const FCk_FrameReport Report(Config);
         Details.HotPaths = Report.BuildHotPathTree(*Session, Details.Result, Snapshot.TimerNames);
@@ -3223,8 +3671,13 @@ auto
     -> void
 {
     using namespace ck_insights_analyzer_tab;
+    if (Details.TimingView.IsValid() && ck::IsValid(_FrameTimingGraph))
+    {
+        _FrameTimingGraph->SetView(MoveTemp(Details.TimingView));
+    }
     if (Details.MultiStats.IsSet())
     {
+        const auto AutomatedReport = MoveTemp(Details.AutomatedReport);
         const bool PreserveExpansion = _LastMultiStats.IsSet();
         TSet<FString> ExpandedPaths;
         TSet<FString> SelectedPaths;
@@ -3234,13 +3687,17 @@ auto
         {
             for (const auto& Node : Nodes)
             {
-                auto Path = Parent + FString::Printf(TEXT("/%d:%s:%d"), Node->RawName.Len(), *Node->RawName, Node->bIsAggregate);
+                auto Path = Parent + FString::Printf(TEXT("/%u:%d:%s:%d"), Node->TimerIndex,
+                    Node->RawName.Len(), *Node->RawName, Node->bIsAggregate);
                 for (const auto& Crumb : Node->Breadcrumbs)
                 { Path += FString::Printf(TEXT("|%d:%s"), Crumb.Len(), *Crumb); }
                 if (Restore)
                 {
                     _MergedHotPathTree->SetItemExpansion(Node, ExpandedPaths.Contains(Path));
-                    if (SelectedPaths.Contains(Path)) { _MergedHotPathTree->SetItemSelection(Node, true); }
+                    if (SelectedPaths.Contains(Path))
+                    {
+                        _MergedHotPathTree->SetItemSelection(Node, true, ESelectInfo::Direct);
+                    }
                 }
                 else
                 {
@@ -3265,7 +3722,30 @@ auto
             _MergedHotPathTree->SetScrollOffset(ScrollOffset);
         }
         const auto& Stats = _LastMultiStats.GetValue();
-        if (_MultiDetailsIntermediate)
+        if (AutomatedReport.IsSet())
+        {
+            _AutoOpenReportPending = false;
+            _AutoOpenReportGenerated = AutomatedReport->Succeeded;
+            if (AutomatedReport->Succeeded)
+            {
+                DoSetStatus(
+                    AutomatedReport->HasAnalyzableFrames
+                        ? FString::Printf(
+                            TEXT("Capture analyzed: %s, %s"),
+                            *FPaths::GetCleanFilename(AutomatedReport->MarkdownPath),
+                            *FPaths::GetCleanFilename(AutomatedReport->JsonPath))
+                        : FString::Printf(
+                            TEXT("Capture loaded with no game frames; diagnostic reports saved: %s, %s"),
+                            *FPaths::GetCleanFilename(AutomatedReport->MarkdownPath),
+                            *FPaths::GetCleanFilename(AutomatedReport->JsonPath)),
+                    AutomatedReport->HasAnalyzableFrames ? ECk_Tone::Ok : ECk_Tone::Warn);
+            }
+            else
+            {
+                DoSetStatus(AutomatedReport->Error, ECk_Tone::Err);
+            }
+        }
+        else if (_MultiDetailsIntermediate)
         {
             _AveragedScopeLabel += TEXT(" — partial results; analysis is still running");
             DoAddSummaryTile(TEXT("Processed"), FString::Printf(TEXT("%llu / %llu"),
@@ -3300,6 +3780,7 @@ auto
         DoRebuildWaitRows();
         DoSetReport(TEXT(""));
         if (_SummaryBox.IsValid()) { _SummaryBox->ClearChildren(); }
+        if (ck::IsValid(_FrameTimingGraph)) { _FrameTimingGraph->ClearView(); }
         DoSetStatus(Details.UnavailableReason.IsEmpty() ? TEXT("No timer data available for this frame.")
             : Details.UnavailableReason, ECk_Tone::Info);
         return;
@@ -3312,7 +3793,7 @@ auto
     {
         for (const auto& Node : Nodes)
         {
-            const auto Path = Parent + TEXT("/") + Node->RawName;
+            const auto Path = Parent + FString::Printf(TEXT("/%u:%s"), Node->TimerIndex, *Node->RawName);
             if (Restore) { _HotPathTree->SetItemExpansion(Node, ExpandedPaths.Contains(Path)); }
             else if (_HotPathTree->IsItemExpanded(Node)) { ExpandedPaths.Add(Path); }
             Visit(Node->Children, Path, Restore);
@@ -3358,6 +3839,12 @@ auto
     -> void
 {
     using namespace ck_insights_analyzer_tab;
+    if (_AutoOpenReportPending)
+    {
+        DoSetStatus(TEXT("Finishing the automatic capture report..."), ECk_Tone::Info);
+        return;
+    }
+
     const auto Runs = InRuns;
     DoClearResults();
     DoSetStatus(InWorstFrames ? TEXT("Analyzing worst 10 frames in the background...")
@@ -3390,8 +3877,26 @@ auto
             const auto Scope = Session->CreateReadScope();
             Names = FCk_FrameReport::BuildTimerNameMap(*Session);
         }
+        auto TimingView = TSharedPtr<const FCkInsightsFrameTimingView, ESPMode::ThreadSafe>{};
+        if (NOT InWorstFrames && NOT Runs.IsEmpty())
+        {
+            auto FirstFrameSnapshot = FCk_FrameSnapshot{};
+            if (FCk_FrameAnalyzer::TryCaptureFrameSnapshot(
+                    *Session,
+                    Runs[0].FirstFrame,
+                    FirstFrameSnapshot,
+                    &Cancelled.Get()))
+            {
+                TimingView = FCkInsightsFrameTimingView::Build(
+                    FirstFrameSnapshot.Result,
+                    FirstFrameSnapshot.TimerNames,
+                    Get_RunFrameCount(Runs),
+                    FirstFrameSnapshot.IsProvisional);
+            }
+        }
         const auto PreparePanels = [&](FCkInsightsFrameDetails& InDetails)
         {
+            InDetails.TimingView = TimingView;
             const auto& Stats = InDetails.MultiStats.GetValue();
             if (!Stats.AveragedFrame.IsSet()) { return; }
             InDetails.Categories = FrameReport.ComputeCategorySummary(Stats.AveragedFrame.GetValue(), Names);
@@ -3551,8 +4056,8 @@ auto
 
 auto
     SCkInsightsAnalyzerTab::
-    DoGenerateAutomatedCaptureReport()
-    -> bool
+    DoQueueAutomatedCaptureReport()
+    -> void
 {
     using namespace ck_insights_analyzer_tab;
 
@@ -3565,7 +4070,7 @@ auto
     CK_ENSURE_IF_NOT(CanGenerate, TEXT("Automated capture report must target the trace that finished loading"))
     {
         DoSetStatus(TEXT("Trace loaded, but its automated report target did not match."), ECk_Tone::Err);
-        return false;
+        return;
     }
 
     constexpr int32 HotFrameCount = 5;
@@ -3575,53 +4080,56 @@ auto
     Config.ApplyDepth();
     Config.WorstFrameCount = HotFrameCount;
 
-    FCk_MultiFrameReport MultiReport(Config);
-    const auto Markdown = MultiReport.AnalyzeWorstFrames(*_Session, HotFrameCount);
-    const auto HasAnalyzableFrames = MultiReport.GetStats().FrameCount > 0;
-    const auto Json = FCk_JsonReport::GenerateMultiFrame(
-        *_Session,
-        MultiReport.GetStats(),
-        MultiReport.GetConfig());
-
-    DoSetReport(Markdown);
-    DoPopulateMultiFrame(MultiReport.GetStats());
-
-    const auto ReportDirectory = FPaths::GetPath(TracePath);
-    const auto TraceStem = FPaths::GetBaseFilename(TracePath);
-    const auto MarkdownPath = ReportDirectory / (TraceStem + TEXT(".report.md"));
-    const auto JsonPath = ReportDirectory / (TraceStem + TEXT(".report.json"));
-    const auto SavedMarkdown = FFileHelper::SaveStringToFile(
-        Markdown,
-        *MarkdownPath,
-        FFileHelper::EEncodingOptions::ForceUTF8);
-    const auto SavedJson = FFileHelper::SaveStringToFile(
-        Json,
-        *JsonPath,
-        FFileHelper::EEncodingOptions::ForceUTF8);
-
-    if (NOT SavedMarkdown || NOT SavedJson)
+    DoClearResults();
+    _AutoOpenReportPending = true;
+    DoSetStatus(TEXT("Calculating capture averages in the background..."), ECk_Tone::Info);
+    _Session->GetGameThreadId();
+    const auto Session = _Session;
+    _FrameRequests.Request(0, [Session, TracePath, Config, HotFrameCount](const FCancelToken& Cancelled)
     {
-        DoSetStatus(
-            FString::Printf(
+        auto Details = FCkInsightsFrameDetails{};
+        auto MultiReport = FCk_MultiFrameReport{Config};
+        Details.Report = MultiReport.AnalyzeWorstFrames(*Session, HotFrameCount);
+        if (Cancelled->Load())
+        {
+            return Details;
+        }
+
+        Details.MultiStats = MultiReport.GetStats();
+        auto Automated = FCkInsightsAutomatedReportResult{};
+        Automated.HasAnalyzableFrames = MultiReport.GetStats().FrameCount > 0;
+        const auto Json = FCk_JsonReport::GenerateMultiFrame(
+            *Session,
+            MultiReport.GetStats(),
+            MultiReport.GetConfig());
+        if (Cancelled->Load())
+        {
+            return Details;
+        }
+
+        const auto ReportDirectory = FPaths::GetPath(TracePath);
+        const auto TraceStem = FPaths::GetBaseFilename(TracePath);
+        Automated.MarkdownPath = ReportDirectory / (TraceStem + TEXT(".report.md"));
+        Automated.JsonPath = ReportDirectory / (TraceStem + TEXT(".report.json"));
+        const auto SavedMarkdown = FFileHelper::SaveStringToFile(
+            Details.Report,
+            *Automated.MarkdownPath,
+            FFileHelper::EEncodingOptions::ForceUTF8);
+        const auto SavedJson = FFileHelper::SaveStringToFile(
+            Json,
+            *Automated.JsonPath,
+            FFileHelper::EEncodingOptions::ForceUTF8);
+        Automated.Succeeded = SavedMarkdown && SavedJson;
+        if (NOT Automated.Succeeded)
+        {
+            Automated.Error = FString::Printf(
                 TEXT("Trace loaded, but automated report export failed (%s%s)."),
                 SavedMarkdown ? TEXT("") : TEXT("Markdown "),
-                SavedJson ? TEXT("") : TEXT("JSON")),
-            ECk_Tone::Err);
-        return false;
-    }
-
-    DoSetStatus(
-        HasAnalyzableFrames
-            ? FString::Printf(
-                TEXT("Capture analyzed: %s, %s"),
-                *FPaths::GetCleanFilename(MarkdownPath),
-                *FPaths::GetCleanFilename(JsonPath))
-            : FString::Printf(
-                TEXT("Capture loaded with no game frames; diagnostic reports saved: %s, %s"),
-                *FPaths::GetCleanFilename(MarkdownPath),
-                *FPaths::GetCleanFilename(JsonPath)),
-        HasAnalyzableFrames ? ECk_Tone::Ok : ECk_Tone::Warn);
-    return true;
+                SavedJson ? TEXT("") : TEXT("JSON"));
+        }
+        Details.AutomatedReport = MoveTemp(Automated);
+        return Details;
+    });
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -3823,7 +4331,7 @@ auto
     }
     if (!_PendingAutoReportTracePath.IsEmpty())
     {
-        _AutoOpenReportGenerated = DoGenerateAutomatedCaptureReport();
+        DoQueueAutomatedCaptureReport();
     }
 }
 

@@ -13,6 +13,11 @@ class SCkDebuggerPanel_Inspector;
 class SCkDebuggerPanel_EntityList;
 class SHorizontalBox;
 class SMenuAnchor;
+class SCkDebuggerSelectionGizmo;
+class UGameViewportClient;
+#if WITH_EDITOR
+class SLevelViewport;
+#endif
 
 class SCkDebuggerWindow_Main : public SCkDebugger_WindowBase
 {
@@ -57,6 +62,8 @@ private:
     auto RebuildContentArea() -> void;
     auto HandleWorldChanged(UWorld* InWorld) -> void;
     auto HandleSessionInvalidated() -> void;
+    auto Update_SelectionGizmo() -> void;
+    auto Reset_SelectionGizmo() -> void;
 
     TSharedPtr<FCkDebuggerModel_EntitySelection> SelectionModel;
     TSharedPtr<FCkDebuggerModel_WorldContext> WorldModel;
@@ -72,6 +79,11 @@ private:
     TSharedPtr<SBox> PageContentContainer;
     TSharedPtr<SCkDebuggerPanel_EntityList> EntityListPanel;
     TSharedPtr<SCkDebuggerPanel_Inspector> InspectorPanel;
+    TSharedPtr<SCkDebuggerSelectionGizmo> SelectionGizmo;
+    TWeakObjectPtr<UGameViewportClient> SelectionGizmoViewport;
+#if WITH_EDITOR
+    TWeakPtr<SLevelViewport> SelectionGizmoEditorViewport;
+#endif
 
     TSharedPtr<SMenuAnchor> OverlayAnchor;
     TSharedPtr<SMenuAnchor> FilterAnchor;

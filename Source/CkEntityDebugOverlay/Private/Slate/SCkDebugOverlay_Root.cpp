@@ -23,6 +23,7 @@
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/SOverlay.h"
 #include "Styling/CoreStyle.h"
+#include "Rendering/SlateRenderTransform.h"
 
 // ====================================================================================================================
 
@@ -308,13 +309,14 @@ auto
         bool                                bIsPinned,
         int32                               InCoLocatedIndex,
         int32                               InCoLocatedCount,
-        const FText&                        InLayoutLabel)
+        const FText&                        InLayoutLabel,
+        const FText&                        InSelectionSummary)
     -> void
 {
     if (_FocusCard.IsValid())
     {
         _FocusCard->Set_Model(InModel, InStyle, InHistory, InNow, bIsLocked, bIsPinned,
-            InCoLocatedIndex, InCoLocatedCount, InLayoutLabel);
+            InCoLocatedIndex, InCoLocatedCount, InLayoutLabel, InSelectionSummary);
     }
 }
 
@@ -441,9 +443,8 @@ auto
     DoBuild_NearPlate(const FCk_DebugOverlay_WorldTagInfo& InInfo)
     -> TSharedRef<SWidget>
 {
-    // Ultra-condensed plate: name header with a row of colored feature-abbreviation
-    // badges directly under it. Mirrors the focus card's visual language (dark
-    // rounded panel, provider-colored chips, micro fonts) at minimum footprint.
+    // Ultra-condensed world plate: near candidates have a name header and badge row; far
+    // candidates intentionally have only the same provider-presence legend badges.
     auto BadgeRow = SNew(SWrapBox)
         .UseAllottedSize(false); // hug content — plate stays as narrow as its badges
 
@@ -458,22 +459,25 @@ auto
 
     auto Body = SNew(SVerticalBox);
 
-    Body->AddSlot()
-        .AutoHeight()
-        .HAlign(HAlign_Center)
-        [
-            SNew(STextBlock)
-                .Text(InInfo.Header)
-                .Font_Static(&ck_debugoverlay_root::Get_PlateHeaderFont)
-                .ColorAndOpacity(CkStyle::TextStrong())
-        ];
+    if (InInfo.bShowHeader)
+    {
+        Body->AddSlot()
+            .AutoHeight()
+            .HAlign(HAlign_Center)
+            [
+                SNew(STextBlock)
+                    .Text(InInfo.Header)
+                    .Font_Static(&ck_debugoverlay_root::Get_PlateHeaderFont)
+                    .ColorAndOpacity(CkStyle::TextStrong())
+            ];
+    }
 
     if (InInfo.Badges.Num() > 0)
     {
         Body->AddSlot()
             .AutoHeight()
             .HAlign(HAlign_Center)
-            .Padding(FMargin{ 0.0f, 2.0f, 0.0f, 0.0f })
+            .Padding(InInfo.bShowHeader ? FMargin{ 0.0f, 2.0f, 0.0f, 0.0f } : FMargin{})
             [
                 BadgeRow
             ];
@@ -485,7 +489,7 @@ auto
         ? FLinearColor{ 1.0f, 1.0f, 1.0f, 1.0f }
         : FLinearColor::Transparent;
 
-    return SNew(SBorder)
+    auto Plate = SNew(SBorder)
         .Visibility(EVisibility::HitTestInvisible)
         .BorderImage(CkStyle::GetRoundedBrush())
         .BorderBackgroundColor(RingColor)
@@ -499,6 +503,13 @@ auto
                     Body
                 ]
         ];
+
+    // World plates use the same distance scale/fade as single-line tags. Without this the near
+    // branch stayed full-size and opaque while the far branch correctly attenuated.
+    Plate->SetRenderTransform(FSlateRenderTransform(FScale2D(InInfo.Scale)));
+    Plate->SetRenderTransformPivot(FVector2D{ 0.5f, 0.5f });
+    Plate->SetRenderOpacity(InInfo.Opacity);
+    return Plate;
 }
 
 // ====================================================================================================================

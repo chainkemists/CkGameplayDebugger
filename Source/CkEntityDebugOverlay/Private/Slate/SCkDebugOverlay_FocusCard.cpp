@@ -297,7 +297,8 @@ auto
         bool                                bIsPinned,
         int32                               InCoLocatedIndex,
         int32                               InCoLocatedCount,
-        const FText&                        InLayoutLabel)
+        const FText&                        InLayoutLabel,
+        const FText&                        InSelectionSummary)
     -> void
 {
     if (NOT _ContentBox.IsValid())
@@ -400,6 +401,21 @@ auto
         [
             HeaderRow
         ];
+
+    // Selection information belongs with the primary inspector, not in another viewport panel.
+    // Pinned cards and picker callers omit this optional summary.
+    if (NOT InSelectionSummary.IsEmpty())
+    {
+        _ContentBox->AddSlot().AutoHeight()
+            .Padding(FMargin{ 0.0f, 0.0f, 0.0f, CkStyle::SpaceXS })
+            [
+                SNew(STextBlock)
+                    .Text(InSelectionSummary)
+                    .WrapTextAt(_WrapWidth)
+                    .Font(ck::debug_axes::ScaledFont("Regular", Get_PlateFontSize(CkStyle::FontSizeMicro())))
+                    .ColorAndOpacity(CkStyle::TextStrong())
+            ];
+    }
 
     // ---- Sections (sorted by SortPriority, then source order) ----
     // Copy the sections array so we can sort without mutating the model. The SourceOrder

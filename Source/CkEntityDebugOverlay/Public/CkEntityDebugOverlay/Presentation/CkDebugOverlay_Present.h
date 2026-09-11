@@ -101,14 +101,27 @@ namespace ck_debugoverlay
         bool                                InMergeDuplicateRows,
         bool                                InRetainEmptySections = false) -> FCk_DebugOverlay_EntityModel;
 
+    /**
+     * Build the de-duplicated provider-presence legend for a world tag. A badge is emitted only
+     * when that provider is visible under InLayout and Collect produces at least one configured
+     * row; row values are intentionally discarded. EntityInfo remains header-only, so it has no
+     * legend badge. This gives near and far cards identical provider meaning without rendering
+     * behavioral compact-token text at range.
+     */
+    CKENTITYDEBUGOVERLAY_API auto Build_WorldTagBadges(
+        const FCk_Handle&                                    InEntity,
+        const TArray<TSharedPtr<ICk_DebugOverlay_Provider>>& InProviders,
+        const FCk_DebugOverlay_Layout&                       InLayout) -> TArray<FCk_DebugOverlay_WorldTagBadge>;
+
     // Build distance-scaled world tags / near-plates for the on-screen candidates
-    // (B1 — scale/fade/cull + near-plate badges + co-located de-overlap). Returns
+    // (B1 — scale/fade/cull + near-plate badges). Returns
     // empty when InPC is null or InIsEjected (PC projection reflects a frozen camera).
     // Callers must have set FCandidate::bIsOnScreen on each candidate.
     // Build Slate world-tag plates for the on-screen candidates. ScreenPos is in DPI-scaled
     // Slate units (ProjectWorldToScreen pixels / InDpiScale) so each plate lands on its
     // diamond marker. InFocusEntity's plate is flagged bIsFocus (highlighted). Every on-screen
-    // co-located cluster fans apart gradually with camera proximity, each badged "[i/N]".
+    // World tags remain truthfully anchored; co-located selection is disambiguated by the
+    // selection HUD's relative badges and Previous/Next shortcuts.
     CKENTITYDEBUGOVERLAY_API auto Build_WorldTags(
         const TArray<FCk_Handle>&                            InHandles,
         const TArray<FCandidate>&                            InCandidates,

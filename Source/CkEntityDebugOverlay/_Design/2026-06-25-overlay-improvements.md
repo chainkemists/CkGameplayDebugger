@@ -1,5 +1,9 @@
 # CkEntityDebugOverlay — Improvements Design (2026-06-25)
 
+> Historical design note: item 8's distance-driven plate fan-out was removed in 2026-09.
+> Co-located entities now remain at their truthful world anchors and are disambiguated by stable
+> relative selection badges plus the Previous/Next shortcuts.
+
 Status: **IMPLEMENTED** (2026-06-25). All 9 items built (editor compiles + links) and the
 7 CkEntityDebugOverlay automation specs pass. Runtime/visual behavior (fan-out layout,
 multi-pin strip, ejected input, sub-SM nesting, per-feature pill values) is PIE-verified by

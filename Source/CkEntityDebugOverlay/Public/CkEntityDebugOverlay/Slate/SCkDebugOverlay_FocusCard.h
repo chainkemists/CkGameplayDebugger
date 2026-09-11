@@ -54,7 +54,8 @@ public:
         bool                                bIsPinned        = false,
         int32                               InCoLocatedIndex = INDEX_NONE,
         int32                               InCoLocatedCount = 0,
-        const FText&                        InLayoutLabel    = FText::GetEmpty()) -> void;
+        const FText&                        InLayoutLabel    = FText::GetEmpty(),
+        const FText&                        InSelectionSummary = FText::GetEmpty()) -> void;
 
     // Stable, visually-distinct color per provider — used for the provider chip
     // fill, the field-chip tint, and the near-plate feature badges.

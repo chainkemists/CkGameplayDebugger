@@ -8,8 +8,9 @@
 // Per-candidate world-tag payload: screen position, label text, and distance-driven
 // scale / opacity computed in Push_ToRoot (B1 — distance-scaled world pills).
 //
-// Near candidates may instead carry an ultra-condensed PLATE: a name header plus a
-// row of colored feature-abbreviation badges (SM / GOAP / INV …) rendered under it.
+// Candidates may instead carry an ultra-condensed PLATE. Near plates have a name header plus
+// colored feature-abbreviation badges (SM / GOAP / INV …); far plates deliberately show only
+// those badges, never a behavioral compact-token value or a second entity name.
 // ====================================================================================================================
 
 struct FCk_DebugOverlay_WorldTagBadge
@@ -25,13 +26,14 @@ struct FCk_DebugOverlay_WorldTagInfo
     float     Scale      = 1.0f;   // [MinScale, 1] — applied via Slate RenderTransform
     float     Opacity    = 1.0f;   // [0.15, 1] — applied to ColorAndOpacity alpha
 
-    // Camera→entity distance (cm) — drives the gradual co-located fan.
+    // Camera→entity distance (cm), retained for distance-aware presentation.
     float     Distance   = 0.0f;
     // True for the focus entity's plate — rendered highlighted to match the emphasized diamond.
     bool      bIsFocus   = false;
 
-    // Near-plate payload (used when bIsPlate is true; Text is ignored then).
+    // World-plate payload (used when bIsPlate is true; Text is ignored then).
     bool                                  bIsPlate = false;
+    bool                                  bShowHeader = true;
     FText                                 Header   = FText{};
     TArray<FCk_DebugOverlay_WorldTagBadge> Badges;
 };

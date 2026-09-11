@@ -51,7 +51,8 @@ public:
         bool                                bIsPinned        = false,
         int32                               InCoLocatedIndex = INDEX_NONE,
         int32                               InCoLocatedCount = 0,
-        const FText&                        InLayoutLabel    = FText::GetEmpty()) -> void;
+        const FText&                        InLayoutLabel    = FText::GetEmpty(),
+        const FText&                        InSelectionSummary = FText::GetEmpty()) -> void;
 
     // Rebuilds the pinned-card strip (one persistent live card per pinned entity), stacked
     // under the primary card at the same anchor. Each pinned card gets a cyan ring.

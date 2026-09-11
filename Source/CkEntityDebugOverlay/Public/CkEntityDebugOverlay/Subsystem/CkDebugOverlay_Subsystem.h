@@ -14,12 +14,10 @@
 #include "CkEntityDebugOverlay/Selection/CkDebugOverlay_Selection.h"
 
 #if WITH_CK_DEBUG_OVERLAY
-// Shared in-world entity marker preview. Gated with the implementation: the module's
-// CkDebuggerCommon dependency is UncookedOnly and absent in Shipping, where the entire
-// marker-driving code below is compiled out anyway.
-#include "CkDebuggerCommon/Markers/CkDebug_EntityMarkers.h"
 // Global Slate input pre-processor — keeps double-tap gestures alive while ejected.
 #include "CkEntityDebugOverlay/Input/CkDebugOverlay_InputProcessor.h"
+#include "CkEntityDebugOverlay/Selection/CkDebugOverlay_SelectionSession.h"
+#include "CkDebuggerCommon/Navigation/CkDebug_ViewportView.h"
 #endif
 
 #include "CkDebugOverlay_Subsystem.generated.h"
@@ -36,10 +34,9 @@ class UCanvas;
 //
 // Per-frame tick (when active):
 //   1. Resolve active world (own LP world or manual PIE override).
-//   2. Gather_Candidates — enumerate all transform-bearing entities that have
-//      at least one provider willing to serve them.
-//   3. Compute FViewpoint from the player camera / camera manager.
-//   4. Pick_Best to find the focus entity (unless locked).
+//   2. Gather live ECS topology, resolve meaningful roots and spatial anchors.
+//   3. Project through the active player/ejected camera.
+//   4. Update the identity-stable selection session and handle deliberate actions.
 //   5. Build_Model — collect provider sections for the focus entity.
 //   6. Push_ToRoot — forward model + history + world tags to the Slate widget.
 // ====================================================================================================================
@@ -61,6 +58,54 @@ public:
 #if WITH_CK_DEBUG_OVERLAY
 
 private:
+    struct FSelectionEntry
+    {
+        FCk_Handle Entity;
+        ck_debugoverlay::selection_session::FCandidateSelection Candidate;
+        FCk_Handle AnchorEntity;
+    };
+
+    auto Reset_SelectionSession() -> void;
+    auto Update_Selection(UWorld* InWorld, const ck_debugoverlay::FViewpoint& InViewpoint,
+        TArray<FCk_Handle>& OutHandles, TArray<ck_debugoverlay::FCandidate>& OutCandidates) -> void;
+    auto Refresh_SelectionSnapshot(bool InSelectBest) -> void;
+    auto Cycle_Selection(int32 InDirection) -> void;
+    auto Set_FamilyVisible(bool InVisible) -> void;
+    auto CanHandle_SelectionInput() const -> bool;
+    auto DoCmd_Select() -> void;
+    auto DoCmd_Settings() -> void;
+    auto DoCmd_Family() -> void;
+    auto Close_SelectionSettings() -> void;
+    auto Get_SelectionStatus(bool InCompact = false) const -> FText;
+    auto Update_SelectionHud() -> void;
+    auto TryGet_SelectionPosition(const FSelectionEntry& InEntry) const -> TOptional<FVector>;
+
+    TWeakObjectPtr<UWorld> _SelectionWorld;
+    TArray<ck_debugoverlay::selection_session::FNode> _SelectionNodes;
+    TMap<uint32, FCk_Handle> _SelectionHandles;
+    TArray<FSelectionEntry> _WorldSelection;
+    TArray<FSelectionEntry> _FamilySelection;
+    FCk_Handle _SelectionRoot;
+    FCk_Handle _SelectionAimTarget;
+    FCk_Handle _SelectionCycleTarget;
+    FCk_Handle _SelectionLockedEntity;
+    ck_debugoverlay::selection_session::FViewpoint _SelectionView;
+    ck::DebugViewportView::FProjection _SelectionProjection;
+    bool _SelectionProjectionValid = false;
+    bool _FamilyVisible = false;
+    uint32 _SelectionRevision = 0;
+    TSharedPtr<class SCkDebugOverlay_SelectionHud> _SelectionHud;
+    TSharedPtr<class SCkDebugOverlay_SelectionPanel> _SelectionPanel;
+    TSharedPtr<SWidget> _SelectionPanelHost;
+    TWeakPtr<SWidget> _SelectionPriorFocus;
+    TWeakObjectPtr<APlayerController> _SelectionInputController;
+    bool _SelectionPriorCursor = false;
+    FDelegateHandle _SelectionSessionInvalidated;
+    FDelegateHandle _SelectionWorldInvalidated;
+    TUniquePtr<FAutoConsoleCommand> _Cmd_Select;
+    TUniquePtr<FAutoConsoleCommand> _Cmd_Settings;
+    TUniquePtr<FAutoConsoleCommand> _Cmd_Family;
+
     // ---- Activation / deactivation ----
     auto DoActivate()   -> void;
     auto DoDeactivate() -> void;
@@ -80,19 +125,6 @@ private:
     /** Text for the focus card's corner switcher chip ("LAYOUT AI 2/6  L x2"). Empty when no
      *  layouts are configured. */
     auto Get_LayoutSwitcherLabel() const -> FText;
-
-    /** Enumerate all transform-bearing entities that have at least one capable provider.
-     *  Non-const: rebuilds the shared _Markers snapshot (markers/links/candidates are
-     *  the same set — what you see is what you can focus).
-     *  InCullOrigin: when set (a real viewpoint exists), entities farther than
-     *  Settings->MarkerMaxDist from it are dropped from the whole set (diamond declutter). */
-    auto Gather_Candidates(
-        UWorld*                                              InWorld,
-        const TArray<TSharedPtr<ICk_DebugOverlay_Provider>>& InProviders,
-        const TOptional<FVector>&                            InCullOrigin,
-        const TArray<FCk_Handle>&                            InFullDepthRoots,
-        TArray<FCk_Handle>&                                  OutHandles,
-        TArray<ck_debugoverlay::FCandidate>&                 OutCandidates) -> void;
 
     /** Populate the focus-entity model from all capable providers. */
     auto Build_Model(
@@ -137,14 +169,8 @@ private:
     // don't persist across PIE stop/start.
     TUniquePtr<FCk_DebugOverlay_History> _History;
 
-    // Focus lock state. INDEX_NONE = auto-pick via Pick_Best.
-    int32 _LockedCandidateIndex = INDEX_NONE;
+    // Hold Select to toggle the full-handle selection lock; data-card pins are independent.
     bool  _FocusLocked          = false;
-
-    // Soft co-located preference set by the cycle key (NOT a hard lock — no ring). When valid
-    // and still on-screen + co-located with the auto-pick, the focus prefers this entity;
-    // auto-clears when it leaves the cluster. FCk_Handle so it survives candidate-index churn.
-    FCk_Handle _PreferredCoLocated;
 
     // Candidate handle list from the last frame (for Next/Prev cycling).
     TArray<FCk_Handle> _LastFrameCandidates;
@@ -152,28 +178,11 @@ private:
     // Active layout index into Settings->Layouts.
     int32 _ActiveLayoutIndex = INDEX_NONE;
 
-    // B2 — screen-space ECS-diamond marker billboards via the shared entity-marker
-    // preview (FCkDebug_EntityMarkers in CkDebuggerCommon — same implementation as
-    // the ECS Debugger's viewport picker). Snapshot is built each DoTick; consumed
-    // by DoDrawMarkers (which fires per-viewport from the debug-draw service).
-    auto DoDrawMarkers(UCanvas* InCanvas, APlayerController* InPC) -> void;
-
-    FCkDebug_EntityMarkers _Markers;
-
-    // Entity numbers whose markers are suppressed this tick (locally possessed
-    // pawn's entities — a marker there would sit permanently at screen center).
-    TSet<uint32> _MarkerSuppressed;
-
-    // Focused candidate's entity number (drawn emphasized). MAX_uint32 = none.
-    uint32 _FocusedEntityNum = MAX_uint32;
     FCk_Handle _FocusedEntity;
 
     // Last focus emitted by the opt-in continuous sync path. Full handle identity
     // includes the entity generation, so slot reuse still emits a new selection.
     FCk_Handle _LastSyncedEntity;
-
-    FDelegateHandle _DebugDrawHandle_Game;
-    FDelegateHandle _DebugDrawHandle_Editor;
 
     // True while the user is ejected from PIE (F8) and the editor camera drives the
     // view — focus picking follows it; PC-projected world tags are suppressed.
@@ -185,9 +194,6 @@ private:
 
     // Double-tap detection for EcsDebuggerFocusKey (focus entity in the ECS Debugger).
     double _LastEcsFocusKeyPressTime = -1.0;
-
-    // Double-tap detection for CycleCoLocatedKey (cycle through co-located entities).
-    double _LastCycleKeyPressTime = -1.0;
 
     // Double-tap detection for UnpinAllKey / HelpKey.
     double _LastUnpinAllKeyPressTime = -1.0;
@@ -213,9 +219,6 @@ private:
 
     // Whether the full keyboard-hints legend is shown (toggled by HelpKey / Help command).
     bool _ShowFullLegend = false;
-
-    // Throttle for the ~1/sec marker diagnostics log line in DoTick.
-    double _LastMarkerLogTime = -1.0;
 
     // Engine on-screen debug text state saved at activation (suppressed while the overlay
     // is active — the plate owns the top-left corner) and restored on deactivation.

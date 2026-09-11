@@ -365,6 +365,66 @@ auto
 
 auto
     ck_debugoverlay::
+    Build_WorldTagBadges(
+        const FCk_Handle&                                    InEntity,
+        const TArray<TSharedPtr<ICk_DebugOverlay_Provider>>& InProviders,
+        const FCk_DebugOverlay_Layout&                       InLayout)
+    -> TArray<FCk_DebugOverlay_WorldTagBadge>
+{
+    auto Badges = TArray<FCk_DebugOverlay_WorldTagBadge>{};
+    auto SeenProviderTags = TSet<FGameplayTag>{};
+
+    for (const auto& Provider : InProviders)
+    {
+        if (NOT Provider || NOT Provider->CanProvide(InEntity))
+        { continue; }
+
+        const auto ProviderTag = Provider->Get_ProviderTag();
+        const auto ProviderLeaf = ck_debugoverlay::Get_LeafName(ProviderTag);
+        if (NOT ProviderTag.IsValid() || ProviderLeaf == TEXT("EntityInfo") ||
+            SeenProviderTags.Contains(ProviderTag))
+        { continue; }
+
+        auto EnabledFields = ck_debugoverlay::Resolve_EnabledFields(
+            InLayout, ProviderTag, Provider->Get_FieldTags());
+
+        if (EnabledFields.IsEmpty())
+        { continue; }
+
+        auto EntryFilter = FGameplayTagQuery{};
+        for (const auto& Entry : InLayout.Entries)
+        {
+            if (Entry.ProviderTag == ProviderTag)
+            {
+                EntryFilter = Entry.EntryFilter;
+                break;
+            }
+        }
+
+        auto Config = FCk_DebugOverlay_ProviderConfig{};
+        Config.EnabledFields = EnabledFields;
+        Config.EntryFilter = EntryFilter;
+
+        // Collect is the provider's one authoritative filter-aware visibility gate. The world
+        // legend intentionally retains only its presence result, never the collected value.
+        auto Section = FCk_DebugOverlay_Section{};
+        Provider->Collect(InEntity, Config, Section);
+        if (Section.Rows.IsEmpty())
+        { continue; }
+
+        SeenProviderTags.Add(ProviderTag);
+        Badges.Add(FCk_DebugOverlay_WorldTagBadge{
+            ck_debugoverlay::Get_ProviderAbbrev(ProviderLeaf),
+            SCkDebugOverlay_FocusCard::Get_ProviderColor(ProviderTag) });
+    }
+
+    return Badges;
+}
+
+// ====================================================================================================================
+
+auto
+    ck_debugoverlay::
     Prepare_FocusCardModel(
         const FCk_DebugOverlay_EntityModel& InModel,
         bool                                InMergeDuplicateRows,
@@ -537,62 +597,21 @@ auto
         if (Dist > MaxDist)
         { continue; }
 
-        // Build compact token + feature badges (what the entity HAS, layout-independent).
-        auto TokenParts = TArray<FString>{};
-        auto Badges     = TArray<FCk_DebugOverlay_WorldTagBadge>{};
-        for (const auto& Provider : InProviders)
-        {
-            if (NOT Provider || NOT Provider->CanProvide(Handle))
-            { continue; }
-
-            const auto& ProviderTag = Provider->Get_ProviderTag();
-
-            // World tags survey feature presence; skip only EntityInfo (it IS the name/
-            // header — a pill would be redundant). Transform now emits a "T" pill so every
-            // feature an entity carries is visible.
-            const auto ProviderLeaf = ck_debugoverlay::Get_LeafName(ProviderTag);
-            if (ProviderLeaf == TEXT("EntityInfo"))
-            { continue; }
-
-            Badges.Add(FCk_DebugOverlay_WorldTagBadge{
-                ck_debugoverlay::Get_ProviderAbbrev(ProviderLeaf),
-                SCkDebugOverlay_FocusCard::Get_ProviderColor(ProviderTag) });
-
-            const auto EnabledFields = ck_debugoverlay::Resolve_EnabledFields(
-                InLayout, ProviderTag, Provider->Get_FieldTags());
-            if (EnabledFields.IsEmpty())
-            { continue; }
-
-            auto EntryFilter = FGameplayTagQuery{};
-            for (const auto& Entry : InLayout.Entries)
-            {
-                if (Entry.ProviderTag == ProviderTag) { EntryFilter = Entry.EntryFilter; break; }
-            }
-
-            auto Config          = FCk_DebugOverlay_ProviderConfig{};
-            Config.EnabledFields = EnabledFields;
-            Config.EntryFilter   = EntryFilter;
-
-            const auto Token = Provider->Get_CompactToken(Handle, Config);
-            if (NOT Token.IsEmpty())
-            {
-                TokenParts.Add(Token);
-            }
-        }
+        auto Badges = Build_WorldTagBadges(Handle, InProviders, InLayout);
 
         const auto IsNearPlate = NearPlatesEnabled && Dist <= NearDist;
 
         const auto DebugName   = UCk_Utils_Handle_UE::Get_DebugName(Handle);
         const auto HasRealName = DebugName.IsNone() == false;
 
-        // Far pills require behavioral tokens (identity-only pills are spam at range).
-        // Near plates show when the entity has feature badges OR an explicit name.
+        // Near plates show when the entity has feature badges OR an explicit name. Far plates
+        // are provider-presence legend only: no behavioral CompactToken and no entity name.
         if (IsNearPlate)
         {
             if (Badges.IsEmpty() && NOT HasRealName)
             { continue; }
         }
-        else if (TokenParts.IsEmpty())
+        else if (Badges.IsEmpty())
         { continue; }
 
         auto ScreenPos = FVector2D{};
@@ -646,7 +665,9 @@ auto
         }
         else
         {
-            TagInfo.Text = FText::FromString(FString::Join(TokenParts, TEXT(" | ")));
+            TagInfo.bIsPlate = true;
+            TagInfo.bShowHeader = false;
+            TagInfo.Badges = MoveTemp(Badges);
         }
 
         WorldTags.Add(MoveTemp(TagInfo));
@@ -654,104 +675,6 @@ auto
         // Hard cap to avoid clutter in dense scenes (e.g. crowds).
         if (WorldTags.Num() >= 16)
         { break; }
-    }
-
-    // Fan out every co-located cluster (item 8): plates sharing a screen cell are splayed
-    // horizontally and each badged "[i/N]". The spread is GRADUAL by camera distance — at range
-    // the cluster COLLAPSES to a single representative plate ("looks like one entity"), and as
-    // you approach it opens to the full fan, re-merging when you back away. Singletons stay
-    // anchored above their marker. Non-interactive — double-Alt cycles the focus through them.
-    {
-        const auto FanFull     = Settings ? Settings->FanFullDist   : 500.0f;
-        const auto FanFade     = Settings ? Settings->FanFadeDist   : 2000.0f;
-        const auto FanMaxSpace = Settings ? Settings->FanMaxSpacing : 110.0f;
-
-        constexpr auto CellW    = 64.0f;
-        constexpr auto CellH    = 48.0f;
-        constexpr auto FanRiseY = 14.0f;
-
-        auto CellMembers = TMap<FIntPoint, TArray<int32>>{};
-        for (auto T = 0; T < WorldTags.Num(); ++T)
-        {
-            const auto Cell = FIntPoint{
-                FMath::RoundToInt32(WorldTags[T].ScreenPos.X / CellW),
-                FMath::RoundToInt32(WorldTags[T].ScreenPos.Y / CellH) };
-            CellMembers.FindOrAdd(Cell).Add(T);
-        }
-
-        // Cluster members hidden because the cluster is collapsed (far) — removed after the pass.
-        auto ToHide = TArray<int32>{};
-
-        for (auto& Pair : CellMembers)
-        {
-            auto& Members = Pair.Value;
-            if (Members.Num() <= 1)
-            { continue; }
-
-            // Fan factor from the CLOSEST member: 1 (full fan) near, 0 (collapsed) far.
-            auto MinDist = TNumericLimits<float>::Max();
-            for (const auto T : Members)
-            { MinDist = FMath::Min(MinDist, WorldTags[T].Distance); }
-
-            const auto FanFactor = (FanFade > FanFull)
-                ? 1.0f - FMath::Clamp((MinDist - FanFull) / (FanFade - FanFull), 0.0f, 1.0f)
-                : (MinDist <= FanFull ? 1.0f : 0.0f);
-
-            // Collapsed (far): keep ONE representative (the focus if present, else the first),
-            // hide the rest so the cluster reads as a single entity. No [i/N] badge.
-            if (FanFactor <= 0.1f)
-            {
-                auto KeepIdx = Members[0];
-                for (const auto T : Members)
-                {
-                    if (WorldTags[T].bIsFocus) { KeepIdx = T; break; }
-                }
-                for (const auto T : Members)
-                {
-                    if (T != KeepIdx) { ToHide.Add(T); }
-                }
-                continue;
-            }
-
-            // Stable left -> right order for the [i/N] indices.
-            Members.Sort([&WorldTags](int32 InA, int32 InB)
-            { return WorldTags[InA].ScreenPos.X < WorldTags[InB].ScreenPos.X; });
-
-            const auto Count = Members.Num();
-
-            auto CentroidX = 0.0f;
-            auto TopY      = WorldTags[Members[0]].ScreenPos.Y;
-            for (const auto T : Members)
-            {
-                CentroidX += WorldTags[T].ScreenPos.X;
-                TopY = FMath::Min(TopY, WorldTags[T].ScreenPos.Y);
-            }
-            CentroidX /= static_cast<float>(Count);
-
-            for (auto i = 0; i < Count; ++i)
-            {
-                const auto T    = Members[i];
-                const auto Slot = static_cast<float>(i) - (Count - 1) * 0.5f;
-
-                const auto FannedX = CentroidX + Slot * FanMaxSpace;
-                const auto FannedY = TopY - FMath::Abs(Slot) * FanRiseY;
-
-                // Lerp from collapsed (on the marker) to fully fanned as the camera nears.
-                WorldTags[T].ScreenPos.X = FMath::Lerp(WorldTags[T].ScreenPos.X, FannedX, FanFactor);
-                WorldTags[T].ScreenPos.Y = FMath::Lerp(WorldTags[T].ScreenPos.Y, FannedY, FanFactor);
-
-                const auto Badge = FString::Printf(TEXT("[%d/%d] "), i + 1, Count);
-                if (WorldTags[T].bIsPlate)
-                { WorldTags[T].Header = FText::FromString(Badge + WorldTags[T].Header.ToString()); }
-                else
-                { WorldTags[T].Text = FText::FromString(Badge + WorldTags[T].Text.ToString()); }
-            }
-        }
-
-        // Remove hidden members (descending index so removal stays valid).
-        ToHide.Sort([](int32 InA, int32 InB){ return InA > InB; });
-        for (const auto T : ToHide)
-        { WorldTags.RemoveAt(T); }
     }
 
     return WorldTags;

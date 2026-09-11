@@ -15,6 +15,8 @@
 #include "CkEntityDebugOverlay/Tags/CkDebugOverlay_Tags.h"
 #include "CkEntityDebugOverlay/Slate/SCkDebugOverlay_Root.h"
 #include "CkEntityDebugOverlay/Slate/SCkDebugOverlay_FocusCard.h"
+#include "CkEntityDebugOverlay/Slate/SCkDebugOverlay_SelectionHud.h"
+#include "CkDebuggerCommon/Lifecycle/CkDebug_SessionLifecycle.h"
 
 #include "CkCore/Diagnostics/CkDiagnosticVisibility.h"
 #include "CkCore/Validation/CkIsValid.h"
@@ -22,7 +24,6 @@
 #include "CkEcs/Handle/CkHandle_Utils.h"
 
 // B2 — marker billboards (shared FCkDebug_EntityMarkers preview, UDebugDrawService callback).
-#include "Debug/DebugDrawService.h"
 // Viewport DPI scale — world plates are positioned in DPI-scaled Slate units.
 #include "Blueprint/WidgetLayoutLibrary.h"
 #include "GameFramework/Pawn.h"
@@ -63,62 +64,7 @@ namespace
     // Ejected-PIE discrimination lives in ck::DebugViewportView (CkDebuggerCommon),
     // shared with the ECS viewport picker and the focus-entity helper.
 
-    // Locally possessed pawn (+ controller + attached actors) — their entities get no
-    // marker billboard, otherwise a marker sits permanently at screen center. While
-    // ejected the pawn is just another world object, so nothing is ignored (mirrors
-    // the ECS picker's Ignore Self behavior).
-    auto Get_LocalIgnoredActors(UWorld* InWorld, bool InIsEjected) -> TArray<TWeakObjectPtr<const AActor>>
-    {
-        auto IgnoredActors = TArray<TWeakObjectPtr<const AActor>>{};
 
-        if (InIsEjected || ck::Is_NOT_Valid(InWorld))
-        { return IgnoredActors; }
-
-        auto* PC = InWorld->GetFirstPlayerController();
-        if (ck::Is_NOT_Valid(PC))
-        { return IgnoredActors; }
-
-        auto* LocalPawn = PC->GetPawn().Get();
-        if (ck::Is_NOT_Valid(LocalPawn))
-        { return IgnoredActors; }
-
-        IgnoredActors.Add(LocalPawn);
-        IgnoredActors.Add(PC);
-
-        constexpr auto ResetArray      = true;
-        constexpr auto RecurseAttached = true;
-        auto AttachedChildren = TArray<AActor*>{};
-        LocalPawn->GetAttachedActors(AttachedChildren, ResetArray, RecurseAttached);
-        for (auto* AttachedActor : AttachedChildren)
-        {
-            if (ck::IsValid(AttachedActor))
-            {
-                IgnoredActors.Add(AttachedActor);
-            }
-        }
-
-        return IgnoredActors;
-    }
-
-    auto Is_EntityOwnedByIgnoredActor(
-        const FCk_Handle& InEntity,
-        const TArray<TWeakObjectPtr<const AActor>>& InIgnoredActors) -> bool
-    {
-        if (InIgnoredActors.IsEmpty() || ck::Is_NOT_Valid(InEntity))
-        { return false; }
-
-        auto* OwningActor = UCk_Utils_OwningActor_UE::TryGet_EntityOwningActor_Recursive(InEntity);
-        if (ck::Is_NOT_Valid(OwningActor))
-        { return false; }
-
-        for (const auto& IgnoredActorWeak : InIgnoredActors)
-        {
-            if (OwningActor == IgnoredActorWeak.Get())
-            { return true; }
-        }
-
-        return false;
-    }
 }
 
 // ====================================================================================================================
@@ -161,19 +107,28 @@ auto
         _CVar_Master->AsVariable()->SetOnChangedCallback(
             FConsoleVariableDelegate::CreateUObject(this, &UCk_DebugOverlay_Subsystem::OnCVar_MasterChanged));
 
+        _Cmd_Select = MakeUnique<FAutoConsoleCommand>(TEXT("ck.DebugOverlay.Select"),
+            TEXT("Refresh candidates and select the best target."),
+            FConsoleCommandDelegate::CreateUObject(this, &UCk_DebugOverlay_Subsystem::DoCmd_Select));
+        _Cmd_Settings = MakeUnique<FAutoConsoleCommand>(TEXT("ck.DebugOverlay.Settings"),
+            TEXT("Open/close runtime Selection settings."),
+            FConsoleCommandDelegate::CreateUObject(this, &UCk_DebugOverlay_Subsystem::DoCmd_Settings));
+        _Cmd_Family = MakeUnique<FAutoConsoleCommand>(TEXT("ck.DebugOverlay.Family"),
+            TEXT("Toggle the selected family."),
+            FConsoleCommandDelegate::CreateUObject(this, &UCk_DebugOverlay_Subsystem::DoCmd_Family));
         _Cmd_Next = MakeUnique<FAutoConsoleCommand>(
             TEXT("ck.DebugOverlay.Next"),
-            TEXT("Cycle focus to the next candidate entity (enables lock)."),
+            TEXT("Cycle to the next numbered candidate until the aim target changes."),
             FConsoleCommandDelegate::CreateUObject(this, &UCk_DebugOverlay_Subsystem::DoCmd_Next));
 
         _Cmd_Prev = MakeUnique<FAutoConsoleCommand>(
             TEXT("ck.DebugOverlay.Prev"),
-            TEXT("Cycle focus to the previous candidate entity (enables lock)."),
+            TEXT("Cycle to the previous numbered candidate until the aim target changes."),
             FConsoleCommandDelegate::CreateUObject(this, &UCk_DebugOverlay_Subsystem::DoCmd_Prev));
 
         _Cmd_Lock = MakeUnique<FAutoConsoleCommand>(
             TEXT("ck.DebugOverlay.Lock"),
-            TEXT("Toggle focus lock on the current entity."),
+            TEXT("Toggle the current selection lock. Data-card pinning remains independent."),
             FConsoleCommandDelegate::CreateUObject(this, &UCk_DebugOverlay_Subsystem::DoCmd_Lock));
 
         _Cmd_Layout_Next = MakeUnique<FAutoConsoleCommand>(
@@ -206,6 +161,15 @@ auto
     {
         ck::debug_overlay::Log(TEXT("UCk_DebugOverlay_Subsystem: secondary instance — console commands owned by primary"));
     }
+
+    _SelectionSessionInvalidated = ck::DebugSessionLifecycle::Get_OnSessionInvalidated().AddUObject(
+        this, &UCk_DebugOverlay_Subsystem::DoDeactivate);
+    _SelectionWorldInvalidated = ck::DebugSessionLifecycle::Get_OnWorldInvalidated().AddWeakLambda(this,
+        [this](UWorld* InWorld)
+        {
+            if (_SelectionWorld.Get() == InWorld || GetWorld() == InWorld)
+            { DoDeactivate(); }
+        });
 
     // ---- Seed the active layout index ----
     // The per-USER layout the quick-switcher last selected wins over the project's
@@ -249,6 +213,11 @@ auto
     -> void
 {
     DoDeactivate();
+    ck::DebugSessionLifecycle::Get_OnSessionInvalidated().Remove(_SelectionSessionInvalidated);
+    ck::DebugSessionLifecycle::Get_OnWorldInvalidated().Remove(_SelectionWorldInvalidated);
+    _Cmd_Select.Reset();
+    _Cmd_Settings.Reset();
+    _Cmd_Family.Reset();
 
     // Release console objects owned by this instance (only the primary instance owns them).
     // FAutoConsoleCommand destructor unregisters the command; reset in reverse-init order.
@@ -281,6 +250,7 @@ auto
     -> void
 {
     Super::PlayerControllerChanged(InNewPlayerController);
+    Reset_SelectionSession();
 
     // The master cvar is a process-global static that SURVIVES PIE restarts, but this
     // subsystem is per-LocalPlayer and recreated each session — with the cvar already
@@ -328,6 +298,9 @@ auto
     // BATCH-VERIFY: SNew returns TSharedRef; TSharedPtr assignment compiles but confirm
     // that SCkDebugOverlay_Root::Construct takes FArguments correctly.
     ViewportClient->AddViewportWidgetContent(_RootWidget.ToSharedRef(), OverlayZOrder);
+    _SelectionHud = SNew(SCkDebugOverlay_SelectionHud).Visibility(EVisibility::HitTestInvisible);
+    ViewportClient->AddViewportWidgetContent(_SelectionHud.ToSharedRef(), OverlayZOrder + 1);
+    Reset_SelectionSession();
 
     // Lazy-create providers (once per subsystem lifetime after the first activation).
     if (_Providers.IsEmpty())
@@ -354,22 +327,17 @@ auto
     // across PIE stop/start cycles.
     _History = MakeUnique<FCk_DebugOverlay_History>();
 
-    // B2 — marker billboards: front-load the shared marker textures (load + async
-    // compilation) so the first DrawMarkers call never sees a placeholder resource.
-    _Markers.EnsureTextures();
-
-    // Register on BOTH "Game" and "Editor" show flags so markers keep rendering after
-    // the user ejects with F8 (mirrors the picker's registration).
-    const auto DrawDelegate = FDebugDrawDelegate::CreateUObject(
-        this, &UCk_DebugOverlay_Subsystem::DoDrawMarkers);
-    _DebugDrawHandle_Game   = UDebugDrawService::Register(TEXT("Game"),   DrawDelegate);
-    _DebugDrawHandle_Editor = UDebugDrawService::Register(TEXT("Editor"), DrawDelegate);
-
     // Global Slate input pre-processor — observes key-downs regardless of game-vs-editor
     // viewport focus, so the double-tap gestures keep working after the user ejects (F8).
     if (FSlateApplication::IsInitialized())
     {
-        _InputProcessor = MakeShared<FCkDebugOverlay_InputProcessor>();
+        _InputProcessor = MakeShared<FCkDebugOverlay_InputProcessor>(
+            [WeakSubsystem = TWeakObjectPtr<UCk_DebugOverlay_Subsystem>(this)]()
+            {
+                const auto* Subsystem = WeakSubsystem.Get();
+                return Subsystem != nullptr && Subsystem->CanHandle_SelectionInput();
+            });
+        _InputProcessor->SetSelectionBindings(*GetDefault<UCk_DebugOverlay_InputSettings>());
         FSlateApplication::Get().RegisterInputPreProcessor(_InputProcessor.ToSharedRef());
     }
 
@@ -397,6 +365,18 @@ auto
     DoDeactivate()
     -> void
 {
+    Close_SelectionSettings();
+    if (_SelectionHud.IsValid())
+    {
+        if (const auto* LocalPlayer = GetLocalPlayer(); ck::IsValid(LocalPlayer))
+        {
+            if (auto* Viewport = LocalPlayer->ViewportClient.Get(); ck::IsValid(Viewport))
+            { Viewport->RemoveViewportWidgetContent(_SelectionHud.ToSharedRef()); }
+        }
+        _SelectionHud.Reset();
+    }
+    Reset_SelectionSession();
+
     // Restore engine on-screen debug text to its pre-activation state. Guarded on the
     // ticker being live so a redundant DoDeactivate (Deinitialize after a cvar-off)
     // doesn't restore twice.
@@ -418,7 +398,6 @@ auto
         _InputProcessor.Reset();
     }
     _PinnedEntities.Reset();
-    _PreferredCoLocated = FCk_Handle{};
 
     if (_RootWidget.IsValid())
     {
@@ -436,25 +415,10 @@ auto
 
     _History.Reset();
 
-    // B2 — stop drawing marker billboards.
-    if (_DebugDrawHandle_Game.IsValid())
-    {
-        UDebugDrawService::Unregister(_DebugDrawHandle_Game);
-        _DebugDrawHandle_Game.Reset();
-    }
-    if (_DebugDrawHandle_Editor.IsValid())
-    {
-        UDebugDrawService::Unregister(_DebugDrawHandle_Editor);
-        _DebugDrawHandle_Editor.Reset();
-    }
-    _Markers.Reset();
-    _MarkerSuppressed.Empty();
-    _FocusedEntityNum = MAX_uint32;
     _FocusedEntity = FCk_Handle{};
     _LastSyncedEntity = FCk_Handle{};
     _LastLockKeyPressTime = -1.0;
     _LastEcsFocusKeyPressTime = -1.0;
-    _LastCycleKeyPressTime = -1.0;
     _LastUnpinAllKeyPressTime = -1.0;
     _LastHelpKeyPressTime = -1.0;
     _LastCycleLayoutKeyPressTime = -1.0;
@@ -477,7 +441,7 @@ auto
     { return true; } // keep ticking; deactivation will unregister us
 
     auto* World = Resolve_ActiveWorld();
-    if (ck::Is_NOT_Valid(World))
+    if (ck::Is_NOT_Valid(World) || NOT World->HasBegunPlay())
     { return true; }
 
     const auto* Layout = Resolve_ActiveLayout();
@@ -517,89 +481,10 @@ auto
     if (_ViewpointIsEjected || ck::IsValid(PC))
     { CullOrigin = Viewpoint.Location; }
 
-    // ---- 2. Gather candidates (distance-culled around the viewpoint) ----
     auto CandidateHandles = TArray<FCk_Handle>{};
-    auto Candidates       = TArray<ck_debugoverlay::FCandidate>{};
-    auto FullDepthRoots   = TArray<FCk_Handle>{};
-    if (ck::DebugMarkers::Get_FocusFullDepth())
-    {
-        if (ck::IsValid(_FocusedEntity))
-        { FullDepthRoots.Add(_FocusedEntity); }
-
-        for (const auto& PinnedEntity : _PinnedEntities)
-        {
-            if (ck::IsValid(PinnedEntity))
-            { FullDepthRoots.AddUnique(PinnedEntity); }
-        }
-    }
-
-    Gather_Candidates(World, _Providers, CullOrigin, FullDepthRoots, CandidateHandles, Candidates);
-    _LastFrameCandidates = CandidateHandles;
-
-    // ---- 3. Resolve on-screen flags for all candidates ----
-    // Ejected: PC-based screen projection reflects the frozen player camera, not the
-    // view being rendered — approximate "on screen" as "in front of the editor camera".
-    if (_ViewpointIsEjected)
-    {
-        for (auto CandIdx = 0; CandIdx < Candidates.Num(); ++CandIdx)
-        {
-            const auto ToCandidate =
-                (Candidates[CandIdx].WorldLocation - Viewpoint.Location).GetSafeNormal();
-            Candidates[CandIdx].bIsOnScreen =
-                FVector::DotProduct(ToCandidate, Viewpoint.Forward) > 0.0f;
-        }
-    }
-    else if (ck::IsValid(PC))
-    {
-        for (auto CandIdx = 0; CandIdx < Candidates.Num(); ++CandIdx)
-        {
-            auto ScreenPos = FVector2D{};
-            const auto bOnScreen = UGameplayStatics::ProjectWorldToScreen(
-                PC, Candidates[CandIdx].WorldLocation, ScreenPos,
-                /*bPlayerViewportRelative=*/false);
-            Candidates[CandIdx].bIsOnScreen = bOnScreen;
-            Candidates[CandIdx].ScreenPos   = ScreenPos;
-        }
-    }
-
-    // ---- 4. Pick focus entity ----
-    FCk_Handle FocusEntity{};
-    if (_FocusLocked && _LockedCandidateIndex != INDEX_NONE &&
-        _LockedCandidateIndex < CandidateHandles.Num())
-    {
-        FocusEntity = CandidateHandles[_LockedCandidateIndex];
-    }
-    else
-    {
-        const auto BestIdx = ck_debugoverlay::Pick_Best(Candidates, Viewpoint);
-        if (BestIdx != INDEX_NONE)
-        {
-            FocusEntity = CandidateHandles[BestIdx];
-            // Keep the lock index in sync with best pick when not locked, so
-            // Next/Prev starts from the last auto-picked position.
-            _LockedCandidateIndex = BestIdx;
-
-            // Soft co-located preference (cycle key): while the cycled-to entity is still
-            // on-screen, prefer it — WITHOUT locking (no ring). Holding on "still on-screen"
-            // (rather than "near the auto-pick") keeps the cycle progressing reliably through a
-            // chain; it auto-clears once the entity leaves view (look away → resume auto-pick).
-            if (ck::IsValid(_PreferredCoLocated))
-            {
-                const auto PrefIdx = CandidateHandles.IndexOfByPredicate(
-                    [this](const FCk_Handle& InHandle){ return InHandle == _PreferredCoLocated; });
-
-                if (Candidates.IsValidIndex(PrefIdx) && Candidates[PrefIdx].bIsOnScreen)
-                {
-                    FocusEntity = _PreferredCoLocated;
-                    _LockedCandidateIndex = PrefIdx;
-                }
-                else
-                {
-                    _PreferredCoLocated = FCk_Handle{};
-                }
-            }
-        }
-    }
+    auto Candidates = TArray<ck_debugoverlay::FCandidate>{};
+    Update_Selection(World, Viewpoint, CandidateHandles, Candidates);
+    auto FocusEntity = _FocusedEntity;
 
     // ---- 5. Time + double-tap gesture detection ----
     // Input is sampled from the global Slate pre-processor (not PC->WasInputKeyJustPressed)
@@ -633,9 +518,8 @@ auto
         };
 
         // Double-tap LockKey (default Left Shift): PIN / UNPIN the focused entity. The
-        // primary card keeps auto-following; each pin gets its own persistent side-by-side
-        // card. (This replaces the old focus-lock toggle — lock is now driven by Next/Prev,
-        // the co-located cycle, and `ck.DebugOverlay.Lock`.)
+        // primary card keeps auto-following unless separately selection-locked with held Select;
+        // each data pin gets its own persistent side-by-side card.
         if (WasDoubleTapped(Settings->LockKey, _LastLockKeyPressTime))
         {
             if (ck::IsValid(FocusEntity))
@@ -679,63 +563,6 @@ auto
             _ShowFullLegend = NOT _ShowFullLegend;
         }
 
-        // Double-tap CycleCoLocatedKey (default V): cycle the focus through the
-        // co-located cluster. The cluster is the CONNECTED COMPONENT (flood-fill) of entities
-        // linked by world-OR-screen proximity, so a chain A-B-C is ONE stable set regardless of
-        // which member is focused (fixes "only 2 of 3 cycle"). Sets a soft preference (no lock).
-        if (WasDoubleTapped(Settings->CycleCoLocatedKey, _LastCycleKeyPressTime))
-        {
-            if (ck::IsValid(FocusEntity) && Candidates.IsValidIndex(_LockedCandidateIndex))
-            {
-                const auto WorldRadiusSq  = FMath::Square(Settings->CoLocatedRadius);
-                const auto ScreenRadiusSq = FMath::Square(Settings->CoLocatedScreenRadius * 1.5f);
-
-                auto Cluster = TArray<int32>{ _LockedCandidateIndex };
-                for (auto Front = 0; Front < Cluster.Num(); ++Front)
-                {
-                    const auto Cur = Cluster[Front];
-                    for (auto CandIdx = 0; CandIdx < Candidates.Num(); ++CandIdx)
-                    {
-                        if (Cluster.Contains(CandIdx))
-                        { continue; }
-
-                        const auto WorldClose = FVector::DistSquared(
-                            Candidates[CandIdx].WorldLocation, Candidates[Cur].WorldLocation) <= WorldRadiusSq;
-                        const auto ScreenClose = Candidates[CandIdx].bIsOnScreen && Candidates[Cur].bIsOnScreen &&
-                            FVector2D::DistSquared(Candidates[CandIdx].ScreenPos, Candidates[Cur].ScreenPos) <= ScreenRadiusSq;
-
-                        if (WorldClose || ScreenClose)
-                        { Cluster.Add(CandIdx); }
-                    }
-                }
-
-                if (Cluster.Num() > 1)
-                {
-                    // Stable order (by entity number) so the cycle sequence is consistent.
-                    Cluster.Sort([&CandidateHandles](int32 InA, int32 InB)
-                    {
-                        return CandidateHandles[InA].Get_Entity().Get_EntityNumber()
-                             < CandidateHandles[InB].Get_Entity().Get_EntityNumber();
-                    });
-
-                    // Advance the SOFT preference CYCLICALLY through the cluster (stable
-                    // entity-number order). Pure modular wrap so EVERY tap moves to a different
-                    // member — a 2-cluster toggles, a 3-cluster goes 1->2->3->1. (The old
-                    // "step past the last -> auto-follow" created a DEAD FIXED POINT whenever the
-                    // auto-pick was the LAST sorted member: tap -> wrap -> re-pick the same best
-                    // -> nothing visibly changes. That's the "cycle does not happen" symptom.)
-                    // Auto-follow still resumes on its own: the soft preference auto-clears once
-                    // the preferred entity leaves the screen (look away → the cluster merges).
-                    const auto CurPos  = Cluster.IndexOfByKey(_LockedCandidateIndex);
-                    const auto NextPos = (CurPos + 1) % Cluster.Num();
-
-                    _PreferredCoLocated = CandidateHandles[Cluster[NextPos]];
-                    ck::debug_overlay::Log(
-                        TEXT("Cycled co-located preference ({}/{})"), NextPos + 1, Cluster.Num());
-                }
-            }
-        }
-
         // Double-tap EcsDebuggerFocusKey (default Left Ctrl): open the focused entity in the
         // CK ECS Debugger (no-op if the CkEcsDebugger module isn't loaded).
         if (WasDoubleTapped(Settings->EcsDebuggerFocusKey, _LastEcsFocusKeyPressTime))
@@ -765,48 +592,7 @@ auto
         _LastSyncedEntity = FCk_Handle{};
     }
 
-    // ---- 6. B2 — marker billboards + parent→child links ----
-    // The shared _Markers snapshot was rebuilt in Gather_Candidates (same set as the
-    // candidates). Here we emit the dashed hierarchy links and stash the per-tick draw
-    // state DoDrawMarkers needs (focused entity + pawn-marker suppression).
-    if (ck::IsValid(PC))
-    {
-        _FocusedEntityNum = ck::IsValid(FocusEntity)
-            ? static_cast<uint32>(FocusEntity.Get_Entity().Get_EntityNumber())
-            : MAX_uint32;
-
-        // The possessed pawn's entities get no marker — it would sit permanently at
-        // screen center. They remain candidates (focusable/cyclable/plated) on purpose.
-        const auto IgnoredActors = Get_LocalIgnoredActors(World, _ViewpointIsEjected);
-
-        _MarkerSuppressed.Reset();
-        for (const auto& CandHandle : CandidateHandles)
-        {
-            if (Is_EntityOwnedByIgnoredActor(CandHandle, IgnoredActors))
-            {
-                _MarkerSuppressed.Add(
-                    static_cast<uint32>(CandHandle.Get_Entity().Get_EntityNumber()));
-            }
-        }
-
-        _Markers.DrawLinks(World);
-
-        // Throttled diagnostics (~1/sec): candidate/marker counts + first candidate location.
-        if (Now - _LastMarkerLogTime >= 1.0)
-        {
-            _LastMarkerLogTime = Now;
-
-            const auto FirstCandidateLoc = Candidates.Num() > 0
-                ? Candidates[0].WorldLocation.ToString()
-                : FString{TEXT("none")};
-
-            ck::debug_overlay::Log(
-                TEXT("Markers: Candidates=[{}] Markers=[{}] FirstCandidateLoc=[{}]"),
-                CandidateHandles.Num(),
-                CandidateHandles.Num() - _MarkerSuppressed.Num(),
-                FirstCandidateLoc);
-        }
-    }
+    Update_SelectionHud();
 
     // ---- 7. Build model ----
     auto Model = FCk_DebugOverlay_EntityModel{};
@@ -950,63 +736,6 @@ auto
 
 auto
     UCk_DebugOverlay_Subsystem::
-    Gather_Candidates(
-        UWorld*                                              InWorld,
-        const TArray<TSharedPtr<ICk_DebugOverlay_Provider>>& InProviders,
-        const TOptional<FVector>&                            InCullOrigin,
-        const TArray<FCk_Handle>&                            InFullDepthRoots,
-        TArray<FCk_Handle>&                                  OutHandles,
-        TArray<ck_debugoverlay::FCandidate>&                 OutCandidates)
-    -> void
-{
-    OutHandles.Empty();
-    OutCandidates.Empty();
-
-    // Delegate enumeration (transform view, pending-kill + PMG debug-shape exclusion,
-    // depth walk, shared `ck.Debug.EntityMarkers.MaxDepth` gate) to the shared marker
-    // preview. The only overlay-specific rule is the provider filter: an entity is a
-    // candidate iff at least one provider is willing to serve it. Markers, links, and
-    // candidates are therefore the same set — what you see is what you can focus.
-    auto GatherParams = FCkDebug_EntityMarkers::FGatherParams{};
-    GatherParams.FullDepthRoots = InFullDepthRoots;
-    GatherParams.Filter = [&InProviders](const FCk_Handle& InHandle) -> bool
-    {
-        for (const auto& Provider : InProviders)
-        {
-            if (Provider && Provider->CanProvide(InHandle))
-            { return true; }
-        }
-        return false;
-    };
-
-    // Diamond/candidate distance cull (declutter). Only applied when a real viewpoint
-    // origin exists and MarkerMaxDist > 0; otherwise the whole transform set is gathered.
-    if (const auto* Settings = GetDefault<UCk_DebugOverlay_Settings>();
-        Settings != nullptr && InCullOrigin.IsSet() && Settings->MarkerMaxDist > 0.0f)
-    {
-        GatherParams.CullOrigin = InCullOrigin;
-        GatherParams.CullRadius = Settings->MarkerMaxDist;
-    }
-
-    _Markers.Gather(InWorld, GatherParams);
-
-    for (const auto& Entry : _Markers.Get_Entries())
-    {
-        auto Candidate          = ck_debugoverlay::FCandidate{};
-        Candidate.WorldLocation = Entry.WorldPos;
-        // bIsOnScreen filled in DoTick after projection.
-        Candidate.bIsOnScreen   = false;
-        Candidate.Depth         = Entry.Depth;
-
-        OutHandles.Add(Entry.Entity);
-        OutCandidates.Add(Candidate);
-    }
-}
-
-// ====================================================================================================================
-
-auto
-    UCk_DebugOverlay_Subsystem::
     Build_Model(
         const FCk_Handle&                                    InFocusEntity,
         const TArray<TSharedPtr<ICk_DebugOverlay_Provider>>& InProviders,
@@ -1099,7 +828,7 @@ auto
     // Layout quick-switcher chip — primary card only (pinned cards share the same layout).
     _RootWidget->Set_FocusCardContent(
         InModel, CardStyle, *_History, InNow, _FocusLocked, FocusIsPinned,
-        FocusCoLocIndex, FocusCoLocCount, Get_LayoutSwitcherLabel());
+        FocusCoLocIndex, FocusCoLocCount, Get_LayoutSwitcherLabel(), Get_SelectionStatus(true));
 
     // ---- Pinned cards (item 6): dedupe vs the live focus, build models ----
     auto PinnedModels = TArray<FCk_DebugOverlay_EntityModel>{};
@@ -1116,8 +845,8 @@ auto
     // ---- World tags (Slate plates anchored at the entity's screen position) ----
     // ScreenPos comes from ProjectWorldToScreen (raw pixels) divided by the viewport DPI scale
     // (Slate viewport overlays position children in DPI-scaled units) so each plate lands on
-    // its diamond marker. The focus entity's plate is highlighted; co-located clusters fan out
-    // gradually with camera proximity.
+    // its diamond marker. The focus entity's plate is highlighted; co-located entities retain
+    // their truthful projected anchors and are disambiguated by the selection HUD.
     auto DpiScale = 1.0f;
     if (ck::IsValid(InPC))
     {
@@ -1126,9 +855,10 @@ auto
     }
     DpiScale = FMath::Max(0.01f, DpiScale);
 
+    const auto WorldFocus = NOT _FamilyVisible && ck::IsValid(_SelectionRoot) ? _SelectionRoot : InModel.Entity;
     const auto WorldTags = ck_debugoverlay::Build_WorldTags(
         InCandidateHandles, InCandidates, InProviders, InLayout, InPC, _ViewpointIsEjected,
-        DpiScale, InModel.Entity);
+        DpiScale, WorldFocus);
 
     _RootWidget->Update_WorldTags(WorldTags);
 
@@ -1141,25 +871,29 @@ auto
         };
 
         const auto Compact = FString::Printf(
-            TEXT("%s x2 pin   %s x2 cycle/unlock   %s x2 unpin-all   %s x2 ECS   %s x2 layout   %s x2 help"),
+            TEXT("%s / %s prev / next   hold %s lock   %s x2 pin card   %s x2 unpin-all   %s x2 ECS   %s x2 layout"),
+            *KeyName(InputSettings->PreviousKey),
+            *KeyName(InputSettings->NextKey),
+            *KeyName(InputSettings->SelectKey),
             *KeyName(InputSettings->LockKey),
-            *KeyName(InputSettings->CycleCoLocatedKey),
             *KeyName(InputSettings->UnpinAllKey),
             *KeyName(InputSettings->EcsDebuggerFocusKey),
-            *KeyName(InputSettings->CycleLayoutKey),
-            *KeyName(InputSettings->HelpKey));
+            *KeyName(InputSettings->CycleLayoutKey));
 
         const auto Full = FString::Printf(
             TEXT("CK ON-SCREEN DEBUGGER\n")
-            TEXT("%s x2   pin / unpin focused entity (side-by-side card)\n")
-            TEXT("%s x2   cycle co-located entities (one tap past the last UNLOCKS / auto-follows)\n")
+            TEXT("%s / %s   previous / next entity (relative badges)\n")
+            TEXT("tap %s   select best; hold to lock / unlock selection\n")
+            TEXT("%s x2   pin / unpin focused entity data card\n")
             TEXT("%s x2   release ALL pins\n")
             TEXT("%s x2   open focused entity in ECS Debugger\n")
             TEXT("%s x2   cycle the active LAYOUT (remembered per user; chip in the card corner)\n")
             TEXT("%s x2   toggle this help\n")
-            TEXT("console: ck.DebugOverlay .Next .Prev .Lock .Layout.Next/.Prev .UnpinAll .Help"),
+            TEXT("console: ck.DebugOverlay .Select .Lock .Next .Prev .Family .Settings .Layout.Next/.Prev .UnpinAll .Help"),
+            *KeyName(InputSettings->PreviousKey),
+            *KeyName(InputSettings->NextKey),
+            *KeyName(InputSettings->SelectKey),
             *KeyName(InputSettings->LockKey),
-            *KeyName(InputSettings->CycleCoLocatedKey),
             *KeyName(InputSettings->UnpinAllKey),
             *KeyName(InputSettings->EcsDebuggerFocusKey),
             *KeyName(InputSettings->CycleLayoutKey),
@@ -1174,210 +908,6 @@ auto
 // Delegates to the shared FCkDebug_EntityMarkers preview: tint encodes hierarchy depth,
 // non-focused markers are semi-transparent, the focused one is opaque + hover texture + 1.25×.
 // ====================================================================================================================
-
-auto
-    UCk_DebugOverlay_Subsystem::
-    DoDrawMarkers(
-        UCanvas*           InCanvas,
-        APlayerController* InPC)
-    -> void
-{
-    if (ck::diagnostic_visibility::Is_HiddenForStreamerMode())
-    { return; }
-
-    if (NOT _RootWidget.IsValid())
-    { return; }
-
-    if (InCanvas == nullptr)
-    { return; }
-
-    auto* World = Resolve_ActiveWorld();
-    if (ck::Is_NOT_Valid(World))
-    { return; }
-
-    // The draw service fires for every viewport on screen; only draw into ours.
-    if (ck::IsValid(InPC) && InPC->GetWorld() != World)
-    { return; }
-
-    const auto* Settings = GetDefault<UCk_DebugOverlay_Settings>();
-
-    auto DrawParams                 = FCkDebug_EntityMarkers::FDrawParams{};
-    DrawParams.TileSizePx           = 28.0f * (Settings ? Settings->DiamondScale : 1.0f);
-    DrawParams.DefaultAlpha         = 0.45f;
-    DrawParams.EmphasizedEntityNum  = _FocusedEntityNum;
-    DrawParams.EmphasizedScale      = 1.25f;
-    DrawParams.SuppressedEntityNums = &_MarkerSuppressed;
-
-    _Markers.DrawMarkers(InCanvas, DrawParams);
-}
-
-// ====================================================================================================================
-// World plates — drawn on the marker canvas (UCanvas::Project), so they project with the exact
-// rendered view and stay aligned with the diamonds in possessed / ejected / simulate. Co-located
-// clusters fan out gradually as the camera nears them (collapsed at range → look like one entity);
-// the focus plate is drawn highlighted to match the emphasized diamond.
-// ====================================================================================================================
-
-#if 0 // Retired: world plates are now rich Slate cards (see Build_WorldTags / Update_WorldTags).
-auto
-    UCk_DebugOverlay_Subsystem::
-    DoDrawPlates(
-        UCanvas*           InCanvas,
-        APlayerController* /*InPC*/)
-    -> void
-{
-    if (InCanvas == nullptr || _CanvasPlates.IsEmpty())
-    { return; }
-
-    auto* Font = GEngine != nullptr ? GEngine->GetSmallFont() : nullptr;
-    if (Font == nullptr)
-    { return; }
-
-    const auto* Settings = GetDefault<UCk_DebugOverlay_Settings>();
-    const auto FanFull     = Settings ? Settings->FanFullDist          : 500.0f;
-    const auto FanFade     = Settings ? Settings->FanFadeDist          : 2000.0f;
-    const auto FanMaxSpace = Settings ? Settings->FanMaxSpacing        : 110.0f;
-    const auto CellPx      = Settings ? Settings->CoLocatedScreenRadius : 36.0f;
-
-    const auto CanvasW = static_cast<float>(InCanvas->SizeX);
-    const auto CanvasH = static_cast<float>(InCanvas->SizeY);
-
-    // --- Project every plate onto this viewport (same projection as the diamonds) ---
-    struct FProj { int32 PlateIdx = 0; FVector2D Pos = FVector2D::ZeroVector; int32 FanIdx = INDEX_NONE; int32 FanCount = 0; };
-    auto Projected = TArray<FProj>{};
-    Projected.Reserve(_CanvasPlates.Num());
-    for (auto Idx = 0; Idx < _CanvasPlates.Num(); ++Idx)
-    {
-        const auto P = InCanvas->Project(_CanvasPlates[Idx].WorldLocation);
-        if (P.Z <= 0.0f)
-        { continue; }
-        if (P.X < 0.0f || P.Y < 0.0f || P.X >= CanvasW || P.Y >= CanvasH)
-        { continue; }
-        Projected.Add(FProj{ Idx, FVector2D{ static_cast<float>(P.X), static_cast<float>(P.Y) }, INDEX_NONE, 0 });
-    }
-
-    // --- Group co-located projected plates; fan each cluster gradually by camera distance ---
-    const auto CellW = FMath::Max(8.0f, CellPx * 1.5f);
-    const auto CellH = FMath::Max(8.0f, CellPx);
-
-    auto CellMembers = TMap<FIntPoint, TArray<int32>>{}; // values = indices into Projected
-    for (auto P = 0; P < Projected.Num(); ++P)
-    {
-        const auto Cell = FIntPoint{
-            FMath::RoundToInt32(Projected[P].Pos.X / CellW),
-            FMath::RoundToInt32(Projected[P].Pos.Y / CellH) };
-        CellMembers.FindOrAdd(Cell).Add(P);
-    }
-
-    for (auto& Pair : CellMembers)
-    {
-        auto& Members = Pair.Value;
-        if (Members.Num() <= 1)
-        { continue; }
-
-        // Fan factor from the CLOSEST member: 1 (full fan) near, 0 (collapsed) far.
-        auto MinDist = TNumericLimits<float>::Max();
-        for (const auto P : Members)
-        { MinDist = FMath::Min(MinDist, _CanvasPlates[Projected[P].PlateIdx].Distance); }
-
-        const auto FanFactor = (FanFade > FanFull)
-            ? 1.0f - FMath::Clamp((MinDist - FanFull) / (FanFade - FanFull), 0.0f, 1.0f)
-            : (MinDist <= FanFull ? 1.0f : 0.0f);
-
-        Members.Sort([&Projected](int32 InA, int32 InB)
-        { return Projected[InA].Pos.X < Projected[InB].Pos.X; });
-
-        const auto Count = Members.Num();
-        auto CentroidX = 0.0f;
-        auto TopY      = TNumericLimits<float>::Max();
-        for (const auto P : Members)
-        {
-            CentroidX += Projected[P].Pos.X;
-            TopY = FMath::Min(TopY, Projected[P].Pos.Y);
-        }
-        CentroidX /= static_cast<float>(Count);
-
-        for (auto i = 0; i < Count; ++i)
-        {
-            const auto P    = Members[i];
-            const auto Slot = static_cast<float>(i) - (Count - 1) * 0.5f;
-
-            const auto FannedX = CentroidX + Slot * FanMaxSpace;
-            const auto FannedY = TopY - FMath::Abs(Slot) * 14.0f;
-
-            // Lerp from collapsed (right on the marker) to fully fanned as the camera nears.
-            Projected[P].Pos.X   = FMath::Lerp(Projected[P].Pos.X, FannedX, FanFactor);
-            Projected[P].Pos.Y   = FMath::Lerp(Projected[P].Pos.Y, FannedY, FanFactor);
-            Projected[P].FanIdx  = i;
-            Projected[P].FanCount = Count;
-        }
-    }
-
-    // --- Draw far→near so near/focus plates land on top ---
-    Projected.Sort([this](const FProj& InA, const FProj& InB)
-    { return _CanvasPlates[InA.PlateIdx].Distance > _CanvasPlates[InB.PlateIdx].Distance; });
-
-    const auto LineH = static_cast<float>(Font->GetMaxCharHeight());
-
-    for (const auto& Pr : Projected)
-    {
-        const auto& Plate = _CanvasPlates[Pr.PlateIdx];
-
-        // Header / token line — focus is bright white, others a softer grey.
-        auto HeaderStr = Plate.bIsNearPlate ? Plate.Header : Plate.FarText;
-        if (Pr.FanCount > 1)
-        { HeaderStr = FString::Printf(TEXT("[%d/%d] "), Pr.FanIdx + 1, Pr.FanCount) + HeaderStr; }
-
-        const auto HeaderColor = Plate.bIsFocus
-            ? FLinearColor{ 1.0f, 1.0f, 1.0f, 1.0f }
-            : FLinearColor{ 0.78f, 0.85f, 0.95f, 0.9f };
-
-        // The marker sits at Pos; stack the plate text just above it.
-        const auto HeaderY = Plate.bIsNearPlate
-            ? Pr.Pos.Y - 18.0f - LineH * 1.0f   // leave room for the badge row under the header
-            : Pr.Pos.Y - 18.0f;
-
-        {
-            auto Item = FCanvasTextItem(
-                FVector2D{ Pr.Pos.X, HeaderY }, FText::FromString(HeaderStr), Font, HeaderColor);
-            Item.bCentreX = true;
-            Item.EnableShadow(FLinearColor::Black);
-            InCanvas->DrawItem(Item);
-        }
-
-        // Badge row (near plates only): colored abbrev chips centered under the header.
-        if (Plate.bIsNearPlate && Plate.Badges.Num() > 0)
-        {
-            constexpr auto BadgeGap = 5.0f;
-
-            auto TotalW = 0.0f;
-            for (const auto& Badge : Plate.Badges)
-            {
-                TotalW += static_cast<float>(Font->GetStringSize(*Badge.Text)) + BadgeGap;
-            }
-            TotalW = FMath::Max(0.0f, TotalW - BadgeGap);
-
-            auto PenX = Pr.Pos.X - TotalW * 0.5f;
-            const auto BadgeY = Pr.Pos.Y - 18.0f;
-
-            for (const auto& Badge : Plate.Badges)
-            {
-                const auto W = static_cast<float>(Font->GetStringSize(*Badge.Text));
-
-                auto Color = Badge.Color;
-                Color.A = Plate.bIsFocus ? 1.0f : 0.85f;
-
-                auto Item = FCanvasTextItem(
-                    FVector2D{ PenX, BadgeY }, FText::FromString(Badge.Text), Font, Color);
-                Item.EnableShadow(FLinearColor::Black);
-                InCanvas->DrawItem(Item);
-
-                PenX += W + BadgeGap;
-            }
-        }
-    }
-}
-#endif // Retired DoDrawPlates
 
 // ====================================================================================================================
 // CVar / command callbacks
@@ -1407,19 +937,7 @@ auto
     DoCmd_Next()
     -> void
 {
-    if (_LastFrameCandidates.IsEmpty())
-    { return; }
-
-    _FocusLocked = true;
-
-    if (_LockedCandidateIndex == INDEX_NONE)
-    {
-        _LockedCandidateIndex = 0;
-    }
-    else
-    {
-        _LockedCandidateIndex = (_LockedCandidateIndex + 1) % _LastFrameCandidates.Num();
-    }
+    Cycle_Selection(1);
 }
 
 auto
@@ -1427,20 +945,7 @@ auto
     DoCmd_Prev()
     -> void
 {
-    if (_LastFrameCandidates.IsEmpty())
-    { return; }
-
-    _FocusLocked = true;
-
-    if (_LockedCandidateIndex == INDEX_NONE)
-    {
-        _LockedCandidateIndex = _LastFrameCandidates.Num() - 1;
-    }
-    else
-    {
-        _LockedCandidateIndex =
-            (_LockedCandidateIndex - 1 + _LastFrameCandidates.Num()) % _LastFrameCandidates.Num();
-    }
+    Cycle_Selection(-1);
 }
 
 auto
@@ -1448,8 +953,17 @@ auto
     DoCmd_Lock()
     -> void
 {
-    _FocusLocked = !_FocusLocked;
-    ck::debug_overlay::Log(TEXT("Focus lock: {}"), _FocusLocked ? TEXT("ON") : TEXT("OFF"));
+    if (ck::IsValid(_SelectionLockedEntity))
+    {
+        _SelectionLockedEntity = FCk_Handle{};
+        _SelectionCycleTarget = FCk_Handle{};
+        Refresh_SelectionSnapshot(true);
+        return;
+    }
+    if (ck::Is_NOT_Valid(_FocusedEntity))
+    { Refresh_SelectionSnapshot(true); }
+    _SelectionLockedEntity = _FocusedEntity;
+    _FocusLocked = ck::IsValid(_SelectionLockedEntity);
 }
 
 auto
@@ -1543,8 +1057,7 @@ auto
 
 #else // WITH_CK_DEBUG_OVERLAY
 
-// The debug overlay is compiled out (e.g. Test/Shipping, or wherever the UncookedOnly
-// CkDebuggerCommon dependency is absent), but the UCLASS still declares Initialize/
+// The debug overlay is compiled out in Shipping, but the UCLASS still declares Initialize/
 // Deinitialize unconditionally so UHT always sees the subsystem. Provide trivial bodies
 // that just forward to the base subsystem so the linker is satisfied — the subsystem
 // does nothing in this configuration.

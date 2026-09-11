@@ -169,23 +169,6 @@ public:
     // runtime settings class UCk_DebugOverlay_InputSettings (below) so each developer can rebind
     // without touching shared project config.
 
-    // ---- Co-located fan-out (gradual, distance-driven) ----
-
-    // Camera distance (cm) at/below which a co-located cluster is fanned out to MAXIMUM.
-    UPROPERTY(Config, EditAnywhere, Category="World Tags", meta=(ClampMin="0.0"))
-    float FanFullDist = 1000.0f;
-
-    // Camera distance (cm) at/above which a co-located cluster is fully collapsed (no fan —
-    // the plates sit on top of each other, "looking like one entity"). Between FanFullDist
-    // and FanFadeDist the fan spread is lerped, so it opens up as you approach. Default spans
-    // most of the marker range so the fan is visible at typical debug distances; raise the
-    // marker cull range (MarkerMaxDist) and lower this if you want far clusters to collapse.
-    UPROPERTY(Config, EditAnywhere, Category="World Tags", meta=(ClampMin="0.0"))
-    float FanFadeDist = 6000.0f;
-
-    // Maximum horizontal spacing (px) between fanned plates at full fan.
-    UPROPERTY(Config, EditAnywhere, Category="World Tags", meta=(ClampMin="16.0", ClampMax="400.0"))
-    float FanMaxSpacing = 110.0f;
 };
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -212,11 +195,10 @@ public:
     UPROPERTY(Config, EditAnywhere, Category="Input")
     FKey EcsDebuggerFocusKey = EKeys::LeftControl;
 
-    // Tap twice quickly to cycle the focus through co-located entities (soft preference, not a
-    // hard lock; wraps to auto-follow past the last). A NON-modifier key by default — a lone
-    // modifier like Alt triggers the OS/Slate menu chrome (cursor appears, viewport defocuses).
-    UPROPERTY(Config, EditAnywhere, Category="Input")
-    FKey CycleCoLocatedKey = EKeys::V;
+    // Deprecated saved compatibility slot. Selection cycling is bound through PreviousKey and
+    // NextKey; this legacy gesture is not active.
+    UPROPERTY(Config, VisibleAnywhere, Category="Input", meta=(DeprecatedProperty, DeprecationMessage="Use PreviousKey and NextKey."))
+    FKey CycleCoLocatedKey = EKeys::Invalid;
 
     // Tap twice quickly to release ALL pinned cards at once (also `ck.DebugOverlay.UnpinAll`, or
     // double-tap the pin key on an entity to unpin just it).
@@ -224,8 +206,8 @@ public:
     FKey UnpinAllKey = EKeys::BackSpace;
 
     // Tap twice quickly to cycle the ACTIVE LAYOUT (same step as `ck.DebugOverlay.Layout.Next`;
-    // the card's corner chip shows which layout is live). A NON-modifier key by default, same
-    // reason as CycleCoLocatedKey.
+    // the card's corner chip shows which layout is live). A NON-modifier key avoids Slate menu
+    // chrome and viewport defocus.
     UPROPERTY(Config, EditAnywhere, Category="Input")
     FKey CycleLayoutKey = EKeys::L;
 
@@ -233,6 +215,32 @@ public:
     // `ck.DebugOverlay.Help`). Default unbound.
     UPROPERTY(Config, EditAnywhere, Category="Input")
     FKey HelpKey;
+
+    // Runtime entity-selection gestures. These stay in this per-user input store so rebinding
+    // does not modify the shared overlay project settings. SettingsKey is deliberately a key
+    // plus fixed Ctrl requirement: the compact runtime drawer can capture a normal FKey while
+    // retaining a chord that does not steal ordinary comma input.
+    UPROPERTY(Config, EditAnywhere, Category="Input|Selection")
+    FKey SelectKey = EKeys::Comma;
+
+    UPROPERTY(Config, EditAnywhere, Category="Input|Selection")
+    FKey PreviousKey = EKeys::LeftBracket;
+
+    UPROPERTY(Config, EditAnywhere, Category="Input|Selection")
+    FKey NextKey = EKeys::RightBracket;
+
+    UPROPERTY(Config, EditAnywhere, Category="Input|Selection")
+    FKey FamilyKey = EKeys::Backslash;
+
+    UPROPERTY(Config, EditAnywhere, Category="Input|Selection")
+    FKey SettingsKey = EKeys::Comma;
+
+    UPROPERTY(Config, EditAnywhere, Category="Input|Selection")
+    bool SettingsRequireControl = true;
+
+    // A short SelectKey tap selects; holding it toggles the current selection lock.
+    UPROPERTY(Config, EditAnywhere, Category="Input|Selection", meta=(ClampMin="0.05", ClampMax="3.0"))
+    float HoldSelectSeconds = 0.4f;
 
     // Per-USER memory of the layout the quick-switcher last selected, re-seeded on the next
     // session. It lives here rather than next to the layout definitions because this is the
@@ -246,8 +254,8 @@ public:
     UPROPERTY(Config, EditAnywhere, Category="Input", meta=(ClampMin="10.0", ClampMax="1000.0"))
     float CoLocatedRadius = 100.0f;
 
-    // Screen-space radius (px) for treating on-screen candidates as one co-located cluster
-    // (drives the fan-out i/N and the focus-card i/N).
+    // Screen-space radius (px) for treating on-screen candidates as one co-located cluster.
+    // Drives selection grouping and the focus-card co-location count without moving world anchors.
     UPROPERTY(Config, EditAnywhere, Category="Input", meta=(ClampMin="4.0", ClampMax="256.0"))
     float CoLocatedScreenRadius = 36.0f;
 

@@ -13,7 +13,7 @@ public class CkEntityDebugOverlay : CkModuleRules
         PublicDependencyModuleNames.AddRange(new string[]
         {
             "Core", "CoreUObject", "Engine", "DeveloperSettings",
-            "GameplayTags", "InputCore",
+            "GameplayTags", "InputCore", "Json",
             "Slate", "SlateCore", "UMG", "ApplicationCore",
             "CkCore", "CkEcs", "CkEcsExt", "CkEntityExtension", "CkLog", "CkSettings", "CkDebuggerCommon",
             "CkEditorTools",

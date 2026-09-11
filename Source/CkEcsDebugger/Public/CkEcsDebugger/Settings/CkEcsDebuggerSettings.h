@@ -68,6 +68,13 @@ public:
         meta = (DisplayName = "Archetype Grid Columns", ClampMin = 1, ClampMax = 8))
     int32 ArchetypeGridColumns = 4;
 
+    // Apparent length of the selected entity's longest projected gizmo axis.
+    // Stored per-user and consumed live by the viewport overlay.
+    UPROPERTY(Config, EditAnywhere, Category = "Selection Gizmo",
+        meta = (DisplayName = "Selection Gizmo Size (px)", ClampMin = 24, ClampMax = 192,
+            ToolTip = "Screen-space size of the ECS Debugger selection gizmo. The gizmo keeps this apparent size as the camera moves."))
+    float SelectionGizmoSizePixels = 72.0f;
+
     // Substring tokens whose entities should be hidden from the ECS entity tree.
     // Each token matches PARTIALLY against (a) inspector IDs — "Transform"
     // matches "FCkInspector_Transform", hiding entities that inspector can

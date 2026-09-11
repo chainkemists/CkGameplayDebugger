@@ -91,7 +91,8 @@ public class CkEcsDebugger : CkModuleRules
                 "WorkspaceMenuStructure",
                 "EditorStyle",
                 "ToolMenus",
-                "GraphEditor"
+                "GraphEditor",
+                "LevelEditor"
             });
         }
     }

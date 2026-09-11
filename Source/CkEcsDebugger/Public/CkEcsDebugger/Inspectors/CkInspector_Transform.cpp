@@ -1,11 +1,8 @@
 #include "CkInspector_Transform.h"
 
 #include "CkCore/Validation/CkIsValid.h"
-#include "CkCore/Debug/CkDebugDraw_Utils.h"
-#include "CkEcs/EntityLifetime/CkEntityLifetime_Utils.h"
 #include "CkEcsExt/Transform/CkTransform_Utils.h"
 
-#include "CkDebuggerCommon/Navigation/CkDebug_ViewportView.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_OrientationCube.h"
 
 #include "CkEcsDebugger/Inspectors/CkDebuggerInspectorRegistry.h"
@@ -320,20 +317,9 @@ auto FCkInspector_Transform::Build_Inspector(const FCk_Handle& Entity) -> TShare
 
 auto FCkInspector_Transform::Tick(const FCk_Handle& Entity, float InDeltaTime) -> void
 {
+    static_cast<void>(InDeltaTime);
     if (ck::Is_NOT_Valid(Entity) || NOT UCk_Utils_Transform_UE::Has(Entity))
-    {
-        _Gizmos.Remove(Entity);
-        return;
-    }
-
-    // Possessed first person + inspecting your own pawn: the triad + floating label
-    // sit inside the camera. Suppressed until ejected (mirrors the overlay's
-    // self-marker suppression).
-    if (ck::DebugViewportView::Get_IsLocalPlayerSelf(Entity))
-    {
-        _Gizmos.Remove(Entity);
-        return;
-    }
+    { return; }
 
     // The only structural change this inspector has: the Interpolation section exists exactly while the
     // sibling feature does. Everything else in the panel is attribute-driven and never needs a rebuild.
@@ -343,27 +329,4 @@ auto FCkInspector_Transform::Tick(const FCk_Handle& Entity, float InDeltaTime) -
         _HadInterpolation = HasInterpolation;
         RequestRebuild();
     }
-
-    const auto& Transform = UCk_Utils_Transform_TypeUnsafe_UE::Get_EntityCurrentTransform(Entity);
-    const auto EntityWorld = UCk_Utils_EntityLifetime_UE::Get_WorldForEntity(Entity);
-
-    if (ck::Is_NOT_Valid(EntityWorld))
-    { return; }
-
-    // Persistent PMG triad instead of per-tick DrawDebugTransformGizmo — one-frame
-    // debug lines blink whenever the inspector refresh gate caps below frame rate.
-    _Gizmos.UpdateGizmo(EntityWorld, Entity, Transform);
-
-    const auto TextLocation = Transform.GetLocation() + FVector(0.0f, 0.0f, 50.0f);
-    UCk_Utils_DebugDraw_UE::DrawDebugString(
-        EntityWorld,
-        TextLocation,
-        Entity.ToString(),
-        FLinearColor::White,
-        0.0f);
-}
-
-auto FCkInspector_Transform::OnDeactivated() -> void
-{
-    _Gizmos.Reset();
 }

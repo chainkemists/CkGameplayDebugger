@@ -26,6 +26,8 @@
 #include "CkEcsDebugger/Pages/CkDebuggerPage_Overview.h"
 #include "CkEcsDebugger/Pages/CkDebuggerPage_Archetypes.h"
 #include "CkEcsDebugger/Pages/CkDebuggerPage_Activity.h"
+#include "CkEcsDebugger/Settings/CkEcsDebuggerSettings.h"
+#include "CkEcsDebugger/Viewport/SCkDebuggerSelectionGizmo.h"
 
 #include "CkDebuggerCommon/Settings/CkDebuggerStyleSettings.h"
 #include "CkDebuggerCommon/Styles/CkDebuggerAxes.h"
@@ -45,11 +47,20 @@
 #include "CkEcsDebugger/Panels/CkDebuggerPanel_Inspector.h"
 #include "CkDebuggerCommon/Styles/CkDebuggerStyle.h"
 
+#include "CkEcsExt/SceneNode/CkSceneNode_Utils.h"
+#include "CkEcsExt/Transform/CkTransform_Utils.h"
+
 #include "CkEditorTools/Style/CkStyle.h"
 
 // On-Screen Overlay controls (toolbar popover mirroring the overlay CVars + settings).
 #include "CkEntityDebugOverlay/Settings/CkDebugOverlay_Settings.h"
 #include "HAL/IConsoleManager.h"
+#include "Engine/GameViewportClient.h"
+
+#if WITH_EDITOR
+#include "EditorViewportClient.h"
+#include "SLevelViewport.h"
+#endif
 
 const FName SCkDebuggerWindow_Main::WindowId = FName(TEXT("EcsDebugger"));
 
@@ -235,6 +246,8 @@ auto SCkDebuggerWindow_Main::Construct(const FArguments& InArgs) -> void
 
 SCkDebuggerWindow_Main::~SCkDebuggerWindow_Main()
 {
+    Reset_SelectionGizmo();
+
     if (WorldModel.IsValid() && WorldChangedHandle.IsValid())
     { WorldModel->OnWorldChanged.Remove(WorldChangedHandle); }
 
@@ -248,6 +261,8 @@ auto SCkDebuggerWindow_Main::HandleWorldChanged(UWorld*) -> void
     // selection so inspectors/graphs deactivate, then release tree-owned copies.
     if (ViewportPicker.IsValid())
     { ViewportPicker->Deactivate(); }
+
+    Reset_SelectionGizmo();
 
     if (SelectionModel.IsValid())
     { SelectionModel->Reset_ForWorldChange(); }
@@ -282,6 +297,10 @@ auto SCkDebuggerWindow_Main::Tick(
     // revision and fires OnStyleRevisionChanged. Calling the grandparent compiles and runs, and
     // silently kills live-apply for every structural axis in this window.
     SCkDebugger_WindowBase::Tick(InAllottedGeometry, InCurrentTime, InDeltaTime);
+
+    // The selected entity can move even while debugger-page refresh is paused.
+    // Keep the screen-space gizmo on the ungated viewport path with the picker.
+    Update_SelectionGizmo();
 
     // Page ticks drive graph rebuilds — gate them behind the user's refresh
     // settings. Viewport-picker ticks stay ungated so input handling keeps
@@ -589,7 +608,176 @@ auto SCkDebuggerWindow_Main::Build_PickerExtraSettings() -> TSharedRef<SWidget>
                 Settings->SaveConfig();
             })
             .ShowLabel(true)
+        ]
+
+        // ---- Selected entity viewport gizmo ----
+        + SVerticalBox::Slot()
+        .AutoHeight()
+        .Padding(FMargin(0.0f, FCkDebuggerStyle::Padding_Small, 0.0f, 2.0f))
+        [
+            SNew(STextBlock)
+            .Text(FText::FromString(TEXT("SELECTION GIZMO")))
+            .Font_Static(&ck_debugger_window_main::Get_TinyLabelFont)
+            .ColorAndOpacity(FSlateColor(CkStyle::TextMute()))
+        ]
+
+        + SVerticalBox::Slot()
+        .AutoHeight()
+        [
+            SNew(SHorizontalBox)
+            + SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)
+            [
+                SNew(STextBlock)
+                .Text(FText::FromString(TEXT("Size (px)")))
+                .Font_Static(&ck_debugger_window_main::Get_BodyFont)
+                .ColorAndOpacity(FSlateColor(CkStyle::Text()))
+                .ToolTipText(FText::FromString(TEXT(
+                    "Sets the apparent screen-space length of the longest selected-entity gizmo axis.")))
+            ]
+            + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+            [
+                SNew(SBox)
+                .WidthOverride(120.0f)
+                [
+                    SNew(SSpinBox<float>)
+                    .MinValue(24.0f)
+                    .MaxValue(192.0f)
+                    .MinSliderValue(24.0f)
+                    .MaxSliderValue(192.0f)
+                    .Delta(2.0f)
+                    .Value_Lambda([]() -> float
+                    { return ck::EcsSelectionGizmo::Normalize_SizePixels(UCkEcsDebuggerSettings::Get()->SelectionGizmoSizePixels); })
+                    .OnValueChanged_Lambda([](const float InValue)
+                    {
+                        if (auto* Settings = GetMutableDefault<UCkEcsDebuggerSettings>())
+                        { Settings->SelectionGizmoSizePixels = ck::EcsSelectionGizmo::Normalize_SizePixels(InValue); }
+                    })
+                    .OnValueCommitted_Lambda([](const float InValue, ETextCommit::Type)
+                    {
+                        if (auto* Settings = GetMutableDefault<UCkEcsDebuggerSettings>())
+                        {
+                            Settings->SelectionGizmoSizePixels = ck::EcsSelectionGizmo::Normalize_SizePixels(InValue);
+                            Settings->SaveConfig();
+                        }
+                    })
+                ]
+            ]
         ];
+}
+
+auto SCkDebuggerWindow_Main::Reset_SelectionGizmo() -> void
+{
+    if (SelectionGizmo.IsValid())
+    {
+#if WITH_EDITOR
+        if (const auto EditorViewport = SelectionGizmoEditorViewport.Pin())
+        { EditorViewport->RemoveOverlayWidget(SelectionGizmo.ToSharedRef()); }
+#endif
+        if (auto* Viewport = SelectionGizmoViewport.Get())
+        { Viewport->RemoveViewportWidgetContent(SelectionGizmo.ToSharedRef()); }
+        SelectionGizmo->ClearSnapshot();
+        SelectionGizmo.Reset();
+    }
+    SelectionGizmoViewport.Reset();
+#if WITH_EDITOR
+    SelectionGizmoEditorViewport.Reset();
+#endif
+}
+
+auto SCkDebuggerWindow_Main::Update_SelectionGizmo() -> void
+{
+    if (NOT SelectionModel.IsValid() || NOT WorldModel.IsValid())
+    { Reset_SelectionGizmo(); return; }
+
+    const auto Entity = SelectionModel->Get_PrimarySelection();
+    auto* World = WorldModel->Get_SelectedWorld();
+    if (ck::Is_NOT_Valid(Entity) || ck::Is_NOT_Valid(World) ||
+        NOT UCk_Utils_Transform_UE::Has(Entity) || ck::DebugViewportView::Get_IsLocalPlayerSelf(Entity))
+    { if (SelectionGizmo.IsValid()) { SelectionGizmo->ClearSnapshot(); } return; }
+
+#if WITH_EDITOR
+    auto ActiveEditorViewport = TSharedPtr<SLevelViewport>{};
+    if (auto* ViewportClient = ck::DebugViewportView::TryGet_LevelEditorViewport())
+    {
+        ActiveEditorViewport = StaticCastSharedPtr<SLevelViewport>(ViewportClient->GetEditorViewportWidget());
+    }
+#endif
+    auto* GameViewport = World->GetGameViewport();
+#if WITH_EDITOR
+    if (NOT ActiveEditorViewport.IsValid() && ck::Is_NOT_Valid(GameViewport))
+#else
+    if (ck::Is_NOT_Valid(GameViewport))
+#endif
+    { Reset_SelectionGizmo(); return; }
+
+    const auto HostChanged =
+#if WITH_EDITOR
+        NOT SelectionGizmo.IsValid() || SelectionGizmoEditorViewport.Pin() != ActiveEditorViewport ||
+        (NOT ActiveEditorViewport.IsValid() && SelectionGizmoViewport.Get() != GameViewport);
+#else
+        NOT SelectionGizmo.IsValid() || SelectionGizmoViewport.Get() != GameViewport;
+#endif
+    if (HostChanged)
+    {
+        Reset_SelectionGizmo();
+        SelectionGizmo = SNew(SCkDebuggerSelectionGizmo);
+#if WITH_EDITOR
+        if (ActiveEditorViewport.IsValid())
+        {
+            ActiveEditorViewport->AddOverlayWidget(SelectionGizmo.ToSharedRef(), 99);
+            SelectionGizmoEditorViewport = ActiveEditorViewport;
+        }
+        else
+#endif
+        if (ck::IsValid(GameViewport))
+        {
+            GameViewport->AddViewportWidgetContent(SelectionGizmo.ToSharedRef(), 99);
+            SelectionGizmoViewport = GameViewport;
+        }
+        else
+        { Reset_SelectionGizmo(); return; }
+    }
+
+    auto Projection = ck::DebugViewportView::FProjection{};
+    if (NOT ck::DebugViewportView::TryGet_Projection(World, Projection))
+    { SelectionGizmo->ClearSnapshot(); return; }
+
+    const auto Size = ck::EcsSelectionGizmo::Normalize_SizePixels(
+        UCkEcsDebuggerSettings::Get()->SelectionGizmoSizePixels);
+    auto Triads = TArray<ck::EcsSelectionGizmo::FTriad>{};
+    auto SlateLocalSize = SelectionGizmo->GetCachedGeometry().GetLocalSize();
+    if (SlateLocalSize.X <= 0.0f || SlateLocalSize.Y <= 0.0f)
+    { SlateLocalSize = FVector2D{Projection.ViewSize}; }
+    const auto AddProjectedTriad = [&Triads, &Projection, &SlateLocalSize](
+        const TOptional<ck::EcsSelectionGizmo::FTriad>& InProjected)
+    {
+        if (NOT InProjected.IsSet())
+        { return; }
+        if (auto Local = ck::EcsSelectionGizmo::Convert_ToSlateLocal(
+            InProjected.GetValue(), Projection.ViewSize, SlateLocalSize))
+        { Triads.Add(MoveTemp(Local.GetValue())); }
+    };
+
+    // Preserve the former SceneNode context cue, but render it first, smaller, and muted.
+    if (UCk_Utils_SceneNode_UE::Has(Entity))
+    {
+        auto MutableEntity = Entity;
+        const auto Node = UCk_Utils_SceneNode_UE::Cast(MutableEntity);
+        if (ck::IsValid(Node))
+        {
+            const auto Parent = FCk_Handle{UCk_Utils_SceneNode_UE::Get_Parent(Node)};
+            if (ck::IsValid(Parent) && UCk_Utils_Transform_UE::Has(Parent))
+            {
+                AddProjectedTriad(ck::EcsSelectionGizmo::Project_Triad(
+                    Projection, UCk_Utils_Transform_TypeUnsafe_UE::Get_EntityCurrentTransform(Parent), Size, true));
+            }
+        }
+    }
+
+    AddProjectedTriad(ck::EcsSelectionGizmo::Project_Triad(
+        Projection, UCk_Utils_Transform_TypeUnsafe_UE::Get_EntityCurrentTransform(Entity), Size));
+
+    SelectionGizmo->SetSnapshot(MoveTemp(Triads));
 }
 
 // ====================================================================================================================

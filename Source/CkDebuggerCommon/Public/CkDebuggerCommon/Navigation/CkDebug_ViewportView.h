@@ -22,6 +22,18 @@ struct FCk_Handle;
 
 namespace ck::DebugViewportView
 {
+    /** One per-frame projection shared by candidate tests and selection-cone rendering. */
+    struct CKDEBUGGERCOMMON_API FProjection
+    {
+        FMatrix ViewProjection = FMatrix::Identity;
+        FIntRect ViewRect = FIntRect(0, 0, 0, 0);
+        FIntPoint ViewSize = FIntPoint::ZeroValue;
+
+        auto Project(const FVector& InPosition, FVector2D& OutPixel, bool& OutInside) const -> bool;
+    };
+
+    CKDEBUGGERCOMMON_API auto TryGet_Projection(UWorld* InWorld, FProjection& OutProjection) -> bool;
+
     /** Converts normalized viewport coordinates to pixels, rejecting points outside the viewport. */
     CKDEBUGGERCOMMON_API auto
     TryGet_ViewportPixel(

@@ -82,6 +82,62 @@ auto
 // --------------------------------------------------------------------------------------------------------------------
 
 auto
+    FProjection::Project(const FVector& InPosition, FVector2D& OutPixel, bool& OutInside) const -> bool
+{
+    OutInside = false;
+    OutPixel = FVector2D::ZeroVector;
+    if (InPosition.ContainsNaN() || ViewRect.Width() <= 0 || ViewRect.Height() <= 0)
+    { return false; }
+    if (NOT FSceneView::ProjectWorldToScreen(InPosition, ViewRect, ViewProjection, OutPixel))
+    { return false; }
+    OutInside = OutPixel.X >= ViewRect.Min.X && OutPixel.Y >= ViewRect.Min.Y &&
+        OutPixel.X < ViewRect.Max.X && OutPixel.Y < ViewRect.Max.Y;
+    return NOT OutPixel.ContainsNaN();
+}
+
+auto
+    TryGet_Projection(UWorld* InWorld, FProjection& OutProjection) -> bool
+{
+    OutProjection = FProjection{};
+    if (ck::Is_NOT_Valid(InWorld))
+    { return false; }
+#if WITH_EDITOR
+    if (auto* VC = TryGet_LevelEditorViewport())
+    {
+        if (VC->Viewport == nullptr || VC->IsOrtho())
+        { return false; }
+        const auto Size = VC->Viewport->GetSizeXY();
+        if (Size.X <= 0 || Size.Y <= 0)
+        { return false; }
+        const auto Rotation = FInverseRotationMatrix(VC->GetViewRotation()) * FMatrix(
+            FPlane(0, 0, 1, 0), FPlane(1, 0, 0, 0), FPlane(0, 1, 0, 0), FPlane(0, 0, 0, 1));
+        const auto View = FTranslationMatrix(-VC->GetViewLocation()) * Rotation;
+        const auto Projection = FReversedZPerspectiveMatrix(FMath::DegreesToRadians(VC->ViewFOV * 0.5f),
+            static_cast<float>(Size.X) / Size.Y, 1.0f, GNearClippingPlane);
+        OutProjection.ViewProjection = View * Projection;
+        OutProjection.ViewRect = FIntRect(0, 0, Size.X, Size.Y);
+        OutProjection.ViewSize = Size;
+        return true;
+    }
+#endif
+    auto* LocalPlayer = InWorld->GetFirstLocalPlayerFromController();
+    auto* ViewportClient = InWorld->GetGameViewport();
+    if (ck::Is_NOT_Valid(LocalPlayer) || ck::Is_NOT_Valid(ViewportClient))
+    { return false; }
+    if (ViewportClient->Viewport == nullptr)
+    { return false; }
+    auto Data = FSceneViewProjectionData{};
+    if (NOT LocalPlayer->GetProjectionData(ViewportClient->Viewport, Data))
+    { return false; }
+    OutProjection.ViewProjection = Data.ComputeViewProjectionMatrix();
+    OutProjection.ViewRect = Data.GetConstrainedViewRect();
+    OutProjection.ViewSize = ViewportClient->Viewport->GetSizeXY();
+    return OutProjection.ViewRect.Width() > 0 && OutProjection.ViewRect.Height() > 0;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
     Get_IsEjected() -> bool
 {
 #if WITH_EDITOR

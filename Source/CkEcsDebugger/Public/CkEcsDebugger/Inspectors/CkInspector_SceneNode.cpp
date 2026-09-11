@@ -1,9 +1,7 @@
 #include "CkInspector_SceneNode.h"
 
 #include "CkCore/Validation/CkIsValid.h"
-#include "CkCore/Debug/CkDebugDraw_Utils.h"
 #include "CkEcs/Handle/CkHandle_Utils.h"
-#include "CkEcs/EntityLifetime/CkEntityLifetime_Utils.h"
 #include "CkEcsExt/SceneNode/CkSceneNode_Fragment.h"
 #include "CkEcsExt/SceneNode/CkSceneNode_Utils.h"
 #include "CkEcsExt/Transform/CkTransform_Utils.h"
@@ -14,7 +12,6 @@
 #include "CkDebuggerCommon/Styles/CkDebuggerStyle.h"
 
 #include "CkEditorTools/Style/CkStyle.h"
-#include "CkDebuggerCommon/Navigation/CkDebug_ViewportView.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_EntityRef.h"
 
 CK_REGISTER_DEBUGGER_INSPECTOR(FCkInspector_SceneNode)
@@ -335,11 +332,8 @@ auto FCkInspector_SceneNode::Build_Inspector(const FCk_Handle& Entity) -> TShare
 
 auto FCkInspector_SceneNode::Tick(const FCk_Handle& Entity, float InDeltaTime) -> void
 {
+    static_cast<void>(InDeltaTime);
     if (ck::Is_NOT_Valid(Entity) || NOT UCk_Utils_SceneNode_UE::Has(Entity))
-    { return; }
-
-    const auto EntityWorld = UCk_Utils_EntityLifetime_UE::Get_WorldForEntity(Entity);
-    if (ck::Is_NOT_Valid(EntityWorld))
     { return; }
 
     // Keep sibling badges in sync when SceneNodes come and go.
@@ -352,60 +346,4 @@ auto FCkInspector_SceneNode::Tick(const FCk_Handle& Entity, float InDeltaTime) -
             FCkInspectorWidgetBuilder::PopulateBadgeBox(*_SiblingsBox, Siblings);
         }
     }
-
-    // Debug draw: world gizmo for this SceneNode, plus one for its parent — persistent
-    // PMG triads instead of per-tick DrawDebugTransformGizmo (gate-capped one-frame
-    // lines blink; see FCkDebug_PmgGizmoSet).
-    if (NOT UCk_Utils_Transform_UE::Has(Entity))
-    {
-        _Gizmos.Remove(Entity);
-        return;
-    }
-
-    // Possessed first person + inspecting your own pawn's nodes: the triads + label
-    // sit inside the camera. Suppressed until ejected (mirrors the overlay's
-    // self-marker suppression).
-    if (ck::DebugViewportView::Get_IsLocalPlayerSelf(Entity))
-    {
-        _Gizmos.Reset();
-        _LastParentGizmoKey = FCk_Handle{};
-        return;
-    }
-
-    const auto NodeWorld = UCk_Utils_Transform_TypeUnsafe_UE::Get_EntityCurrentTransform(Entity);
-    _Gizmos.UpdateGizmo(EntityWorld, Entity, NodeWorld);
-
-    auto ParentGizmoKey = FCk_Handle{};
-    auto Mut = Entity;
-    const auto Node = UCk_Utils_SceneNode_UE::Cast(Mut);
-    if (ck::IsValid(Node))
-    {
-        const auto Parent = UCk_Utils_SceneNode_UE::Get_Parent(Node);
-        if (ck::IsValid(Parent) && UCk_Utils_Transform_UE::Has(FCk_Handle(Parent)))
-        {
-            const auto ParentWorld = UCk_Utils_Transform_TypeUnsafe_UE::Get_EntityCurrentTransform(FCk_Handle(Parent));
-            ParentGizmoKey = FCk_Handle(Parent);
-            _Gizmos.UpdateGizmo(EntityWorld, ParentGizmoKey, ParentWorld);
-        }
-    }
-
-    if (_LastParentGizmoKey != ParentGizmoKey && ck::IsValid(_LastParentGizmoKey))
-    {
-        _Gizmos.Remove(_LastParentGizmoKey);
-    }
-    _LastParentGizmoKey = ParentGizmoKey;
-
-    const auto TextLocation = NodeWorld.GetLocation() + FVector(0.0f, 0.0f, 50.0f);
-    UCk_Utils_DebugDraw_UE::DrawDebugString(
-        EntityWorld,
-        TextLocation,
-        Entity.ToString(),
-        FLinearColor::White,
-        0.0f);
-}
-
-auto FCkInspector_SceneNode::OnDeactivated() -> void
-{
-    _Gizmos.Reset();
-    _LastParentGizmoKey = FCk_Handle{};
 }

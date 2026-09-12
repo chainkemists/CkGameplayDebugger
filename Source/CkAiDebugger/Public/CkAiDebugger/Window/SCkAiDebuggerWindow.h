@@ -56,12 +56,22 @@ public:
     static auto Is_AiModel(const FCk_DebugOverlay_EntityModel& InModel) -> bool;
 
 private:
+    friend class FCkAiDebugger_AuthoredWindow;
+
     virtual auto OnStyleRevisionChanged() -> void override;
     auto Build_Model(const FCk_Handle& InEntity, double InNow) -> FCk_DebugOverlay_EntityModel;
-    auto Build_Body() -> TSharedRef<SWidget>;
-    auto Build_OverviewPane() -> TSharedRef<SWidget>;
+    auto Build_AuthoredShell() -> void;
+    auto Build_NativeShellFallback(const TArray<TPair<FName, TSharedRef<SWidget>>>& InPanes) -> TSharedRef<SWidget>;
+    auto Poll_AuthoredShell() -> void;
+    auto Build_RosterPanel() -> TSharedRef<SWidget>;
     auto Build_IdentityPanel() -> TSharedRef<SWidget>;
+    auto Build_BehaviorPanel() -> TSharedRef<SWidget>;
+    auto Build_DrillPanel() -> TSharedRef<SWidget>;
     auto Build_StagePanel() -> TSharedRef<SWidget>;
+    auto Build_TopologyPanel(bool InGoap) -> TSharedRef<SWidget>;
+    auto Build_CurrentEvidencePanel() -> TSharedRef<SWidget>;
+    auto Build_EventLogPanel() -> TSharedRef<SWidget>;
+    auto Build_SpatialPanel() -> TSharedRef<SWidget>;
     auto Get_StatusText() const -> FText;
     auto Get_MaxNameDepth() const -> int32;
     auto Get_ShortName(const FString& InFullName) const -> FString;
@@ -87,6 +97,10 @@ private:
     TSharedPtr<FCkCrowdDebugger_ViewModel> _CrowdViewModel;
     TSharedPtr<SCkCrowdDebugger_3dViewport> _SpatialViewport;
     TSharedPtr<SCkDebug_EventLog> _EventLog;
+    TSharedPtr<SBox> _AuthoredShellHost;
+    TSharedPtr<FCkUiView> _AuthoredShellView;
+    FString _AuthoredShellLoadError;
+    bool _AuthoredShellMounted = false;
     TSharedPtr<SBox> _AiRosterHost;
     TSharedPtr<FCkUiCollection> _AiRosterCollection;
     TSharedPtr<FCkUiView> _AiRosterView;

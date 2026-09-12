@@ -1,0 +1,24 @@
+
+.dialog-toolbar { min-width: 0; gap: 8px; flex-wrap: wrap; vertical-align: center; }
+.dialog-command-row { min-width: 0; gap: 6px; flex-wrap: wrap; }
+.dialog-action { flex-shrink: 0; }
+.dialog-search-row { min-width: 0; }
+.dialog-search-fields { min-width: 0; flex-grow: 1; gap: 6px; }
+.dialog-count-row { min-width: 0; }
+.dialog-count { font-family: monospace; font-size: var(--dialog-row-font-size); color: var(--dialog-text-dim); }
+.dialog-overlay { min-width: 0; flex-grow: 1; }
+.dialog-scroll { min-width: 0; max-width: 900px; max-height: 720px; }
+.dialog-records { min-width: 0; gap: 4px; padding: 4px 0; }
+.dialog-record { min-width: 0; gap: 4px; }
+.dialog-emitter-row { min-width: 0; gap: 8px; flex-wrap: wrap; padding: var(--dialog-heading-padding); }
+.dialog-emitter-heading { font-family: sans-serif; font-weight: bold; font-size: var(--dialog-row-font-size); min-width: 0; flex-grow: 1; color: var(--dialog-text-strong); text-wrap: wrap; }
+.dialog-emitter-tags { font-family: monospace; font-size: var(--dialog-row-font-size); min-width: 0; color: var(--dialog-text-dim); text-wrap: wrap; }
+.dialog-cooldown-row { min-width: 0; gap: 12px; flex-wrap: wrap; vertical-align: center; padding: var(--dialog-row-padding); }
+.dialog-line-id { font-family: monospace; font-size: var(--dialog-row-font-size); min-width: 180px; max-width: 320px; flex-grow: 1; color: var(--dialog-text); text-wrap: wrap; }
+.dialog-meter-column { min-width: 180px; max-width: 280px; flex-grow: 1; gap: 4px; vertical-align: center; }
+.dialog-remaining { font-family: monospace; font-size: var(--dialog-row-font-size); min-width: 120px; color: var(--dialog-text-dim); text-wrap: wrap; }
+.dialog-empty { font-family: monospace; font-size: var(--dialog-row-font-size); min-width: 0; color: var(--dialog-text-mute); text-wrap: wrap; }
+.dialog-diagnostic { font-family: monospace; font-size: var(--dialog-row-font-size); min-width: 0; color: var(--dialog-text-dim); text-wrap: wrap; }
+
+.dialog-content { min-width: 0; gap: 6px; padding: 8px 0; }
+.dialog-empty-row { min-width: 0; padding: var(--dialog-empty-padding); }

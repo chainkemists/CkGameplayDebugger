@@ -25,7 +25,10 @@ public class CkDialogDebugger : CkModuleRules
 
             "CkDebuggerCommon",
             "CkEditorTools",
+            "CkSlateLayout",
         });
+
+        PrivateDependencyModuleNames.Add("Projects");
 
         if (Target.bBuildEditor)
         {
@@ -37,5 +40,8 @@ public class CkDialogDebugger : CkModuleRules
                 "ToolMenus"
             });
         }
+
+        RuntimeDependencies.Add(Path.Combine(PluginDirectory, "Resources", "UI", "DialogDebugger.ui.html"), StagedFileType.NonUFS);
+        RuntimeDependencies.Add(Path.Combine(PluginDirectory, "Resources", "UI", "DialogDebugger.ui.css"), StagedFileType.NonUFS);
     }
 }

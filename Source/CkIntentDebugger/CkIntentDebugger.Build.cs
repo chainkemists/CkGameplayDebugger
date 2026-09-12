@@ -1,4 +1,5 @@
 using UnrealBuildTool;
+using System.IO;
 
 public class CkIntentDebugger : CkModuleRules
 {
@@ -24,9 +25,15 @@ public class CkIntentDebugger : CkModuleRules
             "CkInputHudOverlay", // one-way DeveloperTool UI -> Runtime settings owner
 
             "CkDebuggerCommon",
+            "CkSlateLayout",
             "CkEditorTools",  // shared CkStyle:: tokens used directly by the window
         });
 
+        // The authored HUD view resolves the installed CkDebugger resource pair through IPluginManager.
+        PrivateDependencyModuleNames.Add("Projects");
+
+        RuntimeDependencies.Add(Path.Combine(PluginDirectory, "Resources", "UI", "IntentInputHudControls.ui.html"), StagedFileType.NonUFS);
+        RuntimeDependencies.Add(Path.Combine(PluginDirectory, "Resources", "UI", "IntentInputHudControls.ui.css"), StagedFileType.NonUFS);
         if (Target.bBuildEditor)
         {
             PublicDependencyModuleNames.AddRange(new string[]

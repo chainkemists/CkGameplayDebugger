@@ -105,6 +105,9 @@ public:
 
     auto Get_Rows() const -> const TMap<FString, FString>& { return _Rows; }
 
+    /** True only while an inspector Build_Inspector call is being replayed for multi-select capture. */
+    static auto Is_Active() -> bool;
+
 private:
     friend class FCkInspectorWidgetBuilder;
 
@@ -128,6 +131,9 @@ public:
 
     FCkInspector_DiffMarkScope(const FCkInspector_DiffMarkScope&) = delete;
     auto operator=(const FCkInspector_DiffMarkScope&) -> FCkInspector_DiffMarkScope& = delete;
+
+    /** Queries the panel-owned mark set during the corresponding real Build_Inspector call. */
+    static auto Is_LabelMarked(const FString& InLabel) -> bool;
 
 private:
     friend class FCkInspectorWidgetBuilder;

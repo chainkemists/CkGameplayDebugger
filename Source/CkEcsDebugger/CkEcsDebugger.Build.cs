@@ -13,6 +13,7 @@ public class CkEcsDebugger : CkModuleRules
             "Engine",
             "GameplayTags",
             "InputCore",
+            "Projects",
 
             "ApplicationCore",
             "Slate",
@@ -65,6 +66,7 @@ public class CkEcsDebugger : CkModuleRules
             "CkRenderTarget",
             "CkResourceLoader",
             "CkResolver",
+            "CkSlateLayout",
             "CkShapes",
             "CkSnapshot",
             "CkSpatialQuery",

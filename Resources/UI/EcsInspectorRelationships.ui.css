@@ -1,0 +1,5 @@
+.relationships-inspector { min-width: 0; gap: 3px; }
+.relationships-row { min-width: 0; gap: 8px; vertical-align: center; }
+.relationships-label { min-width: 110px; color: #A8B4C4; }
+.relationships-value { min-width: 0; flex-grow: 1; color: #E8EDF5; }
+.relationships-native-value { min-width: 0; flex-grow: 1; }

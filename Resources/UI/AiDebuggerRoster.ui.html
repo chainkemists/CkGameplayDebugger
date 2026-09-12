@@ -1,0 +1,15 @@
+<ui version="1">
+  <region name="main">
+    <overlay id="ai-roster-overlay">
+      <scroll id="ai-roster-scroll" direction="horizontal" class="ai-roster-scroll">
+        <table id="ai-roster" bind="ai-roster-records" selection-action="select-ai-roster" row-height="54" class="ai-roster-table">
+          <table-column id="ai-roster-name-column" label="NPC" sort-field="ai-roster-name" class="ai-roster-name-column"><row id="ai-roster-name-cell-wrap" class="ai-roster-cell-wrap"><text id="ai-roster-name-cell" bind-field="ai-roster-name" class="ai-roster-name-cell" /></row></table-column>
+          <table-column id="ai-roster-status-column" label="Status" sort-field="ai-roster-status" class="ai-roster-status-column"><row id="ai-roster-status-cell-wrap" class="ai-roster-cell-wrap"><debug-status id="ai-roster-status-cell" label-field="ai-roster-status" foreground-field="ai-roster-status-color" background-field="ai-roster-status-background" show-dot="true" /></row></table-column>
+          <table-column id="ai-roster-summary-column" label="Motion / path" sort-field="ai-roster-summary" class="ai-roster-summary-column"><row id="ai-roster-summary-cell-wrap" class="ai-roster-cell-wrap"><text id="ai-roster-summary-cell" bind-field="ai-roster-summary" class="ai-roster-summary-cell" /></row></table-column>
+          <table-column id="ai-roster-context-column" label="Context" sort-field="ai-roster-context" class="ai-roster-context-column"><row id="ai-roster-context-cell-wrap" class="ai-roster-cell-wrap"><text id="ai-roster-context-cell" bind-field="ai-roster-context" class="ai-roster-context-cell" /></row></table-column>
+        </table>
+      </scroll>
+      <column id="ai-roster-empty-wrap" visible="ai-roster-empty-visible" class="ai-roster-empty-wrap"><text id="ai-roster-empty" bind="ai-roster-empty" class="ai-roster-empty" /></column>
+    </overlay>
+  </region>
+</ui>

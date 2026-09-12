@@ -1,0 +1,12 @@
+.ai-roster-scroll { min-width: 0; flex-grow: 1; }
+.ai-roster-table { min-width: 620px; flex-grow: 1; flex-shrink: 1; }
+.ai-roster-name-column { min-width: 120px; flex-grow: 0.24; }
+.ai-roster-status-column { min-width: 70px; flex-grow: 0.14; }
+.ai-roster-summary-column { min-width: 210px; flex-grow: 0.38; }
+.ai-roster-context-column { min-width: 160px; flex-grow: 0.24; }
+.ai-roster-cell-wrap { min-width: 0; padding: 0 6px; vertical-align: center; }
+.ai-roster-name-cell { min-width: 0; font-family: sans-serif; font-weight: bold; font-size: var(--ai-roster-row-font-size); color: var(--ai-roster-text-strong); text-wrap: nowrap; text-overflow: ellipsis; }
+.ai-roster-summary-cell { min-width: 0; font-family: monospace; font-size: var(--ai-roster-detail-font-size); color: var(--ai-roster-text-dim); text-wrap: nowrap; text-overflow: ellipsis; }
+.ai-roster-context-cell { min-width: 0; font-family: monospace; font-size: var(--ai-roster-detail-font-size); color: var(--ai-roster-text-mute); text-wrap: nowrap; text-overflow: ellipsis; }
+.ai-roster-empty-wrap { horizontal-align: center; vertical-align: center; padding: 16px; }
+.ai-roster-empty { min-width: 0; font-family: monospace; font-size: var(--ai-roster-row-font-size); color: var(--ai-roster-text-mute); text-wrap: wrap; overflow-wrap: anywhere; }

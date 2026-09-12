@@ -85,7 +85,7 @@ struct CKENTITYDEBUGOVERLAY_API FCk_DebugOverlay_SelectionConfig
     ECk_DebugOverlay_SelectionHierarchy Hierarchy = ECk_DebugOverlay_SelectionHierarchy::MeaningfulRoots;
 
     UPROPERTY(Config)
-    ECk_DebugOverlay_SelectionRootAnchor RootAnchor = ECk_DebugOverlay_SelectionRootAnchor::Member;
+    ECk_DebugOverlay_SelectionRootAnchor RootAnchor = ECk_DebugOverlay_SelectionRootAnchor::Root;
 
     UPROPERTY(Config)
     ECk_DebugOverlay_SelectionScope Scope = ECk_DebugOverlay_SelectionScope::ViewWithNearbyFallback;
@@ -94,13 +94,13 @@ struct CKENTITYDEBUGOVERLAY_API FCk_DebugOverlay_SelectionConfig
     ECk_DebugOverlay_SelectionTargeting Targeting = ECk_DebugOverlay_SelectionTargeting::Weighted;
 
     UPROPERTY(Config)
-    float ViewBias = 0.70f;
+    float ViewBias = 0.90f;
 
     UPROPERTY(Config)
     float SearchRadius = 10000.0f;
 
     UPROPERTY(Config)
-    float ConeHalfAngle = 15.0f;
+    float ConeHalfAngle = 7.0f;
 
     UPROPERTY(Config)
     ECk_DebugOverlay_SelectionOrder Order = ECk_DebugOverlay_SelectionOrder::Score;
@@ -109,7 +109,7 @@ struct CKENTITYDEBUGOVERLAY_API FCk_DebugOverlay_SelectionConfig
     ECk_DebugOverlay_SelectionStability Stability = ECk_DebugOverlay_SelectionStability::Frozen;
 
     UPROPERTY(Config)
-    ECk_DebugOverlay_SelectionFamily Family = ECk_DebugOverlay_SelectionFamily::Hold;
+    ECk_DebugOverlay_SelectionFamily Family = ECk_DebugOverlay_SelectionFamily::Toggle;
 
     UPROPERTY(Config)
     ECk_DebugOverlay_SelectionLabels Labels = ECk_DebugOverlay_SelectionLabels::Full;

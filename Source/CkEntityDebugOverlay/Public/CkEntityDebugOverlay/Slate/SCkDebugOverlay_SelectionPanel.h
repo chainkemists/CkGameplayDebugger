@@ -39,12 +39,16 @@ private:
     auto Build_PolicySection() -> TSharedRef<SWidget>;
     auto Build_TuningSection() -> TSharedRef<SWidget>;
     auto Build_PresentationSection() -> TSharedRef<SWidget>;
+    auto Build_OverlaySection() -> TSharedRef<SWidget>;
+    auto Build_AttributesSection() -> TSharedRef<SWidget>;
+    auto Build_WorldTagsSection() -> TSharedRef<SWidget>;
     auto Build_InputSection() -> TSharedRef<SWidget>;
     auto Build_NamedPresetSection() -> TSharedRef<SWidget>;
     auto Make_Section(const FText& InTitle, const TSharedRef<SWidget>& InContent) const -> TSharedRef<SWidget>;
     auto Make_CycleRow(const FText& InLabel, TAttribute<FText> InValue, TFunction<void()> InOnClicked) const -> TSharedRef<SWidget>;
     auto Make_ToggleRow(const FText& InLabel, TAttribute<bool> InValue, TFunction<void(bool)> InOnChanged) const -> TSharedRef<SWidget>;
     auto Make_SliderRow(const FText& InLabel, TAttribute<float> InValue, float InMin, float InMax, TFunction<void(float)> InOnChanged) const -> TSharedRef<SWidget>;
+    auto Make_IntegerRow(const FText& InLabel, TAttribute<int32> InValue, int32 InMin, int32 InMax, TFunction<void(int32)> InOnChanged) const -> TSharedRef<SWidget>;
     auto Make_ActionButton(const FText& InLabel, TFunction<void()> InAction) const -> TSharedRef<SWidget>;
     auto Mutate_Config(TFunction<void(struct FCk_DebugOverlay_SelectionConfig&)> InMutation, bool InSave = true) const -> void;
     auto Begin_BindingCapture(FName InBinding) -> FReply;

@@ -131,7 +131,7 @@ public:
     // consult this per row).
     static auto Get_PassesAttributeFilter(const FString& InAttributeName) -> bool;
 
-    // ---- World Tags (B1 — distance-scaled / faded / culled pills) ----
+    // ---- World Tags (B1 — distance-scaled / range-faded pills) ----
 
     // Distance below which pills appear at full size (unscaled).
     UPROPERTY(Config, EditAnywhere, Category="World Tags")
@@ -145,12 +145,10 @@ public:
     UPROPERTY(Config, EditAnywhere, Category="World Tags", meta=(ClampMin="0.1", ClampMax="1.0"))
     float MinScale = 0.5f;
 
-    // Distance at which pill opacity begins fading toward MinOpacity (0.15).
-    UPROPERTY(Config, EditAnywhere, Category="World Tags")
-    float FadeStartDist = 3000.0f;
-
-    // Hard cull distance: pills beyond this range are not emitted at all.
-    UPROPERTY(Config, EditAnywhere, Category="World Tags")
+    // Maximum visible range for world tags. Crossing this boundary starts a short, fixed visual
+    // transition: tags fade out beyond it and resume smoothly from their current opacity when
+    // they return. The transition itself is intentionally not a project setting.
+    UPROPERTY(Config, EditAnywhere, Category="World Tags", meta=(ClampMin="0.0"))
     float MaxDist = 5000.0f;
 
     // Hard cull distance for the in-world ECS diamond markers AND the candidate set they
@@ -187,6 +185,15 @@ public:
     virtual FName GetCategoryName()  const override { return TEXT("Ck"); }
     virtual FName GetContainerName() const override { return TEXT("Editor"); }
 
+    // Plain key that toggles the overlay. It takes priority over SelectKey when both bindings
+    // use the same key, so the overlay always remains dismissible.
+    UPROPERTY(Config, EditAnywhere, Category="Input")
+    FKey ActivateOverlayKey = EKeys::Comma;
+
+    // Alternate fixed Shift chord for the complete runtime overlay-settings drawer.
+    UPROPERTY(Config, EditAnywhere, Category="Input")
+    FKey OpenSettingsKey = EKeys::P;
+
     // Tap twice quickly to PIN / unpin the focused entity (side-by-side card).
     UPROPERTY(Config, EditAnywhere, Category="Input")
     FKey LockKey = EKeys::LeftShift;
@@ -218,7 +225,7 @@ public:
 
     // Runtime entity-selection gestures. These stay in this per-user input store so rebinding
     // does not modify the shared overlay project settings. SettingsKey is deliberately a key
-    // plus fixed Ctrl requirement: the compact runtime drawer can capture a normal FKey while
+    // plus fixed Shift requirement: the compact runtime drawer can capture a normal FKey while
     // retaining a chord that does not steal ordinary comma input.
     UPROPERTY(Config, EditAnywhere, Category="Input|Selection")
     FKey SelectKey = EKeys::Comma;
@@ -236,7 +243,7 @@ public:
     FKey SettingsKey = EKeys::Comma;
 
     UPROPERTY(Config, EditAnywhere, Category="Input|Selection")
-    bool SettingsRequireControl = true;
+    bool SettingsRequireShift = true;
 
     // A short SelectKey tap selects; holding it toggles the current selection lock.
     UPROPERTY(Config, EditAnywhere, Category="Input|Selection", meta=(ClampMin="0.05", ClampMax="3.0"))

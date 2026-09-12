@@ -69,9 +69,12 @@ private:
     auto Update_Selection(UWorld* InWorld, const ck_debugoverlay::FViewpoint& InViewpoint,
         TArray<FCk_Handle>& OutHandles, TArray<ck_debugoverlay::FCandidate>& OutCandidates) -> void;
     auto Refresh_SelectionSnapshot(bool InSelectBest) -> void;
+    auto Build_SelectionNavigationOrder() const -> TArray<uint32>;
     auto Cycle_Selection(int32 InDirection) -> void;
     auto Set_FamilyVisible(bool InVisible) -> void;
     auto CanHandle_SelectionInput() const -> bool;
+    auto CanHandle_GlobalInput() const -> bool;
+    auto Register_InputProcessor() -> void;
     auto DoCmd_Select() -> void;
     auto DoCmd_Settings() -> void;
     auto DoCmd_Family() -> void;

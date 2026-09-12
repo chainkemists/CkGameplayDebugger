@@ -1,0 +1,22 @@
+<ui version="1">
+  <region name="commands">
+    <column id="ui-commands-root" class="ui-commands-root">
+      <row id="ui-commands-filter-row" class="ui-commands-row">
+        <search id="ui-layer-filter" bind="ui-layer-filter" placeholder="Filter layers..." class="ui-command-filter" />
+        <button id="ui-layer-filter-clear" action="ui-clear-layer-filter" visible="ui-layer-filter-has-text" tooltip="Clear layer filter" class="ui-command-button ui-command-icon-button">×</button>
+        <button id="ui-active-layer-only" bind="ui-active-layer-only-label" color-bind="ui-active-layer-only-color" action="ui-toggle-active-layer-only" tooltip="Show only the layout's active layer." class="ui-command-button ui-command-toggle" />
+      </row>
+      <row id="ui-commands-actions-row" class="ui-commands-row">
+        <button id="ui-force-refresh" action="ui-force-refresh" tooltip="Force the next layer snapshot rebuild." class="ui-command-button">Force refresh</button>
+        <button id="ui-expand-all" action="ui-expand-all" tooltip="Expand every layer." class="ui-command-button">Expand all</button>
+        <button id="ui-collapse-all" action="ui-collapse-all" tooltip="Collapse every layer." class="ui-command-button">Collapse all</button>
+        <button id="ui-clear-history" action="ui-clear-history" tooltip="Remove all recorded layer events." class="ui-command-button ui-command-danger">Clear history</button>
+        <row id="ui-name-depth-group" class="ui-name-depth-group">
+          <button id="ui-name-depth-previous" action="ui-name-depth-previous" tooltip="Show fewer name segments." class="ui-command-button ui-command-icon-button">−</button>
+          <text id="ui-name-depth-value" bind="ui-name-depth-value" class="ui-name-depth-value" />
+          <button id="ui-name-depth-next" action="ui-name-depth-next" tooltip="Show more name segments." class="ui-command-button ui-command-icon-button">+</button>
+        </row>
+      </row>
+    </column>
+  </region>
+</ui>

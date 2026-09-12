@@ -9,13 +9,15 @@
 class ICk_DebugOverlay_Provider;
 class FCkDebug_ViewportPicker;
 class FCkCrowdDebugger_ViewModel;
+class FCkUiCollection;
+class FCkUiView;
 class SCkDebug_EventLog;
-class SCkDebug_EntityHealthList;
 class SCkDebug_EvidenceList;
 class SCkCrowdDebugger_3dViewport;
+class SBox;
 
 /** Composition-only AI overview; all rows and controls are supplied by Common or the overlay model. */
-class SCkAiDebuggerWindow final : public SCkDebugger_WindowBase
+class CKAIDEBUGGER_API SCkAiDebuggerWindow final : public SCkDebugger_WindowBase
 {
 public:
     static const FName WindowId;
@@ -45,10 +47,16 @@ public:
     static auto OpenForEntity(const FCk_Handle& InEntity) -> void;
     auto Select_Entity(const FCk_Handle& InEntity, bool InBroadcast) -> void;
 
+    auto Get_AiRosterView() const -> TSharedPtr<FCkUiView> { return _AiRosterView; }
+    auto Get_AiRosterCollection() const -> TSharedPtr<FCkUiCollection> { return _AiRosterCollection; }
+    auto Get_AiRosterSelectedPhysicalHandle() const -> FCk_Handle;
+    auto Get_AiRosterLoadError() const -> const FString& { return _AiRosterLoadError; }
+
     /** Pure policy seam covered by module specs; presentation never reads feature fragments. */
     static auto Is_AiModel(const FCk_DebugOverlay_EntityModel& InModel) -> bool;
 
 private:
+    virtual auto OnStyleRevisionChanged() -> void override;
     auto Build_Model(const FCk_Handle& InEntity, double InNow) -> FCk_DebugOverlay_EntityModel;
     auto Build_Body() -> TSharedRef<SWidget>;
     auto Build_OverviewPane() -> TSharedRef<SWidget>;
@@ -57,7 +65,13 @@ private:
     auto Get_StatusText() const -> FText;
     auto Get_MaxNameDepth() const -> int32;
     auto Get_ShortName(const FString& InFullName) const -> FString;
+    auto Select_EntityImpl(const FCk_Handle& InEntity, bool InBroadcast, bool InAllowDirectCrowdAgent) -> void;
+    auto Has_ActiveRosterSelection() const -> bool;
     auto Refresh_Roster() -> void;
+    auto Build_AiRosterView() -> void;
+    auto Invalidate_AiRosterView() -> void;
+    auto Poll_AiRosterFiles(double InNow) -> void;
+    auto CanUse_AiRosterView(int64 InGeneration) const -> bool;
     auto Refresh_Diagnostics(double InNow) -> void;
     auto Clear_Diagnostics() -> void;
     auto HandleSessionInvalidated() -> void;
@@ -73,7 +87,14 @@ private:
     TSharedPtr<FCkCrowdDebugger_ViewModel> _CrowdViewModel;
     TSharedPtr<SCkCrowdDebugger_3dViewport> _SpatialViewport;
     TSharedPtr<SCkDebug_EventLog> _EventLog;
-    TSharedPtr<SCkDebug_EntityHealthList> _HealthList;
+    TSharedPtr<SBox> _AiRosterHost;
+    TSharedPtr<FCkUiCollection> _AiRosterCollection;
+    TSharedPtr<FCkUiView> _AiRosterView;
+    FString _AiRosterLoadError;
+    TMap<FString, FCk_Handle> _AiRosterHandles;
+    int64 _AiRosterGeneration = 0;
+    double _NextAiRosterPollSeconds = 0.0;
+    TWeakObjectPtr<UWorld> _AiRosterWorld;
     TSharedPtr<SCkDebug_EvidenceList> _CurrentEvidenceList;
     TSharedPtr<SCkDebug_EvidenceList> _GoapTopologyList;
     TSharedPtr<SCkDebug_EvidenceList> _StateMachineTopologyList;

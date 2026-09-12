@@ -1,3 +1,4 @@
+using System.IO;
 using UnrealBuildTool;
 
 public class CkAiDebugger : CkModuleRules
@@ -10,8 +11,10 @@ public class CkAiDebugger : CkModuleRules
         {
             "Core", "CoreUObject", "Engine", "GameplayTags",
             "Slate", "SlateCore", "InputCore",
-            "CkCore", "CkEcs", "CkDebuggerCommon", "CkEntityDebugOverlay", "CkCrowdDebugger", "CkEditorTools"
+            "CkCore", "CkEcs", "CkDebuggerCommon", "CkEntityDebugOverlay", "CkCrowdDebugger", "CkEditorTools", "CkSlateLayout"
         });
+
+        PrivateDependencyModuleNames.AddRange(new string[] { "Projects", "CkCrowd" });
 
         if (Target.bBuildEditor)
         {
@@ -20,5 +23,8 @@ public class CkAiDebugger : CkModuleRules
                 "UnrealEd", "WorkspaceMenuStructure"
             });
         }
+
+        RuntimeDependencies.Add(Path.Combine(PluginDirectory, "Resources", "UI", "AiDebuggerRoster.ui.html"), StagedFileType.NonUFS);
+        RuntimeDependencies.Add(Path.Combine(PluginDirectory, "Resources", "UI", "AiDebuggerRoster.ui.css"), StagedFileType.NonUFS);
     }
 }

@@ -243,8 +243,10 @@ auto
 	Set_CountText(const FText& InText)
 	-> void
 {
+	if (_CountText.EqualTo(InText)) { return; }
+	const bool PresenceChanged = _CountText.IsEmpty() != InText.IsEmpty();
 	_CountText = InText;
-	if (_CountBadge.IsValid()) { _CountBadge->SetText(InText); }
+	if (!PresenceChanged && _CountBadge.IsValid()) { _CountBadge->SetText(InText); }
 	else { RebuildHeader(); }
 }
 

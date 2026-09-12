@@ -117,6 +117,7 @@ auto
     DoToggle()
     -> FReply
 {
+    if (!IsEnabled()) { return FReply::Unhandled(); }
     if (_OnStateChanged.IsBound())
     { _OnStateChanged.Execute(NOT _IsOn.Get(false)); }
 

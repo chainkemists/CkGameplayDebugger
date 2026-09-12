@@ -225,6 +225,44 @@ auto
     }
     _SharedMaxLive = MakeShared<float>(1.0f);
 
+    _OverviewPane = SNew(SCkDebug_PaneHost)[BuildOverviewStrip()];
+    _TablePane = SNew(SCkDebug_PaneHost)
+        [
+            SNew(SVerticalBox)
+            + SVerticalBox::Slot().AutoHeight().Padding(CkStyle::SpaceS, CkStyle::SpaceS, CkStyle::SpaceS, 0.0f)
+                [BuildHeaderRow()]
+            + SVerticalBox::Slot().FillHeight(1.0f).Padding(CkStyle::SpaceS, 0.0f)
+                [
+                    SAssignNew(_ListView, SListView<ItemPtr>)
+                        .ListItemsSource(&_VisibleItems)
+                        .OnGenerateRow(this, &SCkObjectPoolingDebuggerWindow::OnGenerateRow)
+                        .OnSelectionChanged(this, &SCkObjectPoolingDebuggerWindow::OnSelectionChanged)
+                        .SelectionMode(ESelectionMode::Single)
+                ]
+            + SVerticalBox::Slot().AutoHeight()
+                [BuildStatusBar()]
+        ];
+    _Separator = SNew(SBox)
+        .WidthOverride_Lambda([]() -> FOptionalSize
+        {
+            return ck::debug_axes::Get_CardOuterExtent() == 0.0f
+                ? FOptionalSize{ck_object_pooling_debugger_window::Get_SeparatorThickness()}
+                : FOptionalSize{0.0f};
+        })
+        .Visibility_Lambda([]()
+        {
+            return ck::debug_axes::Get_CardOuterExtent() == 0.0f
+                && ck_object_pooling_debugger_window::Get_SeparatorThickness() > 0.0f
+                ? EVisibility::Visible
+                : EVisibility::Collapsed;
+        })
+        [
+            SNew(SSeparator).Orientation(Orient_Vertical).Thickness(1.0f)
+        ];
+    _InspectorPane = SNew(SBox).WidthOverride(300.0f)
+        [SNew(SCkDebug_PaneHost)[BuildInspectorRail()]];
+    _AuthoredShellHost = SNew(SBox);
+
     ChildSlot
     [
         SNew(SCkDebug_WindowChrome)
@@ -233,75 +271,76 @@ auto
         .ShowRefreshControls(true)
         .CommandGroups(BuildCommandGroups())
         .Content()
-        [
-            SNew(SVerticalBox)
-
-            + SVerticalBox::Slot().AutoHeight()
-                [ SNew(SCkDebug_PaneHost) [ BuildOverviewStrip() ] ]
-
-            + SVerticalBox::Slot().FillHeight(1.0f)
-                [
-                    SNew(SHorizontalBox)
-
-                    + SHorizontalBox::Slot().FillWidth(1.0f)
-                        [
-                            SNew(SCkDebug_PaneHost)
-                            [
-                            SNew(SVerticalBox)
-
-                            + SVerticalBox::Slot().AutoHeight().Padding(CkStyle::SpaceS, CkStyle::SpaceS, CkStyle::SpaceS, 0.0f)
-                                [ BuildHeaderRow() ]
-
-                            + SVerticalBox::Slot().FillHeight(1.0f).Padding(CkStyle::SpaceS, 0.0f)
-                                [
-                                    SAssignNew(_ListView, SListView<ItemPtr>)
-                                        .ListItemsSource(&_VisibleItems)
-                                        .OnGenerateRow(this, &SCkObjectPoolingDebuggerWindow::OnGenerateRow)
-                                        .OnSelectionChanged(this, &SCkObjectPoolingDebuggerWindow::OnSelectionChanged)
-                                        .SelectionMode(ESelectionMode::Single)
-                                ]
-
-                            + SVerticalBox::Slot().AutoHeight()
-                                [ BuildStatusBar() ]
-                            ]
-                        ]
-
-                    + SHorizontalBox::Slot().AutoWidth()
-                        [
-                            // SSeparator::Thickness is a construction-time argument with no setter, so
-                            // SeparatorWeight is carried by an SBox width override; None collapses the box
-                            // so its slot goes with it instead of reserving a zero-width rule.
-                            SNew(SBox)
-                            .WidthOverride_Lambda([]() -> FOptionalSize
-                            {
-                                return ck::debug_axes::Get_CardOuterExtent() == 0.0f
-                                    ? FOptionalSize{ck_object_pooling_debugger_window::Get_SeparatorThickness()}
-                                    : FOptionalSize{0.0f};
-                            })
-                            .Visibility_Lambda([]()
-                            {
-                                return ck::debug_axes::Get_CardOuterExtent() == 0.0f
-                                    && ck_object_pooling_debugger_window::Get_SeparatorThickness() > 0.0f
-                                    ? EVisibility::Visible
-                                    : EVisibility::Collapsed;
-                            })
-                            [
-                                SNew(SSeparator)
-                                    .Orientation(Orient_Vertical)
-                                    .Thickness(1.0f)
-                            ]
-                        ]
-
-                    + SHorizontalBox::Slot().AutoWidth()
-                        [
-                            SNew(SBox).WidthOverride(300.0f)
-                            [ SNew(SCkDebug_PaneHost) [ BuildInspectorRail() ] ]
-                        ]
-                ]
-        ]
+        [_AuthoredShellHost.ToSharedRef()]
     ];
 
     DoBuild_AuthoredSurface();
+    DoBuild_AuthoredShell();
+}
+
+SCkObjectPoolingDebuggerWindow::~SCkObjectPoolingDebuggerWindow()
+{
+    if (_AuthoredShellHost.IsValid())
+    { _AuthoredShellHost->SetContent(SNullWidget::NullWidget); }
+
+    _AuthoredShellView.Reset();
+    _AuthoredView.Reset();
+    _OverviewPane.Reset();
+    _TablePane.Reset();
+    _Separator.Reset();
+    _InspectorPane.Reset();
+    _ListView.Reset();
+    _Items.Reset();
+    _VisibleItems.Reset();
+    _SelectedItem.Reset();
+    _Histories.Reset();
+    _TotalInUseSeries.Reset();
+    _WorldModel.Reset();
+    _AuthoredShellHost.Reset();
+}
+
+auto SCkObjectPoolingDebuggerWindow::DoBuild_NativeShellFallback() -> TSharedRef<SWidget>
+{
+    return SNew(SVerticalBox)
+        + SVerticalBox::Slot().AutoHeight()
+            [_OverviewPane.ToSharedRef()]
+        + SVerticalBox::Slot().FillHeight(1.0f)
+            [
+                SNew(SHorizontalBox)
+                + SHorizontalBox::Slot().FillWidth(1.0f)
+                    [_TablePane.ToSharedRef()]
+                + SHorizontalBox::Slot().AutoWidth()
+                    [_Separator.ToSharedRef()]
+                + SHorizontalBox::Slot().AutoWidth()
+                    [_InspectorPane.ToSharedRef()]
+            ];
+}
+
+auto SCkObjectPoolingDebuggerWindow::DoBuild_AuthoredShell() -> void
+{
+    TSharedPtr<const FCkUiWidgetRegistrySnapshot> Registry;
+    const FCkUiLoadResult RegistryResult = FCkDebug_UiRegistry::TryCreate(Registry);
+    const TSharedPtr<IPlugin> Plugin = IPluginManager::Get().FindPlugin(TEXT("CkDebugger"));
+    if (NOT RegistryResult.Succeeded || NOT Registry.IsValid() || NOT Plugin.IsValid())
+    {
+        _AuthoredShellHost->SetContent(DoBuild_NativeShellFallback());
+        return;
+    }
+
+    FCkUiView::FNativeBindings NativeBindings;
+    NativeBindings.Add(TEXT("pool-shell-overview"), _OverviewPane.ToSharedRef());
+    NativeBindings.Add(TEXT("pool-shell-table"), _TablePane.ToSharedRef());
+    NativeBindings.Add(TEXT("pool-shell-separator"), _Separator.ToSharedRef());
+    NativeBindings.Add(TEXT("pool-shell-inspector"), _InspectorPane.ToSharedRef());
+    const TSharedRef<FCkUiView> View = FCkUiView::Create(MoveTemp(NativeBindings), {},
+        ck_object_pooling_debugger_window::AuthoredStyleTokens(), CkStyle::RegularFont(CkStyle::FontSizeBody()), {}, Registry);
+    const TSharedRef<SWidget> Main = View->GetRegion(TEXT("main"));
+    const FString Directory = FPaths::Combine(Plugin->GetBaseDir(), TEXT("Resources/UI"));
+    View->SetFiles(FPaths::Combine(Directory, TEXT("ObjectPoolingDebuggerShell.ui.html")),
+        FPaths::Combine(Directory, TEXT("ObjectPoolingDebuggerShell.ui.css")));
+    _AuthoredShellView = View;
+    View->PollFiles();
+    _AuthoredShellHost->SetContent(View->GetLastResult().Succeeded ? Main : DoBuild_NativeShellFallback());
 }
 
 auto SCkObjectPoolingDebuggerWindow::DoBuild_AuthoredSurface() -> void
@@ -1279,6 +1318,14 @@ auto
             _SearchHost->SetContent(_AuthoredView->GetRegion(TEXT("search")));
             _OverviewHost->SetContent(_AuthoredView->GetRegion(TEXT("overview")));
         }
+    }
+
+    if (_AuthoredShellView.IsValid())
+    {
+        const bool WasAccepted = _AuthoredShellView->GetLastResult().Succeeded;
+        _AuthoredShellView->PollFiles(ck_object_pooling_debugger_window::AuthoredStyleTokens());
+        if (!WasAccepted && _AuthoredShellView->GetLastResult().Succeeded)
+        { _AuthoredShellHost->SetContent(_AuthoredShellView->GetRegion(TEXT("main"))); }
     }
 
     if (NOT FCkDebuggerRefreshGate::Should_RefreshNow(WindowId))

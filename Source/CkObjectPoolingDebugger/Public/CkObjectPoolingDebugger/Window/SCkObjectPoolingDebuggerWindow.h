@@ -44,12 +44,14 @@ public:
     SLATE_END_ARGS()
 
     auto Construct(const FArguments& InArgs) -> void;
+    virtual ~SCkObjectPoolingDebuggerWindow();
     auto Tick(const FGeometry& InAllottedGeometry, double InCurrentTime, float InDeltaTime) -> void override;
 
     virtual auto Get_WindowId() const -> FName override { return WindowId; }
     virtual auto Get_WindowDisplayName() const -> FText override { return FText::FromString(TEXT("Object Pooling")); }
 
     auto Get_AuthoredView() const -> TSharedPtr<FCkUiView> { return _AuthoredView; }
+    auto Get_AuthoredShellView() const -> TSharedPtr<FCkUiView> { return _AuthoredShellView; }
     auto Get_TotalInUseSeries() const -> TSharedPtr<FCkUiFloatSeries> { return _TotalInUseSeries; }
     auto Get_FilterString() const -> const FString& { return _FilterText; }
     auto Get_HighlightString() const -> const FString& { return _HighlightText; }
@@ -102,6 +104,8 @@ private:
     auto DoRefresh_OverviewStats(const FCkObjectPoolingDebugger_Snapshot& InSnapshot) -> void;
     auto DoRebuild_InspectorGraph() -> void;
     auto DoBuild_AuthoredSurface() -> void;
+    auto DoBuild_AuthoredShell() -> void;
+    auto DoBuild_NativeShellFallback() -> TSharedRef<SWidget>;
 
     auto Get_HistoryFor(const FString& InPoolKey) -> FPoolHistory&;
     auto Get_SelectedHistory() const -> const FPoolHistory*;
@@ -112,10 +116,16 @@ private:
 
     // One retained authored view owns ordinary commands, filter/highlight and overview.
     TSharedPtr<FCkUiView> _AuthoredView;
+    TSharedPtr<FCkUiView> _AuthoredShellView;
     TSharedPtr<SBox> _ControlsHost;
     TSharedPtr<SBox> _ContextHost;
     TSharedPtr<SBox> _SearchHost;
     TSharedPtr<SBox> _OverviewHost;
+    TSharedPtr<SBox> _AuthoredShellHost;
+    TSharedPtr<SWidget> _OverviewPane;
+    TSharedPtr<SWidget> _TablePane;
+    TSharedPtr<SWidget> _Separator;
+    TSharedPtr<SWidget> _InspectorPane;
 
     FString _OverviewPools = TEXT("0");
     FString _OverviewLive = TEXT("0");

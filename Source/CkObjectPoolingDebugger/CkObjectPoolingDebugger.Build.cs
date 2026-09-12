@@ -30,6 +30,8 @@ public class CkObjectPoolingDebugger : CkModuleRules
 
         RuntimeDependencies.Add(Path.Combine(PluginDirectory, "Resources", "UI", "ObjectPoolingDebugger.ui.html"), StagedFileType.NonUFS);
         RuntimeDependencies.Add(Path.Combine(PluginDirectory, "Resources", "UI", "ObjectPoolingDebugger.ui.css"), StagedFileType.NonUFS);
+        RuntimeDependencies.Add(Path.Combine(PluginDirectory, "Resources", "UI", "ObjectPoolingDebuggerShell.ui.html"), StagedFileType.NonUFS);
+        RuntimeDependencies.Add(Path.Combine(PluginDirectory, "Resources", "UI", "ObjectPoolingDebuggerShell.ui.css"), StagedFileType.NonUFS);
 
         if (Target.bBuildEditor)
         {

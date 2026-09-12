@@ -1,0 +1,23 @@
+<ui version="1">
+  <region name="summary">
+    <column id="ui-summary-root" class="ui-summary-root">
+      <row id="ui-summary-live" visible="summary-has-active-layout" class="ui-summary-live">
+        <column id="ui-summary-active-metric" class="ui-summary-metric ui-summary-active-metric">
+          <text id="ui-summary-active-label" class="ui-summary-metric-label">ACTIVE</text>
+          <text id="ui-summary-active-value" bind="summary-active-tag" class="ui-summary-metric-value ui-summary-active-value" />
+        </column>
+        <column id="ui-summary-input-metric" class="ui-summary-metric">
+          <text id="ui-summary-input-label" class="ui-summary-metric-label">INPUT</text>
+          <text id="ui-summary-input-value" bind="summary-input-mode" class="ui-summary-metric-value" />
+        </column>
+        <column id="ui-summary-layers-metric" class="ui-summary-metric">
+          <text id="ui-summary-layers-label" class="ui-summary-metric-label">LAYERS</text>
+          <text id="ui-summary-layers-value" bind="summary-layer-count" class="ui-summary-metric-value" />
+        </column>
+      </row>
+      <column id="ui-summary-empty" visible="summary-no-active-layout-visible" class="ui-summary-empty">
+        <text id="ui-summary-empty-copy" bind="summary-no-active-layout" class="ui-summary-empty-copy" />
+      </column>
+    </column>
+  </region>
+</ui>

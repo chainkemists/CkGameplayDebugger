@@ -4,17 +4,18 @@
 #include "CkCore/String/CkFuzzyMatch_Utils.h"
 
 #include "CkDebuggerCommon/Styles/CkDebuggerAxes.h"
-#include "CkDebuggerCommon/Widgets/SCkDebug_CategoryDot.h"
+#include "CkDebuggerCommon/UI/CkDebug_UiRegistry.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_PaneHost.h"
-#include "CkDebuggerCommon/Widgets/SCkDebug_Icon.h"
-#include "CkDebuggerCommon/Widgets/SCkDebug_NameDepthCycler.h"
-#include "CkDebuggerCommon/Widgets/SCkDebug_IconToggle.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_NameLabel.h"
-#include "CkDebuggerCommon/Widgets/SCkDebug_StatusPill.h"
 #include "CkDebuggerCommon/Window/CkDebuggerRefreshGate.h"
 #include "CkDebuggerCommon/Window/SCkDebug_WindowChrome.h"
 
 #include "CkEditorTools/Style/CkStyle.h"
+
+#include "CkSlateLayout/CkUiCollection.h"
+#include "CkSlateLayout/CkUiTreeCollection.h"
+#include "CkSlateLayout/SCkUiSurface.h"
+#include "CkSlateLayout/SCkUiTree.h"
 
 #include "CkUI/Layout/CkUI_Layout_Subsystem.h"
 #include "CkUI/Layout/CkUI_PrimaryGameLayout.h"
@@ -25,16 +26,11 @@
 #include "Engine/Engine.h"
 #include "Engine/LocalPlayer.h"
 #include "Engine/GameInstance.h"
+#include "Interfaces/IPluginManager.h"
+#include "Misc/Paths.h"
 
-#include "Styling/AppStyle.h"
 #include "Widgets/SBoxPanel.h"
-#include "Widgets/Input/SButton.h"
-#include "Widgets/Input/SEditableTextBox.h"
-#include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SBox.h"
-#include "Widgets/Layout/SExpandableArea.h"
-#include "Widgets/Layout/SScrollBox.h"
-#include "Widgets/Images/SImage.h"
 #include "Widgets/Text/STextBlock.h"
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -43,28 +39,102 @@
 
 namespace ck_ui_debugger
 {
-    // TextScale-aware counterparts of CkStyle::RegularFont / BoldFont / MonoFont. Bound through
-    // .Font_Static below so a Style Lab flip resizes text that was built long before the flip.
-    static auto Normal(int32 InSize) -> FSlateFontInfo { return ck::debug_axes::ScaledFont("Regular", InSize); }
-    static auto Bold(int32 InSize)   -> FSlateFontInfo { return ck::debug_axes::ScaledFont("Bold", InSize); }
-    static auto Mono(int32 InSize)   -> FSlateFontInfo { return ck::debug_axes::ScaledFont("Mono", InSize); }
-
-    static auto Font_Heading()  -> FSlateFontInfo { return Bold(CkStyle::FontSizeH3()); }
-    static auto Font_RowLabel() -> FSlateFontInfo { return Bold(CkStyle::FontSizeH4()); }
-    static auto Font_Body()     -> FSlateFontInfo { return Normal(CkStyle::FontSizeSmall()); }
-    static auto Font_Value()    -> FSlateFontInfo { return Mono(CkStyle::FontSizeSmall()); }
-
-    static auto Get_WidgetRowPadding() -> FMargin
+    static auto TextField(const FString& InValue) -> FCkUiFieldValue
+    { return FCkUiFieldValue{.Kind = ECkUiFieldKind::Text, .Text = FText::FromString(InValue)}; }
+    static auto BoolField(const bool InValue) -> FCkUiFieldValue
+    { return FCkUiFieldValue{.Kind = ECkUiFieldKind::Bool, .Bool = InValue}; }
+    static auto ColorField(const FLinearColor& InValue) -> FCkUiFieldValue
+    { return FCkUiFieldValue{.Kind = ECkUiFieldKind::Color, .Color = InValue}; }
+    static auto HistorySchema() -> TArray<FCkUiFieldSchema>
+    { return {{TEXT("description"), ECkUiFieldKind::Text}}; }
+    static auto HistoryStyleTokens() -> FCkUiView::FTokens
     {
-        return ck::debug_axes::Apply_RowDensity(
-            FMargin{CkStyle::SpaceXL, CkStyle::SpaceS, CkStyle::SpaceM, CkStyle::SpaceS});
+        const auto Color = [](const FLinearColor& InColor) { return TEXT("#") + InColor.ToFColorSRGB().ToHex(); };
+        return {
+            {TEXT("--ui-history-font-size"), FString::FromInt(ck::debug_axes::Get_ScaledFontSize(CkStyle::FontSizeBody()))},
+            {TEXT("--ui-history-text-dim"), Color(CkStyle::TextDim())},
+            {TEXT("--ui-history-text-mute"), Color(CkStyle::TextMute())},
+            {TEXT("--ui-history-surface"), Color(CkStyle::BgRoot())},
+        };
     }
-
-    static auto Get_HistoryRowPadding() -> FMargin
+    static auto CommandStyleTokens() -> FCkUiView::FTokens
     {
-        return ck::debug_axes::Apply_RowDensity(FMargin{CkStyle::SpaceM, 2.0f});
+        const auto Color = [](const FLinearColor& InColor) { return TEXT("#") + InColor.ToFColorSRGB().ToHex(); };
+        return {
+            {TEXT("--ui-command-font-size"), FString::FromInt(ck::debug_axes::Get_ScaledFontSize(CkStyle::FontSizeBody()))},
+            {TEXT("--ui-command-text"), Color(CkStyle::Text())},
+            {TEXT("--ui-command-text-dim"), Color(CkStyle::TextDim())},
+            {TEXT("--ui-command-text-mute"), Color(CkStyle::TextMute())},
+            {TEXT("--ui-command-surface"), Color(CkStyle::BgRoot())},
+            {TEXT("--ui-command-outline"), Color(CkStyle::Border())},
+            {TEXT("--ui-command-accent"), Color(CkStyle::Accent())},
+            {TEXT("--ui-command-button-surface"), Color(CkStyle::Bg1())},
+            {TEXT("--ui-command-hover-surface"), Color(CkStyle::Hover())},
+            {TEXT("--ui-command-pressed-surface"), Color(CkStyle::Bg3())},
+            {TEXT("--ui-command-disabled-surface"), Color(CkStyle::BgRoot())},
+            {TEXT("--ui-command-toggle-surface"), Color(CkStyle::AccentDim())},
+            {TEXT("--ui-command-toggle-hover-surface"), Color(CkStyle::Selection())},
+            {TEXT("--ui-command-toggle-pressed-surface"), Color(CkStyle::Bg3())},
+            {TEXT("--ui-command-danger-surface"), Color(CkStyle::ErrDim())},
+            {TEXT("--ui-command-danger-outline"), Color(CkStyle::Err())},
+            {TEXT("--ui-command-danger-hover-surface"), Color(CkStyle::ErrDim().CopyWithNewOpacity(0.85f))},
+            {TEXT("--ui-command-danger-hover-outline"), Color(CkStyle::Err())},
+            {TEXT("--ui-command-danger-pressed-surface"), Color(CkStyle::Bg3())},
+            {TEXT("--ui-command-danger-text"), Color(CkStyle::Err())},
+            {TEXT("--ui-command-group-surface"), Color(CkStyle::Bg2())},
+        };
     }
-
+    static auto LayerSchema() -> TArray<FCkUiFieldSchema>
+    {
+        return {
+            {TEXT("node-visible"), ECkUiFieldKind::Bool},
+            {TEXT("is-layer"), ECkUiFieldKind::Bool},
+            {TEXT("is-widget"), ECkUiFieldKind::Bool},
+            {TEXT("status-glyph"), ECkUiFieldKind::Text},
+            {TEXT("status-color"), ECkUiFieldKind::Color},
+            {TEXT("layer-tag"), ECkUiFieldKind::Text},
+            {TEXT("layer-tag-tooltip"), ECkUiFieldKind::Text},
+            {TEXT("layer-tag-color"), ECkUiFieldKind::Color},
+            {TEXT("priority"), ECkUiFieldKind::Text},
+            {TEXT("input-mode"), ECkUiFieldKind::Text},
+            {TEXT("widget-count"), ECkUiFieldKind::Text},
+            {TEXT("widget-name"), ECkUiFieldKind::Text},
+            {TEXT("widget-name-tooltip"), ECkUiFieldKind::Text},
+            {TEXT("widget-name-color"), ECkUiFieldKind::Color},
+            {TEXT("widget-state"), ECkUiFieldKind::Text},
+            {TEXT("widget-state-foreground"), ECkUiFieldKind::Color},
+            {TEXT("widget-state-background"), ECkUiFieldKind::Color},
+        };
+    }
+    static auto LayerStyleTokens() -> FCkUiView::FTokens
+    {
+        const auto Color = [](const FLinearColor& InColor) { return TEXT("#") + InColor.ToFColorSRGB().ToHex(); };
+        return {
+            {TEXT("--ui-layer-font-size"), FString::FromInt(ck::debug_axes::Get_ScaledFontSize(CkStyle::FontSizeBody()))},
+            {TEXT("--ui-layer-text"), Color(CkStyle::Text())},
+            {TEXT("--ui-layer-text-dim"), Color(CkStyle::TextDim())},
+            {TEXT("--ui-layer-accent"), Color(CkStyle::Accent())},
+            {TEXT("--ui-layer-surface"), Color(CkStyle::BgRoot())},
+            {TEXT("--ui-layer-surface-raised"), Color(CkStyle::Bg1())},
+        };
+    }
+    static auto SummaryStyleTokens() -> FCkUiView::FTokens
+    {
+        const auto Color = [](const FLinearColor& InColor) { return TEXT("#") + InColor.ToFColorSRGB().ToHex(); };
+        return {
+            {TEXT("--ui-summary-label-font-size"), FString::FromInt(ck::debug_axes::Get_ScaledFontSize(CkStyle::FontSizeMicro()))},
+            {TEXT("--ui-summary-value-font-size"), FString::FromInt(ck::debug_axes::Get_ScaledFontSize(CkStyle::FontSizeH3()))},
+            {TEXT("--ui-summary-text"), Color(CkStyle::Text())},
+            {TEXT("--ui-summary-text-mute"), Color(CkStyle::TextMute())},
+            {TEXT("--ui-summary-surface"), Color(CkStyle::BgRoot())},
+            {TEXT("--ui-summary-outline"), Color(CkStyle::Border())},
+            {TEXT("--ui-summary-metric-surface"), Color(CkStyle::Bg1())},
+            {TEXT("--ui-summary-metric-outline"), Color(CkStyle::Border())},
+            {TEXT("--ui-summary-active-surface"), Color(CkStyle::AccentDim())},
+            {TEXT("--ui-summary-active-outline"), Color(CkStyle::Accent())},
+            {TEXT("--ui-summary-active-text"), Color(CkStyle::Accent())},
+        };
+    }
     static auto InputModeToString(ECk_UI_InputMode InMode) -> FString
     {
         switch (InMode)
@@ -123,6 +193,10 @@ namespace ck_ui_debugger
 SCkUIDebuggerWindow::~SCkUIDebuggerWindow()
 {
     DoUnbindLayoutEvents();
+    _CommandView.Reset();
+    _SummaryView.Reset();
+    _LayerView.Reset();
+    _HistoryView.Reset();
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -139,175 +213,26 @@ auto
 {
     Register_WithGate();
 
-    _SummaryText = SNew(STextBlock)
-        .Font_Static(&ck_ui_debugger::Font_Heading)
-        .ColorAndOpacity(CkStyle::Text());
-
-    _LayerListBox = SNew(SVerticalBox);
-    _HistoryListBox = SNew(SVerticalBox);
-
-    // ---- Search bar ----
-
-    auto SearchBar =
-        SNew(SBox)
-        .HeightOverride(28.0f)
-        [
-            SNew(SBorder)
-            .BorderImage(FAppStyle::GetBrush("WhiteBrush"))
-            .BorderBackgroundColor(CkStyle::BgRoot())
-            .Padding(FMargin(CkStyle::SpaceS))
-            [
-                SNew(SHorizontalBox)
-
-                + SHorizontalBox::Slot()
-                    .AutoWidth()
-                    .VAlign(VAlign_Center)
-                    .Padding(0.0f, 0.0f, CkStyle::SpaceS, 0.0f)
-                    [
-                        SNew(SCkDebug_Icon)
-                        .Brush(FAppStyle::GetBrush("Icons.Search"))
-                        .Meaning(FText::FromString(TEXT("Filter the layer list by tag")))
-                        .ColorAndOpacity(FSlateColor(CkStyle::TextMute()))
-                        .Size(FVector2D{16.0f, 16.0f})
-                    ]
-
-                + SHorizontalBox::Slot()
-                    .FillWidth(1.0f)
-                    .VAlign(VAlign_Center)
-                    [
-                        SAssignNew(_SearchTextBox, SEditableTextBox)
-                        .HintText(FText::FromString(TEXT("Filter layers...")))
-                        .OnTextChanged_Lambda([this](const FText& InText)
-                        {
-                            _SearchFilter = InText.ToString();
-                            DoUpdateAllSlots();
-                        })
-                    ]
-
-                + SHorizontalBox::Slot()
-                    .AutoWidth()
-                    .VAlign(VAlign_Center)
-                    .Padding(CkStyle::SpaceS, 0.0f, 0.0f, 0.0f)
-                    [
-                        SNew(SButton)
-                        .ButtonStyle(FAppStyle::Get(), "SimpleButton")
-                        .OnClicked_Lambda([this]()
-                        {
-                            _SearchTextBox->SetText(FText::GetEmpty());
-                            _SearchFilter.Empty();
-                            DoUpdateAllSlots();
-                            return FReply::Handled();
-                        })
-                        .Visibility_Lambda([this]() -> EVisibility
-                        {
-                            return _SearchFilter.IsEmpty() ? EVisibility::Collapsed : EVisibility::Visible;
-                        })
-                        [
-                            SNew(SImage)
-                            .Image(FAppStyle::GetBrush("Icons.X"))
-                            .ColorAndOpacity(FSlateColor(CkStyle::TextDim()))
-                            .DesiredSizeOverride_Lambda([]() -> TOptional<FVector2D>
-                            {
-                                const auto Size = ck::debug_axes::Apply_IconSize(12.0f);
-                                return FVector2D{Size, Size};
-                            })
-                        ]
-                    ]
-            ]
-        ];
-
-    // ---- Layer actions ----
-
-    auto MakeIconButton = [](const TCHAR* InBrush, const FText& InTooltip, FOnClicked InOnClicked) -> TSharedRef<SWidget>
+    _LayerHost = SNew(SBox);
+    _HistoryHost = SNew(SBox);
+    _SummaryHost = SNew(SBox);
+    _CommandHost = SNew(SBox);
+    const FCkUiLoadResult HistoryCollectionResult = FCkUiCollection::TryCreate(
+        ck_ui_debugger::HistorySchema(), _HistoryCollection);
+    if (NOT HistoryCollectionResult.Succeeded)
     {
-        return SNew(SButton)
-            .ButtonStyle(FAppStyle::Get(), "SimpleButton")
-            .OnClicked(InOnClicked)
-            .ToolTipText(InTooltip)
-            .ContentPadding(FMargin(CkStyle::SpaceS))
-            [
-                SNew(SImage)
-                .Image(FAppStyle::GetBrush(InBrush))
-                .ColorAndOpacity(FSlateColor(CkStyle::TextDim()))
-                .DesiredSizeOverride_Lambda([]() -> TOptional<FVector2D>
-                {
-                    const auto Size = ck::debug_axes::Apply_IconSize(16.0f);
-                    return FVector2D{Size, Size};
-                })
-            ];
-    };
-
-    auto LayerActions =
-        SNew(SHorizontalBox)
-
-            + SHorizontalBox::Slot().AutoWidth().Padding(0.0f, 0.0f, CkStyle::SpaceS, 0.0f)
-                [
-                    MakeIconButton(TEXT("Icons.Refresh"),
-                        FText::FromString(TEXT("Force Refresh")),
-                        FOnClicked::CreateLambda([this]() { _StructureDirty = true; return FReply::Handled(); }))
-                ]
-
-            + SHorizontalBox::Slot().AutoWidth().Padding(0.0f, 0.0f, 2.0f, 0.0f)
-                [
-                    MakeIconButton(TEXT("Icons.ChevronDown"),
-                        FText::FromString(TEXT("Expand All")),
-                        FOnClicked::CreateLambda([this]() { DoExpandAll(); return FReply::Handled(); }))
-                ]
-
-            + SHorizontalBox::Slot().AutoWidth().Padding(0.0f, 0.0f, CkStyle::SpaceS, 0.0f)
-                [
-                    MakeIconButton(TEXT("Icons.ChevronUp"),
-                        FText::FromString(TEXT("Collapse All")),
-                        FOnClicked::CreateLambda([this]() { DoCollapseAll(); return FReply::Handled(); }))
-                ]
-
-            + SHorizontalBox::Slot().AutoWidth().Padding(0.0f, 0.0f, CkStyle::SpaceS, 0.0f)
-                [
-                    MakeIconButton(TEXT("Icons.Delete"),
-                        FText::FromString(TEXT("Clear History")),
-                        FOnClicked::CreateLambda([this]() { _HistoryEvents.Empty(); DoBuildHistoryList(); return FReply::Handled(); }))
-                ]
-
-            + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-                .Padding(CkStyle::SpaceM, 0.0f, 0.0f, 0.0f)
-                [
-                    SNew(SCkDebug_NameDepthCycler)
-                        .Depth_Lambda([this]() -> int32 { return _NameDepth; })
-                        .MaxDepth_Lambda([this]() -> int32 { return _MaxNameSegments; })
-                        .OnDepthChanged(FOnCkDebug_NameDepthChanged::CreateLambda([this](int32 InNewDepth)
-                        {
-                            _NameDepth = InNewDepth;
-                            _IsDirty = true;   // layer/widget slot texts re-stamp on the next update pass
-                        }))
-                ]
-
-        ;
+        _HistoryHost->SetContent(SNew(STextBlock).Text(
+            FText::FromString(FString::Join(HistoryCollectionResult.Errors, TEXT("\n")))));
+    }
+    const FCkUiLoadResult LayerCollectionResult = FCkUiTreeCollection::TryCreate(
+        ck_ui_debugger::LayerSchema(), _LayerCollection);
+    if (NOT LayerCollectionResult.Succeeded)
+    {
+        _LayerHost->SetContent(SNew(STextBlock).Text(
+            FText::FromString(FString::Join(LayerCollectionResult.Errors, TEXT("\n")))));
+    }
 
     // ---- History area ----
-
-    const auto HistoryAreaCard =
-        SNew(SCkDebug_PaneHost)
-        [
-        SAssignNew(_HistoryArea, SExpandableArea)
-        .InitiallyCollapsed(true)
-        .BorderBackgroundColor(FLinearColor::Transparent)
-        .HeaderPadding(FMargin(CkStyle::SpaceM, CkStyle::SpaceS))
-        .HeaderContent()
-        [
-            SNew(STextBlock)
-            .Font_Static(&ck_ui_debugger::Font_Heading)
-            .Text(FText::FromString(TEXT("Event History")))
-            .ColorAndOpacity(CkStyle::TextStrong())
-        ]
-        .BodyContent()
-        [
-            SNew(SBox).MaxDesiredHeight(200.0f)
-            [
-                SNew(SScrollBox)
-                + SScrollBox::Slot() [ _HistoryListBox.ToSharedRef() ]
-            ]
-        ]
-        ];
 
     // ---- Root layout ----
 
@@ -316,33 +241,6 @@ auto
         SNew(SCkDebug_WindowChrome)
         .WindowId(WindowId)
         .ToolTabId(TEXT("CkUIDebugger"))
-        .CommandGroups({
-            FCkDebug_CommandGroup::Primary(
-                TEXT("LayerView"),
-                FText::FromString(TEXT("Layer view controls")),
-                SNew(SCkDebug_IconToolbar)
-                .Actions({
-                    FCkDebug_IconToggleAction{
-                        TEXT("UiActiveLayerOnly"),
-                        ECk_Icon::Target,
-                        FText::FromString(TEXT("Active Layer Only")),
-                        FText::FromString(TEXT("Show only the layout's active layer.")),
-                        TAttribute<bool>::CreateLambda([this]() { return _ShowActiveLayerOnly; }),
-                        FOnCkDebug_IconToggleChanged::CreateLambda([this](const bool InIsEnabled)
-                        {
-                            _ShowActiveLayerOnly = InIsEnabled;
-                            _IsDirty = true;
-                        })}
-                })),
-            FCkDebug_CommandGroup::Context(
-                TEXT("LayerFilter"),
-                FText::FromString(TEXT("Layer filter")),
-                SearchBar),
-            FCkDebug_CommandGroup::Context(
-                TEXT("LayerActions"),
-                FText::FromString(TEXT("Layer actions")),
-                LayerActions)
-        })
         .ShowRefreshControls(true)
         .Content()
         [
@@ -350,24 +248,27 @@ auto
         [
             SNew(SVerticalBox)
 
+            + SVerticalBox::Slot().AutoHeight().Padding(CkStyle::SpaceM, CkStyle::SpaceS, CkStyle::SpaceM, 0.0f)
+                [ _CommandHost.ToSharedRef() ]
+
             + SVerticalBox::Slot().AutoHeight().Padding(CkStyle::SpaceM, CkStyle::SpaceS)
-                [ _SummaryText.ToSharedRef() ]
+                [ _SummaryHost.ToSharedRef() ]
 
             + SVerticalBox::Slot().AutoHeight().Padding(CkStyle::SpaceM, 0.0f)
                 [ ck::debug_axes::Make_AxisSeparator() ]
 
-            + SVerticalBox::Slot().FillHeight(1.0f)
-                [
-                    SNew(SScrollBox)
-                    + SScrollBox::Slot().Padding(CkStyle::SpaceS)
-                        [ _LayerListBox.ToSharedRef() ]
-                ]
+            + SVerticalBox::Slot().FillHeight(1.0f).Padding(CkStyle::SpaceS)
+                [ _LayerHost.ToSharedRef() ]
 
             + SVerticalBox::Slot().AutoHeight()
-                [ HistoryAreaCard ]
+                [ _HistoryHost.ToSharedRef() ]
         ]
         ]
     ];
+    DoBuildCommandView();
+    DoBuildLayerView();
+    DoBuildSummaryView();
+    DoBuildHistoryView();
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -383,6 +284,10 @@ auto
     -> void
 {
     SCkDebugger_WindowBase::Tick(InAllottedGeometry, InCurrentTime, InDeltaTime);
+    DoPollCommandFiles(InCurrentTime);
+    DoPollLayerFiles(InCurrentTime);
+    DoPollSummaryFiles(InCurrentTime);
+    DoPollHistoryFiles(InCurrentTime);
 
     if (NOT FCkDebuggerRefreshGate::Should_RefreshNow(WindowId))
     { return; }
@@ -406,15 +311,28 @@ auto
         _StructureDirty = true;
     }
 
+    if (_IsPostLayerTransitionRefreshPending && _BoundLayout.IsValid())
+    {
+        if (NOT _BoundLayout->IsAnyLayerTransitioning())
+        {
+            _IsPostLayerTransitionRefreshPending = false;
+            _IsDirty = true;
+        }
+    }
+    else if (_IsPostLayerTransitionRefreshPending)
+    {
+        _IsPostLayerTransitionRefreshPending = false;
+    }
+
     // ---- Rebuild structure if layout changed ----
 
     if (_StructureDirty)
     {
         _StructureDirty = false;
         _IsDirty = false;
-        DoBuildLayerSlots();
+        DoBuildLayerView();
         DoUpdateAllSlots();
-        DoBuildHistoryList();
+        DoPublishHistoryRecords();
         return;
     }
 
@@ -424,7 +342,7 @@ auto
     {
         _IsDirty = false;
         DoUpdateAllSlots();
-        DoBuildHistoryList();
+        DoPublishHistoryRecords();
     }
 }
 
@@ -435,9 +353,9 @@ auto
     OnStyleRevisionChanged()
     -> void
 {
-    // Structural axes reach this window only through the imperatively-built layer slots and history
-    // rows; flagging the existing rebuild path re-stamps them on the next gated tick without
-    // touching the widget tree from inside the revision poll.
+    if (_CommandView.IsValid()) { _CommandView->PollFiles(ck_ui_debugger::CommandStyleTokens()); }
+    if (_LayerView.IsValid()) { _LayerView->PollFiles(ck_ui_debugger::LayerStyleTokens()); }
+    if (_SummaryView.IsValid()) { _SummaryView->PollFiles(ck_ui_debugger::SummaryStyleTokens()); }
     _StructureDirty = true;
 }
 
@@ -468,6 +386,8 @@ auto
     DoUnbindLayoutEvents()
     -> void
 {
+    _IsPostLayerTransitionRefreshPending = false;
+
     if (NOT _BoundLayout.IsValid())
     { return; }
 
@@ -496,14 +416,8 @@ auto
         ? DoShortName(InWidget->GetClass()->GetName())
         : FString(TEXT("Unknown"));
 
-    _HistoryEvents.Insert(FCkUIDebugger_HistoryEvent{
-        FPlatformTime::Seconds(),
-        FString::Printf(TEXT("[Push] %s -> %s"), *ClassName, *DoShortName(InLayerTag.ToString()))
-    }, 0);
-
-    if (_HistoryEvents.Num() > MaxHistoryEvents) { _HistoryEvents.SetNum(MaxHistoryEvents); }
-
-    _IsDirty = true;
+    DoAppendHistoryEvent(FString::Printf(TEXT("[Push] %s -> %s"), *ClassName, *DoShortName(InLayerTag.ToString())));
+    _IsPostLayerTransitionRefreshPending = true;
 }
 
 auto
@@ -517,14 +431,8 @@ auto
         ? DoShortName(InWidget->GetClass()->GetName())
         : FString(TEXT("Unknown"));
 
-    _HistoryEvents.Insert(FCkUIDebugger_HistoryEvent{
-        FPlatformTime::Seconds(),
-        FString::Printf(TEXT("[Pop] %s <- %s"), *ClassName, *DoShortName(InLayerTag.ToString()))
-    }, 0);
-
-    if (_HistoryEvents.Num() > MaxHistoryEvents) { _HistoryEvents.SetNum(MaxHistoryEvents); }
-
-    _IsDirty = true;
+    DoAppendHistoryEvent(FString::Printf(TEXT("[Pop] %s <- %s"), *ClassName, *DoShortName(InLayerTag.ToString())));
+    _IsPostLayerTransitionRefreshPending = true;
 }
 
 auto
@@ -533,14 +441,8 @@ auto
         FGameplayTag InLayerTag)
     -> void
 {
-    _HistoryEvents.Insert(FCkUIDebugger_HistoryEvent{
-        FPlatformTime::Seconds(),
-        FString::Printf(TEXT("[Cleared] %s"), *DoShortName(InLayerTag.ToString()))
-    }, 0);
-
-    if (_HistoryEvents.Num() > MaxHistoryEvents) { _HistoryEvents.SetNum(MaxHistoryEvents); }
-
-    _IsDirty = true;
+    DoAppendHistoryEvent(FString::Printf(TEXT("[Cleared] %s"), *DoShortName(InLayerTag.ToString())));
+    _IsPostLayerTransitionRefreshPending = true;
 }
 
 auto
@@ -549,14 +451,7 @@ auto
         FGameplayTag InNewActiveTag)
     -> void
 {
-    _HistoryEvents.Insert(FCkUIDebugger_HistoryEvent{
-        FPlatformTime::Seconds(),
-        FString::Printf(TEXT("Active Layer -> %s"), *DoShortName(InNewActiveTag.ToString()))
-    }, 0);
-
-    if (_HistoryEvents.Num() > MaxHistoryEvents) { _HistoryEvents.SetNum(MaxHistoryEvents); }
-
-    _IsDirty = true;
+    DoAppendHistoryEvent(FString::Printf(TEXT("Active Layer -> %s"), *DoShortName(InNewActiveTag.ToString())));
 }
 
 auto
@@ -565,339 +460,481 @@ auto
         ECk_UI_InputMode InNewMode)
     -> void
 {
-    _HistoryEvents.Insert(FCkUIDebugger_HistoryEvent{
-        FPlatformTime::Seconds(),
-        FString::Printf(TEXT("Input Mode -> %s"), *ck_ui_debugger::InputModeToString(InNewMode))
-    }, 0);
+    DoAppendHistoryEvent(FString::Printf(TEXT("Input Mode -> %s"), *ck_ui_debugger::InputModeToString(InNewMode)));
+}
 
-    if (_HistoryEvents.Num() > MaxHistoryEvents) { _HistoryEvents.SetNum(MaxHistoryEvents); }
+// --------------------------------------------------------------------------------------------------------------------
+// Authored commands
+// --------------------------------------------------------------------------------------------------------------------
 
-    _IsDirty = true;
+auto SCkUIDebuggerWindow::DoBuildCommandView() -> void
+{
+    if (!_CommandHost.IsValid() || _CommandView.IsValid()) { return; }
+
+    TSharedPtr<const FCkUiWidgetRegistrySnapshot> Registry;
+    const FCkUiLoadResult RegistryResult = FCkDebug_UiRegistry::TryCreate(Registry);
+    if (NOT RegistryResult.Succeeded)
+    {
+        _CommandHost->SetContent(SNew(STextBlock).Text(
+            FText::FromString(FString::Join(RegistryResult.Errors, TEXT("\n")))));
+        return;
+    }
+
+    const TWeakPtr<SCkUIDebuggerWindow> WeakWindow{SharedThis(this)};
+    auto Data = FCkUiView::FDataBindings{};
+    Data.CanDispatchEvents = TAttribute<bool>::CreateLambda([WeakWindow]() { return WeakWindow.IsValid(); });
+    Data.Text.Add(TEXT("ui-layer-filter"), TAttribute<FText>::CreateLambda([WeakWindow]()
+    {
+        const TSharedPtr<SCkUIDebuggerWindow> Window = WeakWindow.Pin();
+        return Window.IsValid() ? FText::FromString(Window->_SearchFilter) : FText::GetEmpty();
+    }));
+    Data.TextChanged.Add(TEXT("ui-layer-filter"), FOnTextChanged::CreateLambda([WeakWindow](const FText& InText)
+    {
+        const TSharedPtr<SCkUIDebuggerWindow> Window = WeakWindow.Pin();
+        if (!Window.IsValid()) { return; }
+        Window->_SearchFilter = InText.ToString();
+        Window->DoUpdateAllSlots();
+    }));
+    Data.Text.Add(TEXT("ui-active-layer-only-label"), TAttribute<FText>::CreateLambda([WeakWindow]()
+    {
+        const TSharedPtr<SCkUIDebuggerWindow> Window = WeakWindow.Pin();
+        return FText::FromString(Window.IsValid() && Window->_ShowActiveLayerOnly
+            ? TEXT("Active only: ON") : TEXT("Active only: OFF"));
+    }));
+    Data.Color.Add(TEXT("ui-active-layer-only-color"), TAttribute<FLinearColor>::CreateLambda([WeakWindow]()
+    {
+        const TSharedPtr<SCkUIDebuggerWindow> Window = WeakWindow.Pin();
+        return Window.IsValid() && Window->_ShowActiveLayerOnly ? CkStyle::Accent() : CkStyle::TextDim();
+    }));
+    Data.Text.Add(TEXT("ui-name-depth-value"), TAttribute<FText>::CreateLambda([WeakWindow]()
+    {
+        const TSharedPtr<SCkUIDebuggerWindow> Window = WeakWindow.Pin();
+        if (!Window.IsValid() || Window->_NameDepth == 0) { return FText::FromString(TEXT("Full")); }
+        return FText::AsNumber(Window->_NameDepth);
+    }));
+    Data.Visibility.Add(TEXT("ui-layer-filter-has-text"), TAttribute<bool>::CreateLambda([WeakWindow]()
+    {
+        const TSharedPtr<SCkUIDebuggerWindow> Window = WeakWindow.Pin();
+        return Window.IsValid() && !Window->_SearchFilter.IsEmpty();
+    }));
+
+    auto Actions = FCkUiView::FActions{};
+    Actions.Add(TEXT("ui-clear-layer-filter"), FSimpleDelegate::CreateLambda([WeakWindow]()
+    {
+        const TSharedPtr<SCkUIDebuggerWindow> Window = WeakWindow.Pin();
+        if (!Window.IsValid()) { return; }
+        Window->_SearchFilter.Empty();
+        Window->DoUpdateAllSlots();
+    }));
+    Actions.Add(TEXT("ui-toggle-active-layer-only"), FSimpleDelegate::CreateLambda([WeakWindow]()
+    {
+        const TSharedPtr<SCkUIDebuggerWindow> Window = WeakWindow.Pin();
+        if (!Window.IsValid()) { return; }
+        Window->_ShowActiveLayerOnly = !Window->_ShowActiveLayerOnly;
+        Window->_IsDirty = true;
+    }));
+    Actions.Add(TEXT("ui-force-refresh"), FSimpleDelegate::CreateLambda([WeakWindow]()
+    {
+        if (const TSharedPtr<SCkUIDebuggerWindow> Window = WeakWindow.Pin(); Window.IsValid())
+        {
+            ++Window->_ForcedLayerRefreshGeneration;
+            Window->_StructureDirty = true;
+        }
+    }));
+    Actions.Add(TEXT("ui-expand-all"), FSimpleDelegate::CreateLambda([WeakWindow]()
+    {
+        if (const TSharedPtr<SCkUIDebuggerWindow> Window = WeakWindow.Pin(); Window.IsValid())
+        { Window->DoExpandAll(); }
+    }));
+    Actions.Add(TEXT("ui-collapse-all"), FSimpleDelegate::CreateLambda([WeakWindow]()
+    {
+        if (const TSharedPtr<SCkUIDebuggerWindow> Window = WeakWindow.Pin(); Window.IsValid())
+        { Window->DoCollapseAll(); }
+    }));
+    Actions.Add(TEXT("ui-clear-history"), FSimpleDelegate::CreateLambda([WeakWindow]()
+    {
+        const TSharedPtr<SCkUIDebuggerWindow> Window = WeakWindow.Pin();
+        if (!Window.IsValid()) { return; }
+        Window->_HistoryEvents.Empty();
+        Window->DoPublishHistoryRecords();
+    }));
+    Actions.Add(TEXT("ui-name-depth-previous"), FSimpleDelegate::CreateLambda([WeakWindow]()
+    {
+        if (const TSharedPtr<SCkUIDebuggerWindow> Window = WeakWindow.Pin(); Window.IsValid())
+        { Window->DoCycleNameDepth(-1); }
+    }));
+    Actions.Add(TEXT("ui-name-depth-next"), FSimpleDelegate::CreateLambda([WeakWindow]()
+    {
+        if (const TSharedPtr<SCkUIDebuggerWindow> Window = WeakWindow.Pin(); Window.IsValid())
+        { Window->DoCycleNameDepth(1); }
+    }));
+
+    const TSharedPtr<IPlugin> Plugin = IPluginManager::Get().FindPlugin(TEXT("CkDebugger"));
+    if (!Plugin.IsValid())
+    {
+        _CommandHost->SetContent(SNew(STextBlock).Text(
+            FText::FromString(TEXT("CkDebugger resources are unavailable."))));
+        return;
+    }
+
+    const TSharedRef<FCkUiView> View = FCkUiView::Create({}, MoveTemp(Actions),
+        ck_ui_debugger::CommandStyleTokens(), CkStyle::RegularFont(CkStyle::FontSizeBody()), MoveTemp(Data), Registry);
+    const TSharedRef<SWidget> Commands = View->GetRegion(TEXT("commands"));
+    const FString Directory = FPaths::Combine(Plugin->GetBaseDir(), TEXT("Resources/UI"));
+    View->SetFiles(FPaths::Combine(Directory, TEXT("UiDebuggerCommands.ui.html")),
+        FPaths::Combine(Directory, TEXT("UiDebuggerCommands.ui.css")));
+    View->PollFiles();
+    if (NOT View->GetLastResult().Succeeded)
+    {
+        _CommandHost->SetContent(SNew(STextBlock).Text(
+            FText::FromString(FString::Join(View->GetLastResult().Errors, TEXT("\n")))));
+        return;
+    }
+
+    _CommandView = View;
+    _CommandHost->SetContent(Commands);
+}
+
+auto SCkUIDebuggerWindow::DoPollCommandFiles(const double InCurrentTime) -> void
+{
+    constexpr double PollIntervalSeconds = 0.5;
+    if (InCurrentTime < _NextCommandPollSeconds) { return; }
+    _NextCommandPollSeconds = InCurrentTime + PollIntervalSeconds;
+    if (_CommandView.IsValid()) { _CommandView->PollFiles(ck_ui_debugger::CommandStyleTokens()); }
+    else { DoBuildCommandView(); }
 }
 
 // --------------------------------------------------------------------------------------------------------------------
 // Structure Building (one-time when layout binds)
 // --------------------------------------------------------------------------------------------------------------------
 
-auto
-    SCkUIDebuggerWindow::
-    DoBuildLayerSlots()
-    -> void
+auto SCkUIDebuggerWindow::DoBuildLayerView() -> void
 {
-    _LayerListBox->ClearChildren();
-    _LayerSlots.Empty();
-    _WidgetSlotPools.Empty();
+    if (!_LayerHost.IsValid() || !_LayerCollection.IsValid() || _LayerView.IsValid()) { return; }
 
-    if (NOT _BoundLayout.IsValid())
+    TSharedPtr<const FCkUiWidgetRegistrySnapshot> Registry;
+    const FCkUiLoadResult RegistryResult = FCkDebug_UiRegistry::TryCreate(Registry);
+    if (NOT RegistryResult.Succeeded)
     {
-        _SummaryText->SetText(FText::FromString(TEXT("No active layout. Start PIE to see layer data.")));
+        _LayerHost->SetContent(SNew(STextBlock).Text(FText::FromString(FString::Join(RegistryResult.Errors, TEXT("\n")))));
         return;
     }
 
-    auto* Layout = _BoundLayout.Get();
+    const TWeakPtr<SCkUIDebuggerWindow> WeakWindow{SharedThis(this)};
+    auto Data = FCkUiView::FDataBindings{};
+    Data.CanDispatchEvents = TAttribute<bool>::CreateLambda([WeakWindow]() { return WeakWindow.IsValid(); });
+    Data.Trees.Add(TEXT("ui-layer-nodes"), _LayerCollection);
 
-    // ---- Collect layers sorted by priority ----
-
-    struct FEntry { UCk_UI_LayerStack_UE* Stack; };
-    auto Entries = TArray<FEntry>{};
-
-    Layout->ForEachLayer([&Entries](UCk_UI_LayerStack_UE* InStack, bool /*InIsTransitioning*/)
+    const TSharedPtr<IPlugin> Plugin = IPluginManager::Get().FindPlugin(TEXT("CkDebugger"));
+    if (!Plugin.IsValid())
     {
-        Entries.Add(FEntry{ InStack });
-    });
+        _LayerHost->SetContent(SNew(STextBlock).Text(FText::FromString(TEXT("CkDebugger resources are unavailable."))));
+        return;
+    }
 
-    Entries.Sort([](const FEntry& A, const FEntry& B)
+    const TSharedRef<FCkUiView> View = FCkUiView::Create({}, {}, ck_ui_debugger::LayerStyleTokens(),
+        CkStyle::RegularFont(CkStyle::FontSizeBody()), MoveTemp(Data), Registry);
+    const TSharedRef<SWidget> Layers = View->GetRegion(TEXT("layers"));
+    const FString Directory = FPaths::Combine(Plugin->GetBaseDir(), TEXT("Resources/UI"));
+    View->SetFiles(FPaths::Combine(Directory, TEXT("UiDebuggerLayers.ui.html")),
+        FPaths::Combine(Directory, TEXT("UiDebuggerLayers.ui.css")));
+    View->PollFiles();
+    if (NOT View->GetLastResult().Succeeded)
+    {
+        _LayerHost->SetContent(SNew(STextBlock).Text(FText::FromString(FString::Join(View->GetLastResult().Errors, TEXT("\n")))));
+        return;
+    }
+
+    _LayerView = View;
+    _LayerHost->SetContent(Layers);
+}
+
+auto SCkUIDebuggerWindow::DoPublishLayerNodes() -> void
+{
+    if (!_LayerCollection.IsValid()) { return; }
+    auto Nodes = TArray<FCkUiTreeNodeData>{};
+    if (NOT _BoundLayout.IsValid())
+    {
+        _LayerCollection->TrySetNodes(MoveTemp(Nodes));
+        return;
+    }
+
+    struct FLayerEntry { UCk_UI_LayerStack_UE* Stack = nullptr; bool IsTransitioning = false; };
+    auto Entries = TArray<FLayerEntry>{};
+    _BoundLayout->ForEachLayer([&Entries](UCk_UI_LayerStack_UE* InStack, const bool InIsTransitioning)
+    {
+        if (ck::IsValid(InStack)) { Entries.Add({InStack, InIsTransitioning}); }
+    });
+    Entries.Sort([](const FLayerEntry& A, const FLayerEntry& B)
     {
         if (A.Stack->Get_Priority() != B.Stack->Get_Priority()) { return A.Stack->Get_Priority() > B.Stack->Get_Priority(); }
         return A.Stack->Get_LayerTag().ToString() < B.Stack->Get_LayerTag().ToString();
     });
 
-    // ---- Create a slot for each layer ----
-
-    _LayerSlots.SetNum(Entries.Num());
-    _WidgetSlotPools.SetNum(Entries.Num());
-
-    for (auto LayerIdx = 0; LayerIdx < Entries.Num(); ++LayerIdx)
+    const FGameplayTag ActiveTag = _BoundLayout->Get_ActiveLayerTag();
+    Nodes.Reserve(Entries.Num() * (MaxWidgetsPerLayer + 1));
+    for (const FLayerEntry& Entry : Entries)
     {
-        auto& Slot = _LayerSlots[LayerIdx];
-        Slot.Stack = Entries[LayerIdx].Stack;
+        UCk_UI_LayerStack_UE* Stack = Entry.Stack;
+        const FString FullTag = Stack->Get_LayerTag().ToString();
+        const bool IsActive = Stack->Get_LayerTag() == ActiveTag;
+        const bool IsVisible = DoMatchesFilter(FullTag) && (!_ShowActiveLayerOnly || IsActive);
+        const FLinearColor StatusColor = Entry.IsTransitioning ? CkStyle::Warn()
+            : IsActive ? CkStyle::Ok() : Stack->HasWidgets() ? CkStyle::TextDim() : CkStyle::TextMute();
+        const FString LayerKey = FullTag;
+        const auto EmptyText = ck_ui_debugger::TextField(TEXT(""));
+        auto Layer = FCkUiTreeNodeData{};
+        Layer.Key = LayerKey;
+        Layer.Fields = {
+            {TEXT("node-visible"), ck_ui_debugger::BoolField(IsVisible)},
+            {TEXT("is-layer"), ck_ui_debugger::BoolField(true)},
+            {TEXT("is-widget"), ck_ui_debugger::BoolField(false)},
+            {TEXT("status-glyph"), ck_ui_debugger::TextField(TEXT("●"))},
+            {TEXT("status-color"), ck_ui_debugger::ColorField(StatusColor)},
+            {TEXT("layer-tag"), ck_ui_debugger::TextField(DoShortName(FullTag))},
+            {TEXT("layer-tag-tooltip"), ck_ui_debugger::TextField(FullTag)},
+            {TEXT("layer-tag-color"), ck_ui_debugger::ColorField(IsActive ? CkStyle::TextStrong() : CkStyle::Text())},
+            {TEXT("priority"), ck_ui_debugger::TextField(FString::Printf(TEXT("[%d]"), Stack->Get_Priority()))},
+            {TEXT("input-mode"), ck_ui_debugger::TextField(ck_ui_debugger::InputModeToString(Stack->Get_DefaultInputMode()))},
+            {TEXT("widget-count"), ck_ui_debugger::TextField(FString::Printf(TEXT("(%d)"), Stack->GetWidgetList().Num()))},
+            {TEXT("widget-name"), EmptyText}, {TEXT("widget-name-tooltip"), EmptyText},
+            {TEXT("widget-name-color"), ck_ui_debugger::ColorField(CkStyle::TextDim())},
+            {TEXT("widget-state"), EmptyText},
+            {TEXT("widget-state-foreground"), ck_ui_debugger::ColorField(CkStyle::TextDim())},
+            {TEXT("widget-state-background"), ck_ui_debugger::ColorField(CkStyle::BgRoot())},
+        };
+        Nodes.Add(MoveTemp(Layer));
 
-        // ---- Header widgets ----
-
-        // A category swatch rather than a pill: the layer's state is encoded by colour alone here,
-        // with the adjacent label carrying the layer TAG, not the state.
-        Slot.StatusDot = SNew(SCkDebug_CategoryDot).Diameter(8.0f);
-
-        Slot.TagText = SNew(STextBlock).Font_Static(&ck_ui_debugger::Font_RowLabel);
-        Slot.PriorityText = SNew(STextBlock).Font_Static(&ck_ui_debugger::Font_Value);
-        Slot.InputModeText = SNew(STextBlock).Font_Static(&ck_ui_debugger::Font_Body);
-        Slot.WidgetCountText = SNew(STextBlock).Font_Static(&ck_ui_debugger::Font_Body);
-
-        auto Header =
-            SNew(SHorizontalBox)
-
-            + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-                .Padding(0.0f, 0.0f, CkStyle::SpaceS, 0.0f)
-                [ Slot.StatusDot.ToSharedRef() ]
-
-            + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-                .Padding(0.0f, 0.0f, CkStyle::SpaceM, 0.0f)
-                [ Slot.TagText.ToSharedRef() ]
-
-            + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-                .Padding(0.0f, 0.0f, CkStyle::SpaceM, 0.0f)
-                [ Slot.PriorityText.ToSharedRef() ]
-
-            + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-                .Padding(0.0f, 0.0f, CkStyle::SpaceM, 0.0f)
-                [ Slot.InputModeText.ToSharedRef() ]
-
-            + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-                [ Slot.WidgetCountText.ToSharedRef() ];
-
-        // ---- Widget list with pre-allocated rows ----
-
-        Slot.WidgetListBox = SNew(SVerticalBox);
-        auto& WidgetPool = _WidgetSlotPools[LayerIdx];
-        WidgetPool.SetNum(MaxWidgetsPerLayer);
-
-        for (auto WidgetIdx = 0; WidgetIdx < MaxWidgetsPerLayer; ++WidgetIdx)
+        const auto& Widgets = Stack->GetWidgetList();
+        UCommonActivatableWidget* ActiveWidget = Stack->GetActiveWidget();
+        for (int32 WidgetIndex = 0; WidgetIndex < Widgets.Num() && WidgetIndex < MaxWidgetsPerLayer; ++WidgetIndex)
         {
-            auto& WSlot = WidgetPool[WidgetIdx];
-
-            WSlot.StatusDot = SNew(SCkDebug_CategoryDot).Diameter(6.0f);
-
-            WSlot.ClassNameText = SNew(STextBlock).Font_Static(&ck_ui_debugger::Font_Body)
-                .OverflowPolicy(ETextOverflowPolicy::Ellipsis);
-
-            // The badge IS the row's state label, so it reads as a toned pill. Its text and tone
-            // resolve from a shared cell because the pool's slot structs are relocatable.
-            WSlot.IsWidgetActive = MakeShared<bool>(false);
-
-            WSlot.Badge = SNew(SCkDebug_StatusPill)
-                .ShowDot(false)
-                .Text_Lambda([Cell = WSlot.IsWidgetActive]()
-                {
-                    return FText::FromString(*Cell ? TEXT("Active") : TEXT("Inactive"));
-                })
-                .Tone_Lambda([Cell = WSlot.IsWidgetActive]()
-                {
-                    return *Cell ? ECk_Tone::Ok : ECk_Tone::Neutral;
-                });
-
-            const auto BgColor = (WidgetIdx % 2 == 0) ? CkStyle::BgRoot() : CkStyle::Bg1();
-
-            WSlot.Root = SNew(SBorder)
-                .BorderImage(FAppStyle::GetBrush("WhiteBrush"))
-                .BorderBackgroundColor(BgColor)
-                .Padding_Static(&ck_ui_debugger::Get_WidgetRowPadding)
-                .Visibility(EVisibility::Collapsed)
-                [
-                    SNew(SHorizontalBox)
-
-                    + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-                        .Padding(0.0f, 0.0f, CkStyle::SpaceS, 0.0f)
-                        [ WSlot.StatusDot.ToSharedRef() ]
-
-                    + SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)
-                        [ WSlot.ClassNameText.ToSharedRef() ]
-
-                    + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-                        .Padding(CkStyle::SpaceS, 0.0f, 0.0f, 0.0f)
-                        [ WSlot.Badge.ToSharedRef() ]
-                ];
-
-            Slot.WidgetListBox->AddSlot().AutoHeight()
-                [ WSlot.Root.ToSharedRef() ];
+            UCommonActivatableWidget* Widget = Widgets[WidgetIndex];
+            if (!ck::IsValid(Widget)) { continue; }
+            const bool IsActiveWidget = Widget == ActiveWidget;
+            const FString FullName = Widget->GetClass()->GetName();
+            auto Child = FCkUiTreeNodeData{};
+            Child.Key = FString::Printf(TEXT("%s|%s"), *LayerKey, *Widget->GetPathName());
+            Child.ParentKey = LayerKey;
+            Child.Fields = {
+                {TEXT("node-visible"), ck_ui_debugger::BoolField(IsVisible)},
+                {TEXT("is-layer"), ck_ui_debugger::BoolField(false)},
+                {TEXT("is-widget"), ck_ui_debugger::BoolField(true)},
+                {TEXT("status-glyph"), ck_ui_debugger::TextField(TEXT("●"))},
+                {TEXT("status-color"), ck_ui_debugger::ColorField(IsActiveWidget ? CkStyle::Ok() : CkStyle::TextMute())},
+                {TEXT("layer-tag"), EmptyText}, {TEXT("layer-tag-tooltip"), EmptyText},
+                {TEXT("layer-tag-color"), ck_ui_debugger::ColorField(CkStyle::TextDim())},
+                {TEXT("priority"), EmptyText}, {TEXT("input-mode"), EmptyText}, {TEXT("widget-count"), EmptyText},
+                {TEXT("widget-name"), ck_ui_debugger::TextField(DoShortName(FullName))},
+                {TEXT("widget-name-tooltip"), ck_ui_debugger::TextField(FullName)},
+                {TEXT("widget-name-color"), ck_ui_debugger::ColorField(IsActiveWidget ? CkStyle::Text() : CkStyle::TextDim())},
+                {TEXT("widget-state"), ck_ui_debugger::TextField(IsActiveWidget ? TEXT("Active") : TEXT("Inactive"))},
+                {TEXT("widget-state-foreground"), ck_ui_debugger::ColorField(IsActiveWidget ? CkStyle::Ok() : CkStyle::TextDim())},
+                {TEXT("widget-state-background"), ck_ui_debugger::ColorField(IsActiveWidget ? CkStyle::GetToneDimColor(ECk_Tone::Ok) : CkStyle::GetToneDimColor(ECk_Tone::Neutral))},
+            };
+            Nodes.Add(MoveTemp(Child));
         }
-
-        // ---- Expandable area ----
-
-        Slot.ExpandableArea = SNew(SExpandableArea)
-            .InitiallyCollapsed(false)
-            .BorderBackgroundColor(CkStyle::BgRoot())
-            .HeaderPadding(FMargin(CkStyle::SpaceM, CkStyle::SpaceS))
-            .HeaderContent() [ Header ]
-            .BodyContent() [ Slot.WidgetListBox.ToSharedRef() ];
-
-        _LayerListBox->AddSlot().AutoHeight().Padding(0.0f, 2.0f)
-            [ Slot.ExpandableArea.ToSharedRef() ];
+    }
+    const FCkUiLoadResult PublicationResult = _LayerCollection->TrySetNodes(MoveTemp(Nodes));
+    TSharedPtr<SCkUiTree> Tree;
+    if (_LayerView.IsValid()) { Tree = _LayerView->GetTree(TEXT("ui-layer-tree")); }
+    if (PublicationResult.Succeeded && Tree.IsValid())
+    {
+        for (const TSharedPtr<const FCkUiTreeNode>& Root : _LayerCollection->GetRoots())
+        {
+            if (Root.IsValid() && !_InitializedLayerRootKeys.Contains(Root->GetKey())
+                && Tree->TrySetExpanded(Root->GetKey(), true))
+            { _InitializedLayerRootKeys.Add(Root->GetKey()); }
+        }
     }
 }
 
-// --------------------------------------------------------------------------------------------------------------------
-// In-place Update (no widget destruction)
-// --------------------------------------------------------------------------------------------------------------------
-
-auto
-    SCkUIDebuggerWindow::
-    DoUpdateAllSlots()
-    -> void
+auto SCkUIDebuggerWindow::DoPollLayerFiles(const double InCurrentTime) -> void
 {
-    if (NOT _BoundLayout.IsValid())
+    constexpr double PollIntervalSeconds = 0.5;
+    if (InCurrentTime < _NextLayerPollSeconds) { return; }
+    _NextLayerPollSeconds = InCurrentTime + PollIntervalSeconds;
+    if (_LayerView.IsValid()) { _LayerView->PollFiles(ck_ui_debugger::LayerStyleTokens()); }
+    else { DoBuildLayerView(); }
+}
+
+auto SCkUIDebuggerWindow::DoBuildSummaryView() -> void
+{
+    if (!_SummaryHost.IsValid() || _SummaryView.IsValid()) { return; }
+    TSharedPtr<const FCkUiWidgetRegistrySnapshot> Registry;
+    const FCkUiLoadResult RegistryResult = FCkDebug_UiRegistry::TryCreate(Registry);
+    if (NOT RegistryResult.Succeeded)
     {
-        _SummaryText->SetText(FText::FromString(TEXT("No active layout. Start PIE to see layer data.")));
+        _SummaryHost->SetContent(SNew(STextBlock).Text(
+            FText::FromString(FString::Join(RegistryResult.Errors, TEXT("\n")))));
         return;
     }
 
-    auto* Layout = _BoundLayout.Get();
-    const auto ActiveTag = Layout->Get_ActiveLayerTag();
-    const auto EffectiveMode = Layout->Get_EffectiveInputMode();
-
-    _SummaryText->SetText(FText::FromString(FString::Printf(
-        TEXT("Active: %s   |   Input: %s   |   Layers: %d"),
-        *ActiveTag.ToString(),
-        *ck_ui_debugger::InputModeToString(EffectiveMode),
-        _LayerSlots.Num())));
-
-    for (auto& Slot : _LayerSlots)
+    const TWeakPtr<SCkUIDebuggerWindow> WeakWindow{SharedThis(this)};
+    auto Data = FCkUiView::FDataBindings{};
+    Data.CanDispatchEvents = TAttribute<bool>::CreateLambda([WeakWindow]() { return WeakWindow.IsValid(); });
+    Data.Text.Add(TEXT("summary-active-tag"), TAttribute<FText>::CreateLambda([WeakWindow]()
     {
-        const auto IsActive = ck::IsValid(Slot.Stack) && Slot.Stack->Get_LayerTag() == ActiveTag;
-        const auto MatchesFilter = ck::IsValid(Slot.Stack) && DoMatchesFilter(Slot.Stack->Get_LayerTag().ToString());
-        const auto IsVisible = MatchesFilter && (NOT _ShowActiveLayerOnly || IsActive);
+        const TSharedPtr<SCkUIDebuggerWindow> Window = WeakWindow.Pin();
+        return Window.IsValid() ? Window->_SummaryActiveTag : FText::GetEmpty();
+    }));
+    Data.Text.Add(TEXT("summary-input-mode"), TAttribute<FText>::CreateLambda([WeakWindow]()
+    {
+        const TSharedPtr<SCkUIDebuggerWindow> Window = WeakWindow.Pin();
+        return Window.IsValid() ? Window->_SummaryInputMode : FText::GetEmpty();
+    }));
+    Data.Text.Add(TEXT("summary-layer-count"), TAttribute<FText>::CreateLambda([WeakWindow]()
+    {
+        const TSharedPtr<SCkUIDebuggerWindow> Window = WeakWindow.Pin();
+        return Window.IsValid() ? Window->_SummaryLayerCount : FText::GetEmpty();
+    }));
+    Data.Text.Add(TEXT("summary-no-active-layout"),
+        FText::FromString(TEXT("No active layout. Start PIE to see layer data.")));
+    Data.Visibility.Add(TEXT("summary-has-active-layout"), TAttribute<bool>::CreateLambda([WeakWindow]()
+    {
+        const TSharedPtr<SCkUIDebuggerWindow> Window = WeakWindow.Pin();
+        return Window.IsValid() && Window->_HasActiveLayout;
+    }));
+    Data.Visibility.Add(TEXT("summary-no-active-layout-visible"), TAttribute<bool>::CreateLambda([WeakWindow]()
+    {
+        const TSharedPtr<SCkUIDebuggerWindow> Window = WeakWindow.Pin();
+        return Window.IsValid() && !Window->_HasActiveLayout;
+    }));
 
-        Slot.ExpandableArea->SetVisibility(IsVisible ? EVisibility::Visible : EVisibility::Collapsed);
-
-        if (IsVisible)
-        {
-            DoUpdateLayerSlot(Slot, IsActive);
-        }
+    const TSharedPtr<IPlugin> Plugin = IPluginManager::Get().FindPlugin(TEXT("CkDebugger"));
+    if (!Plugin.IsValid())
+    {
+        _SummaryHost->SetContent(SNew(STextBlock).Text(
+            FText::FromString(TEXT("CkDebugger resources are unavailable."))));
+        return;
     }
+    const TSharedRef<FCkUiView> View = FCkUiView::Create({}, {}, ck_ui_debugger::SummaryStyleTokens(),
+        CkStyle::RegularFont(CkStyle::FontSizeBody()), MoveTemp(Data), Registry);
+    const TSharedRef<SWidget> Summary = View->GetRegion(TEXT("summary"));
+    const FString Directory = FPaths::Combine(Plugin->GetBaseDir(), TEXT("Resources/UI"));
+    View->SetFiles(FPaths::Combine(Directory, TEXT("UiDebuggerSummary.ui.html")),
+        FPaths::Combine(Directory, TEXT("UiDebuggerSummary.ui.css")));
+    View->PollFiles();
+    if (NOT View->GetLastResult().Succeeded)
+    {
+        _SummaryHost->SetContent(SNew(STextBlock).Text(
+            FText::FromString(FString::Join(View->GetLastResult().Errors, TEXT("\n")))));
+        return;
+    }
+    _SummaryView = View;
+    _SummaryHost->SetContent(Summary);
 }
 
-auto
-    SCkUIDebuggerWindow::
-    DoUpdateLayerSlot(
-        FCkUIDebugger_LayerSlot& InSlot,
-        bool InIsActive)
-    -> void
+auto SCkUIDebuggerWindow::DoPollSummaryFiles(const double InCurrentTime) -> void
 {
-    auto* Stack = InSlot.Stack;
+    constexpr double PollIntervalSeconds = 0.5;
+    if (InCurrentTime < _NextSummaryPollSeconds) { return; }
+    _NextSummaryPollSeconds = InCurrentTime + PollIntervalSeconds;
+    if (_SummaryView.IsValid()) { _SummaryView->PollFiles(ck_ui_debugger::SummaryStyleTokens()); }
+    else { DoBuildSummaryView(); }
+}
 
-    if (ck::Is_NOT_Valid(Stack))
-    { return; }
-
-    const auto LayerTag = Stack->Get_LayerTag();
-    const auto Priority = Stack->Get_Priority();
-    const auto InputMode = Stack->Get_DefaultInputMode();
-    const auto HasWidgetsFlag = Stack->HasWidgets();
-
-    // ---- Determine dot color from current ForEachLayer data ----
-    // We read IsTransitioning fresh from ForEachLayer for this specific stack.
-
-    auto IsTransitioning = false;
-
-    if (_BoundLayout.IsValid())
+auto SCkUIDebuggerWindow::DoUpdateAllSlots() -> void
+{
+    if (NOT _BoundLayout.IsValid())
     {
-        _BoundLayout->ForEachLayer([&](UCk_UI_LayerStack_UE* InStack, bool InIsTransitioning)
-        {
-            if (InStack == Stack) { IsTransitioning = InIsTransitioning; }
-        });
+        _HasActiveLayout = false;
+        _SummaryActiveTag = FText::GetEmpty();
+        _SummaryInputMode = FText::GetEmpty();
+        _SummaryLayerCount = FText::GetEmpty();
+        DoPublishLayerNodes();
+        return;
     }
 
-    auto DotColor = CkStyle::TextMute();
-    if (IsTransitioning)      { DotColor = CkStyle::Warn(); }
-    else if (InIsActive)      { DotColor = CkStyle::Ok(); }
-    else if (HasWidgetsFlag)  { DotColor = CkStyle::TextDim(); }
-
-    InSlot.StatusDot->SetColorAndOpacity(DotColor);
-
-    InSlot.TagText->SetText(FText::FromString(DoShortName(LayerTag.ToString())));
-    InSlot.TagText->SetToolTipText(FText::FromString(LayerTag.ToString()));
-    InSlot.TagText->SetColorAndOpacity(InIsActive ? CkStyle::TextStrong() : CkStyle::Text());
-
-    InSlot.PriorityText->SetText(FText::FromString(FString::Printf(TEXT("[%d]"), Priority)));
-    InSlot.PriorityText->SetColorAndOpacity(CkStyle::Accent());
-
-    InSlot.InputModeText->SetText(FText::FromString(ck_ui_debugger::InputModeToString(InputMode)));
-    InSlot.InputModeText->SetColorAndOpacity(CkStyle::TextDim());
-
-    const auto& WidgetList = Stack->GetWidgetList();
-    auto* ActiveWidget = Stack->GetActiveWidget();
-
-    InSlot.WidgetCountText->SetText(FText::FromString(FString::Printf(TEXT("(%d)"), WidgetList.Num())));
-    InSlot.WidgetCountText->SetColorAndOpacity(CkStyle::TextMute());
-
-    // ---- Find this layer's index to access widget pool ----
-
-    const auto LayerIdx = _LayerSlots.IndexOfByPredicate([&InSlot](const FCkUIDebugger_LayerSlot& S)
-    {
-        return &S == &InSlot;
-    });
-
-    if (LayerIdx == INDEX_NONE || LayerIdx >= _WidgetSlotPools.Num())
-    { return; }
-
-    auto& WidgetPool = _WidgetSlotPools[LayerIdx];
-
-    for (auto WidgetIdx = 0; WidgetIdx < MaxWidgetsPerLayer; ++WidgetIdx)
-    {
-        auto& WSlot = WidgetPool[WidgetIdx];
-
-        if (WidgetIdx < WidgetList.Num() && ck::IsValid(WidgetList[WidgetIdx]))
-        {
-            auto* Widget = WidgetList[WidgetIdx];
-            const auto IsActiveWidget = Widget == ActiveWidget;
-
-            WSlot.ClassNameText->SetText(FText::FromString(DoShortName(Widget->GetClass()->GetName())));
-            WSlot.ClassNameText->SetToolTipText(FText::FromString(Widget->GetClass()->GetName()));
-            WSlot.ClassNameText->SetColorAndOpacity(IsActiveWidget ? CkStyle::Text() : CkStyle::TextDim());
-
-            WSlot.StatusDot->SetColorAndOpacity(IsActiveWidget ? CkStyle::Ok() : CkStyle::TextMute());
-
-            // Writing the shared cell IS the badge update — the pill reads it through its
-            // attributes on the next paint, so nothing is invalidated or rebuilt.
-            if (WSlot.IsWidgetActive.IsValid())
-            { *WSlot.IsWidgetActive = IsActiveWidget; }
-
-            WSlot.Root->SetVisibility(EVisibility::Visible);
-        }
-        else
-        {
-            WSlot.Root->SetVisibility(EVisibility::Collapsed);
-        }
-    }
+    UCk_UI_PrimaryGameLayout_UE* Layout = _BoundLayout.Get();
+    int32 LayerCount = 0;
+    Layout->ForEachLayer([&LayerCount](UCk_UI_LayerStack_UE*, bool) { ++LayerCount; });
+    _HasActiveLayout = true;
+    _SummaryActiveTag = FText::FromString(Layout->Get_ActiveLayerTag().ToString());
+    _SummaryInputMode = FText::FromString(ck_ui_debugger::InputModeToString(Layout->Get_EffectiveInputMode()));
+    _SummaryLayerCount = FText::AsNumber(LayerCount);
+    DoPublishLayerNodes();
 }
 
 // --------------------------------------------------------------------------------------------------------------------
 // History List
 // --------------------------------------------------------------------------------------------------------------------
 
-auto
-    SCkUIDebuggerWindow::
-    DoBuildHistoryList()
-    -> void
+auto SCkUIDebuggerWindow::DoBuildHistoryView() -> void
 {
-    _HistoryListBox->ClearChildren();
-
-    if (_HistoryEvents.IsEmpty())
+    if (!_HistoryHost.IsValid() || !_HistoryCollection.IsValid()) { return; }
+    TSharedPtr<const FCkUiWidgetRegistrySnapshot> Registry;
+    const FCkUiLoadResult RegistryResult = FCkDebug_UiRegistry::TryCreate(Registry);
+    if (NOT RegistryResult.Succeeded)
     {
-        _HistoryListBox->AddSlot().AutoHeight().Padding(CkStyle::SpaceM, CkStyle::SpaceS)
-            [
-                SNew(STextBlock).Font_Static(&ck_ui_debugger::Font_Body)
-                .Text(FText::FromString(TEXT("No events yet.")))
-                .ColorAndOpacity(CkStyle::TextMute())
-            ];
+        _HistoryHost->SetContent(SNew(STextBlock).Text(
+            FText::FromString(FString::Join(RegistryResult.Errors, TEXT("\n")))));
         return;
     }
-
-    for (auto Idx = 0; Idx < _HistoryEvents.Num(); ++Idx)
+    auto Data = FCkUiView::FDataBindings{};
+    const TWeakPtr<SCkUIDebuggerWindow> WeakWindow{SharedThis(this)};
+    Data.Text.Add(TEXT("history-title"), FText::FromString(TEXT("Event History")));
+    Data.Text.Add(TEXT("history-empty"), TAttribute<FText>::CreateLambda([WeakWindow]()
     {
-        const auto BgColor = (Idx % 2 == 0) ? CkStyle::BgRoot() : CkStyle::Bg1();
-
-        _HistoryListBox->AddSlot().AutoHeight()
-            [
-                SNew(SBorder)
-                .BorderImage(FAppStyle::GetBrush("WhiteBrush"))
-                .BorderBackgroundColor(BgColor)
-                .Padding_Static(&ck_ui_debugger::Get_HistoryRowPadding)
-                [
-                    SNew(STextBlock).Font_Static(&ck_ui_debugger::Font_Body)
-                    .Text(FText::FromString(_HistoryEvents[Idx].Description))
-                    .ColorAndOpacity(CkStyle::TextDim())
-                ]
-            ];
+        const auto Window = WeakWindow.Pin();
+        return Window.IsValid() && Window->_HistoryCollection.IsValid() && Window->_HistoryCollection->GetRecords().IsEmpty()
+            ? FText::FromString(TEXT("No events yet.")) : FText::GetEmpty();
+    }));
+    Data.Collections.Add(TEXT("history-records"), _HistoryCollection);
+    const auto Plugin = IPluginManager::Get().FindPlugin(TEXT("CkDebugger"));
+    if (!Plugin.IsValid())
+    {
+        _HistoryHost->SetContent(SNew(STextBlock).Text(
+            FText::FromString(TEXT("CkDebugger resources are unavailable."))));
+        return;
     }
+    const TSharedRef<FCkUiView> View = FCkUiView::Create({}, {}, ck_ui_debugger::HistoryStyleTokens(),
+        CkStyle::RegularFont(CkStyle::FontSizeBody()), MoveTemp(Data), Registry);
+    const TSharedRef<SWidget> Main = View->GetRegion(TEXT("main"));
+    const FString Directory = FPaths::Combine(Plugin->GetBaseDir(), TEXT("Resources/UI"));
+    View->SetFiles(FPaths::Combine(Directory, TEXT("UiDebuggerHistory.ui.html")),
+        FPaths::Combine(Directory, TEXT("UiDebuggerHistory.ui.css")));
+    View->PollFiles();
+    if (NOT View->GetLastResult().Succeeded)
+    {
+        _HistoryHost->SetContent(SNew(STextBlock).Text(
+            FText::FromString(FString::Join(View->GetLastResult().Errors, TEXT("\n")))));
+        return;
+    }
+    _HistoryView = View;
+    _HistoryHost->SetContent(Main);
+}
+
+auto SCkUIDebuggerWindow::DoPublishHistoryRecords() -> void
+{
+    if (!_HistoryCollection.IsValid()) { return; }
+    auto Records = TArray<FCkUiRecordData>{};
+    for (int32 Index = 0; Index < _HistoryEvents.Num(); ++Index)
+    {
+        auto Record = FCkUiRecordData{};
+        Record.Key = FString::Printf(TEXT("history:%llu"),
+            static_cast<unsigned long long>(_HistoryEvents[Index].Key));
+        Record.Fields.Add(TEXT("description"), ck_ui_debugger::TextField(_HistoryEvents[Index].Description));
+        Records.Add(MoveTemp(Record));
+    }
+    _HistoryCollection->TrySetRecords(MoveTemp(Records));
+}
+
+auto SCkUIDebuggerWindow::DoPollHistoryFiles(const double InCurrentTime) -> void
+{
+    constexpr double PollIntervalSeconds = 0.5;
+    if (InCurrentTime < _NextHistoryPollSeconds) { return; }
+    _NextHistoryPollSeconds = InCurrentTime + PollIntervalSeconds;
+    if (_HistoryView.IsValid()) { _HistoryView->PollFiles(ck_ui_debugger::HistoryStyleTokens()); }
+    else { DoBuildHistoryView(); }
+}
+
+auto SCkUIDebuggerWindow::DoAppendHistoryEvent(FString InDescription) -> void
+{
+    _HistoryEvents.Insert(FCkUIDebugger_HistoryEvent{
+        _NextHistoryKey++, FPlatformTime::Seconds(), MoveTemp(InDescription)}, 0);
+    if (_HistoryEvents.Num() > MaxHistoryEvents) { _HistoryEvents.SetNum(MaxHistoryEvents); }
+    _IsDirty = true;
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -906,18 +943,38 @@ auto
 
 auto SCkUIDebuggerWindow::DoExpandAll() -> void
 {
-    for (auto& Slot : _LayerSlots)
+    TSharedPtr<SCkUiTree> Tree;
+    if (_LayerView.IsValid()) { Tree = _LayerView->GetTree(TEXT("ui-layer-tree")); }
+    if (!Tree.IsValid() || !_LayerCollection.IsValid()) { return; }
+    for (const TSharedPtr<const FCkUiTreeNode>& Root : _LayerCollection->GetRoots())
     {
-        if (Slot.ExpandableArea.IsValid()) { Slot.ExpandableArea->SetExpanded(true); }
+        if (Root.IsValid()) { Tree->TrySetExpanded(Root->GetKey(), true); }
     }
 }
 
 auto SCkUIDebuggerWindow::DoCollapseAll() -> void
 {
-    for (auto& Slot : _LayerSlots)
+    TSharedPtr<SCkUiTree> Tree;
+    if (_LayerView.IsValid()) { Tree = _LayerView->GetTree(TEXT("ui-layer-tree")); }
+    if (!Tree.IsValid() || !_LayerCollection.IsValid()) { return; }
+    for (const TSharedPtr<const FCkUiTreeNode>& Root : _LayerCollection->GetRoots())
     {
-        if (Slot.ExpandableArea.IsValid()) { Slot.ExpandableArea->SetExpanded(false); }
+        if (Root.IsValid()) { Tree->TrySetExpanded(Root->GetKey(), false); }
     }
+}
+
+auto SCkUIDebuggerWindow::DoCycleNameDepth(const int32 InDirection) -> void
+{
+    const int32 MaxDepth = FMath::Max(1, _MaxNameSegments);
+    if (InDirection < 0)
+    {
+        _NameDepth = _NameDepth == 0 ? MaxDepth : _NameDepth - 1;
+    }
+    else if (InDirection > 0)
+    {
+        _NameDepth = _NameDepth >= MaxDepth ? 0 : _NameDepth + 1;
+    }
+    _IsDirty = true;
 }
 
 // --------------------------------------------------------------------------------------------------------------------

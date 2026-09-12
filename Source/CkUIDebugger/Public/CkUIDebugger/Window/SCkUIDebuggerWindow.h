@@ -8,8 +8,10 @@
 
 class SCkDebug_CategoryDot;
 class SCkDebug_StatusPill;
-class SEditableTextBox;
-class SExpandableArea;
+class FCkUiCollection;
+class FCkUiTreeCollection;
+class FCkUiView;
+class SBox;
 class UCk_UI_Layout_Subsystem_UE;
 class UCk_UI_LayerStack_UE;
 class UCk_UI_PrimaryGameLayout_UE;
@@ -20,51 +22,18 @@ class UCk_UI_PrimaryGameLayout_UE;
 
 struct FCkUIDebugger_HistoryEvent
 {
+    uint64 Key = 0;
     double Timestamp = 0.0;
     FString Description;
 };
 
 // --------------------------------------------------------------------------------------------------------------------
-// Pre-allocated slot for a single layer's display.
-// Created once when the layout binds. Only text/color/visibility updated on events.
-// --------------------------------------------------------------------------------------------------------------------
-
-struct FCkUIDebugger_LayerSlot
-{
-    UCk_UI_LayerStack_UE* Stack = nullptr;
-
-    TSharedPtr<SExpandableArea> ExpandableArea;
-    TSharedPtr<SCkDebug_CategoryDot> StatusDot;
-    TSharedPtr<STextBlock> TagText;
-    TSharedPtr<STextBlock> PriorityText;
-    TSharedPtr<STextBlock> InputModeText;
-    TSharedPtr<STextBlock> WidgetCountText;
-    TSharedPtr<SVerticalBox> WidgetListBox;
-};
-
-// --------------------------------------------------------------------------------------------------------------------
-// Pre-allocated slot for a single widget row inside a layer.
-// --------------------------------------------------------------------------------------------------------------------
-
-struct FCkUIDebugger_WidgetSlot
-{
-    TSharedPtr<SWidget> Root;
-    TSharedPtr<SCkDebug_CategoryDot> StatusDot;
-    TSharedPtr<STextBlock> ClassNameText;
-    TSharedPtr<SCkDebug_StatusPill> Badge;
-
-    // Bound cell the badge pill reads through its Text/Tone attributes.
-    TSharedPtr<bool> IsWidgetActive;
-};
-
-// --------------------------------------------------------------------------------------------------------------------
 // CK UI Layer Debugger window — placed inside a NomadTab.
 //
-// Event-driven: binds to layout delegates and updates pre-allocated widget
-// slots in-place. Never destroys/recreates layer widgets at runtime.
+// Event-driven: binds to layout delegates and publishes retained authored tree nodes.
 // --------------------------------------------------------------------------------------------------------------------
 
-class SCkUIDebuggerWindow : public SCkDebugger_WindowBase
+class CKUIDEBUGGER_API SCkUIDebuggerWindow : public SCkDebugger_WindowBase
 {
 public:
     static const FName WindowId;
@@ -79,10 +48,15 @@ public:
 
     virtual auto Get_WindowId() const -> FName override { return WindowId; }
     virtual auto Get_WindowDisplayName() const -> FText override { return FText::FromString(TEXT("UI")); }
+    auto Get_HistoryView() const -> TSharedPtr<FCkUiView> { return _HistoryView; }
+    auto Get_HistoryCollection() const -> TSharedPtr<const FCkUiCollection> { return _HistoryCollection; }
+    auto Get_LayerView() const -> TSharedPtr<FCkUiView> { return _LayerView; }
+    auto Get_LayerCollection() const -> TSharedPtr<const FCkUiTreeCollection> { return _LayerCollection; }
+    auto Get_SummaryView() const -> TSharedPtr<FCkUiView> { return _SummaryView; }
+    auto Get_CommandView() const -> TSharedPtr<FCkUiView> { return _CommandView; }
+    auto Get_ForcedLayerRefreshGeneration() const -> uint64 { return _ForcedLayerRefreshGeneration; }
 
 protected:
-    // Layer slots + history rows are built imperatively, so anything they read at build time (row
-    // banding, palette roles) re-runs through the structural rebuild on the next gated tick.
     virtual auto OnStyleRevisionChanged() -> void override;
 
 private:
@@ -101,18 +75,25 @@ private:
 
     // ---- Structure (one-time) ----
 
-    auto DoBuildLayerSlots() -> void;
-    auto DoBuildHistoryList() -> void;
-
-    // ---- Update (in-place, no widget destruction) ----
+    auto DoBuildLayerView() -> void;
+    auto DoPublishLayerNodes() -> void;
+    auto DoPollLayerFiles(double InCurrentTime) -> void;
+    auto DoBuildSummaryView() -> void;
+    auto DoPollSummaryFiles(double InCurrentTime) -> void;
+    auto DoBuildHistoryView() -> void;
+    auto DoPublishHistoryRecords() -> void;
+    auto DoPollHistoryFiles(double InCurrentTime) -> void;
+    auto DoAppendHistoryEvent(FString InDescription) -> void;
+    auto DoBuildCommandView() -> void;
+    auto DoPollCommandFiles(double InCurrentTime) -> void;
 
     auto DoUpdateAllSlots() -> void;
-    auto DoUpdateLayerSlot(FCkUIDebugger_LayerSlot& InSlot, bool InIsActive) -> void;
 
     // ---- Toolbar Actions ----
 
     auto DoExpandAll() -> void;
     auto DoCollapseAll() -> void;
+    auto DoCycleNameDepth(int32 InDirection) -> void;
 
     // ---- Search ----
 
@@ -126,26 +107,41 @@ private:
 
     // ---- Widgets ----
 
-    TSharedPtr<SVerticalBox> _LayerListBox;
-    TSharedPtr<SVerticalBox> _HistoryListBox;
-    TSharedPtr<STextBlock> _SummaryText;
-    TSharedPtr<SEditableTextBox> _SearchTextBox;
-    TSharedPtr<SExpandableArea> _HistoryArea;
+    TSharedPtr<SBox> _LayerHost;
+    TSharedPtr<SBox> _HistoryHost;
+    TSharedPtr<SBox> _SummaryHost;
+    TSharedPtr<SBox> _CommandHost;
 
-    // ---- Pre-allocated layer slots ----
-
-    TArray<FCkUIDebugger_LayerSlot> _LayerSlots;
     static constexpr int32 MaxWidgetsPerLayer = 16;
-    TArray<TArray<FCkUIDebugger_WidgetSlot>> _WidgetSlotPools;
 
     // ---- State ----
 
     TWeakObjectPtr<UCk_UI_PrimaryGameLayout_UE> _BoundLayout;
     TArray<FCkUIDebugger_HistoryEvent> _HistoryEvents;
+    TSharedPtr<FCkUiTreeCollection> _LayerCollection;
+    TSharedPtr<FCkUiView> _LayerView;
+    TSharedPtr<FCkUiCollection> _HistoryCollection;
+    TSharedPtr<FCkUiView> _HistoryView;
+    TSharedPtr<FCkUiView> _SummaryView;
+    TSharedPtr<FCkUiView> _CommandView;
     FString _SearchFilter;
     bool _IsDirty = true;
+    bool _IsPostLayerTransitionRefreshPending = false;
     bool _StructureDirty = true;
     bool _ShowActiveLayerOnly = false;
+    uint64 _ForcedLayerRefreshGeneration = 0;
+    TSet<FString> _InitializedLayerRootKeys;
+    uint64 _NextHistoryKey = 1;
+    double _NextLayerPollSeconds = 0.0;
+    double _NextHistoryPollSeconds = 0.0;
+    double _NextSummaryPollSeconds = 0.0;
+    double _NextCommandPollSeconds = 0.0;
+
+    // Updated only through the existing refresh-gated DoUpdateAllSlots path.
+    bool _HasActiveLayout = false;
+    FText _SummaryActiveTag;
+    FText _SummaryInputMode;
+    FText _SummaryLayerCount;
 
     // Display-name verbosity for widget class names + layer tags (0 = full).
     int32 _NameDepth = 1;

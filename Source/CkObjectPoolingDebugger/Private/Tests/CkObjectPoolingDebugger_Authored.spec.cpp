@@ -170,6 +170,39 @@ auto FCkObjectPoolingDebugger_AuthoredWindow::RunTest(const FString&) -> bool
             : TEXT("Real Object Pooling window did not retain its authored view."));
         return false;
     }
+    TWeakPtr<FCkUiView> WeakShell;
+    {
+        const TSharedPtr<FCkUiView> Shell = Panel->Get_AuthoredShellView();
+        WeakShell = Shell;
+        if (!TestTrue(TEXT("Real Object Pooling window mounts its authored outer shell"),
+            Shell.IsValid() && Shell->GetLastResult().Succeeded))
+        { return false; }
+
+        const TSharedRef<SWidget> ShellMain = Shell->GetRegion(TEXT("main"));
+        TestTrue(TEXT("Authored shell owns stable overview, table, separator, and inspector placement"),
+            FindTaggedWidget(ShellMain, TEXT("pool-shell-layout")).IsValid() &&
+            FindTaggedWidget(ShellMain, TEXT("pool-shell-overview")).IsValid() &&
+            FindTaggedWidget(ShellMain, TEXT("pool-shell-table")).IsValid() &&
+            FindTaggedWidget(ShellMain, TEXT("pool-shell-separator")).IsValid() &&
+            FindTaggedWidget(ShellMain, TEXT("pool-shell-inspector")).IsValid());
+
+        const TSharedPtr<IPlugin> ShellPlugin = IPluginManager::Get().FindPlugin(TEXT("CkDebugger"));
+        if (!TestTrue(TEXT("Debugger plugin resolves shell resources"), ShellPlugin.IsValid()))
+        { return false; }
+        const FString ShellDirectory = FPaths::Combine(ShellPlugin->GetBaseDir(), TEXT("Resources/UI"));
+        const int64 ShellRevision = Shell->GetRevision();
+        TestTrue(TEXT("Compatible shell reload succeeds in the retained View"),
+            Shell->ReloadFiles(FPaths::Combine(ShellDirectory, TEXT("ObjectPoolingDebuggerShell.ui.html")),
+                FPaths::Combine(ShellDirectory, TEXT("ObjectPoolingDebuggerShell.ui.css"))).Succeeded &&
+            Shell->GetRevision() > ShellRevision && Panel->Get_AuthoredShellView() == Shell);
+        const int64 AcceptedShellRevision = Shell->GetRevision();
+        TestFalse(TEXT("Shell reload missing a required native port is rejected atomically"),
+            Shell->TryReload(TEXT("<ui version=\"1\"><region name=\"main\"><native bind=\"missing-port\"/></region></ui>"),
+                TEXT("")).Succeeded);
+        TestTrue(TEXT("Rejected shell reload preserves the accepted tree and revision"),
+            Shell->GetRevision() == AcceptedShellRevision &&
+            FindTaggedWidget(ShellMain, TEXT("pool-shell-table")).IsValid());
+    }
     const auto Controls = View->GetRegion(TEXT("controls"));
     const auto Context = View->GetRegion(TEXT("context"));
     const auto Search = View->GetRegion(TEXT("search"));
@@ -307,7 +340,8 @@ auto FCkObjectPoolingDebugger_AuthoredWindow::RunTest(const FString&) -> bool
     FEdit->SetText(FText::FromString(TEXT("released")));
     HEdit->SetText(FText::FromString(TEXT("released")));
     Check->SetIsChecked(ECheckBoxState::Checked);
-    TestTrue(TEXT("Owner release expires panel; held widgets are safe and inert"), !Weak.IsValid());
+    TestTrue(TEXT("Owner release expires panel and authored shell; held widgets are safe and inert"),
+        !Weak.IsValid() && !WeakShell.IsValid());
     return true;
 }
 #endif

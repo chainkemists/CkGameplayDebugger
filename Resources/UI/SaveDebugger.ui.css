@@ -1,0 +1,6 @@
+.entity-navigation-root { gap: 4px; padding: var(--space-s); }
+.provenance-filters { gap: var(--space-s); flex-wrap: wrap; }
+.entity-tree { flex-grow: 1; flex-shrink: 1; }
+.entity-tree-cell { gap: var(--space-s); padding: 0 var(--space-s); vertical-align: center; }
+.entity-identity { flex-grow: 1; flex-shrink: 1; text-wrap: nowrap; text-overflow: ellipsis; }
+.entity-provenance { width: 130px; flex-shrink: 0; text-wrap: nowrap; text-overflow: ellipsis; }

@@ -1,15 +1,18 @@
 #include "CkTextureDebugger/Window/SCkTextureDebuggerWindow.h"
 
+#include "CkSlateLayout/SCkUiSurface.h"
+
 #include "Framework/Application/SlateApplication.h"
 #include "HAL/FileManager.h"
 #include "ImageUtils.h"
 #include "Input/Events.h"
+#include "Interfaces/IPluginManager.h"
 #include "Layout/WidgetPath.h"
 #include "Misc/AutomationTest.h"
+#include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
 #include "Misc/ScopeExit.h"
 #include "Widgets/Input/SButton.h"
-#include "Widgets/Layout/SWidgetSwitcher.h"
 #include "Widgets/SWindow.h"
 #include "Widgets/Text/STextBlock.h"
 
@@ -51,20 +54,6 @@ namespace ck_texture_debugger_window_authored_tests
         for (int32 Index = 0; Children != nullptr && Index < Children->Num(); ++Index)
         {
             if (const TSharedPtr<SButton> Found = FindButtonWithText(ConstCastSharedRef<SWidget>(Children->GetChildAt(Index)), InText); Found.IsValid())
-            { return Found; }
-        }
-        return {};
-    }
-
-    auto FindSwitcher(const TSharedRef<SWidget>& InRoot) -> TSharedPtr<SWidgetSwitcher>
-    {
-        if (InRoot->GetTypeAsString() == TEXT("SWidgetSwitcher"))
-        { return StaticCastSharedRef<SWidgetSwitcher>(InRoot); }
-
-        const FChildren* Children = InRoot->GetChildren();
-        for (int32 Index = 0; Children != nullptr && Index < Children->Num(); ++Index)
-        {
-            if (const TSharedPtr<SWidgetSwitcher> Found = FindSwitcher(ConstCastSharedRef<SWidget>(Children->GetChildAt(Index))); Found.IsValid())
             { return Found; }
         }
         return {};
@@ -128,44 +117,82 @@ auto FCkTextureDebugger_AuthoredWindow::RunTest(const FString&) -> bool
         if (HostWindow.IsValid()) { Slate.DestroyWindowImmediately(HostWindow.ToSharedRef()); }
     };
 
-    const TSharedRef<SCkTextureDebuggerWindow> TextureWindow = SNew(SCkTextureDebuggerWindow);
+    TSharedPtr<SCkTextureDebuggerWindow> TextureWindow = SNew(SCkTextureDebuggerWindow);
     HostWindow = SNew(SWindow)
         .ClientSize(FVector2D{1200.0f, 820.0f})
         .CreateTitleBar(false)
         .HasCloseButton(false)
-        [TextureWindow];
+        [TextureWindow.ToSharedRef()];
     Slate.AddWindow(HostWindow.ToSharedRef(), true);
     Tick(Slate);
 
-    const TSharedPtr<SWidgetSwitcher> Switcher = FindSwitcher(TextureWindow);
-    if (!TestTrue(TEXT("Production Texture debugger mounts its page switcher"), Switcher.IsValid())) { return false; }
-    if (!TestEqual(TEXT("Production Texture debugger mounts all six pages"), Switcher->GetNumWidgets(), 6)) { return false; }
+    TSharedPtr<FCkUiView> View = TextureWindow->_AuthoredShellView;
+    if (!TestTrue(TEXT("Production Texture debugger admits its authored stable shell"),
+        TextureWindow->_AuthoredShellMounted && View.IsValid() && View->GetLastResult().Succeeded))
+    {
+        AddError(TextureWindow->_AuthoredShellLoadFailure);
+        return false;
+    }
+    TestTrue(TEXT("Authored Texture shell owns its six-page tabs"), View->GetTabs(TEXT("texture-shell-tabs")).IsValid());
+    TestTrue(TEXT("Authored Texture shell provides narrow-width reachability"), View->GetScroll(TEXT("texture-shell-scroll")).IsValid());
 
     const TArray<TPair<FString, int32>> Tabs{
         {TEXT("Checker"), 0}, {TEXT("Texture Health"), 1}, {TEXT("UV & Density"), 2},
         {TEXT("Material Inputs"), 3}, {TEXT("Surface & Lighting"), 4}, {TEXT("Scene Audit"), 5}};
     for (const auto& Tab : Tabs)
     {
-        const TSharedPtr<SButton> Button = FindButtonWithText(TextureWindow, Tab.Key);
+        const TSharedPtr<SButton> Button = FindButtonWithText(TextureWindow.ToSharedRef(), Tab.Key);
         if (!TestTrue(*FString::Printf(TEXT("Mounted %s page tab exposes a physical SButton"), *Tab.Key), Button.IsValid())) { return false; }
 
         const bool bClicked = Click(Slate, HostWindow.ToSharedRef(), Button.ToSharedRef());
-        const TSharedPtr<SWidget> ActivePage = Switcher->GetActiveWidget();
-        const bool bSelected = bClicked && Switcher->GetActiveWidgetIndex() == Tab.Value
-            && ActivePage.IsValid() && ActivePage->GetVisibility().IsVisible();
-        if (!TestTrue(*FString::Printf(TEXT("Physical %s tab click selects its production switcher page"), *Tab.Key), bSelected)) { return false; }
+        const bool bSelected = bClicked && TextureWindow->Get_ActivePageIndex() == Tab.Value;
+        if (!TestTrue(*FString::Printf(TEXT("Physical %s tab click selects its production page"), *Tab.Key), bSelected)) { return false; }
     }
 
-    const TSharedPtr<SButton> RefreshButton = FindButtonWithText(TextureWindow, TEXT("Refresh"));
+    const TSharedPtr<SButton> RefreshButton = FindButtonWithText(TextureWindow.ToSharedRef(), TEXT("Refresh"));
     TestTrue(TEXT("Mounted Refresh control exposes a physical SButton"), RefreshButton.IsValid());
     TestTrue(TEXT("Physical Refresh click is routed without changing the selected page"), RefreshButton.IsValid()
-        && Click(Slate, HostWindow.ToSharedRef(), RefreshButton.ToSharedRef()) && Switcher->GetActiveWidgetIndex() == 5);
+        && Click(Slate, HostWindow.ToSharedRef(), RefreshButton.ToSharedRef()) && TextureWindow->Get_ActivePageIndex() == 5);
+
+    const TSharedPtr<IPlugin> Plugin = IPluginManager::Get().FindPlugin(TEXT("CkDebugger"));
+    FString InstalledMarkup;
+    FString InstalledStylesheet;
+    const FString ResourceRoot = Plugin.IsValid() ? FPaths::Combine(Plugin->GetBaseDir(), TEXT("Resources/UI")) : FString{};
+    if (!TestTrue(TEXT("Installed Texture shell resources are readable"), Plugin.IsValid()
+        && FFileHelper::LoadFileToString(InstalledMarkup, *FPaths::Combine(ResourceRoot, TEXT("TextureDebuggerShell.ui.html")))
+        && FFileHelper::LoadFileToString(InstalledStylesheet, *FPaths::Combine(ResourceRoot, TEXT("TextureDebuggerShell.ui.css")))))
+    { return false; }
+
+    const int64 RevisionBeforeAcceptedReload = View->GetRevision();
+    const FCkUiLoadResult Accepted = View->TryReload(
+        InstalledMarkup, InstalledStylesheet, TEXT("TextureDebuggerShell compatible test candidate"));
+    Tick(Slate);
+    TestTrue(TEXT("Compatible Texture shell candidate is accepted"), Accepted.Succeeded);
+    TestTrue(TEXT("Compatible Texture shell reload preserves authoritative page selection"),
+        TextureWindow->Get_ActivePageIndex() == 5 && View->GetRevision() > RevisionBeforeAcceptedReload);
+
+    const TSharedRef<SWidget> MainBeforeRejectedReload = View->GetRegion(TEXT("main"));
+    const int64 RevisionBeforeRejectedReload = View->GetRevision();
+    const FCkUiLoadResult Rejected = View->TryReload(
+        TEXT("<ui version=\"1\"><region name=\"main\"><native id=\"missing\" bind=\"missing-port\" /></region></ui>"),
+        TEXT(""), TEXT("TextureDebuggerShell rejected test candidate"));
+    TestFalse(TEXT("Invalid Texture shell candidate is rejected atomically"), Rejected.Succeeded);
+    TestTrue(TEXT("Rejected Texture shell candidate retains the mounted tree and revision"),
+        View->GetRegion(TEXT("main")) == MainBeforeRejectedReload && View->GetRevision() == RevisionBeforeRejectedReload);
 
     const FString OutputDirectory = FPaths::Combine(FPaths::ProjectSavedDir(), TEXT("Automation/TextureDebugger/WindowAuthored"));
     TestTrue(TEXT("Wide full Texture debugger window capture writes"), Capture(Slate, HostWindow.ToSharedRef(), FPaths::Combine(OutputDirectory, TEXT("Window-Wide.png"))));
     HostWindow->Resize(FVector2D{640.0f, 560.0f});
     Tick(Slate);
     TestTrue(TEXT("Narrow full Texture debugger window capture writes"), Capture(Slate, HostWindow.ToSharedRef(), FPaths::Combine(OutputDirectory, TEXT("Window-Narrow.png"))));
+
+    Slate.DestroyWindowImmediately(HostWindow.ToSharedRef());
+    HostWindow.Reset();
+    Tick(Slate);
+    const TWeakPtr<FCkUiView> ReleasedView = View;
+    View.Reset();
+    TextureWindow.Reset();
+    TestFalse(TEXT("Texture window teardown releases its authored shell view"), ReleasedView.IsValid());
     return true;
 }
 

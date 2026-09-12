@@ -18,14 +18,17 @@
 #include "CkDebuggerCommon/Widgets/SCkDebug_StatusPill.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_UnderlineTabs.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_WorldSelector.h"
+#include "CkDebuggerCommon/UI/CkDebug_UiRegistry.h"
 #include "CkDebuggerCommon/Window/CkDebuggerRefreshGate.h"
 #include "CkDebuggerCommon/Window/SCkDebug_WindowChrome.h"
+#include "CkSlateLayout/SCkUiSurface.h"
 #include "CkEditorTools/Style/CkStyle.h"
 
 #include "Components/MeshComponent.h"
 #include "Components/PrimitiveComponent.h"
 #include "Engine/Texture.h"
 #include "Engine/World.h"
+#include "Interfaces/IPluginManager.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "Materials/MaterialInterface.h"
 #include "UObject/UObjectGlobals.h"
@@ -57,6 +60,11 @@ namespace ck_texture_debugger_window
         {TEXT("DirectionalMono4K"), TEXT("Directional Mono 4K"), TEXT("/CkDebugger/TextureDebugger/Textures/T_CkTextureChecker_DirectionalMono_4K.T_CkTextureChecker_DirectionalMono_4K")},
     };
 
+    auto ShellTokens() -> FCkUiView::FTokens
+    {
+        return {{TEXT("--texture-shell-surface"), TEXT("#") + CkStyle::Bg2().ToFColorSRGB().ToHex()}};
+    }
+
     auto Get_PageIndex(FName InId) -> int32
     {
         if (InId == TEXT("Checker")) { return 0; }
@@ -66,6 +74,12 @@ namespace ck_texture_debugger_window
         if (InId == TEXT("SurfaceLighting")) { return 4; }
         if (InId == TEXT("SceneAudit")) { return 5; }
         return 0;
+    }
+
+    auto IsPageId(const FName InId) -> bool
+    {
+        return InId == TEXT("Checker") || InId == TEXT("Health") || InId == TEXT("UvDensity")
+            || InId == TEXT("MaterialInputs") || InId == TEXT("SurfaceLighting") || InId == TEXT("SceneAudit");
     }
 
     auto FindChecker(FName InId) -> const FCheckerDesc*
@@ -182,20 +196,17 @@ auto
             UE_ARRAY_COUNT(ck_texture_debugger_window::Checkers));
     }
 
-    _PageSwitcher = SNew(SWidgetSwitcher).WidgetIndex_Lambda([this] { return Get_ActivePageIndex(); });
-    _PageSwitcher->AddSlot()[Build_CheckerPage()];
-    _PageSwitcher->AddSlot()[Build_TextureHealthPage()];
-    _PageSwitcher->AddSlot()[SAssignNew(_UvDensityPage, SCkTextureDebugger_UvDensityPage)];
-    _PageSwitcher->AddSlot()[SAssignNew(_MaterialInputsPage, SCkTextureDebugger_MaterialInputsPage)];
-    _PageSwitcher->AddSlot()[SAssignNew(_SurfaceLightingPage, SCkTextureDebugger_SurfaceLightingPage)];
-    _PageSwitcher->AddSlot()[Build_SceneAuditPage()];
+    const TArray<TPair<FName, TSharedRef<SWidget>>> Pages{
+        {TEXT("Checker"), Build_CheckerPage()},
+        {TEXT("Health"), Build_TextureHealthPage()},
+        {TEXT("UvDensity"), SAssignNew(_UvDensityPage, SCkTextureDebugger_UvDensityPage)},
+        {TEXT("MaterialInputs"), SAssignNew(_MaterialInputsPage, SCkTextureDebugger_MaterialInputsPage)},
+        {TEXT("SurfaceLighting"), SAssignNew(_SurfaceLightingPage, SCkTextureDebugger_SurfaceLightingPage)},
+        {TEXT("SceneAudit"), Build_SceneAuditPage()},
+    };
     Sync_DiagnosticPages();
 
-    const auto Pages = TArray<FCkDebug_UnderlineTabDesc>{
-        {TEXT("Checker"), FText::FromString(TEXT("Checker"))}, {TEXT("Health"), FText::FromString(TEXT("Texture Health"))},
-        {TEXT("UvDensity"), FText::FromString(TEXT("UV & Density"))}, {TEXT("MaterialInputs"), FText::FromString(TEXT("Material Inputs"))},
-        {TEXT("SurfaceLighting"), FText::FromString(TEXT("Surface & Lighting"))}, {TEXT("SceneAudit"), FText::FromString(TEXT("Scene Audit"))},
-    };
+    const TSharedRef<SWidget> ContextStrip = Build_ContextStrip();
 
     ChildSlot[
         SNew(SCkDebug_WindowChrome)
@@ -210,22 +221,112 @@ auto
         })
         .Content()
         [
-            SNew(SVerticalBox)
-            // Page tabs own a strip row of their own -- below the chrome, above the switcher --
-            // exactly where the Optimization debugger puts its pages. As a command-bar Context
-            // group they sat inside a horizontally scrolling lane whose scrollbar is collapsed,
-            // so a page past the available width was invisible AND undiscoverable.
-            + SVerticalBox::Slot().AutoHeight().Padding(CkStyle::SpaceM, 0.0f)
-            [
-                SNew(SCkDebug_UnderlineTabs)
-                .Tabs(Pages)
-                .ActiveTabId_Lambda([this] { return _ActivePageId; })
-                .OnTabSelected(this, &SCkTextureDebuggerWindow::OnPageSelected)
-            ]
-            + SVerticalBox::Slot().AutoHeight()[Build_ContextStrip()]
-            + SVerticalBox::Slot().FillHeight(1.0f)[_PageSwitcher.ToSharedRef()]
+            SAssignNew(_AuthoredShellHost, SBox)
         ]
     ];
+
+    Build_AuthoredShell(ContextStrip, Pages);
+}
+
+auto
+    SCkTextureDebuggerWindow::
+    Build_AuthoredShell(
+        const TSharedRef<SWidget>& InContextStrip,
+        const TArray<TPair<FName, TSharedRef<SWidget>>>& InPages)
+    -> void
+{
+    TSharedPtr<const FCkUiWidgetRegistrySnapshot> Registry;
+    const FCkUiLoadResult RegistryResult = FCkDebug_UiRegistry::TryCreate(Registry);
+    const TSharedPtr<IPlugin> Plugin = IPluginManager::Get().FindPlugin(TEXT("CkDebugger"));
+    if (NOT RegistryResult.Succeeded || NOT Registry.IsValid() || NOT Plugin.IsValid())
+    {
+        _AuthoredShellLoadFailure = RegistryResult.Succeeded
+            ? TEXT("CkDebugger plugin is unavailable.")
+            : FString::Join(RegistryResult.Errors, TEXT("\n"));
+        _AuthoredShellHost->SetContent(Build_NativeShellFallback(InContextStrip, InPages));
+        return;
+    }
+
+    FCkUiView::FNativeBindings NativeBindings;
+    NativeBindings.Add(TEXT("texture-context-strip"), InContextStrip);
+    NativeBindings.Add(TEXT("texture-checker-page"), InPages[0].Value);
+    NativeBindings.Add(TEXT("texture-health-page"), InPages[1].Value);
+    NativeBindings.Add(TEXT("texture-uv-density-page"), InPages[2].Value);
+    NativeBindings.Add(TEXT("texture-material-inputs-page"), InPages[3].Value);
+    NativeBindings.Add(TEXT("texture-surface-lighting-page"), InPages[4].Value);
+    NativeBindings.Add(TEXT("texture-scene-audit-page"), InPages[5].Value);
+
+    auto Data = FCkUiView::FDataBindings{};
+    const TWeakPtr<SCkTextureDebuggerWindow> WeakWindow{SharedThis(this)};
+    Data.SlateUserIndex = 0;
+    Data.CanDispatchEvents = TAttribute<bool>::CreateLambda([WeakWindow]() { return WeakWindow.IsValid(); });
+    Data.String.Add(TEXT("texture-page"), TAttribute<FString>::CreateLambda([WeakWindow]()
+    {
+        const TSharedPtr<SCkTextureDebuggerWindow> Window = WeakWindow.Pin();
+        return Window.IsValid() ? Window->_ActivePageId.ToString() : FString{};
+    }));
+    Data.StringChanged.Add(TEXT("texture-page-changed"), FCkUiOnStringChanged::CreateLambda([WeakWindow](const FString& InValue)
+    {
+        const TSharedPtr<SCkTextureDebuggerWindow> Window = WeakWindow.Pin();
+        if (Window.IsValid()) { Window->OnPageSelected(FName(*InValue)); }
+    }));
+
+    const TSharedRef<FCkUiView> Candidate = FCkUiView::Create(
+        MoveTemp(NativeBindings), {}, ck_texture_debugger_window::ShellTokens(),
+        CkStyle::RegularFont(CkStyle::FontSizeBody()), MoveTemp(Data), Registry);
+    const TSharedRef<SWidget> ShellRegion = Candidate->GetRegion(TEXT("main"));
+    const FString ResourceRoot = FPaths::Combine(Plugin->GetBaseDir(), TEXT("Resources/UI"));
+    Candidate->SetFiles(
+        FPaths::Combine(ResourceRoot, TEXT("TextureDebuggerShell.ui.html")),
+        FPaths::Combine(ResourceRoot, TEXT("TextureDebuggerShell.ui.css")));
+    Candidate->PollFiles();
+    if (NOT Candidate->GetLastResult().Succeeded)
+    {
+        _AuthoredShellLoadFailure = FString::Join(Candidate->GetLastResult().Errors, TEXT("\n"));
+        _AuthoredShellHost->SetContent(Build_NativeShellFallback(InContextStrip, InPages));
+        return;
+    }
+
+    _AuthoredShellView = Candidate;
+    _AuthoredShellMounted = true;
+    _AuthoredShellLoadFailure.Reset();
+    _AuthoredShellHost->SetContent(ShellRegion);
+}
+
+auto
+    SCkTextureDebuggerWindow::
+    Build_NativeShellFallback(
+        const TSharedRef<SWidget>& InContextStrip,
+        const TArray<TPair<FName, TSharedRef<SWidget>>>& InPages)
+    -> TSharedRef<SWidget>
+{
+    const auto Tabs = TArray<FCkDebug_UnderlineTabDesc>{
+        {TEXT("Checker"), FText::FromString(TEXT("Checker"))}, {TEXT("Health"), FText::FromString(TEXT("Texture Health"))},
+        {TEXT("UvDensity"), FText::FromString(TEXT("UV & Density"))}, {TEXT("MaterialInputs"), FText::FromString(TEXT("Material Inputs"))},
+        {TEXT("SurfaceLighting"), FText::FromString(TEXT("Surface & Lighting"))}, {TEXT("SceneAudit"), FText::FromString(TEXT("Scene Audit"))},
+    };
+    _PageSwitcher = SNew(SWidgetSwitcher).WidgetIndex_Lambda([this] { return Get_ActivePageIndex(); });
+    for (const auto& Page : InPages) { _PageSwitcher->AddSlot()[Page.Value]; }
+    return SNew(SVerticalBox)
+        + SVerticalBox::Slot().AutoHeight().Padding(CkStyle::SpaceM, 0.0f)
+        [SNew(SCkDebug_UnderlineTabs).Tabs(Tabs).ActiveTabId_Lambda([this] { return _ActivePageId; }).OnTabSelected(this, &SCkTextureDebuggerWindow::OnPageSelected)]
+        + SVerticalBox::Slot().AutoHeight()[InContextStrip]
+        + SVerticalBox::Slot().FillHeight(1.0f)[_PageSwitcher.ToSharedRef()];
+}
+
+auto
+    SCkTextureDebuggerWindow::
+    Poll_AuthoredShell()
+    -> void
+{
+    if (NOT _AuthoredShellView.IsValid()) { return; }
+    _AuthoredShellView->PollFiles(ck_texture_debugger_window::ShellTokens());
+    if (NOT _AuthoredShellView->GetLastResult().Succeeded)
+    {
+        _AuthoredShellLoadFailure = FString::Join(_AuthoredShellView->GetLastResult().Errors, TEXT("\n"));
+        return;
+    }
+    _AuthoredShellLoadFailure.Reset();
 }
 
 auto
@@ -313,6 +414,7 @@ auto
     -> void
 {
     SCkDebugger_WindowBase::Tick(Geometry, CurrentTime, DeltaTime);
+    Poll_AuthoredShell();
     if (_ComponentPicker.IsValid() && _ComponentPicker->IsActive()) { _ComponentPicker->Tick(DeltaTime); }
     _OverrideSession.DiscardDestroyedComponents();
     if (FCkDebuggerRefreshGate::Should_RefreshNow(Get_WindowId())) { RefreshSnapshot(); }
@@ -482,7 +584,7 @@ auto
         FName InId)
     -> void
 {
-    _ActivePageId = InId;
+    if (ck_texture_debugger_window::IsPageId(InId)) { _ActivePageId = InId; }
 }
 
 auto

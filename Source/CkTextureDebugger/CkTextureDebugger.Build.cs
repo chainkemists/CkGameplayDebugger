@@ -39,6 +39,8 @@ public class CkTextureDebugger : CkModuleRules
         RuntimeDependencies.Add(Path.Combine(PluginDirectory, "Resources", "UI", "MaterialInputs.ui.css"), StagedFileType.NonUFS);
         RuntimeDependencies.Add(Path.Combine(PluginDirectory, "Resources", "UI", "SurfaceLighting.ui.html"), StagedFileType.NonUFS);
         RuntimeDependencies.Add(Path.Combine(PluginDirectory, "Resources", "UI", "SurfaceLighting.ui.css"), StagedFileType.NonUFS);
+        RuntimeDependencies.Add(Path.Combine(PluginDirectory, "Resources", "UI", "TextureDebuggerShell.ui.html"), StagedFileType.NonUFS);
+        RuntimeDependencies.Add(Path.Combine(PluginDirectory, "Resources", "UI", "TextureDebuggerShell.ui.css"), StagedFileType.NonUFS);
 
         // The debugger hard-loads these cooked assets in Development/DebugGame. Staging is deliberately
         // per-package; broad content-directory staging would hide accidental asset additions.

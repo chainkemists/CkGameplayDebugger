@@ -13,6 +13,8 @@ class SCkTextureDebugger_MaterialInputsPage;
 class SCkTextureDebugger_SceneAuditTable;
 class SCkTextureDebugger_SurfaceLightingPage;
 class SCkTextureDebugger_UvDensityPage;
+class FCkUiView;
+class SBox;
 class SVerticalBox;
 class SWidgetSwitcher;
 class UPrimitiveComponent;
@@ -51,12 +53,21 @@ public:
         -> void override;
 
 private:
+    friend class FCkTextureDebugger_AuthoredWindow;
+
     enum class EScope : uint8 { Selected, LoadedWorld };
 
     auto Build_CheckerPage() -> TSharedRef<SWidget>;
     auto Build_TextureHealthPage() -> TSharedRef<SWidget>;
     auto Build_SceneAuditPage() -> TSharedRef<SWidget>;
     auto Build_ContextStrip() const -> TSharedRef<SWidget>;
+    auto Build_AuthoredShell(
+        const TSharedRef<SWidget>& InContextStrip,
+        const TArray<TPair<FName, TSharedRef<SWidget>>>& InPages) -> void;
+    auto Build_NativeShellFallback(
+        const TSharedRef<SWidget>& InContextStrip,
+        const TArray<TPair<FName, TSharedRef<SWidget>>>& InPages) -> TSharedRef<SWidget>;
+    auto Poll_AuthoredShell() -> void;
     auto Build_TextPage(FText InHeading, TAttribute<FText> InText) -> TSharedRef<SWidget>;
     auto Build_Section(FText InHeading, TSharedRef<SWidget> InContent) const -> TSharedRef<SWidget>;
     auto Get_StatusText() const -> FText;
@@ -105,6 +116,10 @@ private:
     auto Get_StreamingAvailabilitySummary() const -> FText;
 
     TSharedPtr<SWidgetSwitcher> _PageSwitcher;
+    TSharedPtr<FCkUiView> _AuthoredShellView;
+    TSharedPtr<SBox> _AuthoredShellHost;
+    FString _AuthoredShellLoadFailure;
+    bool _AuthoredShellMounted = false;
     TSharedPtr<SVerticalBox> _SlotBox;
     TSharedPtr<SCkTextureDebugger_SceneAuditTable> _SceneAuditTable;
     TSharedPtr<SCkTextureDebugger_TextureHealthTable> _TextureHealthTable;

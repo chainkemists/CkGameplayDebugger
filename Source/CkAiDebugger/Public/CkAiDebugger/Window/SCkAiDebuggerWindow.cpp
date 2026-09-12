@@ -10,10 +10,11 @@
 #include "CkDebuggerCommon/Navigation/CkDebug_SelectionSync.h"
 #include "CkDebuggerCommon/Picker/CkDebug_ViewportPicker.h"
 #include "CkDebuggerCommon/Picker/SCkDebug_ViewportPickerControls.h"
+#include "CkDebuggerCommon/Styles/CkDebuggerAxes.h"
+#include "CkDebuggerCommon/UI/CkDebug_UiRegistry.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_EntityDebuggerLinks.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_EntityRef.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_EventLog.h"
-#include "CkDebuggerCommon/Widgets/SCkDebug_EntityHealthList.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_EvidenceList.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_NameDepthCycler.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_NameLabel.h"
@@ -26,6 +27,7 @@
 #include "CkCrowdDebugger/Data/CkCrowdDebugger_Types.h"
 #include "CkCrowdDebugger/ViewModel/CkCrowdDebugger_ViewModel.h"
 #include "CkCrowdDebugger/Viewport/SCkCrowdDebugger_3dViewport.h"
+#include "CkCrowd/Agent/CkCrowdAgent_Utils.h"
 #include "CkEditorTools/Style/CkStyle.h"
 #include "CkEcs/EntityLifetime/CkEntityLifetime_Utils.h"
 #include "CkEntityDebugOverlay/Layout/CkDebugOverlay_Layout.h"
@@ -33,14 +35,21 @@
 #include "CkEntityDebugOverlay/Provider/CkDebugOverlay_Registry.h"
 #include "CkEntityDebugOverlay/Settings/CkDebugOverlay_Settings.h"
 #include "CkEntityDebugOverlay/Tags/CkDebugOverlay_Tags.h"
+#include "CkSlateLayout/CkUiCollection.h"
+#include "CkSlateLayout/SCkUiSurface.h"
 
 #include "Engine/Engine.h"
 #include "Engine/World.h"
 #include "HAL/PlatformTime.h"
+#include "Interfaces/IPluginManager.h"
+#include "Misc/Paths.h"
 #include "ProfilingDebugging/CpuProfilerTrace.h"
 #include "Misc/App.h"
 #include "Widgets/Layout/SSplitter.h"
+#include "Widgets/Layout/SBox.h"
 #include "Widgets/SBoxPanel.h"
+#include "Widgets/SNullWidget.h"
+#include "Widgets/Text/STextBlock.h"
 
 #define LOCTEXT_NAMESPACE "SCkAiDebuggerWindow"
 
@@ -168,11 +177,52 @@ namespace ck_ai_debugger_window
             default: return LOCTEXT("CrowdUnknown", "UNKNOWN");
         }
     }
+
+    auto TextField(const FText& InValue) -> FCkUiFieldValue
+    { return FCkUiFieldValue{.Kind = ECkUiFieldKind::Text, .Text = InValue}; }
+
+    auto ColorField(const FLinearColor& InValue) -> FCkUiFieldValue
+    { return FCkUiFieldValue{.Kind = ECkUiFieldKind::Color, .Color = InValue}; }
+
+    auto AiRosterSchema() -> TArray<FCkUiFieldSchema>
+    {
+        return {
+            {TEXT("ai-roster-name"), ECkUiFieldKind::Text},
+            {TEXT("ai-roster-status"), ECkUiFieldKind::Text},
+            {TEXT("ai-roster-status-color"), ECkUiFieldKind::Color},
+            {TEXT("ai-roster-status-background"), ECkUiFieldKind::Color},
+            {TEXT("ai-roster-summary"), ECkUiFieldKind::Text},
+            {TEXT("ai-roster-context"), ECkUiFieldKind::Text},
+        };
+    }
+
+    auto AiRosterKey(const int64 InGeneration, const FCk_Handle& InPhysicalHandle) -> FString
+    {
+        const FCk_Entity& Entity = InPhysicalHandle.Get_Entity();
+        return FString::Printf(TEXT("ai-roster:%lld:%d:%d"), InGeneration,
+            static_cast<int32>(Entity.Get_EntityNumber()), static_cast<int32>(Entity.Get_VersionNumber()));
+    }
+
+    auto AiRosterStyleTokens() -> FCkUiView::FTokens
+    {
+        const auto Color = [](const FLinearColor& InColor) { return TEXT("#") + InColor.ToFColorSRGB().ToHex(); };
+        return {
+            {TEXT("--ai-roster-row-font-size"), FString::FromInt(ck::debug_axes::Get_ScaledFontSize(CkStyle::FontSizeSmall()))},
+            {TEXT("--ai-roster-detail-font-size"), FString::FromInt(ck::debug_axes::Get_ScaledFontSize(CkStyle::FontSizeMicro()))},
+            {TEXT("--ai-roster-text"), Color(CkStyle::Text())},
+            {TEXT("--ai-roster-text-dim"), Color(CkStyle::TextDim())},
+            {TEXT("--ai-roster-text-mute"), Color(CkStyle::TextMute())},
+            {TEXT("--ai-roster-text-strong"), Color(CkStyle::TextStrong())},
+        };
+    }
 }
 
 auto SCkAiDebuggerWindow::Construct(const FArguments&) -> void
 {
     Register_WithGate();
+
+    const FCkUiLoadResult CollectionResult = FCkUiCollection::TryCreate(
+        ck_ai_debugger_window::AiRosterSchema(), _AiRosterCollection);
 
     _AiProviders = ck_ai_debugger_window::Collect_AiProviders();
 
@@ -233,6 +283,14 @@ auto SCkAiDebuggerWindow::Construct(const FArguments&) -> void
             ]
             .Content()[Build_Body()]
     ];
+
+    if (CollectionResult.Succeeded) { Build_AiRosterView(); }
+    else if (_AiRosterHost.IsValid())
+    {
+        _AiRosterLoadError = FString::Join(CollectionResult.Errors, TEXT("\n"));
+        _AiRosterHost->SetContent(SNew(STextBlock).Text(FText::FromString(
+            _AiRosterLoadError)));
+    }
 }
 
 SCkAiDebuggerWindow::~SCkAiDebuggerWindow()
@@ -248,6 +306,7 @@ SCkAiDebuggerWindow::~SCkAiDebuggerWindow()
     _SelectedEntity = FCk_Handle{};
     _TrackedRoster.Reset();
     _Model = FCk_DebugOverlay_EntityModel{};
+    Invalidate_AiRosterView();
     if (_CrowdViewModel.IsValid()) { _CrowdViewModel->Reset_ForWorldChange(); }
 }
 
@@ -258,6 +317,12 @@ auto SCkAiDebuggerWindow::Tick(const FGeometry& InGeometry, double InNow, float 
     if (_ViewportPicker.IsValid()) { _ViewportPicker->Tick(InDeltaSeconds); }
 
     auto* World = Get_TargetWorld();
+    if (World != _AiRosterWorld.Get())
+    {
+        Invalidate_AiRosterView();
+        _AiRosterWorld = World;
+        Build_AiRosterView();
+    }
     if (ck::IsValid(World))
     { _ActiveWorld = World; }
     if (_CrowdViewModel.IsValid())
@@ -280,6 +345,7 @@ auto SCkAiDebuggerWindow::Tick(const FGeometry& InGeometry, double InNow, float 
             Refresh_Roster();
         }
     }
+    Poll_AiRosterFiles(InNow);
     if (InNow - _LastRefreshTime < ck_ai_debugger_window::RefreshInterval) { return; }
     _LastRefreshTime = InNow;
 
@@ -293,7 +359,7 @@ auto SCkAiDebuggerWindow::Tick(const FGeometry& InGeometry, double InNow, float 
         return;
     }
     const auto Updated = Build_Model(_SelectedEntity, InNow);
-    if (NOT Is_AiModel(Updated))
+    if (NOT Is_AiModel(Updated) && NOT Has_ActiveRosterSelection())
     {
         Clear_Diagnostics();
         _SelectedEntity = FCk_Handle{};
@@ -336,9 +402,17 @@ auto SCkAiDebuggerWindow::OpenForEntity(const FCk_Handle& InEntity) -> void
 }
 
 auto SCkAiDebuggerWindow::Select_Entity(const FCk_Handle& InEntity, bool InBroadcast) -> void
+{ Select_EntityImpl(InEntity, InBroadcast, false); }
+
+auto SCkAiDebuggerWindow::Select_EntityImpl(
+    const FCk_Handle& InEntity,
+    const bool InBroadcast,
+    const bool InAllowDirectCrowdAgent) -> void
 {
+    if (ck::Is_NOT_Valid(InEntity)) { return; }
     const auto Target = ck::DebugSelectionSync::Resolve_ConceptualTarget(InEntity);
-    if (ck::Is_NOT_Valid(Target) || NOT Is_AiEntity(Target)) { return; }
+    const bool bDirectCrowdAgent = InAllowDirectCrowdAgent && UCk_Utils_CrowdAgent_UE::Has(InEntity);
+    if (ck::Is_NOT_Valid(Target) || (NOT bDirectCrowdAgent && NOT Is_AiEntity(Target))) { return; }
 
     auto* TargetWorld = UCk_Utils_EntityLifetime_UE::Get_WorldForEntity(Target);
     const auto TargetWorldIsValid = ck::IsValid(TargetWorld);
@@ -381,6 +455,14 @@ auto SCkAiDebuggerWindow::Select_Entity(const FCk_Handle& InEntity, bool InBroad
     if (InBroadcast) { ck::DebugSelectionSync::Broadcast(Target, FCkAiDebuggerModule::Get_TabName()); }
 }
 
+auto SCkAiDebuggerWindow::Has_ActiveRosterSelection() const -> bool
+{
+    if (NOT _CrowdViewModel.IsValid()) { return false; }
+    const FCk_Handle PhysicalAgent = _CrowdViewModel->Get_SelectedHandle();
+    return ck::IsValid(PhysicalAgent) && UCk_Utils_CrowdAgent_UE::Has(PhysicalAgent)
+        && ck::DebugSelectionSync::Resolve_ConceptualTarget(PhysicalAgent) == _SelectedEntity;
+}
+
 auto SCkAiDebuggerWindow::Is_AiModel(const FCk_DebugOverlay_EntityModel& InModel) -> bool
 {
     return InModel.Sections.ContainsByPredicate([](const FCk_DebugOverlay_Section& Section)
@@ -413,9 +495,7 @@ auto SCkAiDebuggerWindow::Build_Body() -> TSharedRef<SWidget>
                 + SVerticalBox::Slot().AutoHeight()[SNew(SCkDebug_SectionHeader).Label(LOCTEXT("Roster", "NPC health")).Underline(true)]
                 + SVerticalBox::Slot().FillHeight(1.0f).Padding(0.0f, CkStyle::SpaceS)
                 [
-                    SAssignNew(_HealthList, SCkDebug_EntityHealthList)
-                    .SelectedEntity_Lambda([this] { return _SelectedEntity; })
-                    .OnSelected_Lambda([this](const FCk_Handle& InEntity) { Select_Entity(InEntity, true); })
+                    SAssignNew(_AiRosterHost, SBox)
                 ]
             ]
         ]
@@ -639,9 +719,10 @@ auto SCkAiDebuggerWindow::Get_ShortName(const FString& InFullName) const -> FStr
 
 auto SCkAiDebuggerWindow::Refresh_Roster() -> void
 {
-    if (NOT _HealthList.IsValid() || NOT _CrowdViewModel.IsValid()) { return; }
+    if (NOT _AiRosterCollection.IsValid() || NOT _CrowdViewModel.IsValid()) { return; }
 
-    auto Items = TArray<FCkDebug_EntityHealthItem>{};
+    auto Records = TArray<FCkUiRecordData>{};
+    auto NextHandles = TMap<FString, FCk_Handle>{};
     for (const auto& Agent : _CrowdViewModel->Get_AllAgents())
     {
         const auto AgentIsValid = ck::IsValid(Agent.Handle);
@@ -677,18 +758,148 @@ auto SCkAiDebuggerWindow::Refresh_Roster() -> void
                 : FString::Printf(TEXT("queue %s · rank %d"), *Agent.QueueDebugName, Agent.QueueRank));
         }
         const auto Context = FText::FromString(FString::Join(ContextParts, TEXT(" · ")));
-        const auto DisplayName = FText::FromName(Entity.Get_DebugName());
-        Items.Add(FCkDebug_EntityHealthItem{
-            Agent.Handle,
-            Entity,
-            DisplayName,
-            Summary,
-            Context,
-            ck_ai_debugger_window::GetCrowdStatus(Agent.Status),
-            Tone});
+        const auto DisplayName = FText::FromName(Agent.Handle.Get_DebugName());
+        const FString Key = ck_ai_debugger_window::AiRosterKey(_AiRosterGeneration, Agent.Handle);
+        auto Record = FCkUiRecordData{};
+        Record.Key = Key;
+        Record.Fields.Add(TEXT("ai-roster-name"), ck_ai_debugger_window::TextField(DisplayName));
+        Record.Fields.Add(TEXT("ai-roster-status"), ck_ai_debugger_window::TextField(
+            ck_ai_debugger_window::GetCrowdStatus(Agent.Status)));
+        Record.Fields.Add(TEXT("ai-roster-status-color"), ck_ai_debugger_window::ColorField(
+            CkStyle::GetToneColor(Tone)));
+        Record.Fields.Add(TEXT("ai-roster-status-background"), ck_ai_debugger_window::ColorField(
+            CkStyle::GetToneDimColor(Tone)));
+        Record.Fields.Add(TEXT("ai-roster-summary"), ck_ai_debugger_window::TextField(Summary));
+        Record.Fields.Add(TEXT("ai-roster-context"), ck_ai_debugger_window::TextField(Context));
+        Records.Add(MoveTemp(Record));
+        NextHandles.Add(Key, Agent.Handle);
     }
 
-    _HealthList->Set_Items(MoveTemp(Items));
+    // Collection admission validates every typed record before publishing. The corresponding physical-handle map
+    // changes only with the accepted record set, so a rejected projection cannot leave selection pointing at new data.
+    if (_AiRosterCollection->TrySetRecords(MoveTemp(Records)).Succeeded)
+    {
+        _AiRosterHandles = MoveTemp(NextHandles);
+        if (_AiRosterView.IsValid())
+        {
+            const FCk_Handle SelectedPhysical = _CrowdViewModel->Get_SelectedHandle();
+            const TOptional<FString> SelectedKey = ck::IsValid(SelectedPhysical)
+                ? TOptional<FString>{ck_ai_debugger_window::AiRosterKey(_AiRosterGeneration, SelectedPhysical)}
+                : TOptional<FString>{};
+            if (const TSharedPtr<SCkUiTable> Table = _AiRosterView->GetTable(TEXT("ai-roster")))
+            { Table->TrySelectKey(SelectedKey); }
+        }
+    }
+}
+
+auto SCkAiDebuggerWindow::Get_AiRosterSelectedPhysicalHandle() const -> FCk_Handle
+{ return _CrowdViewModel.IsValid() ? _CrowdViewModel->Get_SelectedHandle() : FCk_Handle{}; }
+
+auto SCkAiDebuggerWindow::CanUse_AiRosterView(const int64 InGeneration) const -> bool
+{ return InGeneration == _AiRosterGeneration; }
+
+auto SCkAiDebuggerWindow::Invalidate_AiRosterView() -> void
+{
+    ++_AiRosterGeneration;
+    // Generation and handle-bearing state must be gone before the retained table releases its callbacks.
+    _AiRosterHandles.Reset();
+    if (_AiRosterCollection.IsValid()) { _AiRosterCollection->TrySetRecords({}); }
+    _AiRosterView.Reset();
+    if (_AiRosterHost.IsValid()) { _AiRosterHost->SetContent(SNullWidget::NullWidget); }
+}
+
+auto SCkAiDebuggerWindow::Poll_AiRosterFiles(const double InNow) -> void
+{
+    constexpr double PollIntervalSeconds = 0.5;
+    if (InNow < _NextAiRosterPollSeconds) { return; }
+    _NextAiRosterPollSeconds = InNow + PollIntervalSeconds;
+    if (_AiRosterView.IsValid()) { _AiRosterView->PollFiles(ck_ai_debugger_window::AiRosterStyleTokens()); }
+    else { Build_AiRosterView(); }
+}
+
+auto SCkAiDebuggerWindow::Build_AiRosterView() -> void
+{
+    if (NOT _AiRosterHost.IsValid() || NOT _AiRosterCollection.IsValid() || _AiRosterView.IsValid()) { return; }
+
+    TSharedPtr<const FCkUiWidgetRegistrySnapshot> Registry;
+    const FCkUiLoadResult RegistryResult = FCkDebug_UiRegistry::TryCreate(Registry);
+    if (NOT RegistryResult.Succeeded)
+    {
+        _AiRosterLoadError = FString::Join(RegistryResult.Errors, TEXT("\n"));
+        _AiRosterHost->SetContent(SNew(STextBlock).Text(FText::FromString(
+            _AiRosterLoadError)));
+        return;
+    }
+
+    const TWeakPtr<SCkAiDebuggerWindow> WeakPanel{SharedThis(this)};
+    const int64 Generation = _AiRosterGeneration;
+    auto Data = FCkUiView::FDataBindings{};
+    Data.SlateUserIndex = 0;
+    Data.CanDispatchEvents = TAttribute<bool>::CreateLambda([WeakPanel, Generation]()
+    {
+        const TSharedPtr<SCkAiDebuggerWindow> Panel = WeakPanel.Pin();
+        return Panel.IsValid() && Panel->CanUse_AiRosterView(Generation);
+    });
+    Data.Text.Add(TEXT("ai-roster-empty"), TAttribute<FText>::CreateLambda([WeakPanel, Generation]()
+    {
+        const TSharedPtr<SCkAiDebuggerWindow> Panel = WeakPanel.Pin();
+        if (NOT Panel.IsValid() || NOT Panel->CanUse_AiRosterView(Generation)) { return FText::GetEmpty(); }
+        if (NOT ck::IsValid(Panel->Get_TargetWorld()))
+        { return FText::FromString(TEXT("No PIE or game world. Start a session to inspect AI.")); }
+        return Panel->_AiRosterCollection.IsValid() && Panel->_AiRosterCollection->GetRecords().IsEmpty()
+            ? FText::FromString(TEXT("No Crowd agents in this world."))
+            : FText::GetEmpty();
+    }));
+    Data.Visibility.Add(TEXT("ai-roster-empty-visible"), TAttribute<bool>::CreateLambda([WeakPanel, Generation]()
+    {
+        const TSharedPtr<SCkAiDebuggerWindow> Panel = WeakPanel.Pin();
+        return Panel.IsValid() && Panel->CanUse_AiRosterView(Generation)
+            && (NOT ck::IsValid(Panel->Get_TargetWorld())
+                || (Panel->_AiRosterCollection.IsValid() && Panel->_AiRosterCollection->GetRecords().IsEmpty()));
+    }));
+    Data.Collections.Add(TEXT("ai-roster-records"), _AiRosterCollection);
+    Data.TableSelectionChanged.Add(TEXT("select-ai-roster"), FOnCkUiTableSelectionChanged::CreateLambda(
+        [WeakPanel, Generation](TOptional<FString> InKey, ESelectInfo::Type InInfo)
+        {
+            if (InInfo == ESelectInfo::Direct || NOT InKey.IsSet()) { return; }
+            const TSharedPtr<SCkAiDebuggerWindow> Panel = WeakPanel.Pin();
+            if (NOT Panel.IsValid() || NOT Panel->CanUse_AiRosterView(Generation)) { return; }
+            const FCk_Handle* PhysicalHandle = Panel->_AiRosterHandles.Find(InKey.GetValue());
+            if (PhysicalHandle != nullptr && ck::IsValid(*PhysicalHandle))
+            { Panel->Select_EntityImpl(*PhysicalHandle, true, true); }
+        }));
+
+    const TSharedPtr<IPlugin> Plugin = IPluginManager::Get().FindPlugin(TEXT("CkDebugger"));
+    if (NOT Plugin.IsValid())
+    {
+        _AiRosterLoadError = TEXT("CkDebugger resources are unavailable.");
+        _AiRosterHost->SetContent(SNew(STextBlock).Text(FText::FromString(_AiRosterLoadError)));
+        return;
+    }
+
+    const TSharedRef<FCkUiView> View = FCkUiView::Create({}, {}, ck_ai_debugger_window::AiRosterStyleTokens(),
+        CkStyle::RegularFont(CkStyle::FontSizeBody()), MoveTemp(Data), Registry);
+    const TSharedRef<SWidget> Main = View->GetRegion(TEXT("main"));
+    const FString Directory = FPaths::Combine(Plugin->GetBaseDir(), TEXT("Resources/UI"));
+    View->SetFiles(FPaths::Combine(Directory, TEXT("AiDebuggerRoster.ui.html")),
+        FPaths::Combine(Directory, TEXT("AiDebuggerRoster.ui.css")));
+    View->PollFiles();
+    if (NOT View->GetLastResult().Succeeded)
+    {
+        _AiRosterLoadError = FString::Join(View->GetLastResult().Errors, TEXT("\n"));
+        _AiRosterHost->SetContent(SNew(STextBlock).Text(FText::FromString(
+            _AiRosterLoadError)));
+        return;
+    }
+
+    _AiRosterLoadError.Reset();
+    _AiRosterView = View;
+    _AiRosterHost->SetContent(Main);
+}
+
+auto SCkAiDebuggerWindow::OnStyleRevisionChanged() -> void
+{
+    if (_AiRosterView.IsValid()) { _AiRosterView->PollFiles(ck_ai_debugger_window::AiRosterStyleTokens()); }
 }
 
 auto SCkAiDebuggerWindow::HandleSessionInvalidated() -> void
@@ -699,10 +910,11 @@ auto SCkAiDebuggerWindow::HandleSessionInvalidated() -> void
     _Model = {};
     _History = {};
     _ActiveWorld.Reset();
+    _AiRosterWorld.Reset();
+    Invalidate_AiRosterView();
     Clear_Diagnostics();
     if (_CrowdViewModel.IsValid()) { _CrowdViewModel->Reset_ForWorldChange(); }
     if (_SpatialViewport.IsValid()) { _SpatialViewport->Notify_WorldChanged(); }
-    if (_HealthList.IsValid()) { _HealthList->Clear_Items(); }
 }
 
 auto SCkAiDebuggerWindow::HandleWorldInvalidated(UWorld* InWorld) -> void
@@ -711,7 +923,7 @@ auto SCkAiDebuggerWindow::HandleWorldInvalidated(UWorld* InWorld) -> void
     CK_ENSURE_IF_NOT(WorldIsValid, TEXT("AI Overview received an invalid world-teardown boundary"))
     { return; }
 
-    if (_ActiveWorld.Get() != InWorld)
+    if (_ActiveWorld.Get() != InWorld && _AiRosterWorld.Get() != InWorld)
     { return; }
 
     HandleSessionInvalidated();

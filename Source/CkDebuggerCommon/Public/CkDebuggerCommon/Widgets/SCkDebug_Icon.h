@@ -32,8 +32,9 @@ public:
         , _ColorAndOpacity(FSlateColor::UseForeground())
         , _Accent(FLinearColor::Transparent)
     {}
-        // The glyph. Nullptr renders nothing (matches GetOptionalBrush misses).
-        SLATE_ARGUMENT(const FSlateBrush*, Brush)
+        // The glyph. Nullptr renders nothing (matches GetOptionalBrush misses). A raw pointer remains
+        // source-compatible; an attribute keeps retained or collection-backed icon ownership live.
+        SLATE_ATTRIBUTE(const FSlateBrush*, Brush)
         // What the glyph stands for — becomes the hover tooltip. Required in
         // spirit: an icon without a Meaning is exactly the defect this widget
         // exists to prevent.
@@ -52,6 +53,14 @@ public:
     SLATE_END_ARGS()
 
     auto Construct(const FArguments& InArgs) -> void;
+    auto Get_Brush() const -> const FSlateBrush* { return _Brush.Get(nullptr); }
+    auto Get_Meaning() const -> FText { return _Meaning.Get(FText::GetEmpty()); }
+    auto Get_ColorAndOpacity() const -> FSlateColor { return _ColorAndOpacity.Get(FSlateColor::UseForeground()); }
+
+private:
+    TAttribute<const FSlateBrush*> _Brush;
+    TAttribute<FText> _Meaning;
+    TAttribute<FSlateColor> _ColorAndOpacity;
 };
 
 // ====================================================================================================================

@@ -22,7 +22,12 @@ public class CkSchedulerDebugger : CkModuleRules
 
             "CkDebuggerCommon",
             "CkEditorTools",
+            "CkSlateLayout",
+            "Projects",
         });
+
+        RuntimeDependencies.Add(Path.Combine(PluginDirectory, "Resources", "UI", "SchedulerInspector.ui.html"), StagedFileType.NonUFS);
+        RuntimeDependencies.Add(Path.Combine(PluginDirectory, "Resources", "UI", "SchedulerInspector.ui.css"), StagedFileType.NonUFS);
 
         if (Target.bBuildEditor)
         {

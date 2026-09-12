@@ -15,12 +15,13 @@
 #include "CkDebuggerCommon/Widgets/SCkDebug_PaneHost.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_WorldSelector.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_SectionHeader.h"
-#include "CkDebuggerCommon/Widgets/SCkDebug_IconToggle.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_CopyableContainer.h"
-#include "CkDebuggerCommon/Search/SCkDebug_DualSearchBar.h"
 #include "CkDebuggerCommon/Window/CkDebuggerRefreshGate.h"
+#include "CkDebuggerCommon/UI/CkDebug_UiRegistry.h"
 
 #include "CkEditorTools/Style/CkStyle.h"
+
+#include "CkSlateLayout/SCkUiSurface.h"
 
 #include "EnhancedInputSubsystems.h"
 #include "InputAction.h"
@@ -34,6 +35,8 @@
 #include "Framework/Application/SlateApplication.h"
 
 #include "HAL/IConsoleManager.h"
+#include "Interfaces/IPluginManager.h"
+#include "Misc/Paths.h"
 
 #if WITH_EDITOR
 #include "Editor.h"
@@ -93,6 +96,22 @@ namespace ck_input_debugger
         }
     }
 
+    static auto ControlsStyleTokens() -> FCkUiView::FTokens
+    {
+        const auto Color = [](const FLinearColor& InColor) { return TEXT("#") + InColor.ToFColorSRGB().ToHex(); };
+        return {
+            {TEXT("--input-controls-font-size"), FString::FromInt(ck::debug_axes::Get_ScaledFontSize(CkStyle::FontSizeBody()))},
+            {TEXT("--input-controls-text"), Color(CkStyle::Text())},
+            {TEXT("--input-controls-text-mute"), Color(CkStyle::TextMute())},
+            {TEXT("--input-controls-surface"), Color(CkStyle::BgRoot())},
+            {TEXT("--input-controls-button"), Color(CkStyle::Bg1())},
+            {TEXT("--input-controls-hover"), Color(CkStyle::Hover())},
+            {TEXT("--input-controls-pressed"), Color(CkStyle::Bg3())},
+            {TEXT("--input-controls-border"), Color(CkStyle::Border())},
+            {TEXT("--input-controls-accent"), Color(CkStyle::Accent())},
+        };
+    }
+
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -120,6 +139,7 @@ auto
     _BindingsListBox = SNew(SVerticalBox);
     _KeyStripBox     = SNew(SHorizontalBox);
     _TimelineHost    = SNew(SBox);
+    _ControlsHost    = SNew(SBox);
 
     // Passive application-wide observer for the live surfaces — every handler returns false, so
     // it can never starve viewport input (ck-slate-tools §3).
@@ -136,44 +156,7 @@ auto
     ChildSlot
     [
         SNew(SCkDebug_WindowChrome).WindowId(Get_WindowId()).ToolTabId(TEXT("CkInputDebugger"))
-        .CommandGroups({
-            FCkDebug_CommandGroup::Primary(TEXT("InputView"), FText::FromString(TEXT("Input view controls")),
-            SNew(SCkDebug_IconToolbar)
-            .Actions({
-                FCkDebug_IconToggleAction{
-                    TEXT("InputActiveActionsOnly"),
-                    ECk_Icon::Input,
-                    FText::FromString(TEXT("Active Actions Only")),
-                    FText::FromString(TEXT("Show only resolved actions that are active or ongoing.")),
-                    TAttribute<bool>::CreateLambda([this]() { return _ShowActiveActionsOnly; }),
-                    FOnCkDebug_IconToggleChanged::CreateLambda([this](const bool InIsEnabled)
-                    {
-                        _ShowActiveActionsOnly = InIsEnabled;
-                        ApplyFilterAndHighlight();
-                    })},
-                FCkDebug_IconToggleAction{
-                    TEXT("InputHudOverlay"),
-                    ECk_Icon::World,
-                    FText::FromString(TEXT("Input HUD overlay")),
-                    FText::FromString(TEXT("Toggle the on-screen QA input overlay (ck.InputOverlay).\n"
-                         "Off (0) hides it, on (2) shows the auto device visual.")),
-                    TAttribute<bool>::CreateLambda([]() -> bool
-                    {
-                        const auto* CVar = IConsoleManager::Get().FindConsoleVariable(TEXT("ck.InputOverlay"));
-                        return CVar != nullptr && CVar->GetInt() != 0;
-                    }),
-                    FOnCkDebug_IconToggleChanged::CreateLambda([](bool InIsOn)
-                    {
-                        if (auto* CVar = IConsoleManager::Get().FindConsoleVariable(TEXT("ck.InputOverlay")))
-                        { CVar->Set(InIsOn ? 2 : 0, ECVF_SetByConsole); }
-                    }),
-                    TAttribute<bool>::CreateLambda([]() -> bool
-                    {
-                        return IConsoleManager::Get().FindConsoleVariable(TEXT("ck.InputOverlay")) != nullptr;
-                    })}
-            })),
-            FCkDebug_CommandGroup::Context(TEXT("InputContext"), FText::FromString(TEXT("Player and input search")), BuildToolbar())
-        })
+        .CommandGroups({FCkDebug_CommandGroup::Context(TEXT("InputContext"), FText::FromString(TEXT("Player and input controls")), BuildToolbar())})
         .ShowRefreshControls(true)
         .Content()
         [
@@ -247,6 +230,8 @@ auto
                 ]
         ]
     ];
+
+    DoBuildControlsView();
 }
 
 SCkInputDebuggerWindow::~SCkInputDebuggerWindow()
@@ -317,27 +302,8 @@ auto
                     SAssignNew(_PlayerSelectorBox, SHorizontalBox)
                 ]
 
-            + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-                [
-                    SNew(SBox).MinDesiredWidth(260.0f)
-                    [
-                        SNew(SCkDebug_DualSearchBar)
-                            .FilterHintText(FText::FromString(TEXT("Filter actions / keys / contexts…")))
-                            .HighlightHintText(FText::FromString(TEXT("Highlight…")))
-                            .OnFilterTextChanged_Lambda([this](const FString& InText)
-                            {
-                                if (_FilterString == InText) { return; }
-                                _FilterString = InText;
-                                ApplyFilterAndHighlight();
-                            })
-                            .OnHighlightTextChanged_Lambda([this](const FString& InText)
-                            {
-                                if (_HighlightString == InText) { return; }
-                                _HighlightString = InText;
-                                ApplyFilterAndHighlight();
-                            })
-                    ]
-                ]
+            + SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)
+                [ _ControlsHost.ToSharedRef() ]
 
         ];
 }
@@ -402,48 +368,77 @@ auto
     BuildBindingsHeader()
     -> TSharedRef<SWidget>
 {
-    const auto MakeModeButton = [this](const TCHAR* InLabel, ECkInputDebugger_BindingsFilterMode InMode) -> TSharedRef<SWidget>
-    {
-        return SNew(SButton)
-            .ButtonStyle(FAppStyle::Get(), "SimpleButton")
-            .ContentPadding(FMargin(CkStyle::SpaceS, 1.0f))
-            .ToolTipText(FText::FromString(TEXT("Filter the bindings rows below")))
-            .OnClicked_Lambda([this, InMode]()
-            {
-                _BindingsFilterMode = InMode;
-                ApplyFilterAndHighlight();
-                return FReply::Handled();
-            })
-            [
-                SNew(STextBlock)
-                    .Font_Static(&ck_input_debugger::Font_Body)
-                    .Text(FText::FromString(InLabel))
-                    .ColorAndOpacity_Lambda([this, InMode]()
-                    {
-                        return _BindingsFilterMode == InMode
-                            ? FSlateColor(CkStyle::Accent())
-                            : FSlateColor(CkStyle::TextMute());
-                    })
-            ];
-    };
-
     _ReboundCountText = SNew(STextBlock)
         .Font_Static(&ck_input_debugger::Font_Body)
         .ColorAndOpacity(CkStyle::Warn());
 
-    return SNew(SHorizontalBox)
+    return _ReboundCountText.ToSharedRef();
+}
 
-        + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.0f, 0.0f, CkStyle::SpaceM, 0.0f)
-            [ _ReboundCountText.ToSharedRef() ]
+// --------------------------------------------------------------------------------------------------------------------
+// Authored controls
+// --------------------------------------------------------------------------------------------------------------------
 
-        + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-            [ MakeModeButton(TEXT("All"), ECkInputDebugger_BindingsFilterMode::All) ]
+auto SCkInputDebuggerWindow::DoBuildControlsView() -> void
+{
+    if (!_ControlsHost.IsValid() || _ControlsView.IsValid()) { return; }
+    TSharedPtr<const FCkUiWidgetRegistrySnapshot> Registry;
+    const FCkUiLoadResult RegistryResult = FCkDebug_UiRegistry::TryCreate(Registry);
+    if (!RegistryResult.Succeeded) { _ControlsHost->SetContent(SNew(STextBlock).Text(FText::FromString(FString::Join(RegistryResult.Errors, TEXT("\n"))))); return; }
 
-        + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-            [ MakeModeButton(TEXT("Rebound"), ECkInputDebugger_BindingsFilterMode::ReboundOnly) ]
+    const TWeakPtr<SCkInputDebuggerWindow> WeakWindow{SharedThis(this)};
+    IConsoleVariable* const OverlayCVar = IConsoleManager::Get().FindConsoleVariable(TEXT("ck.InputOverlay"));
+    auto Data = FCkUiView::FDataBindings{};
+    Data.CanDispatchEvents = TAttribute<bool>::CreateLambda([WeakWindow]() { return WeakWindow.IsValid(); });
+    Data.Text.Add(TEXT("input-filter"), TAttribute<FText>::CreateLambda([WeakWindow]() { const auto Window = WeakWindow.Pin(); return Window.IsValid() ? FText::FromString(Window->_FilterString) : FText::GetEmpty(); }));
+    Data.Text.Add(TEXT("input-highlight"), TAttribute<FText>::CreateLambda([WeakWindow]() { const auto Window = WeakWindow.Pin(); return Window.IsValid() ? FText::FromString(Window->_HighlightString) : FText::GetEmpty(); }));
+    Data.Text.Add(TEXT("input-active-actions"), TAttribute<FText>::CreateLambda([WeakWindow]() { const auto Window = WeakWindow.Pin(); return FText::FromString(Window.IsValid() && Window->_ShowActiveActionsOnly ? TEXT("Active only: ON") : TEXT("Active only: OFF")); }));
+    Data.Text.Add(TEXT("input-overlay"), TAttribute<FText>::CreateLambda([OverlayCVar]() { return FText::FromString(OverlayCVar != nullptr && OverlayCVar->GetInt() != 0 ? TEXT("Input HUD: ON") : TEXT("Input HUD: OFF")); }));
+    Data.Visibility.Add(TEXT("input-overlay-available"), TAttribute<bool>::CreateLambda([OverlayCVar]() { return OverlayCVar != nullptr; }));
+    Data.Color.Add(TEXT("input-active-actions-color"), TAttribute<FLinearColor>::CreateLambda([WeakWindow]() { const auto Window = WeakWindow.Pin(); return Window.IsValid() && Window->_ShowActiveActionsOnly ? CkStyle::Accent() : CkStyle::TextMute(); }));
+    Data.Color.Add(TEXT("input-overlay-color"), TAttribute<FLinearColor>::CreateLambda([OverlayCVar]() { return OverlayCVar != nullptr && OverlayCVar->GetInt() != 0 ? CkStyle::Accent() : CkStyle::TextMute(); }));
+    const auto ModeColor = [WeakWindow](const ECkInputDebugger_BindingsFilterMode Mode) { return TAttribute<FLinearColor>::CreateLambda([WeakWindow, Mode]() { const auto Window = WeakWindow.Pin(); return Window.IsValid() && Window->_BindingsFilterMode == Mode ? CkStyle::Accent() : CkStyle::TextMute(); }); };
+    Data.Color.Add(TEXT("input-bindings-all-color"), ModeColor(ECkInputDebugger_BindingsFilterMode::All));
+    Data.Color.Add(TEXT("input-bindings-rebound-color"), ModeColor(ECkInputDebugger_BindingsFilterMode::ReboundOnly));
+    Data.Color.Add(TEXT("input-bindings-default-color"), ModeColor(ECkInputDebugger_BindingsFilterMode::DefaultOnly));
+    Data.TextChanged.Add(TEXT("input-filter"), FOnTextChanged::CreateLambda([WeakWindow](const FText& Value) { if (const auto Window = WeakWindow.Pin(); Window.IsValid() && Window->_FilterString != Value.ToString()) { Window->_FilterString = Value.ToString(); Window->ApplyFilterAndHighlight(); } }));
+    Data.TextChanged.Add(TEXT("input-highlight"), FOnTextChanged::CreateLambda([WeakWindow](const FText& Value) { if (const auto Window = WeakWindow.Pin(); Window.IsValid() && Window->_HighlightString != Value.ToString()) { Window->_HighlightString = Value.ToString(); Window->ApplyFilterAndHighlight(); } }));
 
-        + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-            [ MakeModeButton(TEXT("Default"), ECkInputDebugger_BindingsFilterMode::DefaultOnly) ];
+    auto Actions = FCkUiView::FActions{};
+    Actions.Add(TEXT("input-toggle-active-actions"), FSimpleDelegate::CreateLambda([WeakWindow]() { if (const auto Window = WeakWindow.Pin(); Window.IsValid()) { Window->_ShowActiveActionsOnly = !Window->_ShowActiveActionsOnly; Window->ApplyFilterAndHighlight(); } }));
+    Actions.Add(TEXT("input-toggle-overlay"), FSimpleDelegate::CreateLambda([OverlayCVar]() { if (OverlayCVar != nullptr) { OverlayCVar->Set(OverlayCVar->GetInt() == 0 ? 2 : 0, ECVF_SetByConsole); } }));
+    const auto SetMode = [WeakWindow](const ECkInputDebugger_BindingsFilterMode Mode) { if (const auto Window = WeakWindow.Pin(); Window.IsValid() && Window->_BindingsFilterMode != Mode) { Window->_BindingsFilterMode = Mode; Window->ApplyFilterAndHighlight(); } };
+    Actions.Add(TEXT("input-bindings-all"), FSimpleDelegate::CreateLambda([SetMode]() { SetMode(ECkInputDebugger_BindingsFilterMode::All); }));
+    Actions.Add(TEXT("input-bindings-rebound"), FSimpleDelegate::CreateLambda([SetMode]() { SetMode(ECkInputDebugger_BindingsFilterMode::ReboundOnly); }));
+    Actions.Add(TEXT("input-bindings-default"), FSimpleDelegate::CreateLambda([SetMode]() { SetMode(ECkInputDebugger_BindingsFilterMode::DefaultOnly); }));
+
+    const TSharedPtr<IPlugin> Plugin = IPluginManager::Get().FindPlugin(TEXT("CkDebugger"));
+    if (!Plugin.IsValid()) { _ControlsHost->SetContent(SNew(STextBlock).Text(FText::FromString(TEXT("CkDebugger resources are unavailable.")))); return; }
+    const TSharedRef<FCkUiView> View = FCkUiView::Create({}, MoveTemp(Actions), ck_input_debugger::ControlsStyleTokens(), CkStyle::RegularFont(CkStyle::FontSizeBody()), MoveTemp(Data), Registry);
+    const TSharedRef<SWidget> Region = View->GetRegion(TEXT("controls"));
+    const FString Directory = FPaths::Combine(Plugin->GetBaseDir(), TEXT("Resources/UI"));
+    View->SetFiles(FPaths::Combine(Directory, TEXT("InputDebuggerControls.ui.html")), FPaths::Combine(Directory, TEXT("InputDebuggerControls.ui.css")));
+    View->PollFiles();
+    // Keep a failed view alive: its error remains available to the mounted production fixture and a later
+    // file/token recovery can publish the same persistent region without rebuilding the owning window.
+    _ControlsView = View;
+    if (!View->GetLastResult().Succeeded) { _ControlsHost->SetContent(SNew(STextBlock).Text(FText::FromString(FString::Join(View->GetLastResult().Errors, TEXT("\n"))))); return; }
+    _ControlsHost->SetContent(Region);
+}
+
+auto SCkInputDebuggerWindow::DoPollControlsFiles(const double InCurrentTime) -> void
+{
+    constexpr double PollIntervalSeconds = 0.5;
+    if (InCurrentTime < _NextControlsPollSeconds) { return; }
+    _NextControlsPollSeconds = InCurrentTime + PollIntervalSeconds;
+    if (_ControlsView.IsValid())
+    {
+        const bool WasAccepted = _ControlsView->GetLastResult().Succeeded;
+        _ControlsView->PollFiles(ck_input_debugger::ControlsStyleTokens());
+        if (!WasAccepted && _ControlsView->GetLastResult().Succeeded && _ControlsHost.IsValid())
+        { _ControlsHost->SetContent(_ControlsView->GetRegion(TEXT("controls"))); }
+    }
+    else { DoBuildControlsView(); }
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -493,6 +488,7 @@ auto
     -> void
 {
     SCkDebugger_WindowBase::Tick(InAllottedGeometry, InCurrentTime, InDeltaTime);
+    DoPollControlsFiles(InCurrentTime);
 
     if (NOT FCkDebuggerRefreshGate::Should_RefreshNow(WindowId))
     { return; }

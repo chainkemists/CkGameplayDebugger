@@ -19,6 +19,7 @@ class SExpandableArea;
 class SCkDebug_CategoryDot;
 class SCkDebug_EventTimeline;
 class STextBlock;
+class FCkUiView;
 class FCkDebuggerModel_WorldSelector;
 class UEnhancedInputLocalPlayerSubsystem;
 class UInputAction;
@@ -106,6 +107,11 @@ public:
 
     virtual auto Get_WindowId() const -> FName override { return WindowId; }
     virtual auto Get_WindowDisplayName() const -> FText override { return FText::FromString(TEXT("Enhanced Input")); }
+    auto Get_ControlsView() const -> TSharedPtr<FCkUiView> { return _ControlsView; }
+    auto Get_FilterString() const -> const FString& { return _FilterString; }
+    auto Get_HighlightString() const -> const FString& { return _HighlightString; }
+    auto Get_ShowActiveActionsOnly() const -> bool { return _ShowActiveActionsOnly; }
+    auto Get_BindingsFilterMode() const -> ECkInputDebugger_BindingsFilterMode { return _BindingsFilterMode; }
 
 protected:
     // Context / action rows are built imperatively, so a style revision re-runs them through the
@@ -119,6 +125,8 @@ private:
     auto BuildDevicesSection() -> TSharedRef<SWidget>;
     auto BuildBindingsHeader() -> TSharedRef<SWidget>;
     auto BuildSection(const FText& InLabel, const TSharedRef<SWidget>& InHeaderExtra, const TSharedRef<SWidget>& InBody) -> TSharedRef<SWidget>;
+    auto DoBuildControlsView() -> void;
+    auto DoPollControlsFiles(double InCurrentTime) -> void;
 
     // ---- Player resolution ----
 
@@ -158,6 +166,8 @@ private:
     TSharedPtr<FCkDebuggerModel_WorldSelector> _WorldModel;
     TSharedPtr<SHorizontalBox>                 _PlayerSelectorBox;
     TSharedPtr<STextBlock>                     _SummaryText;
+    TSharedPtr<SBox>                           _ControlsHost;
+    TSharedPtr<FCkUiView>                      _ControlsView;
 
     // ---- Body containers ----
     TSharedPtr<SVerticalBox>   _ContextListBox;
@@ -210,6 +220,7 @@ private:
     FString _HighlightString;
     bool    _ShowActiveActionsOnly = false;
     ECkInputDebugger_BindingsFilterMode _BindingsFilterMode = ECkInputDebugger_BindingsFilterMode::All;
+    double _NextControlsPollSeconds = 0.0;
 
     // ---- Live key activity (passive observer; holds keys only, never handles) ----
     TSharedPtr<FCkDebug_KeyActivityObserver> _KeyObserver;

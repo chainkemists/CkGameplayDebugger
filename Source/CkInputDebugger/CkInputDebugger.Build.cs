@@ -1,3 +1,4 @@
+using System.IO;
 using UnrealBuildTool;
 
 public class CkInputDebugger : CkModuleRules
@@ -21,8 +22,15 @@ public class CkInputDebugger : CkModuleRules
             "CkInput",  // bindings pane: user-settings profile rows + Ck scope-tag settings
             "CkEcs",  // CkCore's SharedPCH instantiates global ECS registrations — every CK module must link CkEcs
             "CkDebuggerCommon",
+            "CkSlateLayout",
             "CkEditorTools",  // shared CkStyle:: tokens used directly by the window
         });
+
+        // The authored controls resolve their installed resource pair through IPluginManager.
+        PrivateDependencyModuleNames.Add("Projects");
+
+        RuntimeDependencies.Add(Path.Combine(PluginDirectory, "Resources", "UI", "InputDebuggerControls.ui.html"), StagedFileType.NonUFS);
+        RuntimeDependencies.Add(Path.Combine(PluginDirectory, "Resources", "UI", "InputDebuggerControls.ui.css"), StagedFileType.NonUFS);
 
         if (Target.bBuildEditor)
         {

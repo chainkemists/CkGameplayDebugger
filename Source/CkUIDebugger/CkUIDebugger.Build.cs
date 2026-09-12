@@ -1,3 +1,4 @@
+using System.IO;
 using UnrealBuildTool;
 
 public class CkUIDebugger : CkModuleRules
@@ -20,6 +21,7 @@ public class CkUIDebugger : CkModuleRules
             "CkDebuggerCommon",
             "CkEcs",
             "CkEditorTools",  // shared CkStyle:: tokens used directly by the window
+            "CkSlateLayout",
             "CkUI",
             "CkUICore",
         });
@@ -32,5 +34,16 @@ public class CkUIDebugger : CkModuleRules
                 "WorkspaceMenuStructure"
             });
         }
+
+        PrivateDependencyModuleNames.Add("Projects");
+
+        RuntimeDependencies.Add(Path.Combine(PluginDirectory, "Resources", "UI", "UiDebuggerHistory.ui.html"), StagedFileType.NonUFS);
+        RuntimeDependencies.Add(Path.Combine(PluginDirectory, "Resources", "UI", "UiDebuggerHistory.ui.css"), StagedFileType.NonUFS);
+        RuntimeDependencies.Add(Path.Combine(PluginDirectory, "Resources", "UI", "UiDebuggerLayers.ui.html"), StagedFileType.NonUFS);
+        RuntimeDependencies.Add(Path.Combine(PluginDirectory, "Resources", "UI", "UiDebuggerLayers.ui.css"), StagedFileType.NonUFS);
+        RuntimeDependencies.Add(Path.Combine(PluginDirectory, "Resources", "UI", "UiDebuggerSummary.ui.html"), StagedFileType.NonUFS);
+        RuntimeDependencies.Add(Path.Combine(PluginDirectory, "Resources", "UI", "UiDebuggerSummary.ui.css"), StagedFileType.NonUFS);
+        RuntimeDependencies.Add(Path.Combine(PluginDirectory, "Resources", "UI", "UiDebuggerCommands.ui.html"), StagedFileType.NonUFS);
+        RuntimeDependencies.Add(Path.Combine(PluginDirectory, "Resources", "UI", "UiDebuggerCommands.ui.css"), StagedFileType.NonUFS);
     }
 }

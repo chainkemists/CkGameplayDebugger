@@ -1,0 +1,20 @@
+<ui version="1">
+  <region name="main">
+    <debug-inspector id="ui-history-inspector" title-bind="history-title" start-expanded="false">
+      <slot name="body">
+        <scroll id="history-scroll" class="history-scroll">
+          <column id="history" class="history">
+            <repeat id="history-records" bind="history-records" direction="vertical" class="history-records">
+              <column id="history-record" class="history-record">
+                <text id="history-description" bind-field="description" class="history-description" />
+              </column>
+            </repeat>
+            <column id="history-empty-wrap" class="history-empty-wrap">
+              <text id="history-empty" bind="history-empty" class="history-empty" />
+            </column>
+          </column>
+        </scroll>
+      </slot>
+    </debug-inspector>
+  </region>
+</ui>

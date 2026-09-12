@@ -1,0 +1,24 @@
+<ui version="1">
+  <region name="layers">
+    <column id="ui-layers-content" class="fill">
+      <tree id="ui-layer-tree" bind="ui-layer-nodes" selectable="false" projection-field="node-visible" expand-on-row-click="true" row-height="24" class="ui-layer-tree">
+        <row id="ui-layer-row" class="ui-layer-row">
+          <column id="ui-layer-row-content" class="ui-layer-row-content">
+            <row id="ui-layer-branch" visible-field="is-layer" class="ui-layer-branch">
+              <text id="ui-layer-status-glyph" bind-field="status-glyph" color-field="status-color" class="ui-layer-status-glyph" />
+              <text id="ui-layer-tag" bind-field="layer-tag" tooltip-field="layer-tag-tooltip" color-field="layer-tag-color" class="ui-layer-tag" />
+              <text id="ui-layer-priority" bind-field="priority" class="ui-layer-priority" />
+              <text id="ui-layer-input-mode" bind-field="input-mode" class="ui-layer-input-mode" />
+              <text id="ui-layer-widget-count" bind-field="widget-count" class="ui-layer-widget-count" />
+            </row>
+            <row id="ui-widget-branch" visible-field="is-widget" class="ui-widget-branch">
+              <text id="ui-widget-status-glyph" bind-field="status-glyph" color-field="status-color" class="ui-widget-status-glyph" />
+              <text id="ui-widget-name" bind-field="widget-name" tooltip-field="widget-name-tooltip" color-field="widget-name-color" class="ui-widget-name" />
+              <debug-status id="ui-widget-state" label-field="widget-state" foreground-field="widget-state-foreground" background-field="widget-state-background" show-dot="false" class="ui-widget-state" />
+            </row>
+          </column>
+        </row>
+      </tree>
+    </column>
+  </region>
+</ui>

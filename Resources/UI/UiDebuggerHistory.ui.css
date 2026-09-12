@@ -1,0 +1,7 @@
+.history-scroll { min-width: 0; max-height: 200px; background-color: var(--ui-history-surface); }
+.history { min-width: 0; }
+.history-records { min-width: 0; gap: 1px; }
+.history-record { min-width: 0; padding: 4px 8px; }
+.history-description { min-width: 0; font-family: sans-serif; font-size: var(--ui-history-font-size); color: var(--ui-history-text-dim); text-wrap: wrap; }
+.history-empty-wrap { min-width: 0; padding: 4px 8px; }
+.history-empty { min-width: 0; font-size: var(--ui-history-font-size); color: var(--ui-history-text-mute); text-wrap: wrap; }

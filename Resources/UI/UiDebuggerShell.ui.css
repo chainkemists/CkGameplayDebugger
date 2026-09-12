@@ -1,0 +1,5 @@
+.ui-shell-layout { min-width: 0; min-height: 0; flex-grow: 1; flex-shrink: 1; background-color: var(--ui-shell-surface); }
+.ui-shell-command-wrap { padding: 4px 8px 0px 8px; }
+.ui-shell-summary-wrap { padding: 4px 8px; }
+.ui-shell-separator-wrap { padding: 0px 8px; }
+.ui-shell-layer-wrap { min-width: 0; min-height: 0; flex-grow: 1; flex-shrink: 1; padding: 4px; }

@@ -148,6 +148,19 @@ auto FCkUIDebugger_HistoryAuthored::RunTest(const FString&) -> bool
     Slate.AddWindow(HostWindow.ToSharedRef(), true);
     Tick(Slate);
 
+    TSharedPtr<FCkUiView> ShellView = Panel->Get_AuthoredShellView();
+    if (!TestTrue(TEXT("Mounted production UI Debugger shell loads installed resources"),
+        ShellView.IsValid() && ShellView->GetLastResult().Succeeded)) { return false; }
+    const TSharedRef<SWidget> ShellRegion = ShellView->GetRegion(TEXT("main"));
+    const TArray<FName> ShellIds{
+        TEXT("ui-shell-root"), TEXT("ui-shell-layout"), TEXT("ui-shell-command"), TEXT("ui-shell-summary"),
+        TEXT("ui-shell-separator"), TEXT("ui-shell-layer"), TEXT("ui-shell-history")};
+    for (const FName& Id : ShellIds)
+    {
+        if (!TestTrue(FString::Printf(TEXT("Mounted UI Debugger shell contains '%s'"), *Id.ToString()),
+            FindWidgetByTag(ShellRegion, Id).IsValid())) { return false; }
+    }
+
     const TSharedPtr<FCkUiView> View = Panel->Get_HistoryView();
     if (!View.IsValid() || !View->GetLastResult().Succeeded)
     {
@@ -257,6 +270,25 @@ auto FCkUIDebugger_HistoryAuthored::RunTest(const FString&) -> bool
     const auto Plugin = IPluginManager::Get().FindPlugin(TEXT("CkDebugger"));
     if (!TestTrue(TEXT("Debugger plugin resolves history resources"), Plugin.IsValid())) { return false; }
     const FString Directory = FPaths::Combine(Plugin->GetBaseDir(), TEXT("Resources/UI"));
+    const int64 ShellRevision = ShellView->GetRevision();
+    const auto ShellReload = ShellView->ReloadFiles(FPaths::Combine(Directory, TEXT("UiDebuggerShell.ui.html")),
+        FPaths::Combine(Directory, TEXT("UiDebuggerShell.ui.css")));
+    if (!TestTrue(TEXT("Compatible UI Debugger shell reload succeeds"), ShellReload.Succeeded)) { return false; }
+    Tick(Slate);
+    TestTrue(TEXT("Compatible UI Debugger shell reload retains its view and native pane ports"),
+        Panel->Get_AuthoredShellView() == ShellView && ShellView->GetRevision() > ShellRevision
+        && FindWidgetByTag(ShellRegion, TEXT("ui-shell-command")).IsValid()
+        && FindWidgetByTag(ShellRegion, TEXT("ui-shell-summary")).IsValid()
+        && FindWidgetByTag(ShellRegion, TEXT("ui-shell-layer")).IsValid()
+        && FindWidgetByTag(ShellRegion, TEXT("ui-shell-history")).IsValid());
+    const int64 AcceptedShellRevision = ShellView->GetRevision();
+    TestFalse(TEXT("UI Debugger shell reload rejects a missing native port"), ShellView->TryReload(
+        TEXT("<ui version=\"1\"><region name=\"main\"><native id=\"missing\" bind=\"missing-port\" /></region></ui>"),
+        TEXT("")).Succeeded);
+    TestTrue(TEXT("Rejected UI Debugger shell reload preserves the accepted tree atomically"),
+        ShellView->GetRevision() == AcceptedShellRevision
+        && ShellView->GetRegion(TEXT("main")) == ShellRegion
+        && FindWidgetByTag(ShellRegion, TEXT("ui-shell-command")).IsValid());
     HeldCommandSearch->SetText(FText::FromString(TEXT("Retained command filter")));
     Tick(Slate);
     if (!TestEqual(TEXT("Mounted authored command search accepts its draft"),
@@ -335,17 +367,19 @@ auto FCkUIDebugger_HistoryAuthored::RunTest(const FString&) -> bool
     const TWeakPtr<SCkUIDebuggerWindow> WeakPanel = Panel;
     const TWeakPtr<FCkUiView> WeakCommandView = CommandView;
     const TWeakPtr<FCkUiView> WeakSummaryView = SummaryView;
+    const TWeakPtr<FCkUiView> WeakShellView = ShellView;
     CommandView.Reset();
     SummaryView.Reset();
+    ShellView.Reset();
     Panel.Reset();
     Tick(Slate);
     TestFalse(TEXT("UI debugger owner releases command and summary views while authored actions are retained"),
-        WeakPanel.IsValid() || WeakCommandView.IsValid() || WeakSummaryView.IsValid());
+        WeakPanel.IsValid() || WeakCommandView.IsValid() || WeakSummaryView.IsValid() || WeakShellView.IsValid());
     for (const TSharedPtr<SButton>& HeldCommandAction : HeldCommandActions)
     { HeldCommandAction->SimulateClick(); }
     Region->SlatePrepass();
     TestTrue(TEXT("Held history region and authored command callbacks remain inert after owner release"),
-        !WeakPanel.IsValid() && !WeakCommandView.IsValid() && !WeakSummaryView.IsValid()
+        !WeakPanel.IsValid() && !WeakCommandView.IsValid() && !WeakSummaryView.IsValid() && !WeakShellView.IsValid()
         && Region->GetCachedGeometry().GetLocalSize().X >= 0.0f);
     return true;
 }

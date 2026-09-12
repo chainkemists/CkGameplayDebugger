@@ -2,700 +2,411 @@
 
 #include "CkCore/Validation/CkIsValid.h"
 
+#include "CkDebuggerCommon/Lifecycle/CkDebug_SessionLifecycle.h"
 #include "CkDebuggerCommon/Styles/CkDebuggerAxes.h"
+#include "CkDebuggerCommon/UI/CkDebug_UiRegistry.h"
 #include "CkDebuggerCommon/Window/CkDebuggerRefreshGate.h"
-#include "CkDebuggerCommon/Search/SCkDebug_DualSearchBar.h"
-#include "CkDebuggerCommon/Widgets/SCkDebug_MeterBar.h"
-#include "CkDebuggerCommon/Widgets/SCkDebug_IconToggle.h"
-#include "CkDebuggerCommon/Widgets/SCkDebug_SectionHeader.h"
-#include "CkDebuggerCommon/Widgets/SCkDebug_StatPair.h"
 #include "CkDebuggerCommon/Window/SCkDebug_WindowChrome.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_PaneHost.h"
 
 #include "CkEditorTools/Style/CkStyle.h"
 
+#include "CkSlateLayout/CkUiCollection.h"
+#include "CkSlateLayout/SCkUiSurface.h"
+
 #include "Engine/Engine.h"
 #include "Engine/World.h"
+#include "Interfaces/IPluginManager.h"
+#include "Misc/Paths.h"
 #include "Widgets/Layout/SBox.h"
-#include "Widgets/Layout/SScrollBox.h"
-#include "Widgets/SBoxPanel.h"
+#include "Widgets/SNullWidget.h"
 #include "Widgets/Text/STextBlock.h"
-
-// --------------------------------------------------------------------------------------------------------------------
 
 const FName SCkAggroDebuggerWindow::WindowId = FName(TEXT("AggroDebugger"));
 
-// --------------------------------------------------------------------------------------------------------------------
-
 namespace ck_aggro_debugger_window
 {
-    constexpr auto k_NameColumnWidth   = 190.0f;
-    constexpr auto k_ThreatMeterWidth  = 150.0f;
-    constexpr auto k_ScoreMeterWidth   = 110.0f;
-    constexpr auto k_ValueColumnWidth  = 86.0f;
-    constexpr auto k_StateColumnWidth  = 150.0f;
-    constexpr auto k_MeterHeight       = 7.0f;
+    auto TextField(const FString& InValue) -> FCkUiFieldValue
+    { return FCkUiFieldValue{.Kind = ECkUiFieldKind::Text, .Text = FText::FromString(InValue)}; }
 
-    // Bars are normalised against the OWNER's strongest target, not an absolute ceiling. The threat clamp defaults to
-    // 10000, so an absolute scale renders every real fight as a flat row of empty bars. Relative scaling makes the
-    // top contender read full and every other bar a direct visual ratio against it — which is exactly the comparison
-    // selection performs.
-    auto Get_Fraction(
-        float InValue,
-        float InMax)
-        -> float
+    auto BoolField(const bool InValue) -> FCkUiFieldValue
+    { return FCkUiFieldValue{.Kind = ECkUiFieldKind::Bool, .Bool = InValue}; }
+
+    auto NumberField(const float InValue) -> FCkUiFieldValue
+    { return FCkUiFieldValue{.Kind = ECkUiFieldKind::Number, .Number = InValue}; }
+
+    auto ColorField(const FLinearColor& InValue) -> FCkUiFieldValue
+    { return FCkUiFieldValue{.Kind = ECkUiFieldKind::Color, .Color = InValue}; }
+
+    auto Schema() -> TArray<FCkUiFieldSchema>
     {
-        if (InMax <= KINDA_SMALL_NUMBER)
-        { return 0.0f; }
-
-        return FMath::Clamp(InValue / InMax, 0.0f, 1.0f);
+        return {
+            {TEXT("aggro-is-owner"), ECkUiFieldKind::Bool},
+            {TEXT("aggro-is-idle"), ECkUiFieldKind::Bool},
+            {TEXT("aggro-is-target"), ECkUiFieldKind::Bool},
+            {TEXT("aggro-owner-name"), ECkUiFieldKind::Text},
+            {TEXT("aggro-owner-active"), ECkUiFieldKind::Text},
+            {TEXT("aggro-owner-active-color"), ECkUiFieldKind::Color},
+            {TEXT("aggro-owner-meta"), ECkUiFieldKind::Text},
+            {TEXT("aggro-target-name"), ECkUiFieldKind::Text},
+            {TEXT("aggro-target-name-color"), ECkUiFieldKind::Color},
+            {TEXT("aggro-threat-fraction"), ECkUiFieldKind::Number},
+            {TEXT("aggro-threat-color"), ECkUiFieldKind::Color},
+            {TEXT("aggro-threat-text"), ECkUiFieldKind::Text},
+            {TEXT("aggro-threat-text-color"), ECkUiFieldKind::Color},
+            {TEXT("aggro-threat-tooltip"), ECkUiFieldKind::Text},
+            {TEXT("aggro-score-fraction"), ECkUiFieldKind::Number},
+            {TEXT("aggro-score-color"), ECkUiFieldKind::Color},
+            {TEXT("aggro-score-text"), ECkUiFieldKind::Text},
+            {TEXT("aggro-score-text-color"), ECkUiFieldKind::Color},
+            {TEXT("aggro-score-tooltip"), ECkUiFieldKind::Text},
+            {TEXT("aggro-state"), ECkUiFieldKind::Text},
+            {TEXT("aggro-state-color"), ECkUiFieldKind::Color},
+            {TEXT("aggro-detail"), ECkUiFieldKind::Text},
+        };
     }
 
-    // Every row in this window is monospaced by design — the threat table is a column of numbers that
-    // has to line up. The two sizes are the body/micro roles; routing them through ScaledFont is what
-    // puts the whole table under TextScale. Attribute form (not value) so the axis lands on rows the
-    // signature pass has no reason to rebuild.
-    auto Get_RowFont() -> FSlateFontInfo
-    { return ck::debug_axes::ScaledFont("Mono", CkStyle::FontSizeSmall()); }
+    auto HandleKey(const FCk_Handle& InHandle) -> FString
+    {
+        const FCk_Entity& Entity = InHandle.Get_Entity();
+        return FString::Printf(TEXT("%d:%d"), static_cast<int32>(Entity.Get_VersionNumber()), static_cast<int32>(Entity.Get_EntityNumber()));
+    }
 
-    auto Get_MetaFont() -> FSlateFontInfo
-    { return ck::debug_axes::ScaledFont("Mono", CkStyle::FontSizeMicro()); }
+    auto OwnerKey(const int64 InGeneration, const FCkAggroDebugger_OwnerInfo& InOwner) -> FString
+    { return FString::Printf(TEXT("owner:%lld:%s"), InGeneration, *HandleKey(InOwner.OwnerEntity)); }
 
-    auto Get_OwnerMetaPadding() -> FMargin
-    { return ck::debug_axes::Apply_RowDensity(FMargin{CkStyle::SpaceS, 0.0f, 0.0f, CkStyle::SpaceXS}); }
+    auto TargetKey(const FString& InOwnerKey, const FCkAggroDebugger_TargetInfo& InTarget) -> FString
+    { return FString::Printf(TEXT("target:%s:%s"), *InOwnerKey, *HandleKey(InTarget.TargetEntity)); }
 
-    auto Get_IdleRowPadding() -> FMargin
-    { return ck::debug_axes::Apply_RowDensity(FMargin{CkStyle::SpaceXL, CkStyle::SpaceXS}); }
+    auto Fraction(const float InValue, const float InMax) -> float
+    { return InMax <= KINDA_SMALL_NUMBER ? 0.0f : FMath::Clamp(InValue / InMax, 0.0f, 1.0f); }
 
-    auto Get_TargetRowPadding() -> FMargin
-    { return ck::debug_axes::Apply_RowDensity(FMargin{CkStyle::SpaceXL, 1.0f}); }
+    auto StyleTokens() -> FCkUiView::FTokens
+    {
+        const auto Padding = [](const FMargin& InMargin) -> FString
+        {
+            return FString::Printf(TEXT("%gpx %gpx %gpx %gpx"),
+                InMargin.Top, InMargin.Right, InMargin.Bottom, InMargin.Left);
+        };
+        const auto Color = [](const FLinearColor& InColor) { return TEXT("#") + InColor.ToFColorSRGB().ToHex(); };
+        return {
+            {TEXT("--aggro-row-font-size"), FString::FromInt(ck::debug_axes::Get_ScaledFontSize(CkStyle::FontSizeSmall()))},
+            {TEXT("--aggro-meta-font-size"), FString::FromInt(ck::debug_axes::Get_ScaledFontSize(CkStyle::FontSizeMicro()))},
+            {TEXT("--aggro-owner-meta-padding"), Padding(ck::debug_axes::Apply_RowDensity(
+                FMargin{CkStyle::SpaceS, 0.0f, 0.0f, CkStyle::SpaceXS}))},
+            {TEXT("--aggro-idle-padding"), Padding(ck::debug_axes::Apply_RowDensity(FMargin{CkStyle::SpaceXL, CkStyle::SpaceXS}))},
+            {TEXT("--aggro-target-padding"), Padding(ck::debug_axes::Apply_RowDensity(FMargin{CkStyle::SpaceXL, 1.0f}))},
+            {TEXT("--aggro-empty-padding"), Padding(ck::debug_axes::Apply_RowDensity(FMargin{CkStyle::SpaceM, CkStyle::SpaceS}))},
+            {TEXT("--aggro-text"), Color(CkStyle::Text())},
+            {TEXT("--aggro-text-dim"), Color(CkStyle::TextDim())},
+            {TEXT("--aggro-text-mute"), Color(CkStyle::TextMute())},
+            {TEXT("--aggro-text-strong"), Color(CkStyle::TextStrong())},
+        };
+    }
 
-    auto Get_EmptyStatePadding() -> FMargin
-    { return ck::debug_axes::Apply_RowDensity(FMargin{CkStyle::SpaceM, CkStyle::SpaceS}); }
+    auto OwnerMeta(const FCkAggroDebugger_OwnerInfo& InOwner) -> FString
+    {
+        auto Result = FString::Printf(
+            TEXT("switch bar %.2f (bias %.2fx · thresh %.2fx)  ·  min score %.2f  ·  held %.1fs / min %.1fs  ·  since switch %.1fs / cd %.1fs  ·  evals %lld"),
+            InOwner.Get_SwitchBarScore(), InOwner.CurrentTargetBias, InOwner.SwitchThreshold, InOwner.MinimumTargetScore,
+            InOwner.SecondsActiveTargetHeld, InOwner.MinimumAggroDuration, InOwner.SecondsSinceSwitch,
+            InOwner.SwitchCooldown, InOwner.EvaluationCount);
+        if (InOwner.MaxTrackedTargets > 0) { Result += FString::Printf(TEXT("  ·  cap %d/%d"), InOwner.Targets.Num(), InOwner.MaxTrackedTargets); }
+        if (InOwner.IsDisabled) { Result += TEXT("  ·  DISABLED"); }
+        if (InOwner.IsSelectionPending) { Result += TEXT("  ·  selection pending"); }
+        return Result;
+    }
+
+    auto MakeRecord(const FString& InKey) -> FCkUiRecordData
+    {
+        auto Record = FCkUiRecordData{};
+        Record.Key = InKey;
+        Record.Fields.Add(TEXT("aggro-is-owner"), BoolField(false));
+        Record.Fields.Add(TEXT("aggro-is-idle"), BoolField(false));
+        Record.Fields.Add(TEXT("aggro-is-target"), BoolField(false));
+        Record.Fields.Add(TEXT("aggro-owner-name"), TextField(FString{}));
+        Record.Fields.Add(TEXT("aggro-owner-active"), TextField(FString{}));
+        Record.Fields.Add(TEXT("aggro-owner-active-color"), ColorField(CkStyle::TextMute()));
+        Record.Fields.Add(TEXT("aggro-owner-meta"), TextField(FString{}));
+        Record.Fields.Add(TEXT("aggro-target-name"), TextField(FString{}));
+        Record.Fields.Add(TEXT("aggro-target-name-color"), ColorField(CkStyle::Text()));
+        Record.Fields.Add(TEXT("aggro-threat-fraction"), NumberField(0.0f));
+        Record.Fields.Add(TEXT("aggro-threat-color"), ColorField(CkStyle::TextDim()));
+        Record.Fields.Add(TEXT("aggro-threat-text"), TextField(FString{}));
+        Record.Fields.Add(TEXT("aggro-threat-text-color"), ColorField(CkStyle::Text()));
+        Record.Fields.Add(TEXT("aggro-threat-tooltip"), TextField(FString{}));
+        Record.Fields.Add(TEXT("aggro-score-fraction"), NumberField(0.0f));
+        Record.Fields.Add(TEXT("aggro-score-color"), ColorField(CkStyle::Accent()));
+        Record.Fields.Add(TEXT("aggro-score-text"), TextField(FString{}));
+        Record.Fields.Add(TEXT("aggro-score-text-color"), ColorField(CkStyle::TextDim()));
+        Record.Fields.Add(TEXT("aggro-score-tooltip"), TextField(FString{}));
+        Record.Fields.Add(TEXT("aggro-state"), TextField(FString{}));
+        Record.Fields.Add(TEXT("aggro-state-color"), ColorField(CkStyle::TextMute()));
+        Record.Fields.Add(TEXT("aggro-detail"), TextField(FString{}));
+        return Record;
+    }
 }
 
-// --------------------------------------------------------------------------------------------------------------------
-
-auto
-    SCkAggroDebuggerWindow::
-    Construct(
-        const FArguments& InArgs)
-    -> void
+auto SCkAggroDebuggerWindow::Construct(const FArguments&) -> void
 {
-    const auto Overview =
-        SNew(SHorizontalBox)
-        + SHorizontalBox::Slot()
-        .AutoWidth()
-        .VAlign(VAlign_Center)
-        .Padding(0.0f, 0.0f, CkStyle::SpaceXL, 0.0f)
-        [
-            SAssignNew(_StatOwners, SCkDebug_StatPair)
-            .Label(FText::FromString(TEXT("OWNERS")))
-            .Value(FText::FromString(TEXT("0")))
-        ]
-        + SHorizontalBox::Slot()
-        .AutoWidth()
-        .VAlign(VAlign_Center)
-        .Padding(0.0f, 0.0f, CkStyle::SpaceXL, 0.0f)
-        [
-            SAssignNew(_StatEngaged, SCkDebug_StatPair)
-            .Label(FText::FromString(TEXT("ENGAGED")))
-            .Value(FText::FromString(TEXT("0")))
-            .ValueColor(FSlateColor(CkStyle::Err()))
-        ]
-        + SHorizontalBox::Slot()
-        .AutoWidth()
-        .VAlign(VAlign_Center)
-        [
-            SAssignNew(_StatTargets, SCkDebug_StatPair)
-            .Label(FText::FromString(TEXT("TRACKED")))
-            .Value(FText::FromString(TEXT("0")))
-        ];
-
-    const auto SearchAndStatus =
-        SNew(SVerticalBox)
-        + SVerticalBox::Slot()
-        .AutoHeight()
-        .Padding(0.0f, 0.0f, 0.0f, CkStyle::SpaceXS)
-        [
-            SAssignNew(_StatusText, STextBlock)
-            .Font_Static(&ck_aggro_debugger_window::Get_RowFont)
-            .ColorAndOpacity(CkStyle::TextMute())
-            .Text(FText::FromString(TEXT("(waiting for a PIE session…)")))
-        ]
-        + SVerticalBox::Slot()
-        .AutoHeight()
-        [
-            SNew(SCkDebug_DualSearchBar)
-            .FilterHintText(FText::FromString(TEXT("Filter owners/targets…")))
-            .OnFilterTextChanged_Lambda([this](const FString& InText) { _FilterString = InText; })
-            .OnHighlightTextChanged_Lambda([this](const FString& InText) { _HighlightString = InText; })
-        ];
-
+    const FCkUiLoadResult CollectionResult = FCkUiCollection::TryCreate(ck_aggro_debugger_window::Schema(), _AggroCollection);
     ChildSlot
     [
         SNew(SCkDebug_WindowChrome)
-            .WindowId(WindowId)
-            .ToolTabId(TEXT("CkAggroDebugger"))
-            .CommandGroups({
-                FCkDebug_CommandGroup::Primary(TEXT("AggroView"), FText::FromString(TEXT("Aggro view controls")),
-                SNew(SCkDebug_IconToggle)
-                .IconId(ECk_Icon::Target)
-                .Label(FText::FromString(TEXT("Engaged owners only")))
-                .ToolTip(FText::FromString(TEXT("Show only owners with an active tracked target.")))
-                .IsOn_Lambda([this]() { return _ShowEngagedOwnersOnly; })
-                .OnStateChanged_Lambda([this](const bool InEngagedOnly)
-                {
-                    if (_ShowEngagedOwnersOnly == InEngagedOnly) { return; }
-                    _ShowEngagedOwnersOnly = InEngagedOnly;
-                    _LastSignature.Reset();
-                })),
-                FCkDebug_CommandGroup::Context(TEXT("AggroOverview"), FText::FromString(TEXT("Aggro overview")), Overview),
-                FCkDebug_CommandGroup::Context(TEXT("AggroSearch"), FText::FromString(TEXT("Aggro search and status")), SearchAndStatus)
-            })
-            .Content()
-            [
-                SNew(SCkDebug_PaneHost)
-                [
-                SNew(SVerticalBox)
-        + SVerticalBox::Slot()
-        .FillHeight(1.0f)
-        [
-            SNew(SScrollBox)
-            + SScrollBox::Slot()
-            .Padding(CkStyle::SpaceM, CkStyle::SpaceS)
-            [
-                SAssignNew(_OwnerBox, SVerticalBox)
-            ]
-                ]
-        ]
-            ]
+        .WindowId(WindowId)
+        .ToolTabId(TEXT("CkAggroDebugger"))
+        .CommandGroups({
+            FCkDebug_CommandGroup::Primary(TEXT("AggroView"), FText::FromString(TEXT("Aggro view controls")), SAssignNew(_ControlsHost, SBox)),
+            FCkDebug_CommandGroup::Context(TEXT("AggroOverview"), FText::FromString(TEXT("Aggro overview")), SAssignNew(_OverviewHost, SBox)),
+            FCkDebug_CommandGroup::Context(TEXT("AggroSearch"), FText::FromString(TEXT("Aggro search and status")), SAssignNew(_SearchHost, SBox))
+        })
+        .Content()[SNew(SCkDebug_PaneHost)[SAssignNew(_AggroHost, SBox)]]
     ];
 
+    if (CollectionResult.Succeeded) { DoBuild_AggroView(); }
+    else { _AggroHost->SetContent(SNew(STextBlock).Text(FText::FromString(FString::Join(CollectionResult.Errors, TEXT("\n"))))); }
+
+    _SessionInvalidatedHandle = ck::DebugSessionLifecycle::Get_OnSessionInvalidated().AddSP(this, &SCkAggroDebuggerWindow::HandleSessionInvalidated);
+    _WorldInvalidatedHandle = ck::DebugSessionLifecycle::Get_OnWorldInvalidated().AddSP(this, &SCkAggroDebuggerWindow::HandleWorldInvalidated);
     Register_WithGate();
 }
 
-// --------------------------------------------------------------------------------------------------------------------
-
-auto
-    SCkAggroDebuggerWindow::
-    Tick(
-        const FGeometry& InAllottedGeometry,
-        double InCurrentTime,
-        float InDeltaTime)
-    -> void
+SCkAggroDebuggerWindow::~SCkAggroDebuggerWindow()
 {
-    // MUST be the WindowBase super, not SCompoundWidget — the base Tick drives the gated
-    // style-revision watch that routes into OnStyleRevisionChanged.
+    if (_SessionInvalidatedHandle.IsValid()) { ck::DebugSessionLifecycle::Get_OnSessionInvalidated().Remove(_SessionInvalidatedHandle); }
+    if (_WorldInvalidatedHandle.IsValid()) { ck::DebugSessionLifecycle::Get_OnWorldInvalidated().Remove(_WorldInvalidatedHandle); }
+    DoInvalidate_AggroView();
+}
+
+auto SCkAggroDebuggerWindow::Tick(const FGeometry& InAllottedGeometry, const double InCurrentTime, const float InDeltaTime) -> void
+{
     SCkDebugger_WindowBase::Tick(InAllottedGeometry, InCurrentTime, InDeltaTime);
-
-    if (NOT FCkDebuggerRefreshGate::Should_RefreshNow(WindowId))
-    { return; }
-
-    _Collector.Collect(DoGet_PieWorld());
-
-    if (const auto Signature = DoBuild_Signature();
-        Signature != _LastSignature)
+    UWorld* const World = DoGet_PieWorld();
+    if (World != _ObservedWorld.Get())
     {
-        _LastSignature = Signature;
-        DoRebuild_Structure();
+        DoInvalidate_AggroView();
+        _ObservedWorld = World;
+        DoBuild_AggroView();
     }
-
-    DoUpdate_LiveValues();
+    DoPoll_AggroFiles(InCurrentTime);
+    if (NOT FCkDebuggerRefreshGate::Should_RefreshNow(WindowId)) { return; }
+    _Collector.Collect(World);
+    DoProject_Aggro();
 }
 
-auto
-    SCkAggroDebuggerWindow::
-    OnStyleRevisionChanged()
-    -> void
+auto SCkAggroDebuggerWindow::OnStyleRevisionChanged() -> void
 {
-    // This window only rebuilds when the owner/target IDENTITY set changes, so with static data a
-    // profile flip would otherwise never reach the structure pass. Poisoning the cached signature is
-    // the module's own "rebuild once" lever — the next gated tick re-emits the owner sections and the
-    // target rows, and DoUpdate_LiveValues repopulates them in the same pass.
-    _LastSignature.Reset();
+    if (_AggroView.IsValid()) { _AggroView->PollFiles(ck_aggro_debugger_window::StyleTokens()); }
 }
 
-// --------------------------------------------------------------------------------------------------------------------
-
-auto
-    SCkAggroDebuggerWindow::
-    DoGet_PieWorld() const
-    -> UWorld*
+auto SCkAggroDebuggerWindow::DoGet_PieWorld() const -> UWorld*
 {
-    if (ck::Is_NOT_Valid(GEngine))
-    { return nullptr; }
-
-    for (const auto& Context : GEngine->GetWorldContexts())
+    if (ck::Is_NOT_Valid(GEngine)) { return nullptr; }
+    for (const FWorldContext& Context : GEngine->GetWorldContexts())
     {
-        auto* World = Context.World();
-        if (ck::Is_NOT_Valid(World))
-        { continue; }
-
-        if ((Context.WorldType == EWorldType::PIE || Context.WorldType == EWorldType::Game)
-            && World->HasBegunPlay())
-        { return World; }
+        UWorld* const World = Context.World();
+        if (ck::IsValid(World) && (Context.WorldType == EWorldType::PIE || Context.WorldType == EWorldType::Game) && World->HasBegunPlay()) { return World; }
     }
-
     return nullptr;
 }
 
-// --------------------------------------------------------------------------------------------------------------------
+auto SCkAggroDebuggerWindow::DoPassesFilter(const FString& InText) const -> bool
+{ return _FilterString.IsEmpty() || InText.Contains(_FilterString, ESearchCase::IgnoreCase); }
 
-auto
-    SCkAggroDebuggerWindow::
-    DoPassesFilter(
-        const FString& InText) const
-    -> bool
+auto SCkAggroDebuggerWindow::DoPassesFilter(const FCkAggroDebugger_OwnerInfo& InOwner) const -> bool
 {
-    if (_FilterString.IsEmpty())
-    { return true; }
-
-    return InText.Contains(_FilterString, ESearchCase::IgnoreCase);
-}
-
-auto
-    SCkAggroDebuggerWindow::
-    DoPassesFilter(
-        const FCkAggroDebugger_OwnerInfo& InOwner) const
-    -> bool
-{
-    if (_FilterString.IsEmpty())
-    { return true; }
-
-    // Match on the owner OR any of its targets, then show the whole table. Filtering individual rows away would
-    // leave an owner heading with a partial table, and a threat table only means anything read whole — every bar is
-    // scaled relative to its siblings.
-    if (DoPassesFilter(InOwner.OwnerName))
-    { return true; }
-
-    for (const auto& Target : InOwner.Targets)
-    {
-        if (DoPassesFilter(Target.TrackedName))
-        { return true; }
-    }
-
-    return false;
+    if (_FilterString.IsEmpty() || DoPassesFilter(InOwner.OwnerName)) { return true; }
+    return InOwner.Targets.ContainsByPredicate([this](const FCkAggroDebugger_TargetInfo& Target) { return DoPassesFilter(Target.TrackedName); });
 }
 
 auto SCkAggroDebuggerWindow::DoPassesEngagedFilter(const FCkAggroDebugger_OwnerInfo& InOwner) const -> bool
+{ return NOT _ShowEngagedOwnersOnly || ck::IsValid(InOwner.ActiveTrackedEntity); }
+
+auto SCkAggroDebuggerWindow::DoGet_ThreatColor(const FCkAggroDebugger_TargetInfo& InTarget) -> FLinearColor
 {
-    return NOT _ShowEngagedOwnersOnly || ck::IsValid(InOwner.ActiveTrackedEntity);
-}
-
-// --------------------------------------------------------------------------------------------------------------------
-
-auto
-    SCkAggroDebuggerWindow::
-    DoGet_ThreatColor(
-        const FCkAggroDebugger_TargetInfo& InTarget)
-    -> FLinearColor
-{
-    // Colour encodes WHY the bar is moving the way it is, which is the question the numbers cannot answer at a
-    // glance: red is the one being attacked, amber is a live contender refreshing its perception, muted is decaying
-    // toward being forgotten.
-    if (InTarget.IsPendingForget)
-    { return CkStyle::TextMute(); }
-
-    if (InTarget.IsActive)
-    { return CkStyle::Err(); }
-
-    if (InTarget.IsPerceived)
-    { return CkStyle::Warn(); }
-
+    if (InTarget.IsPendingForget) { return CkStyle::TextMute(); }
+    if (InTarget.IsActive) { return CkStyle::Err(); }
+    if (InTarget.IsPerceived) { return CkStyle::Warn(); }
     return CkStyle::TextDim();
 }
 
-auto
-    SCkAggroDebuggerWindow::
-    DoBuild_StateText(
-        const FCkAggroDebugger_TargetInfo& InTarget)
-    -> FString
+auto SCkAggroDebuggerWindow::DoBuild_StateText(const FCkAggroDebugger_TargetInfo& InTarget) -> FString
 {
     auto State = FString{};
-
-    if (InTarget.IsActive)          { State += TEXT("ACTIVE ");  }
-    if (InTarget.IsPerceived)       { State += TEXT("SEEN ");    }
-    if (InTarget.IsWithinRetention) { State += TEXT("RANGE ");   }
-    if (InTarget.IsPendingForget)   { State += TEXT("FORGET ");  }
-    if (InTarget.CannotBecomeActive){ State += TEXT("NOACTIVE ");}
-    if (InTarget.CannotBeForgotten) { State += TEXT("PINNED ");  }
-
+    if (InTarget.IsActive) { State += TEXT("ACTIVE "); }
+    if (InTarget.IsPerceived) { State += TEXT("SEEN "); }
+    if (InTarget.IsWithinRetention) { State += TEXT("RANGE "); }
+    if (InTarget.IsPendingForget) { State += TEXT("FORGET "); }
+    if (InTarget.CannotBecomeActive) { State += TEXT("NOACTIVE "); }
+    if (InTarget.CannotBeForgotten) { State += TEXT("PINNED "); }
     return State.IsEmpty() ? FString(TEXT("--")) : State.TrimEnd();
 }
 
-auto
-    SCkAggroDebuggerWindow::
-    DoBuild_DetailText(
-        const FCkAggroDebugger_TargetInfo& InTarget)
-    -> FString
+auto SCkAggroDebuggerWindow::DoBuild_DetailText(const FCkAggroDebugger_TargetInfo& InTarget) -> FString
 {
-    const auto Rate = InTarget.Get_EffectiveDecayRate();
-
-    // Time-to-forget is the single most useful derived number here: it answers "is this NPC about to stand down?",
-    // which neither the threat value nor the decay rate answers alone.
-    auto Forget = FString(TEXT("stable"));
+    const float Rate = InTarget.Get_EffectiveDecayRate();
+    FString Forget = TEXT("stable");
     if (Rate > KINDA_SMALL_NUMBER)
     {
-        const auto Seconds = InTarget.Get_SecondsToForget();
-        Forget = Seconds <= 0.0f
-            ? FString(TEXT("forgetting"))
-            : FString::Printf(TEXT("~%.1fs left"), Seconds);
+        const float Seconds = InTarget.Get_SecondsToForget();
+        Forget = Seconds <= 0.0f ? TEXT("forgetting") : FString::Printf(TEXT("~%.1fs left"), Seconds);
     }
-
-    return FString::Printf(TEXT("d=%.0f/%.0f  -%.2f/s  %s  seen %.1fs ago"),
-        InTarget.Distance,
-        InTarget.RetentionDistance,
-        Rate,
-        *Forget,
-        InTarget.SecondsSincePerceived);
+    return FString::Printf(TEXT("d=%.0f/%.0f  -%.2f/s  %s  seen %.1fs ago"), InTarget.Distance, InTarget.RetentionDistance,
+        Rate, *Forget, InTarget.SecondsSincePerceived);
 }
 
-// --------------------------------------------------------------------------------------------------------------------
-
-auto
-    SCkAggroDebuggerWindow::
-    DoBuild_Signature() const
-    -> FString
+auto SCkAggroDebuggerWindow::DoProject_Aggro() -> void
 {
-    // Owner + tracked-target identity only. Threat, score and distance are deliberately absent: they change every
-    // frame, and including them would rebuild the tree every frame — the exact failure this split exists to avoid.
-    auto Signature = FString{};
-    Signature.Append(_FilterString);
-    Signature.Append(_ShowEngagedOwnersOnly ? TEXT("|engaged") : TEXT("|all"));
-
-    for (const auto& Owner : _Collector.Get_Snapshot().Owners)
+    if (!_AggroCollection.IsValid()) { return; }
+    const FCkAggroDebugger_Snapshot& Snapshot = _Collector.Get_Snapshot();
+    auto Records = TArray<FCkUiRecordData>{};
+    for (const FCkAggroDebugger_OwnerInfo& Owner : Snapshot.Owners)
     {
-        if (NOT DoPassesFilter(Owner) || NOT DoPassesEngagedFilter(Owner))
-        { continue; }
-
-        Signature.Appendf(TEXT("|%s>"), *Owner.OwnerName);
-        for (const auto& Target : Owner.Targets)
-        { Signature.Appendf(TEXT("%s,"), *Target.TrackedName); }
-    }
-
-    return Signature;
-}
-
-// --------------------------------------------------------------------------------------------------------------------
-
-auto
-    SCkAggroDebuggerWindow::
-    DoMake_TargetRow(
-        const FCkAggroDebugger_TargetInfo& InTarget,
-        FCkAggroDebugger_TargetSlot& OutSlot) const
-    -> TSharedRef<SWidget>
-{
-    OutSlot.ThreatFraction = MakeShared<float>(0.0f);
-    OutSlot.ScoreFraction  = MakeShared<float>(0.0f);
-    OutSlot.ThreatColor    = MakeShared<FLinearColor>(DoGet_ThreatColor(InTarget));
-    OutSlot.ScoreColor     = MakeShared<FLinearColor>(CkStyle::Accent());
-
-    return SNew(SHorizontalBox)
-        // Tracked entity — static for the row's lifetime (a change to it changes the signature and rebuilds).
-        + SHorizontalBox::Slot()
-        .AutoWidth()
-        .VAlign(VAlign_Center)
-        .Padding(0.0f, 0.0f, CkStyle::SpaceM, 0.0f)
-        [
-            SNew(SBox)
-            .WidthOverride(ck_aggro_debugger_window::k_NameColumnWidth)
-            [
-                SNew(STextBlock)
-                .Font_Static(&ck_aggro_debugger_window::Get_RowFont)
-                .ColorAndOpacity(InTarget.IsActive ? CkStyle::TextStrong() : CkStyle::Text())
-                .Text(FText::FromString(InTarget.TrackedName))
-                .ToolTipText(FText::FromString(InTarget.TrackedName))
-            ]
-        ]
-        + SHorizontalBox::Slot()
-        .AutoWidth()
-        .VAlign(VAlign_Center)
-        .Padding(0.0f, 0.0f, CkStyle::SpaceS, 0.0f)
-        [
-            SNew(SCkDebug_MeterBar)
-            .Fraction_Lambda([Cell = OutSlot.ThreatFraction]() { return *Cell; })
-            .FillColor_Lambda([Cell = OutSlot.ThreatColor]() { return *Cell; })
-            .DesiredSize(FVector2D(ck_aggro_debugger_window::k_ThreatMeterWidth, ck_aggro_debugger_window::k_MeterHeight))
-            .ToolTipText(FText::FromString(TEXT("Threat, relative to this owner's strongest target")))
-        ]
-        + SHorizontalBox::Slot()
-        .AutoWidth()
-        .VAlign(VAlign_Center)
-        .Padding(0.0f, 0.0f, CkStyle::SpaceM, 0.0f)
-        [
-            SNew(SBox)
-            .WidthOverride(ck_aggro_debugger_window::k_ValueColumnWidth)
-            [
-                SAssignNew(OutSlot.ThreatText, STextBlock)
-                .Font_Static(&ck_aggro_debugger_window::Get_RowFont)
-                .ColorAndOpacity(CkStyle::Text())
-            ]
-        ]
-        + SHorizontalBox::Slot()
-        .AutoWidth()
-        .VAlign(VAlign_Center)
-        .Padding(0.0f, 0.0f, CkStyle::SpaceS, 0.0f)
-        [
-            SNew(SCkDebug_MeterBar)
-            .Fraction_Lambda([Cell = OutSlot.ScoreFraction]() { return *Cell; })
-            .FillColor_Lambda([Cell = OutSlot.ScoreColor]() { return *Cell; })
-            .DesiredSize(FVector2D(ck_aggro_debugger_window::k_ScoreMeterWidth, ck_aggro_debugger_window::k_MeterHeight))
-            .ToolTipText(FText::FromString(TEXT("Selection score — the quantity the argmax actually compares")))
-        ]
-        + SHorizontalBox::Slot()
-        .AutoWidth()
-        .VAlign(VAlign_Center)
-        .Padding(0.0f, 0.0f, CkStyle::SpaceM, 0.0f)
-        [
-            SNew(SBox)
-            .WidthOverride(ck_aggro_debugger_window::k_ValueColumnWidth)
-            [
-                SAssignNew(OutSlot.ScoreText, STextBlock)
-                .Font_Static(&ck_aggro_debugger_window::Get_RowFont)
-                .ColorAndOpacity(CkStyle::TextDim())
-            ]
-        ]
-        + SHorizontalBox::Slot()
-        .AutoWidth()
-        .VAlign(VAlign_Center)
-        .Padding(0.0f, 0.0f, CkStyle::SpaceM, 0.0f)
-        [
-            SNew(SBox)
-            .WidthOverride(ck_aggro_debugger_window::k_StateColumnWidth)
-            [
-                SAssignNew(OutSlot.StateText, STextBlock)
-                .Font_Static(&ck_aggro_debugger_window::Get_RowFont)
-            ]
-        ]
-        + SHorizontalBox::Slot()
-        .FillWidth(1.0f)
-        .VAlign(VAlign_Center)
-        [
-            SAssignNew(OutSlot.DetailText, STextBlock)
-            .Font_Static(&ck_aggro_debugger_window::Get_RowFont)
-            .ColorAndOpacity(CkStyle::TextMute())
-        ];
-}
-
-// --------------------------------------------------------------------------------------------------------------------
-
-auto
-    SCkAggroDebuggerWindow::
-    DoRebuild_Structure()
-    -> void
-{
-    if (NOT _OwnerBox.IsValid())
-    { return; }
-
-    _OwnerBox->ClearChildren();
-    _TargetSlots.Reset();
-    _OwnerSlots.Reset();
-
-    auto AnyOwners = false;
-
-    for (const auto& Owner : _Collector.Get_Snapshot().Owners)
-    {
-        if (NOT DoPassesFilter(Owner) || NOT DoPassesEngagedFilter(Owner))
-        { continue; }
-
-        AnyOwners = true;
-
-        auto OwnerSlot = FCkAggroDebugger_OwnerSlot{};
-
-        _OwnerBox->AddSlot()
-            .AutoHeight()
-            .Padding(0.0f, CkStyle::SpaceM, 0.0f, CkStyle::SpaceXS)
-            [
-                SNew(SCkDebug_SectionHeader)
-                .Label(FText::FromString(Owner.OwnerName))
-                .Underline(true)
-                .RightContent()
-                [
-                    SAssignNew(OwnerSlot.ActiveText, STextBlock)
-                    .Font_Static(&ck_aggro_debugger_window::Get_RowFont)
-                    .ColorAndOpacity(CkStyle::Err())
-                ]
-            ];
-
-        _OwnerBox->AddSlot()
-            .AutoHeight()
-            .Padding(TAttribute<FMargin>::CreateStatic(&ck_aggro_debugger_window::Get_OwnerMetaPadding))
-            [
-                SAssignNew(OwnerSlot.MetaText, STextBlock)
-                .Font_Static(&ck_aggro_debugger_window::Get_MetaFont)
-                .ColorAndOpacity(CkStyle::TextMute())
-            ];
-
-        _OwnerSlots.Emplace(OwnerSlot);
-
+        if (!DoPassesFilter(Owner) || !DoPassesEngagedFilter(Owner)) { continue; }
+        const FString OwnerId = ck_aggro_debugger_window::OwnerKey(_AggroGeneration, Owner);
+        auto OwnerRecord = ck_aggro_debugger_window::MakeRecord(OwnerId);
+        OwnerRecord.Fields[TEXT("aggro-is-owner")].Bool = true;
+        OwnerRecord.Fields[TEXT("aggro-owner-name")].Text = FText::FromString(Owner.OwnerName);
+        OwnerRecord.Fields[TEXT("aggro-owner-active")].Text = FText::FromString(ck::IsValid(Owner.ActiveTrackedEntity)
+            ? FString::Printf(TEXT("▶ %s  (%.1fs)"), *Owner.ActiveTrackedName, Owner.SecondsActiveTargetHeld) : TEXT("idle"));
+        OwnerRecord.Fields[TEXT("aggro-owner-active-color")].Color = ck::IsValid(Owner.ActiveTrackedEntity) ? CkStyle::Err() : CkStyle::TextMute();
+        OwnerRecord.Fields[TEXT("aggro-owner-meta")].Text = FText::FromString(ck_aggro_debugger_window::OwnerMeta(Owner));
+        Records.Add(MoveTemp(OwnerRecord));
         if (Owner.Targets.IsEmpty())
         {
-            _OwnerBox->AddSlot()
-                .AutoHeight()
-                .Padding(TAttribute<FMargin>::CreateStatic(&ck_aggro_debugger_window::Get_IdleRowPadding))
-                [
-                    SNew(STextBlock)
-                    .Font_Static(&ck_aggro_debugger_window::Get_RowFont)
-                    .ColorAndOpacity(CkStyle::TextMute())
-                    .Text(FText::FromString(TEXT("(no tracked targets — idle)")))
-                ];
+            auto IdleRecord = ck_aggro_debugger_window::MakeRecord(OwnerId + TEXT(":idle"));
+            IdleRecord.Fields[TEXT("aggro-is-idle")].Bool = true;
+            IdleRecord.Fields[TEXT("aggro-detail")].Text = FText::FromString(TEXT("(no tracked targets — idle)"));
+            Records.Add(MoveTemp(IdleRecord));
             continue;
         }
-
-        for (const auto& Target : Owner.Targets)
+        const float MaxThreat = Owner.Get_MaxThreat();
+        const float MaxScore = Owner.Get_MaxScore();
+        for (const FCkAggroDebugger_TargetInfo& Target : Owner.Targets)
         {
-            auto Slot = FCkAggroDebugger_TargetSlot{};
-            const auto Row = DoMake_TargetRow(Target, Slot);
-            _TargetSlots.Emplace(Slot);
-
-            _OwnerBox->AddSlot()
-                .AutoHeight()
-                .Padding(TAttribute<FMargin>::CreateStatic(&ck_aggro_debugger_window::Get_TargetRowPadding))
-                [
-                    Row
-                ];
+            auto TargetRecord = ck_aggro_debugger_window::MakeRecord(ck_aggro_debugger_window::TargetKey(OwnerId, Target));
+            const FLinearColor ThreatColor = DoGet_ThreatColor(Target);
+            TargetRecord.Fields[TEXT("aggro-is-target")].Bool = true;
+            TargetRecord.Fields[TEXT("aggro-target-name")].Text = FText::FromString(Target.TrackedName);
+            TargetRecord.Fields[TEXT("aggro-target-name-color")].Color = Target.IsActive ? CkStyle::TextStrong() : CkStyle::Text();
+            TargetRecord.Fields[TEXT("aggro-threat-fraction")].Number = ck_aggro_debugger_window::Fraction(Target.Threat, MaxThreat);
+            TargetRecord.Fields[TEXT("aggro-threat-color")].Color = ThreatColor;
+            TargetRecord.Fields[TEXT("aggro-threat-text")].Text = FText::FromString(FString::Printf(TEXT("%.1f / %.1f"), Target.Threat, Target.MinimumTrackedThreat));
+            TargetRecord.Fields[TEXT("aggro-threat-tooltip")].Text = FText::FromString(TEXT("Threat, relative to this owner's strongest target"));
+            TargetRecord.Fields[TEXT("aggro-score-fraction")].Number = ck_aggro_debugger_window::Fraction(Target.Score, MaxScore);
+            TargetRecord.Fields[TEXT("aggro-score-color")].Color = CkStyle::Accent();
+            TargetRecord.Fields[TEXT("aggro-score-text")].Text = FText::FromString(FString::Printf(TEXT("s %.2f"), Target.Score));
+            TargetRecord.Fields[TEXT("aggro-score-tooltip")].Text = FText::FromString(TEXT("Selection score — the quantity the argmax actually compares"));
+            TargetRecord.Fields[TEXT("aggro-state")].Text = FText::FromString(DoBuild_StateText(Target));
+            TargetRecord.Fields[TEXT("aggro-state-color")].Color = ThreatColor;
+            TargetRecord.Fields[TEXT("aggro-detail")].Text = FText::FromString(DoBuild_DetailText(Target));
+            Records.Add(MoveTemp(TargetRecord));
         }
     }
-
-    if (AnyOwners)
-    { return; }
-
-    _OwnerBox->AddSlot()
-        .AutoHeight()
-        .Padding(TAttribute<FMargin>::CreateStatic(&ck_aggro_debugger_window::Get_EmptyStatePadding))
-        [
-            SNew(STextBlock)
-            .Font_Static(&ck_aggro_debugger_window::Get_RowFont)
-            .ColorAndOpacity(CkStyle::TextMute())
-            .Text(FText::FromString(TEXT("(no Aggro owners in this world)")))
-        ];
+    _AggroCollection->TrySetRecords(MoveTemp(Records));
 }
 
-// --------------------------------------------------------------------------------------------------------------------
+auto SCkAggroDebuggerWindow::CanUse_AggroView(const int64 InGeneration) const -> bool
+{ return InGeneration == _AggroGeneration; }
 
-auto
-    SCkAggroDebuggerWindow::
-    DoUpdate_LiveValues()
-    -> void
+auto SCkAggroDebuggerWindow::DoInvalidate_AggroView() -> void
 {
-    const auto& Snapshot = _Collector.Get_Snapshot();
-
-    if (_StatOwners.IsValid())  { _StatOwners->SetValue(FText::AsNumber(Snapshot.NumOwners)); }
-    if (_StatEngaged.IsValid()) { _StatEngaged->SetValue(FText::AsNumber(Snapshot.NumEngaged)); }
-    if (_StatTargets.IsValid()) { _StatTargets->SetValue(FText::AsNumber(Snapshot.NumTargets)); }
-
-    if (_StatusText.IsValid())
-    {
-        // Aggro composes authority-side only, so "no owners" on a client is correct behaviour rather than a fault.
-        // Saying so here stops the empty window from reading as a broken one.
-        const auto Status = NOT Snapshot.HasWorld
-            ? FString(TEXT("(no active PIE session — start Play In Editor to inspect the threat model)"))
-            : (Snapshot.NumOwners == 0
-                ? FString(TEXT("(no Aggro owners — note Aggro is authority-only, so a client PIE window shows none)"))
-                : FString::Printf(TEXT("%d owner(s) · %d engaged · %d tracked target(s)"),
-                    Snapshot.NumOwners, Snapshot.NumEngaged, Snapshot.NumTargets));
-
-        _StatusText->SetText(FText::FromString(Status));
-    }
-
-    // Walks owners and targets in the same order the structure pass did, so slot N belongs to row N.
-    auto TargetSlotIndex = 0;
-    auto OwnerSlotIndex  = 0;
-
-    for (const auto& Owner : Snapshot.Owners)
-    {
-        if (NOT DoPassesFilter(Owner) || NOT DoPassesEngagedFilter(Owner))
-        { continue; }
-
-        if (_OwnerSlots.IsValidIndex(OwnerSlotIndex))
-        {
-            const auto& OwnerSlot = _OwnerSlots[OwnerSlotIndex];
-
-            if (OwnerSlot.ActiveText.IsValid())
-            {
-                OwnerSlot.ActiveText->SetText(FText::FromString(ck::IsValid(Owner.ActiveTrackedEntity)
-                    ? FString::Printf(TEXT("▶ %s  (%.1fs)"), *Owner.ActiveTrackedName, Owner.SecondsActiveTargetHeld)
-                    : FString(TEXT("idle"))));
-
-                OwnerSlot.ActiveText->SetColorAndOpacity(ck::IsValid(Owner.ActiveTrackedEntity)
-                    ? CkStyle::Err()
-                    : CkStyle::TextMute());
-            }
-
-            if (OwnerSlot.MetaText.IsValid())
-            {
-                // The switch bar is the number that explains a switch that did NOT happen — a challenger must clear
-                // the incumbent's score times bias times threshold. Printing it beside the score meters turns
-                // "why is it still on that target?" into a direct comparison.
-                const auto SwitchBar = Owner.Get_SwitchBarScore();
-                auto Meta = FString::Printf(
-                    TEXT("switch bar %.2f (bias %.2fx · thresh %.2fx)  ·  min score %.2f  ·  held %.1fs / min %.1fs  ·  since switch %.1fs / cd %.1fs  ·  evals %lld"),
-                    SwitchBar,
-                    Owner.CurrentTargetBias,
-                    Owner.SwitchThreshold,
-                    Owner.MinimumTargetScore,
-                    Owner.SecondsActiveTargetHeld,
-                    Owner.MinimumAggroDuration,
-                    Owner.SecondsSinceSwitch,
-                    Owner.SwitchCooldown,
-                    Owner.EvaluationCount);
-
-                if (Owner.MaxTrackedTargets > 0)
-                { Meta += FString::Printf(TEXT("  ·  cap %d/%d"), Owner.Targets.Num(), Owner.MaxTrackedTargets); }
-
-                if (Owner.IsDisabled)
-                { Meta += TEXT("  ·  DISABLED"); }
-
-                if (Owner.IsSelectionPending)
-                { Meta += TEXT("  ·  selection pending"); }
-
-                OwnerSlot.MetaText->SetText(FText::FromString(Meta));
-            }
-        }
-        ++OwnerSlotIndex;
-
-        const auto MaxThreat = Owner.Get_MaxThreat();
-        const auto MaxScore  = Owner.Get_MaxScore();
-
-        for (const auto& Target : Owner.Targets)
-        {
-            if (NOT _TargetSlots.IsValidIndex(TargetSlotIndex))
-            { break; }
-
-            const auto& Slot = _TargetSlots[TargetSlotIndex];
-            ++TargetSlotIndex;
-
-            // Writing the bound cells IS the update — the meters read them through their attributes on the next
-            // paint, so nothing is invalidated or rebuilt.
-            if (Slot.ThreatFraction.IsValid())
-            { *Slot.ThreatFraction = ck_aggro_debugger_window::Get_Fraction(Target.Threat, MaxThreat); }
-
-            if (Slot.ScoreFraction.IsValid())
-            { *Slot.ScoreFraction = ck_aggro_debugger_window::Get_Fraction(Target.Score, MaxScore); }
-
-            if (Slot.ThreatColor.IsValid())
-            { *Slot.ThreatColor = DoGet_ThreatColor(Target); }
-
-            if (Slot.ThreatText.IsValid())
-            {
-                Slot.ThreatText->SetText(FText::FromString(
-                    FString::Printf(TEXT("%.1f / %.1f"), Target.Threat, Target.MinimumTrackedThreat)));
-            }
-
-            if (Slot.ScoreText.IsValid())
-            { Slot.ScoreText->SetText(FText::FromString(FString::Printf(TEXT("s %.2f"), Target.Score))); }
-
-            if (Slot.StateText.IsValid())
-            {
-                Slot.StateText->SetText(FText::FromString(DoBuild_StateText(Target)));
-                Slot.StateText->SetColorAndOpacity(DoGet_ThreatColor(Target));
-            }
-
-            if (Slot.DetailText.IsValid())
-            { Slot.DetailText->SetText(FText::FromString(DoBuild_DetailText(Target))); }
-        }
-    }
+    ++_AggroGeneration;
+    _Collector.Reset();
+    if (_AggroCollection.IsValid()) { _AggroCollection->TrySetRecords({}); }
+    _AggroView.Reset();
+    for (const TSharedPtr<SBox>& Host : {_ControlsHost, _OverviewHost, _SearchHost, _AggroHost})
+    { if (Host.IsValid()) { Host->SetContent(SNullWidget::NullWidget); } }
 }
 
-// --------------------------------------------------------------------------------------------------------------------
+auto SCkAggroDebuggerWindow::DoPoll_AggroFiles(const double InCurrentTime) -> void
+{
+    constexpr double PollIntervalSeconds = 0.5;
+    if (InCurrentTime < _NextAggroPollSeconds) { return; }
+    _NextAggroPollSeconds = InCurrentTime + PollIntervalSeconds;
+    if (_AggroView.IsValid()) { _AggroView->PollFiles(ck_aggro_debugger_window::StyleTokens()); }
+    else { DoBuild_AggroView(); }
+}
+
+auto SCkAggroDebuggerWindow::DoBuild_AggroView() -> void
+{
+    if (!_ControlsHost.IsValid() || !_OverviewHost.IsValid() || !_SearchHost.IsValid() || !_AggroHost.IsValid()
+        || !_AggroCollection.IsValid() || _AggroView.IsValid()) { return; }
+    TSharedPtr<const FCkUiWidgetRegistrySnapshot> Registry;
+    const FCkUiLoadResult RegistryResult = FCkDebug_UiRegistry::TryCreate(Registry);
+    if (!RegistryResult.Succeeded)
+    {
+        _AggroHost->SetContent(SNew(STextBlock).Text(FText::FromString(FString::Join(RegistryResult.Errors, TEXT("\n")))));
+        return;
+    }
+    const TWeakPtr<SCkAggroDebuggerWindow> WeakWindow{SharedThis(this)};
+    const int64 Generation = _AggroGeneration;
+    auto Data = FCkUiView::FDataBindings{};
+    Data.SlateUserIndex = 0;
+    Data.CanDispatchEvents = TAttribute<bool>::CreateLambda([WeakWindow, Generation]()
+    { const auto Window = WeakWindow.Pin(); return Window.IsValid() && Window->CanUse_AggroView(Generation); });
+    Data.Visibility.Add(TEXT("aggro-engaged-only"), TAttribute<bool>::CreateLambda([WeakWindow, Generation]()
+    { const auto Window = WeakWindow.Pin(); return Window.IsValid() && Window->CanUse_AggroView(Generation) && Window->_ShowEngagedOwnersOnly; }));
+    Data.Text.Add(TEXT("aggro-engaged-only-label"), FText::FromString(TEXT("Engaged owners only")));
+    Data.Text.Add(TEXT("aggro-filter"), TAttribute<FText>::CreateLambda([WeakWindow, Generation]()
+    { const auto Window = WeakWindow.Pin(); return Window.IsValid() && Window->CanUse_AggroView(Generation) ? FText::FromString(Window->_FilterString) : FText::GetEmpty(); }));
+    Data.Text.Add(TEXT("aggro-highlight"), TAttribute<FText>::CreateLambda([WeakWindow, Generation]()
+    { const auto Window = WeakWindow.Pin(); return Window.IsValid() && Window->CanUse_AggroView(Generation) ? FText::FromString(Window->_HighlightString) : FText::GetEmpty(); }));
+    Data.Text.Add(TEXT("aggro-status"), TAttribute<FText>::CreateLambda([WeakWindow, Generation]()
+    {
+        const auto Window = WeakWindow.Pin();
+        if (!Window.IsValid() || !Window->CanUse_AggroView(Generation)) { return FText::GetEmpty(); }
+        const auto& Snapshot = Window->_Collector.Get_Snapshot();
+        if (!Snapshot.HasWorld) { return FText::FromString(TEXT("(no active PIE session — start Play In Editor to inspect the threat model)")); }
+        if (Snapshot.NumOwners == 0) { return FText::FromString(TEXT("(no Aggro owners — note Aggro is authority-only, so a client PIE window shows none)")); }
+        return FText::FromString(FString::Printf(TEXT("%d owner(s) · %d engaged · %d tracked target(s)"), Snapshot.NumOwners, Snapshot.NumEngaged, Snapshot.NumTargets));
+    }));
+    Data.Text.Add(TEXT("aggro-owners-count"), TAttribute<FText>::CreateLambda([WeakWindow, Generation]()
+    { const auto Window = WeakWindow.Pin(); return FText::AsNumber(Window.IsValid() && Window->CanUse_AggroView(Generation) ? Window->_Collector.Get_Snapshot().NumOwners : 0); }));
+    Data.Text.Add(TEXT("aggro-engaged-count"), TAttribute<FText>::CreateLambda([WeakWindow, Generation]()
+    { const auto Window = WeakWindow.Pin(); return FText::AsNumber(Window.IsValid() && Window->CanUse_AggroView(Generation) ? Window->_Collector.Get_Snapshot().NumEngaged : 0); }));
+    Data.Text.Add(TEXT("aggro-targets-count"), TAttribute<FText>::CreateLambda([WeakWindow, Generation]()
+    { const auto Window = WeakWindow.Pin(); return FText::AsNumber(Window.IsValid() && Window->CanUse_AggroView(Generation) ? Window->_Collector.Get_Snapshot().NumTargets : 0); }));
+    Data.Text.Add(TEXT("aggro-empty"), TAttribute<FText>::CreateLambda([WeakWindow, Generation]()
+    { const auto Window = WeakWindow.Pin(); return Window.IsValid() && Window->CanUse_AggroView(Generation) && Window->_AggroCollection.IsValid() && Window->_AggroCollection->GetRecords().IsEmpty() ? FText::FromString(TEXT("(no Aggro owners in this world)")) : FText::GetEmpty(); }));
+    Data.TextChanged.Add(TEXT("aggro-filter"), FOnTextChanged::CreateLambda([WeakWindow, Generation](const FText& Value)
+    { if (const auto Window = WeakWindow.Pin(); Window.IsValid() && Window->CanUse_AggroView(Generation)) { Window->_FilterString = Value.ToString(); Window->DoProject_Aggro(); } }));
+    Data.TextChanged.Add(TEXT("aggro-highlight"), FOnTextChanged::CreateLambda([WeakWindow, Generation](const FText& Value)
+    { if (const auto Window = WeakWindow.Pin(); Window.IsValid() && Window->CanUse_AggroView(Generation)) { Window->_HighlightString = Value.ToString(); } }));
+    Data.BoolChanged.Add(TEXT("aggro-engaged-only"), FCkUiOnBoolChanged::CreateLambda([WeakWindow, Generation](const bool Value)
+    { if (const auto Window = WeakWindow.Pin(); Window.IsValid() && Window->CanUse_AggroView(Generation) && Window->_ShowEngagedOwnersOnly != Value) { Window->_ShowEngagedOwnersOnly = Value; Window->DoProject_Aggro(); } }));
+    Data.Collections.Add(TEXT("aggro-records"), _AggroCollection);
+
+    const auto Plugin = IPluginManager::Get().FindPlugin(TEXT("CkDebugger"));
+    if (!Plugin.IsValid()) { _AggroHost->SetContent(SNew(STextBlock).Text(FText::FromString(TEXT("CkDebugger resources are unavailable.")))); return; }
+    const TSharedRef<FCkUiView> View = FCkUiView::Create({}, {}, ck_aggro_debugger_window::StyleTokens(), CkStyle::RegularFont(CkStyle::FontSizeBody()), MoveTemp(Data), Registry);
+    const TSharedRef<SWidget> Controls = View->GetRegion(TEXT("controls"));
+    const TSharedRef<SWidget> Overview = View->GetRegion(TEXT("overview"));
+    const TSharedRef<SWidget> Search = View->GetRegion(TEXT("search"));
+    const TSharedRef<SWidget> Main = View->GetRegion(TEXT("main"));
+    const FString Directory = FPaths::Combine(Plugin->GetBaseDir(), TEXT("Resources/UI"));
+    View->SetFiles(FPaths::Combine(Directory, TEXT("AggroDebugger.ui.html")), FPaths::Combine(Directory, TEXT("AggroDebugger.ui.css")));
+    View->PollFiles();
+    if (!View->GetLastResult().Succeeded)
+    {
+        _AggroHost->SetContent(SNew(STextBlock).Text(FText::FromString(FString::Join(View->GetLastResult().Errors, TEXT("\n")))));
+        return;
+    }
+    _AggroView = View;
+    _ControlsHost->SetContent(Controls);
+    _OverviewHost->SetContent(Overview);
+    _SearchHost->SetContent(Search);
+    _AggroHost->SetContent(Main);
+}
+
+auto SCkAggroDebuggerWindow::HandleSessionInvalidated() -> void
+{
+    DoInvalidate_AggroView();
+    _ObservedWorld = nullptr;
+}
+
+auto SCkAggroDebuggerWindow::HandleWorldInvalidated(UWorld* InWorld) -> void
+{
+    if (ck::IsValid(InWorld) && InWorld != _ObservedWorld.Get()) { return; }
+    HandleSessionInvalidated();
+}

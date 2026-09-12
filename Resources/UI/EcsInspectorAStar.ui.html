@@ -1,0 +1,21 @@
+<ui version="1">
+  <region name="main">
+    <column id="astar-inspector" class="astar-inspector">
+      <column id="astar-search-section" visible="astar-search-visible" class="astar-section">
+        <text id="astar-search-header" class="astar-header">Search</text>
+        <row id="astar-status-row" class="astar-row"><text id="astar-status-label" color-bind="astar-status-diff-color" class="astar-label">Status:</text><debug-status id="astar-status-value" label-bind="astar-status" foreground-bind="astar-status-foreground" background-bind="astar-status-background" show-dot="true" class="astar-status" /></row>
+        <row id="astar-open-set-row" class="astar-row"><text id="astar-open-set-label" color-bind="astar-open-set-diff-color" class="astar-label">Open Set:</text><text id="astar-open-set-value" bind="astar-open-set" class="astar-numeric-value" /></row>
+        <row id="astar-closed-set-row" class="astar-row"><text id="astar-closed-set-label" color-bind="astar-closed-set-diff-color" class="astar-label">Closed Set:</text><text id="astar-closed-set-value" bind="astar-closed-set" class="astar-numeric-value" /></row>
+        <row id="astar-iterations-row" class="astar-row"><text id="astar-iterations-label" color-bind="astar-iterations-diff-color" class="astar-label">Iterations (frame):</text><text id="astar-iterations-value" bind="astar-iterations" class="astar-numeric-value" /></row>
+        <row id="astar-time-row" class="astar-row"><text id="astar-time-label" color-bind="astar-time-diff-color" class="astar-label">Time (frame, us):</text><text id="astar-time-value" bind="astar-time" class="astar-numeric-value" /></row>
+        <row id="astar-budget-used-row" class="astar-row"><text id="astar-budget-used-label" color-bind="astar-budget-used-diff-color" class="astar-label">Budget Used:</text><row id="astar-budget-used-value" class="astar-meter-value"><debug-meter id="astar-budget-meter" fraction-bind="astar-budget-fraction" fill-bind="astar-budget-fill" width="72" height="6" /><text id="astar-budget-used-text" bind="astar-budget-used" class="astar-numeric-value" /></row></row>
+      </column>
+      <column id="astar-params-section" visible="astar-params-visible" class="astar-section">
+        <text id="astar-params-header" class="astar-header">Params</text>
+        <row id="astar-budget-row" class="astar-row"><text id="astar-budget-label" color-bind="astar-budget-diff-color" class="astar-label">Budget (us):</text><text id="astar-budget-value" bind="astar-budget" class="astar-numeric-value" /></row>
+        <row id="astar-max-iterations-row" class="astar-row"><text id="astar-max-iterations-label" color-bind="astar-max-iterations-diff-color" class="astar-label">Max Iterations:</text><text id="astar-max-iterations-value" bind="astar-max-iterations" class="astar-numeric-value" /></row>
+        <row id="astar-cost-threshold-row" class="astar-row"><text id="astar-cost-threshold-label" color-bind="astar-cost-threshold-diff-color" class="astar-label">Cost Threshold:</text><text id="astar-cost-threshold-value" bind="astar-cost-threshold" class="astar-numeric-value" /></row>
+      </column>
+    </column>
+  </region>
+</ui>

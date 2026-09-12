@@ -5,6 +5,7 @@
 #include "CkSlateLayout/CkUiNumberInput.h"
 #include "CkSlateLayout/CkUiInt32Input.h"
 #include "CkSlateLayout/CkUiSelect.h"
+#include "CkSlateLayout/CkUiTextInput.h"
 
 #include "CkDebuggerCommon/Widgets/SCkDebug_MeterBar.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_Sparkline.h"
@@ -542,6 +543,8 @@ auto FCkDebug_UiRegistry::TryCreate(TSharedPtr<const FCkUiWidgetRegistrySnapshot
     { return SwitchResult; }
     if (const FCkUiLoadResult EntityRefResult = ck_debug_ui_registry::RegisterEntityRef(Staging); !EntityRefResult.Succeeded)
     { return EntityRefResult; }
+    if (const FCkUiLoadResult TextInputResult = FCkUiTextInput::Register(Staging); !TextInputResult.Succeeded)
+    { return TextInputResult; }
     if (const FCkUiLoadResult NumberResult = FCkUiNumberInput::Register(Staging); !NumberResult.Succeeded)
     { return NumberResult; }
     if (const FCkUiLoadResult IntegerResult = FCkUiInt32Input::Register(Staging); !IntegerResult.Succeeded)

@@ -1,0 +1,17 @@
+<ui version="1">
+  <region name="main">
+    <scroll id="texture-shell-scroll" direction="horizontal">
+      <column id="texture-shell-root" class="texture-shell-root">
+        <native id="texture-shell-context" bind="texture-context-strip" />
+        <tabs id="texture-shell-tabs" value-bind="texture-page" changed="texture-page-changed" class="texture-shell-tabs">
+          <tab id="texture-checker-tab" key="Checker" label="Checker"><native id="texture-checker-content" bind="texture-checker-page" class="texture-page" /></tab>
+          <tab id="texture-health-tab" key="Health" label="Texture Health"><native id="texture-health-content" bind="texture-health-page" class="texture-page" /></tab>
+          <tab id="texture-uv-density-tab" key="UvDensity" label="UV &amp; Density"><native id="texture-uv-density-content" bind="texture-uv-density-page" class="texture-page" /></tab>
+          <tab id="texture-material-inputs-tab" key="MaterialInputs" label="Material Inputs"><native id="texture-material-inputs-content" bind="texture-material-inputs-page" class="texture-page" /></tab>
+          <tab id="texture-surface-lighting-tab" key="SurfaceLighting" label="Surface &amp; Lighting"><native id="texture-surface-lighting-content" bind="texture-surface-lighting-page" class="texture-page" /></tab>
+          <tab id="texture-scene-audit-tab" key="SceneAudit" label="Scene Audit"><native id="texture-scene-audit-content" bind="texture-scene-audit-page" class="texture-page" /></tab>
+        </tabs>
+      </column>
+    </scroll>
+  </region>
+</ui>

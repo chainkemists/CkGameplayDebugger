@@ -1,0 +1,5 @@
+.path-network-inspector { min-width: 0; gap: 3px; }
+.path-network-row { min-width: 0; gap: 8px; vertical-align: center; }
+.path-network-label { min-width: 110px; color: #A8B4C4; }
+.path-network-status { min-width: 0; flex-grow: 1; }
+.path-network-numeric-value { min-width: 0; flex-grow: 1; }

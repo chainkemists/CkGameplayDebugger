@@ -34,15 +34,24 @@ public:
         SLATE_NAMED_SLOT(FArguments, StatusContent)
     SLATE_END_ARGS()
 
+    virtual ~SCkDebug_WindowChrome() override;
+
     auto Construct(const FArguments& InArgs) -> void;
+    auto Tick(const FGeometry& InAllottedGeometry, double InCurrentTime, float InDeltaTime) -> void override;
+
+    /** The retained authored frame; exposed for focused consumer verification only. */
+    TSharedPtr<class FCkUiView> Get_AuthoredFrame() const { return _AuthoredFrame; }
 
 private:
+    auto ActivateAuthoredFrame(const TSharedRef<SWidget>& InCommandBar, const TSharedRef<SWidget>& InContent) -> bool;
+    auto ActivateNativeFallback(const TSharedRef<SWidget>& InCommandBar, const TSharedRef<SWidget>& InContent) -> void;
     auto OnOpenLauncher() const -> FReply;
     auto Get_DefaultStatusText() const -> FText;
 
     FName _WindowId;
     FName _ToolTabId;
     TAttribute<FText> _StatusText;
+    TSharedPtr<class FCkUiView> _AuthoredFrame;
 };
 
 // --------------------------------------------------------------------------------------------------------------------

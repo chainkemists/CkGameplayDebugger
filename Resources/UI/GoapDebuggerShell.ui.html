@@ -1,0 +1,35 @@
+<ui version="1">
+  <region name="main">
+    <scroll id="goap-shell-scroll" direction="horizontal">
+      <column id="goap-shell-root" class="goap-shell-root">
+        <native id="goap-shell-nerd-strip" bind="goap-nerd-strip" />
+        <native id="goap-shell-alert-strip" bind="goap-alert-strip" />
+        <tabs id="goap-main-tabs" value-bind="goap-top-tab" changed="goap-top-tab-changed" class="goap-main-tabs">
+          <tab id="goap-squad-tab" key="Squad" label-bind="goap-squad-label">
+            <native id="goap-shell-squad" bind="goap-squad-view" class="goap-fill" />
+          </tab>
+          <tab id="goap-inspector-tab" key="Inspector" label="Agent Inspector">
+            <splitter id="goap-inspector-split" direction="vertical" class="goap-inspector-split">
+              <splitter id="goap-inspector-top-split" direction="horizontal" class="goap-inspector-top-split">
+                <splitter id="goap-inspector-left-split" direction="vertical" class="goap-left-pane">
+                  <native id="goap-shell-agent-column" bind="goap-agent-column" class="goap-agent-pane" />
+                  <native id="goap-shell-sidebar" bind="goap-sidebar" class="goap-sidebar-pane" />
+                </splitter>
+                <tabs id="goap-center-tabs" value-bind="goap-center-tab" changed="goap-center-tab-changed" class="goap-center-pane">
+                  <tab id="goap-decision-tab" key="Decision" label="Decision"><native id="goap-shell-decision" bind="goap-decision" class="goap-fill" /></tab>
+                  <tab id="goap-graph-tab" key="Graph" label="Plan graph"><native id="goap-shell-graph" bind="goap-graph" class="goap-fill" /></tab>
+                  <tab id="goap-search-tab" key="Search" label="Search trace" visible-bind="goap-search-enabled"><native id="goap-shell-search" bind="goap-search-trace" class="goap-fill" /></tab>
+                </tabs>
+                <native id="goap-shell-world-state" bind="goap-world-state" class="goap-world-state-pane" />
+              </splitter>
+              <native id="goap-shell-timeline" bind="goap-timeline" class="goap-timeline-pane" />
+            </splitter>
+          </tab>
+          <tab id="goap-catalog-tab" key="Catalog" label-bind="goap-catalog-label">
+            <native id="goap-shell-catalog" bind="goap-catalog" class="goap-fill" />
+          </tab>
+        </tabs>
+      </column>
+    </scroll>
+  </region>
+</ui>

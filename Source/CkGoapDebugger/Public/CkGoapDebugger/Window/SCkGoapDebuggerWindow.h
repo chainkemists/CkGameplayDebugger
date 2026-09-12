@@ -14,13 +14,13 @@ class FCkGoapDebugger_ViewModel;
 class SCkGoapDebugger_Sidebar;
 class SCkGoapDebugger_WorldStateRail;
 class SCkGoapDebugger_GraphPane;
-class SCkGoapDebugger_AgentListPanel;
 class SCkGoapDebugger_AgentColumn;
 class SCkGoapDebugger_DecisionPanel;
 class SCkGoapDebugger_SearchTracePanel;
 class SCkGoapDebugger_TimelineDock;
 class SCkGoapDebugger_SquadTable;
 class SCkGoapDebugger_CatalogPanel;
+class FCkUiView;
 class STextBlock;
 class STextComboBox;
 class SBox;
@@ -85,11 +85,17 @@ public:
     // entity handles). Read by child panels via the window.
     auto Get_NerdMode() const -> bool { return _NerdMode; }
 
+    // Test-only observability for the production-owned authored stable shell.
+    auto Get_AuthoredShellView() const -> TSharedPtr<FCkUiView> { return _AuthoredShellView; }
+    auto Get_AuthoredShellLoadFailure() const -> const FString& { return _AuthoredShellLoadFailure; }
+
 protected:
     // Structural style axes changed — drop each panel's rebuild debounce and re-run its refresh.
     virtual auto OnStyleRevisionChanged() -> void override;
 
 private:
+    friend class FCkGoapDebugger_WindowSelectionSyncPie;
+
     // -----------------------------------------------------------------------------------------------------------------
     // Build helpers — called once from Construct; result subtrees are cached.
     // -----------------------------------------------------------------------------------------------------------------
@@ -98,15 +104,15 @@ private:
     auto BuildMenuActions() -> TSharedRef<SWidget>;
     auto BuildNerdStrip() -> TSharedRef<SWidget>;
     auto BuildAlertStrip() -> TSharedRef<SWidget>;
-    auto BuildTopTabs()   -> TSharedRef<SWidget>;
     auto BuildSquadView()     -> TSharedRef<SWidget>;
-    auto BuildInspectorView() -> TSharedRef<SWidget>;
     auto BuildCatalogView()   -> TSharedRef<SWidget>;
-    auto BuildCenterColumn()  -> TSharedRef<SWidget>;
-
-    // Refresh the agent-list panel off the current snapshot batch. Cheap;
-    // called every gated Tick — the panel reuses row pointers by handle.
-    auto RefreshAgentList() -> void;
+    auto BuildInspectorPorts() -> void;
+    auto BuildNativeTopTabs() -> TSharedRef<SWidget>;
+    auto BuildNativeInspectorView() -> TSharedRef<SWidget>;
+    auto BuildNativeCenterColumn() -> TSharedRef<SWidget>;
+    auto BuildAuthoredShell(const TSharedRef<SWidget>& InNerdStrip, const TSharedRef<SWidget>& InAlertStrip) -> void;
+    auto PollAuthoredShell() -> void;
+    auto ActivateNativeShellFallback(const TSharedRef<SWidget>& InNerdStrip, const TSharedRef<SWidget>& InAlertStrip) -> void;
 
     // Rebuild the chrome picker option lists from the snapshot batch and sync
     // their selected items to the ViewModel (echo-guarded via Direct).
@@ -117,6 +123,7 @@ private:
     // PIE lifecycle — drop handle-bearing state.
     auto HandleWorldTornDown() -> void;
     auto HandleWorldChanged(UWorld* InWorld) -> void;
+    auto HandleGlobalSelectionSync(const FCk_Handle& InSelected, FName InSource) -> void;
     auto Request_PauseExecution() -> void;
 
 private:
@@ -130,6 +137,10 @@ private:
     TSharedPtr<SCkGoapDebugger_TimelineDock>     _TimelineDock;
     TSharedPtr<SCkGoapDebugger_SquadTable>       _SquadTable;
     TSharedPtr<SCkGoapDebugger_CatalogPanel>     _CatalogPanel;
+    TSharedPtr<FCkUiView> _AuthoredShellView;
+    TSharedPtr<SBox> _AuthoredShellHost;
+    FString _AuthoredShellLoadFailure;
+    bool _AuthoredShellMounted = false;
 
     TSharedPtr<FCkDebuggerModel_WorldSelector> _WorldModel;
     TWeakObjectPtr<UWorld> _CachedWorld;
@@ -138,9 +149,6 @@ private:
     // roster entities (and their owner chain up to the NPC representative)
     // are previewed and pickable.
     TSharedPtr<FCkDebug_ViewportPicker> _ViewportPicker;
-
-    // Agent list (replaces the old combo-box entity picker)
-    TSharedPtr<SCkGoapDebugger_AgentListPanel> _AgentList;
 
     // Chrome pickers — combo labels + parallel handle arrays (index-mapped).
     // Handles cleared on world teardown.
@@ -164,6 +172,7 @@ private:
     // Common debugger-session boundary.
     FDelegateHandle _SessionInvalidatedHandle;
     FDelegateHandle _WorldChangedHandle;
+    FDelegateHandle _SelectionSyncHandle;
 };
 
 // ====================================================================================================================

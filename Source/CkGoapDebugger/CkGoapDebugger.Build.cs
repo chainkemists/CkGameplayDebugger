@@ -44,8 +44,6 @@ public class CkGoapDebugger : CkModuleRules
 
 		RuntimeDependencies.Add(Path.Combine(PluginDirectory, "Resources", "UI", "GoapDebuggerSquad.ui.html"), StagedFileType.NonUFS);
 		RuntimeDependencies.Add(Path.Combine(PluginDirectory, "Resources", "UI", "GoapDebuggerSquad.ui.css"), StagedFileType.NonUFS);
-		RuntimeDependencies.Add(Path.Combine(PluginDirectory, "Resources", "UI", "GoapDebuggerAgentList.ui.html"), StagedFileType.NonUFS);
-		RuntimeDependencies.Add(Path.Combine(PluginDirectory, "Resources", "UI", "GoapDebuggerAgentList.ui.css"), StagedFileType.NonUFS);
 		RuntimeDependencies.Add(Path.Combine(PluginDirectory, "Resources", "UI", "GoapDebuggerAgentColumn.ui.html"), StagedFileType.NonUFS);
 		RuntimeDependencies.Add(Path.Combine(PluginDirectory, "Resources", "UI", "GoapDebuggerAgentColumn.ui.css"), StagedFileType.NonUFS);
 		RuntimeDependencies.Add(Path.Combine(PluginDirectory, "Resources", "UI", "GoapDebuggerDecision.ui.html"), StagedFileType.NonUFS);
@@ -60,6 +58,8 @@ public class CkGoapDebugger : CkModuleRules
 		RuntimeDependencies.Add(Path.Combine(PluginDirectory, "Resources", "UI", "GoapDebuggerGraph.ui.css"), StagedFileType.NonUFS);
 		RuntimeDependencies.Add(Path.Combine(PluginDirectory, "Resources", "UI", "GoapDebuggerSearchTrace.ui.html"), StagedFileType.NonUFS);
 		RuntimeDependencies.Add(Path.Combine(PluginDirectory, "Resources", "UI", "GoapDebuggerSearchTrace.ui.css"), StagedFileType.NonUFS);
+		RuntimeDependencies.Add(Path.Combine(PluginDirectory, "Resources", "UI", "GoapDebuggerShell.ui.html"), StagedFileType.NonUFS);
+		RuntimeDependencies.Add(Path.Combine(PluginDirectory, "Resources", "UI", "GoapDebuggerShell.ui.css"), StagedFileType.NonUFS);
 
 		if (Target.bBuildEditor)
 		{

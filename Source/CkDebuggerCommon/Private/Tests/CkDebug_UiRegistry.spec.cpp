@@ -6,6 +6,7 @@
 #include "CkDebuggerCommon/Widgets/SCkDebug_Icon.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_Switch.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_EntityRef.h"
+#include "CkDebuggerCommon/Window/SCkDebug_WindowChrome.h"
 #include "CkDebuggerCommon/Settings/CkDebuggerStyleSettings.h"
 #include "CkDebuggerCommon/Styles/CkDebuggerAxes.h"
 
@@ -20,6 +21,7 @@
 #include "Misc/AutomationTest.h"
 #include "Misc/ScopeExit.h"
 #include "Widgets/SBoxPanel.h"
+#include "Widgets/Layout/SBorder.h"
 #include "Widgets/SWindow.h"
 #include "Widgets/IToolTip.h"
 #include "Widgets/Text/STextBlock.h"
@@ -51,6 +53,19 @@ namespace ck_debug_ui_registry_tests
             {
                 return Found;
             }
+        }
+        return nullptr;
+    }
+
+    auto FindTaggedWidget(const TSharedRef<SWidget>& InRoot, const FName InTag) -> TSharedPtr<SWidget>
+    {
+        if (InRoot->GetTag() == InTag) { return InRoot; }
+        const FChildren* Children = InRoot->GetChildren();
+        if (Children == nullptr) { return nullptr; }
+        for (int32 Index = 0; Index < Children->Num(); ++Index)
+        {
+            if (const TSharedPtr<SWidget> Found = FindTaggedWidget(ConstCastSharedRef<SWidget>(Children->GetChildAt(Index)), InTag); Found.IsValid())
+            { return Found; }
         }
         return nullptr;
     }
@@ -224,6 +239,63 @@ auto FCkDebug_UiRegistry_Runtime::RunTest(const FString&) -> bool
     TestTrue(TEXT("Out-of-range icon size rejects without changing the accepted revision or tree"), !BadSize.Succeeded
         && !BadSize.Errors.IsEmpty() && View->GetRevision() == SparklineRevision
         && FindWidget(RegionContent(View), TEXT("SCkDebug_Sparkline")) == OriginalSparkline);
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCkDebug_WindowChrome_AuthoredFrame,
+    "Ck.UiAuthoring.Debugger.WindowChrome.AuthoredFrame",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+auto FCkDebug_WindowChrome_AuthoredFrame::RunTest(const FString&) -> bool
+{
+    using namespace ck_debug_ui_registry_tests;
+    if (!FSlateApplication::IsInitialized()) { AddError(TEXT("Window Chrome authored-frame test requires initialized Slate.")); return false; }
+
+    const TSharedRef<SBorder> Content = SNew(SBorder).Tag(TEXT("window-chrome-content-probe"))
+    [
+        SNew(STextBlock).Text(FText::FromString(TEXT("Tool content")))
+    ];
+    TSharedPtr<SCkDebug_WindowChrome> Chrome = SNew(SCkDebug_WindowChrome)
+        .WindowId(TEXT("WindowChromeAuthoredTest"))
+        .ToolTabId(TEXT("WindowChromeAuthoredTest"))
+        .Content()
+        [
+            Content
+        ];
+    TSharedPtr<FCkUiView> View = Chrome->Get_AuthoredFrame();
+    if (!TestTrue(TEXT("Installed authored WindowChrome resource loads"), View.IsValid())) { return false; }
+
+    const TSharedRef<SWidget> Region = View->GetRegion(TEXT("main"));
+    const TSharedPtr<SWidget> CommandBar = FindWidget(Region, TEXT("SCkDebug_CommandBar"));
+    const TSharedPtr<SWidget> MountedContent = FindTaggedWidget(Region, TEXT("window-chrome-content-probe"));
+    if (!TestTrue(TEXT("Authored WindowChrome mounts command-bar and tool-content native ports"), CommandBar.IsValid() && MountedContent.IsValid() && MountedContent.Get() == &Content.Get()))
+    { return false; }
+
+    const int64 AcceptedRevision = View->GetRevision();
+    const FCkUiLoadResult Compatible = View->TryReload(
+        TEXT("<ui version=\"1\"><region name=\"main\"><column id=\"debugger-window-frame\"><native id=\"debugger-window-command-bar\" bind=\"window-command-bar\"/><native id=\"debugger-window-content\" bind=\"window-content\"/></column></region></ui>"),
+        TEXT(""), TEXT("WindowChromeCompatible"));
+    if (!TestTrue(TEXT("Compatible WindowChrome reload retains both native-port widgets"), Compatible.Succeeded
+        && View->GetRevision() == AcceptedRevision + 1
+        && FindWidget(Region, TEXT("SCkDebug_CommandBar")) == CommandBar
+        && FindTaggedWidget(Region, TEXT("window-chrome-content-probe")).Get() == &Content.Get()))
+    { return false; }
+
+    const int64 CompatibleRevision = View->GetRevision();
+    const TSharedPtr<SWidget> AcceptedRoot = Region->GetChildren()->GetChildAt(0);
+    const FCkUiLoadResult Rejected = View->TryReload(
+        TEXT("<ui version=\"1\"><region name=\"main\"><column id=\"frame\"><native id=\"command\" bind=\"window-command-bar\"/><native id=\"content\" bind=\"missing-port\"/></column></region></ui>"),
+        TEXT(""), TEXT("WindowChromeRejected"));
+    TestTrue(TEXT("Rejected WindowChrome reload preserves accepted revision, root, and native-port identity"),
+        !Rejected.Succeeded && View->GetRevision() == CompatibleRevision
+        && Region->GetChildren()->GetChildAt(0) == AcceptedRoot
+        && FindWidget(Region, TEXT("SCkDebug_CommandBar")) == CommandBar
+        && FindTaggedWidget(Region, TEXT("window-chrome-content-probe")).Get() == &Content.Get());
+
+    const TWeakPtr<FCkUiView> WeakView = View;
+    View.Reset();
+    Chrome.Reset();
+    TestFalse(TEXT("WindowChrome owner release retires its retained authored frame"), WeakView.IsValid());
     return true;
 }
 

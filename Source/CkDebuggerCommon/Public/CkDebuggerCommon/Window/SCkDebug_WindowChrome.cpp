@@ -2,9 +2,12 @@
 
 #include "CkCore/Ensure/CkEnsure.h"
 
+#include "CkSlateLayout/SCkUiSurface.h"
+
 #include "CkDebuggerCommon/Launcher/CkDebuggerTabUtils.h"
 #include "CkDebuggerCommon/Navigation/CkDebug_EntityTarget.h"
 #include "CkDebuggerCommon/Styles/CkDebuggerAxes.h"
+#include "CkDebuggerCommon/UI/CkDebug_UiRegistry.h"
 #include "CkDebuggerCommon/Window/SCkDebugger_RefreshControls.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_UseEcsSelection.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_IconButton.h"
@@ -12,6 +15,8 @@
 #include "CkEditorTools/Style/CkStyle.h"
 
 #include "Framework/Docking/TabManager.h"
+#include "Interfaces/IPluginManager.h"
+#include "Misc/Paths.h"
 #include "Styling/CoreStyle.h"
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Layout/SBorder.h"
@@ -21,6 +26,77 @@
 #include "Widgets/Text/STextBlock.h"
 
 // --------------------------------------------------------------------------------------------------------------------
+
+namespace ck_debug_window_chrome
+{
+    auto Tokens() -> FCkUiView::FTokens
+    {
+        return {{TEXT("--window-chrome-surface"), TEXT("#") + ck::debug_axes::Get_SurfaceTint(0).ToFColorSRGB().ToHex()}};
+    }
+}
+
+SCkDebug_WindowChrome::~SCkDebug_WindowChrome()
+{
+    // The retained frame may own focus, menu sessions, or pointer capture while its region is
+    // still mounted by this window. Releasing it first lets FCkUiView retire only that state.
+    _AuthoredFrame.Reset();
+}
+
+auto SCkDebug_WindowChrome::ActivateNativeFallback(
+    const TSharedRef<SWidget>& InCommandBar,
+    const TSharedRef<SWidget>& InContent) -> void
+{
+    ChildSlot
+    [
+        SNew(SBorder)
+            .BorderImage_Lambda([]{ return ck::debug_axes::Get_SurfaceBrush(0); })
+            .BorderBackgroundColor_Lambda([]{ return FSlateColor{ck::debug_axes::Get_SurfaceTint(0)}; })
+            .Padding(0.0f)
+            [
+                SNew(SVerticalBox)
+
+                + SVerticalBox::Slot()
+                .AutoHeight()
+                [
+                    InCommandBar
+                ]
+
+                + SVerticalBox::Slot()
+                .FillHeight(1.0f)
+                [
+                    InContent
+                ]
+            ]
+    ];
+}
+
+auto SCkDebug_WindowChrome::ActivateAuthoredFrame(
+    const TSharedRef<SWidget>& InCommandBar,
+    const TSharedRef<SWidget>& InContent) -> bool
+{
+    TSharedPtr<const FCkUiWidgetRegistrySnapshot> Registry;
+    if (!FCkDebug_UiRegistry::TryCreate(Registry).Succeeded || !Registry.IsValid())
+    { return false; }
+
+    const TSharedPtr<IPlugin> Plugin = IPluginManager::Get().FindPlugin(TEXT("CkDebugger"));
+    if (!Plugin.IsValid()) { return false; }
+
+    FCkUiView::FNativeBindings NativeBindings;
+    NativeBindings.Add(TEXT("window-command-bar"), InCommandBar);
+    NativeBindings.Add(TEXT("window-content"), InContent);
+    const TSharedRef<FCkUiView> Candidate = FCkUiView::Create(
+        MoveTemp(NativeBindings), {}, ck_debug_window_chrome::Tokens(), FSlateFontInfo{}, {}, Registry);
+    const TSharedRef<SWidget> FrameRegion = Candidate->GetRegion(TEXT("main"));
+    const FString ResourceRoot = FPaths::Combine(Plugin->GetBaseDir(), TEXT("Resources/UI"));
+    const FCkUiLoadResult Result = Candidate->ReloadFiles(
+        FPaths::Combine(ResourceRoot, TEXT("DebuggerWindowChrome.ui.html")),
+        FPaths::Combine(ResourceRoot, TEXT("DebuggerWindowChrome.ui.css")));
+    if (!Result.Succeeded) { return false; }
+
+    _AuthoredFrame = Candidate;
+    ChildSlot[FrameRegion];
+    return true;
+}
 
 auto SCkDebug_WindowChrome::Construct(const FArguments& InArgs) -> void
 {
@@ -69,25 +145,12 @@ auto SCkDebug_WindowChrome::Construct(const FArguments& InArgs) -> void
                 .Font(CkStyle::RegularFont(CkStyle::FontSizeMicro()))
                 .ColorAndOpacity(CkStyle::TextMute()));
 
-    ChildSlot
-    [
-        // Window ground (depth 0) with a header strip and a status strip (depth 1) on it — the
-        // SurfaceElevation axis' canonical two-tier shape.
-        SNew(SBorder)
-            .BorderImage_Lambda([]{ return ck::debug_axes::Get_SurfaceBrush(0); })
-            .BorderBackgroundColor_Lambda([]{ return FSlateColor{ck::debug_axes::Get_SurfaceTint(0)}; })
-            .Padding(0.0f)
-            [
-                SNew(SVerticalBox)
-
-                + SVerticalBox::Slot()
-                .AutoHeight()
-                [
-                    SNew(SCkDebug_CommandBar)
-                    .Groups(MoveTemp(CommandGroups))
-                    .UtilityContent()
-                    [
-                        SNew(SHorizontalBox)
+    const TSharedRef<SWidget> CommandBar =
+        SNew(SCkDebug_CommandBar)
+        .Groups(MoveTemp(CommandGroups))
+        .UtilityContent()
+        [
+            SNew(SHorizontalBox)
 
                         + SHorizontalBox::Slot()
                         .AutoWidth()
@@ -172,17 +235,22 @@ auto SCkDebug_WindowChrome::Construct(const FArguments& InArgs) -> void
                             })
                             .OnClicked(this, &SCkDebug_WindowChrome::OnOpenLauncher)
                         ]
-                    ]
-                ]
+        ];
 
-                + SVerticalBox::Slot()
-                .FillHeight(1.0f)
-                [
-                    Content
-                ]
+    if (!ActivateAuthoredFrame(CommandBar, Content))
+    {
+        ActivateNativeFallback(CommandBar, Content);
+    }
+}
 
-            ]
-    ];
+auto SCkDebug_WindowChrome::Tick(
+    const FGeometry& InAllottedGeometry,
+    const double InCurrentTime,
+    const float InDeltaTime) -> void
+{
+    SCompoundWidget::Tick(InAllottedGeometry, InCurrentTime, InDeltaTime);
+    if (_AuthoredFrame.IsValid())
+    { _AuthoredFrame->PollFiles(ck_debug_window_chrome::Tokens()); }
 }
 
 auto SCkDebug_WindowChrome::OnOpenLauncher() const -> FReply

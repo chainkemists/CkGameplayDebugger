@@ -69,22 +69,36 @@ enum class ECkDebugOverlaySelectionInputAction : uint8
     Settings,
 };
 
+enum class ECkDebugOverlayGlobalInputAction : uint8
+{
+    Activate,
+    Deactivate,
+    Settings,
+};
+
 struct FCkDebugOverlaySelectionInputBindings
 {
-    FKey SelectKey;
-    FKey PreviousKey;
-    FKey NextKey;
-    FKey FamilyKey;
-    FKey SettingsKey;
-    bool SettingsRequireControl = true;
+    FKey SelectKey = EKeys::Comma;
+    FKey PreviousKey = EKeys::LeftBracket;
+    FKey NextKey = EKeys::RightBracket;
+    FKey FamilyKey = EKeys::Backslash;
+    FKey SettingsKey = EKeys::Comma;
+    bool SettingsRequireShift = true;
     double HoldSelectSeconds = 0.4;
 };
 
 class FCkDebugOverlay_InputProcessor : public IInputProcessor
 {
 public:
-    explicit FCkDebugOverlay_InputProcessor(TFunction<bool()> InCanHandleSelectionInput = {})
+    explicit FCkDebugOverlay_InputProcessor(
+        TFunction<bool()> InCanHandleSelectionInput = {},
+        TFunction<bool()> InCanHandleGlobalInput = {},
+        TFunction<bool()> InIsOverlayActive = {},
+        TFunction<void(ECkDebugOverlayGlobalInputAction)> InOnGlobalAction = {})
         : _CanHandleSelectionInput(MoveTemp(InCanHandleSelectionInput))
+        , _CanHandleGlobalInput(MoveTemp(InCanHandleGlobalInput))
+        , _IsOverlayActive(MoveTemp(InIsOverlayActive))
+        , _OnGlobalAction(MoveTemp(InOnGlobalAction))
     {}
 
     auto SetCanHandleSelectionInput(TFunction<bool()> InCanHandleSelectionInput) -> void
@@ -97,8 +111,10 @@ public:
         _SelectionBindings.NextKey = InSettings.NextKey;
         _SelectionBindings.FamilyKey = InSettings.FamilyKey;
         _SelectionBindings.SettingsKey = InSettings.SettingsKey;
-        _SelectionBindings.SettingsRequireControl = InSettings.SettingsRequireControl;
+        _SelectionBindings.SettingsRequireShift = InSettings.SettingsRequireShift;
         _SelectionBindings.HoldSelectSeconds = NormalizeSelectionHoldSeconds(static_cast<double>(InSettings.HoldSelectSeconds));
+        _ActivateOverlayKey = InSettings.ActivateOverlayKey;
+        _OpenSettingsKey = InSettings.OpenSettingsKey;
     }
 
     auto SetSelectionBindings(const FCkDebugOverlaySelectionInputBindings& InBindings) -> void
@@ -119,11 +135,24 @@ public:
         {
             ClearSelectionForFocusLoss();
         }
+        if (_OnGlobalAction)
+        {
+            auto Actions = MoveTemp(_GlobalActions);
+            _GlobalActions.Reset();
+            for (const auto Action : Actions)
+            { _OnGlobalAction(Action); }
+        }
     }
 
     virtual bool HandleKeyDownEvent(FSlateApplication& /*InSlateApp*/, const FKeyEvent& InKeyEvent) override
     {
+        if (const auto* Settings = GetDefault<UCk_DebugOverlay_InputSettings>())
+        { SetSelectionBindings(*Settings); }
         const auto bCanHandle = CanHandleSelectionInput();
+        if (RouteGlobalKeyDown(
+            InKeyEvent.GetKey(), InKeyEvent.IsRepeat(), InKeyEvent.IsControlDown(), InKeyEvent.IsAltDown(),
+            InKeyEvent.IsShiftDown(), InKeyEvent.IsCommandDown(), IsOverlayActive(), CanHandleGlobalInput()))
+        { return true; }
         if (NOT bCanHandle)
         { ClearSelectionForFocusLoss(); }
         if (RouteSelectionKeyDown(
@@ -159,6 +188,44 @@ public:
         auto Result = MoveTemp(_SelectionActions);
         _SelectionActions.Reset();
         return Result;
+    }
+
+    auto ConsumeGlobalActions() -> TArray<ECkDebugOverlayGlobalInputAction>
+    {
+        auto Result = MoveTemp(_GlobalActions);
+        _GlobalActions.Reset();
+        return Result;
+    }
+
+    auto RouteGlobalKeyDown(
+        const FKey& InKey, bool bIsRepeat, bool bControl, bool bAlt, bool bShift, bool bCommand,
+        bool bOverlayActive, bool bCanHandle) -> bool
+    {
+        if (NOT InKey.IsValid())
+        { return false; }
+        if (bIsRepeat)
+        { return _CapturedKeys.Contains(InKey); }
+        if (NOT bCanHandle)
+        { return false; }
+
+        const auto bUnmodified = NOT bControl && NOT bAlt && NOT bShift && NOT bCommand;
+        const auto bShiftOnly = NOT bControl && NOT bAlt && bShift && NOT bCommand;
+        const auto bSettingsChord = _SelectionBindings.SettingsRequireShift ? bShiftOnly : bUnmodified;
+        if (bUnmodified && InKey == _ActivateOverlayKey)
+        {
+            _CapturedKeys.Add(InKey);
+            _GlobalActions.Add(bOverlayActive
+                ? ECkDebugOverlayGlobalInputAction::Deactivate
+                : ECkDebugOverlayGlobalInputAction::Activate);
+            return true;
+        }
+        if (bSettingsChord && (InKey == _SelectionBindings.SettingsKey || InKey == _OpenSettingsKey))
+        {
+            _CapturedKeys.Add(InKey);
+            _GlobalActions.Add(ECkDebugOverlayGlobalInputAction::Settings);
+            return true;
+        }
+        return false;
     }
 
     /** Clears focus-owned input and releases a held family scope exactly once. */
@@ -211,8 +278,8 @@ public:
             _SelectionActions.Add(ECkDebugOverlaySelectionInputAction::FamilyPressed);
             return true;
         }
-        const auto bSettingsChord = _SelectionBindings.SettingsRequireControl
-            ? bControl && NOT bAlt && NOT bShift && NOT bCommand
+        const auto bSettingsChord = _SelectionBindings.SettingsRequireShift
+            ? NOT bControl && NOT bAlt && bShift && NOT bCommand
             : bUnmodified;
         if (bSettingsChord && InKey == _SelectionBindings.SettingsKey && InKey.IsValid())
         { _CapturedKeys.Add(InKey); _SelectionActions.Add(ECkDebugOverlaySelectionInputAction::Settings); return true; }
@@ -275,12 +342,24 @@ private:
     auto CanHandleSelectionInput() const -> bool
     { return _CanHandleSelectionInput && _CanHandleSelectionInput(); }
 
+    auto CanHandleGlobalInput() const -> bool
+    { return _CanHandleGlobalInput && _CanHandleGlobalInput(); }
+
+    auto IsOverlayActive() const -> bool
+    { return _IsOverlayActive && _IsOverlayActive(); }
+
     FCkDebugOverlay_InputPressBuffer _PressedThisPoll;
     FCkDebugOverlaySelectionInputBindings _SelectionBindings;
     TFunction<bool()> _CanHandleSelectionInput;
+    TFunction<bool()> _CanHandleGlobalInput;
+    TFunction<bool()> _IsOverlayActive;
+    TFunction<void(ECkDebugOverlayGlobalInputAction)> _OnGlobalAction;
+    FKey _ActivateOverlayKey = EKeys::Comma;
+    FKey _OpenSettingsKey = EKeys::P;
     TSet<FKey> _CapturedKeys;
     TSet<FKey> _HeldFamilyKeys;
     FSelectHold _SelectHold;
     bool _SelectionFocusCleared = false;
     TArray<ECkDebugOverlaySelectionInputAction> _SelectionActions;
+    TArray<ECkDebugOverlayGlobalInputAction> _GlobalActions;
 };

@@ -89,10 +89,8 @@ namespace ck_debugoverlay::selection_session
         const FViewpoint&                       InViewpoint,
         const FCk_DebugOverlay_SelectionConfig& InConfig) -> TArray<FCandidateSelection>;
 
-    /**
-     * Return the next valid ordered-snapshot ID. If selection is a child hidden by root
-     * grouping, InSelectedRootId re-enters at its root. Returns InvalidEntityId when none live.
-     */
+    /** Return the adjacent valid ordered-snapshot ID without wrapping across an edge. If selection
+     * is a child hidden by root grouping, InSelectedRootId re-enters at its root. */
     CKENTITYDEBUGOVERLAY_API auto Cycle(
         const TArray<uint32>& InOrderedIds,
         const TSet<uint32>&   InValidIds,
@@ -109,9 +107,15 @@ namespace ck_debugoverlay::selection_session
         const TArray<uint32>& InCurrentIds,
         bool                  InRerank) -> TArray<uint32>;
 
-    /** Shortest signed cyclic distance from the selected entity (or its displayed root).
-     * Zero marks the current selection; an exact opposite uses +/- (the same number of steps
-     * either way). With no selection, offsets match Cycle's first/last entry behavior. */
+    /** Place the selected entity between screen-left and screen-right candidates. The nearest
+     * candidate on each side is adjacent; remaining candidates increase by screen-space distance. */
+    CKENTITYDEBUGOVERLAY_API auto BuildSpatialOrder(
+        const TArray<FCandidateSelection>& InCandidates,
+        uint32                             InSelectedId,
+        uint32                             InSelectedRootId) -> TArray<uint32>;
+
+    /** Signed linear distance from the selected entity (or its displayed root). Zero marks the
+     * current selection; negative entries precede it and positive entries follow it. */
     CKENTITYDEBUGOVERLAY_API auto BuildRelativeLabels(
         const TArray<uint32>& InOrderedIds,
         uint32                InSelectedId,

@@ -5,14 +5,17 @@
 
 #include "CkEditorTools/Style/CkStyle.h"
 #include "CkDebuggerCommon/Styles/CkDebuggerAxes.h"
+#include "CkDebuggerCommon/Markers/CkDebug_EntityMarkers.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_NumericEditor.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_ToggleSurface.h"
 
 #include "HAL/PlatformApplicationMisc.h"
+#include "HAL/IConsoleManager.h"
 #include "InputCoreTypes.h"
 #include "Framework/Application/SlateApplication.h"
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Input/SEditableTextBox.h"
+#include "Widgets/Input/SSpinBox.h"
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/Layout/SScrollBox.h"
@@ -99,7 +102,7 @@ auto SCkDebugOverlay_SelectionPanel::Construct(const FArguments& InArgs) -> void
                 [
                     SNew(SHorizontalBox)
                     + SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)
-                    [ SNew(STextBlock).Text(FText::FromString(TEXT("Selection"))).Font(ck::debug_axes::ScaledFont("Bold", 12)).ColorAndOpacity(CkStyle::TextStrong()) ]
+                    [ SNew(STextBlock).Text(FText::FromString(TEXT("Overlay settings"))).Font(ck::debug_axes::ScaledFont("Bold", 12)).ColorAndOpacity(CkStyle::TextStrong()) ]
                     + SHorizontalBox::Slot().AutoWidth().HAlign(HAlign_Right)
                     [ Make_ActionButton(FText::FromString(TEXT("Close")), [this](){ _OnClose.ExecuteIfBound(); }) ]
                 ]
@@ -111,6 +114,9 @@ auto SCkDebugOverlay_SelectionPanel::Construct(const FArguments& InArgs) -> void
                     + SScrollBox::Slot()[ Build_PolicySection() ]
                     + SScrollBox::Slot()[ Build_TuningSection() ]
                     + SScrollBox::Slot()[ Build_PresentationSection() ]
+                    + SScrollBox::Slot()[ Build_OverlaySection() ]
+                    + SScrollBox::Slot()[ Build_AttributesSection() ]
+                    + SScrollBox::Slot()[ Build_WorldTagsSection() ]
                     + SScrollBox::Slot()[ Build_NamedPresetSection() ]
                     + SScrollBox::Slot()[ Build_InputSection() ]
                 ]
@@ -225,10 +231,131 @@ auto SCkDebugOverlay_SelectionPanel::Build_PresentationSection() -> TSharedRef<S
     return Make_Section(FText::FromString(TEXT("Presentation")), Content);
 }
 
+auto SCkDebugOverlay_SelectionPanel::Make_IntegerRow(const FText& InLabel, TAttribute<int32> InValue, int32 InMin, int32 InMax, TFunction<void(int32)> InOnChanged) const -> TSharedRef<SWidget>
+{
+    return SNew(SHorizontalBox)
+        + SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)
+        [ ck_debugoverlay_selection_panel::Label(InLabel) ]
+        + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+        [
+            SNew(SBox).WidthOverride(100.0f)
+            [
+                SNew(SSpinBox<int32>)
+                .MinValue(InMin)
+                .MaxValue(InMax)
+                .Value(MoveTemp(InValue))
+                .OnValueChanged_Lambda(MoveTemp(InOnChanged))
+            ]
+        ];
+}
+
+auto SCkDebugOverlay_SelectionPanel::Build_OverlaySection() -> TSharedRef<SWidget>
+{
+    auto Content = SNew(SVerticalBox);
+    Content->AddSlot().AutoHeight()[Make_ToggleRow(FText::FromString(TEXT("Overlay enabled")),
+        TAttribute<bool>::CreateLambda([]()
+        {
+            const auto* CVar = IConsoleManager::Get().FindConsoleVariable(TEXT("ck.DebugOverlay"));
+            return CVar != nullptr && CVar->GetInt() != 0;
+        }), [](bool bEnabled)
+        {
+            if (auto* CVar = IConsoleManager::Get().FindConsoleVariable(TEXT("ck.DebugOverlay")))
+            { CVar->Set(bEnabled ? 1 : 0, ECVF_SetByConsole); }
+        })];
+    Content->AddSlot().AutoHeight()[Make_CycleRow(FText::FromString(TEXT("Max marker depth")),
+        TAttribute<FText>::CreateLambda([]()
+        {
+            const auto* CVar = IConsoleManager::Get().FindConsoleVariable(ck::DebugMarkers::Get_MaxDepthCVarName());
+            return FText::FromString(CVar == nullptr ? TEXT("Unavailable") : FString::FromInt(CVar->GetInt()));
+        }), []()
+        {
+            if (auto* CVar = IConsoleManager::Get().FindConsoleVariable(ck::DebugMarkers::Get_MaxDepthCVarName()))
+            { CVar->Set(CVar->GetInt() >= 16 ? -1 : CVar->GetInt() + 1, ECVF_SetByConsole); }
+        })];
+    Content->AddSlot().AutoHeight()[Make_CycleRow(FText::FromString(TEXT("Plate anchor")),
+        TAttribute<FText>::CreateLambda([]()
+        {
+            const auto* Settings = GetDefault<UCk_DebugOverlay_Settings>();
+            return Settings == nullptr ? FText::FromString(TEXT("Unavailable")) : FText::FromString(
+                StaticEnum<ECk_DebugOverlay_PlateAnchor>()->GetNameStringByValue(static_cast<int64>(Settings->PlateAnchor)));
+        }), []()
+        {
+            if (auto* Settings = GetMutableDefault<UCk_DebugOverlay_Settings>())
+            {
+                Settings->PlateAnchor = static_cast<ECk_DebugOverlay_PlateAnchor>(
+                    (static_cast<int32>(Settings->PlateAnchor) + 1) % (static_cast<int32>(ECk_DebugOverlay_PlateAnchor::BottomRight) + 1));
+                Settings->SaveConfig();
+            }
+        })];
+    Content->AddSlot().AutoHeight()[Make_SliderRow(FText::FromString(TEXT("Plate width")), TAttribute<float>::CreateLambda([](){ return GetDefault<UCk_DebugOverlay_Settings>()->PlateWidth; }), 240.0f, 1600.0f, [](float V){ auto* S = GetMutableDefault<UCk_DebugOverlay_Settings>(); S->PlateWidth = V; S->SaveConfig(); })];
+    Content->AddSlot().AutoHeight()[Make_SliderRow(FText::FromString(TEXT("Plate height budget")), TAttribute<float>::CreateLambda([](){ return GetDefault<UCk_DebugOverlay_Settings>()->PlateMaxHeightFraction; }), 0.2f, 0.95f, [](float V){ auto* S = GetMutableDefault<UCk_DebugOverlay_Settings>(); S->PlateMaxHeightFraction = V; S->SaveConfig(); })];
+    Content->AddSlot().AutoHeight()[Make_SliderRow(FText::FromString(TEXT("Marker scale")), TAttribute<float>::CreateLambda([](){ return GetDefault<UCk_DebugOverlay_Settings>()->DiamondScale; }), 0.2f, 5.0f, [](float V){ auto* S = GetMutableDefault<UCk_DebugOverlay_Settings>(); S->DiamondScale = V; S->SaveConfig(); })];
+    Content->AddSlot().AutoHeight()[Make_SliderRow(FText::FromString(TEXT("Plate font scale")), TAttribute<float>::CreateLambda([](){ return GetDefault<UCk_DebugOverlay_Settings>()->PlateFontScale; }), 0.5f, 2.0f, [](float V){ auto* S = GetMutableDefault<UCk_DebugOverlay_Settings>(); S->PlateFontScale = V; S->SaveConfig(); })];
+    Content->AddSlot().AutoHeight()[Make_IntegerRow(FText::FromString(TEXT("Focus-card rows")), TAttribute<int32>::CreateLambda([](){ return GetDefault<UCk_DebugOverlay_Settings>()->FocusCardMaxRows; }), 1, 32, [](int32 V){ auto* S = GetMutableDefault<UCk_DebugOverlay_Settings>(); S->FocusCardMaxRows = V; S->SaveConfig(); })];
+    Content->AddSlot().AutoHeight()[Make_IntegerRow(FText::FromString(TEXT("Rows per section")), TAttribute<int32>::CreateLambda([](){ return GetDefault<UCk_DebugOverlay_Settings>()->FocusCardMaxRowsPerSection; }), 1, 16, [](int32 V){ auto* S = GetMutableDefault<UCk_DebugOverlay_Settings>(); S->FocusCardMaxRowsPerSection = V; S->SaveConfig(); })];
+    Content->AddSlot().AutoHeight()[Make_IntegerRow(FText::FromString(TEXT("State name depth")), TAttribute<int32>::CreateLambda([](){ return GetDefault<UCk_DebugOverlay_Settings>()->SmStateNameDepth; }), 0, 8, [](int32 V){ auto* S = GetMutableDefault<UCk_DebugOverlay_Settings>(); S->SmStateNameDepth = V; S->SaveConfig(); })];
+    Content->AddSlot().AutoHeight()[Make_IntegerRow(FText::FromString(TEXT("State recursion depth")), TAttribute<int32>::CreateLambda([](){ return GetDefault<UCk_DebugOverlay_Settings>()->SmMaxRecursionDepth; }), 0, 8, [](int32 V){ auto* S = GetMutableDefault<UCk_DebugOverlay_Settings>(); S->SmMaxRecursionDepth = V; S->SaveConfig(); })];
+    Content->AddSlot().AutoHeight()[Make_ToggleRow(FText::FromString(TEXT("Show key hints")), TAttribute<bool>::CreateLambda([](){ return GetDefault<UCk_DebugOverlay_Settings>()->ShowKeyHints; }), [](bool V){ auto* S = GetMutableDefault<UCk_DebugOverlay_Settings>(); S->ShowKeyHints = V; S->SaveConfig(); })];
+    Content->AddSlot().AutoHeight()[Make_ToggleRow(FText::FromString(TEXT("Distance LOD")), TAttribute<bool>::CreateLambda([](){ return GetDefault<UCk_DebugOverlay_Settings>()->bEnableFocusCardDistanceLod; }), [](bool V){ auto* S = GetMutableDefault<UCk_DebugOverlay_Settings>(); S->bEnableFocusCardDistanceLod = V; S->SaveConfig(); })];
+    return Make_Section(FText::FromString(TEXT("Overlay")), Content);
+}
+
+auto SCkDebugOverlay_SelectionPanel::Build_AttributesSection() -> TSharedRef<SWidget>
+{
+    auto Content = SNew(SVerticalBox);
+    Content->AddSlot().AutoHeight()
+    [
+        SNew(SEditableTextBox)
+        .HintText(FText::FromString(TEXT("patterns, comma-separated")))
+        .Text_Lambda([]()
+        {
+            const auto* Settings = GetDefault<UCk_DebugOverlay_Settings>();
+            return FText::FromString(Settings != nullptr
+                ? FString::Join(Settings->AttributeFilterPatterns, TEXT(", "))
+                : FString{});
+        })
+        .OnTextCommitted_Lambda([](const FText& InText, ETextCommit::Type)
+        {
+            auto* Settings = GetMutableDefault<UCk_DebugOverlay_Settings>();
+            if (Settings == nullptr)
+            { return; }
+            auto Patterns = TArray<FString>{};
+            InText.ToString().ParseIntoArray(Patterns, TEXT(","));
+            for (auto& Pattern : Patterns)
+            { Pattern.TrimStartAndEndInline(); }
+            Patterns.RemoveAll([](const FString& Pattern) { return Pattern.IsEmpty(); });
+            Settings->AttributeFilterPatterns = MoveTemp(Patterns);
+            Settings->SaveConfig();
+        })
+    ];
+    Content->AddSlot().AutoHeight()[Make_ToggleRow(FText::FromString(TEXT("Exclude listed attributes")),
+        TAttribute<bool>::CreateLambda([](){ return GetDefault<UCk_DebugOverlay_Settings>()->bAttributeFilterIsExclusion; }),
+        [](bool bExclude)
+        {
+            auto* Settings = GetMutableDefault<UCk_DebugOverlay_Settings>();
+            Settings->bAttributeFilterIsExclusion = bExclude;
+            Settings->SaveConfig();
+        })];
+    return Make_Section(FText::FromString(TEXT("Overlay attributes")), Content);
+}
+
+auto SCkDebugOverlay_SelectionPanel::Build_WorldTagsSection() -> TSharedRef<SWidget>
+{
+    auto Content = SNew(SVerticalBox);
+    const auto AddSetting = [this, &Content](const TCHAR* Label, const TAttribute<float>& Value, float Min, float Max, TFunction<void(float)> OnChanged)
+    { Content->AddSlot().AutoHeight()[Make_SliderRow(FText::FromString(Label), Value, Min, Max, MoveTemp(OnChanged))]; };
+    AddSetting(TEXT("Near distance"), TAttribute<float>::CreateLambda([](){ return GetDefault<UCk_DebugOverlay_Settings>()->NearDist; }), 0.0f, 5000.0f, [](float V){ auto* S=GetMutableDefault<UCk_DebugOverlay_Settings>(); S->NearDist=V; S->SaveConfig(); });
+    AddSetting(TEXT("Far distance"), TAttribute<float>::CreateLambda([](){ return GetDefault<UCk_DebugOverlay_Settings>()->FarDist; }), 0.0f, 20000.0f, [](float V){ auto* S=GetMutableDefault<UCk_DebugOverlay_Settings>(); S->FarDist=V; S->SaveConfig(); });
+    AddSetting(TEXT("Minimum scale"), TAttribute<float>::CreateLambda([](){ return GetDefault<UCk_DebugOverlay_Settings>()->MinScale; }), 0.1f, 1.0f, [](float V){ auto* S=GetMutableDefault<UCk_DebugOverlay_Settings>(); S->MinScale=V; S->SaveConfig(); });
+    AddSetting(TEXT("Maximum distance"), TAttribute<float>::CreateLambda([](){ return GetDefault<UCk_DebugOverlay_Settings>()->MaxDist; }), 0.0f, 50000.0f, [](float V){ auto* S=GetMutableDefault<UCk_DebugOverlay_Settings>(); S->MaxDist=V; S->SaveConfig(); });
+    AddSetting(TEXT("Marker maximum distance"), TAttribute<float>::CreateLambda([](){ return GetDefault<UCk_DebugOverlay_Settings>()->MarkerMaxDist; }), 0.0f, 50000.0f, [](float V){ auto* S=GetMutableDefault<UCk_DebugOverlay_Settings>(); S->MarkerMaxDist=V; S->SaveConfig(); });
+    return Make_Section(FText::FromString(TEXT("World tags")), Content);
+}
+
 auto SCkDebugOverlay_SelectionPanel::Build_InputSection() -> TSharedRef<SWidget>
 {
     auto Content = SNew(SVerticalBox);
-    for (const auto Binding : { FName(TEXT("Select")), FName(TEXT("Previous")), FName(TEXT("Next")), FName(TEXT("Family")), FName(TEXT("Settings")) })
+    for (const auto Binding : { FName(TEXT("Activate overlay")), FName(TEXT("Select")), FName(TEXT("Previous")), FName(TEXT("Next")), FName(TEXT("Family")), FName(TEXT("Settings")), FName(TEXT("Settings alternate")) })
     {
         Content->AddSlot().AutoHeight()[Make_CycleRow(FText::FromName(Binding), TAttribute<FText>::CreateLambda([this, Binding](){ return Get_BindingText(Binding); }), [this, Binding](){ Begin_BindingCapture(Binding); })];
     }
@@ -240,6 +367,22 @@ auto SCkDebugOverlay_SelectionPanel::Build_InputSection() -> TSharedRef<SWidget>
             { return; }
             auto* Input = GetMutableDefault<UCk_DebugOverlay_InputSettings>();
             Input->HoldSelectSeconds = FMath::Clamp(InSeconds, 0.05f, 3.0f);
+            Input->SaveConfig();
+        })];
+    Content->AddSlot().AutoHeight()[Make_SliderRow(FText::FromString(TEXT("Double-tap window (seconds)")),
+        TAttribute<float>::CreateLambda([](){ return GetDefault<UCk_DebugOverlay_InputSettings>()->LockDoubleTapWindowSeconds; }),
+        0.05f, 1.0f, [](float InSeconds)
+        {
+            auto* Input = GetMutableDefault<UCk_DebugOverlay_InputSettings>();
+            Input->LockDoubleTapWindowSeconds = FMath::Clamp(InSeconds, 0.05f, 1.0f);
+            Input->SaveConfig();
+        })];
+    Content->AddSlot().AutoHeight()[Make_SliderRow(FText::FromString(TEXT("Co-located screen radius")),
+        TAttribute<float>::CreateLambda([](){ return GetDefault<UCk_DebugOverlay_InputSettings>()->CoLocatedScreenRadius; }),
+        4.0f, 256.0f, [](float InRadius)
+        {
+            auto* Input = GetMutableDefault<UCk_DebugOverlay_InputSettings>();
+            Input->CoLocatedScreenRadius = FMath::Clamp(InRadius, 4.0f, 256.0f);
             Input->SaveConfig();
         })];
     Content->AddSlot().AutoHeight().Padding(0.0f, CkStyle::SpaceXS)[SNew(SHorizontalBox)
@@ -321,22 +464,25 @@ auto SCkDebugOverlay_SelectionPanel::Set_Binding(FName InBinding, const FKey& In
     { _PanelError = TEXT("Use a keyboard key other than semicolon; mouse and wheel bindings are not supported."); return; }
     const auto Duplicate = [&InBinding, &InKey, Input]()
     {
-        const auto OtherUnmodified = (InBinding != TEXT("Select") && Input->SelectKey == InKey) ||
+        const auto IsSelectionBinding = InBinding == TEXT("Select") || InBinding == TEXT("Previous") ||
+            InBinding == TEXT("Next") || InBinding == TEXT("Family");
+        const auto OtherUnmodified = IsSelectionBinding && ((InBinding != TEXT("Select") && Input->SelectKey == InKey) ||
             (InBinding != TEXT("Previous") && Input->PreviousKey == InKey) ||
             (InBinding != TEXT("Next") && Input->NextKey == InKey) ||
-            (InBinding != TEXT("Family") && Input->FamilyKey == InKey);
-        const auto SettingsCollision = InBinding != TEXT("Settings") && !Input->SettingsRequireControl && Input->SettingsKey == InKey;
-        const auto UnmodifiedSettings = InBinding == TEXT("Settings") && !Input->SettingsRequireControl &&
-            (Input->SelectKey == InKey || Input->PreviousKey == InKey || Input->NextKey == InKey || Input->FamilyKey == InKey);
-        return OtherUnmodified || SettingsCollision || UnmodifiedSettings;
+            (InBinding != TEXT("Family") && Input->FamilyKey == InKey));
+        const auto SettingsChordCollision = InBinding == TEXT("Settings") && Input->OpenSettingsKey == InKey;
+        const auto AlternateSettingsChordCollision = InBinding == TEXT("Settings alternate") && Input->SettingsKey == InKey;
+        return OtherUnmodified || SettingsChordCollision || AlternateSettingsChordCollision;
     }();
     if (Duplicate)
-    { _PanelError = TEXT("Selection bindings must be unique. Ctrl+Settings is the only allowed overlap."); return; }
-    if (InBinding == TEXT("Select")) { Input->SelectKey = InKey; }
+    { _PanelError = TEXT("Selection bindings must be unique. Shift+Settings may share the Select key."); return; }
+    if (InBinding == TEXT("Activate overlay")) { Input->ActivateOverlayKey = InKey; }
+    else if (InBinding == TEXT("Select")) { Input->SelectKey = InKey; }
     else if (InBinding == TEXT("Previous")) { Input->PreviousKey = InKey; }
     else if (InBinding == TEXT("Next")) { Input->NextKey = InKey; }
     else if (InBinding == TEXT("Family")) { Input->FamilyKey = InKey; }
     else if (InBinding == TEXT("Settings")) { Input->SettingsKey = InKey; }
+    else if (InBinding == TEXT("Settings alternate")) { Input->OpenSettingsKey = InKey; }
     else { _PanelError = TEXT("Unknown selection binding."); return; }
     _PanelError.Reset();
     Input->SaveConfig();
@@ -349,8 +495,8 @@ auto SCkDebugOverlay_SelectionPanel::Get_BindingText(FName InBinding) const -> F
     const auto* Input = GetDefault<UCk_DebugOverlay_InputSettings>();
     if (Input == nullptr)
     { return FText::FromString(TEXT("Unavailable")); }
-    const auto Key = InBinding == TEXT("Select") ? Input->SelectKey : InBinding == TEXT("Previous") ? Input->PreviousKey : InBinding == TEXT("Next") ? Input->NextKey : InBinding == TEXT("Family") ? Input->FamilyKey : Input->SettingsKey;
-    const auto Prefix = InBinding == TEXT("Settings") && Input->SettingsRequireControl ? TEXT("Ctrl+") : TEXT("");
+    const auto Key = InBinding == TEXT("Activate overlay") ? Input->ActivateOverlayKey : InBinding == TEXT("Select") ? Input->SelectKey : InBinding == TEXT("Previous") ? Input->PreviousKey : InBinding == TEXT("Next") ? Input->NextKey : InBinding == TEXT("Family") ? Input->FamilyKey : InBinding == TEXT("Settings") ? Input->SettingsKey : Input->OpenSettingsKey;
+    const auto Prefix = (InBinding == TEXT("Settings") || InBinding == TEXT("Settings alternate")) && Input->SettingsRequireShift ? TEXT("Shift+") : TEXT("");
     return FText::FromString(FString{Prefix} + Key.GetDisplayName().ToString());
 }
 
@@ -367,8 +513,13 @@ auto SCkDebugOverlay_SelectionPanel::OnPreviewKeyDown(const FGeometry&, const FK
         return FReply::Handled();
     }
     const auto* Input = GetDefault<UCk_DebugOverlay_InputSettings>();
-    const auto SettingsClose = Input != nullptr && Input->SettingsRequireControl && InKeyEvent.IsControlDown() &&
-        !InKeyEvent.IsAltDown() && !InKeyEvent.IsShiftDown() && !InKeyEvent.IsCommandDown() && Key == Input->SettingsKey;
+    const auto bUnmodified = !InKeyEvent.IsControlDown() && !InKeyEvent.IsAltDown() &&
+        !InKeyEvent.IsShiftDown() && !InKeyEvent.IsCommandDown();
+    const auto bShiftOnly = !InKeyEvent.IsControlDown() && !InKeyEvent.IsAltDown() &&
+        InKeyEvent.IsShiftDown() && !InKeyEvent.IsCommandDown();
+    const auto SettingsClose = Input != nullptr &&
+        (Input->SettingsRequireShift ? bShiftOnly : bUnmodified) &&
+        (Key == Input->SettingsKey || Key == Input->OpenSettingsKey);
     if (SettingsClose)
     { _BindingToCapture = NAME_None; _OnClose.ExecuteIfBound(); return FReply::Handled(); }
     return FReply::Unhandled();
@@ -384,8 +535,13 @@ auto SCkDebugOverlay_SelectionPanel::OnKeyDown(const FGeometry& InGeometry, cons
         return FReply::Handled();
     }
     const auto* Input = GetDefault<UCk_DebugOverlay_InputSettings>();
-    const auto SettingsClose = Input != nullptr && Input->SettingsRequireControl && InKeyEvent.IsControlDown() &&
-        !InKeyEvent.IsAltDown() && !InKeyEvent.IsShiftDown() && !InKeyEvent.IsCommandDown() && Key == Input->SettingsKey;
+    const auto bUnmodified = !InKeyEvent.IsControlDown() && !InKeyEvent.IsAltDown() &&
+        !InKeyEvent.IsShiftDown() && !InKeyEvent.IsCommandDown();
+    const auto bShiftOnly = !InKeyEvent.IsControlDown() && !InKeyEvent.IsAltDown() &&
+        InKeyEvent.IsShiftDown() && !InKeyEvent.IsCommandDown();
+    const auto SettingsClose = Input != nullptr &&
+        (Input->SettingsRequireShift ? bShiftOnly : bUnmodified) &&
+        (Key == Input->SettingsKey || Key == Input->OpenSettingsKey);
     if (SettingsClose)
     { _BindingToCapture = NAME_None; _OnClose.ExecuteIfBound(); return FReply::Handled(); }
     if (_BindingToCapture.IsNone())

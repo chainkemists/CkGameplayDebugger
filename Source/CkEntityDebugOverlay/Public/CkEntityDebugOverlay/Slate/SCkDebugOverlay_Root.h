@@ -2,6 +2,8 @@
 
 #include "Widgets/SCompoundWidget.h"
 #include "Containers/Array.h"
+#include "Containers/Map.h"
+#include "Containers/Set.h"
 #include "Math/Vector2D.h"
 
 #include "CkEntityDebugOverlay/Slate/SCkDebugOverlay_WorldTag.h"
@@ -71,10 +73,17 @@ public:
         bool           bShowFull,
         bool           bVisible) -> void;
 
-    // Rebuilds the canvas: one SCkDebugOverlay_WorldTag per entry.
+    // Rebuilds the canvas: one SCkDebugOverlay_WorldTag per visible/fading entry.
     // Each entry carries a screen position (absolute viewport pixels, top-left origin),
-    // label text, and distance-driven scale + opacity (B1).
-    auto Update_WorldTags(const TArray<FCk_DebugOverlay_WorldTagInfo>& InTags) -> void;
+    // label text, distance-driven scale, and in-range state. Opacity is retained here as
+    // generation-safe value-only state so boundary crossings reverse without snapping.
+    auto Update_WorldTags(
+        const TArray<FCk_DebugOverlay_WorldTagInfo>& InTags,
+        double                                      InNow) -> void;
+
+    // Full entity ids currently occupying the 16-tag presentation budget. Callers feed these
+    // back into the presenter so an exiting tag remains available until its fade reaches zero.
+    auto Get_AdmittedWorldTagKeys() const -> TSet<uint32>;
 
     // Re-anchors / resizes the focus card. Cheap no-op when unchanged; rebuilds the
     // slot tree (re-using the existing child widgets) when anchor, width, or the
@@ -101,6 +110,7 @@ private:
 private:
     TSharedPtr<SCkDebugOverlay_FocusCard> _FocusCard;
     TSharedPtr<SConstraintCanvas>         _TagCanvas;
+    TMap<uint32, ck_debugoverlay::FWorldTagVisibilityFadeState> _WorldTagFadeStates;
 
     // Vertical strip holding the primary card + one card per pinned entity.
     TSharedPtr<SVerticalBox>                            _CardStrip;

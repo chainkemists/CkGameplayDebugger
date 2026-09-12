@@ -295,7 +295,46 @@ bool FCkDebugOverlay_SelectionSession_Test::RunTest(const FString&)
         PickAimCandidate({FamilyTieB, FamilyTieA}, Config, true), uint32{8});
     TestEqual(TEXT("empty aim list fails closed"), PickAimCandidate({}, Config, true), InvalidEntityId);
 
-    const auto RelativeOrder = TArray<uint32>{10, 20, 30, 40, 50};
+    auto FarLeft = FCandidateSelection{};
+    FarLeft.Id = 10;
+    FarLeft.ScreenPos = FVector2D{0.0, 100.0};
+    FarLeft.IsOnScreen = true;
+    auto NearLeft = FCandidateSelection{};
+    NearLeft.Id = 20;
+    NearLeft.ScreenPos = FVector2D{90.0, 100.0};
+    NearLeft.IsOnScreen = true;
+    auto Selected = FCandidateSelection{};
+    Selected.Id = 30;
+    Selected.ScreenPos = FVector2D{100.0, 100.0};
+    Selected.IsOnScreen = true;
+    auto NearRight = FCandidateSelection{};
+    NearRight.Id = 40;
+    NearRight.ScreenPos = FVector2D{110.0, 100.0};
+    NearRight.IsOnScreen = true;
+    auto FarRight = FCandidateSelection{};
+    FarRight.Id = 50;
+    FarRight.ScreenPos = FVector2D{200.0, 100.0};
+    FarRight.IsOnScreen = true;
+    auto HiddenNearLeft = FCandidateSelection{};
+    HiddenNearLeft.Id = 15;
+    HiddenNearLeft.ScreenPos = FVector2D{95.0, 100.0};
+    const auto RelativeOrder = BuildSpatialOrder(
+        {FarRight, NearLeft, HiddenNearLeft, Selected, FarLeft, NearRight}, 30, InvalidEntityId);
+    TestTrue(TEXT("spatial order places nearest screen neighbors beside selection"),
+        RelativeOrder == TArray<uint32>{10, 20, 30, 40, 50});
+    TestFalse(TEXT("off-screen candidates do not distort visible badge steps"), RelativeOrder.Contains(15));
+    auto CoLocatedBefore = Selected;
+    CoLocatedBefore.Id = 29;
+    auto CoLocatedAfter = Selected;
+    CoLocatedAfter.Id = 31;
+    TestTrue(TEXT("co-located candidates use deterministic IDs around selection"),
+        BuildSpatialOrder({CoLocatedAfter, Selected, CoLocatedBefore}, 30, InvalidEntityId) ==
+            TArray<uint32>{29, 30, 31});
+    auto MalformedScreenPosition = Selected;
+    MalformedScreenPosition.Id = 60;
+    MalformedScreenPosition.ScreenPos.X = std::numeric_limits<double>::quiet_NaN();
+    TestFalse(TEXT("nonfinite projected candidates fail closed"),
+        BuildSpatialOrder({Selected, MalformedScreenPosition}, 30, InvalidEntityId).Contains(60));
     const auto Relative = BuildRelativeLabels(RelativeOrder, 30, InvalidEntityId);
     TestEqual(TEXT("relative selected entity is zero"), Relative.FindRef(30), FString{TEXT("0")});
     TestEqual(TEXT("relative next is plus one"), Relative.FindRef(40), FString{TEXT("+1")});
@@ -304,17 +343,15 @@ bool FCkDebugOverlay_SelectionSession_Test::RunTest(const FString&)
     TestEqual(TEXT("relative second previous is minus two"), Relative.FindRef(10), FString{TEXT("-2")});
     const auto ShiftedRelative = BuildRelativeLabels(RelativeOrder, 50, InvalidEntityId);
     TestEqual(TEXT("moving selection updates relative zero"), ShiftedRelative.FindRef(50), FString{TEXT("0")});
-    TestEqual(TEXT("relative next wraps"), ShiftedRelative.FindRef(10), FString{TEXT("+1")});
-    TestEqual(TEXT("relative previous wraps"), BuildRelativeLabels(RelativeOrder, 10, InvalidEntityId).FindRef(50), FString{TEXT("-1")});
-    TestEqual(TEXT("even-cycle opposite has equal forward/backward distance"),
-        BuildRelativeLabels({10, 20, 30, 40}, 10, InvalidEntityId).FindRef(30), FString{TEXT("±2")});
-    TestEqual(TEXT("two-entity neighbor is next and previous"),
-        BuildRelativeLabels({10, 20}, 10, InvalidEntityId).FindRef(20), FString{TEXT("±1")});
+    TestEqual(TEXT("right-edge selection keeps every left candidate negative"),
+        ShiftedRelative.FindRef(10), FString{TEXT("-4")});
+    TestEqual(TEXT("left-edge selection keeps every right candidate positive"),
+        BuildRelativeLabels(RelativeOrder, 10, InvalidEntityId).FindRef(50), FString{TEXT("+4")});
     TestEqual(TEXT("hidden selected child is relative to visible root"),
         BuildRelativeLabels(RelativeOrder, 99, 30).FindRef(30), FString{TEXT("0")});
     const auto UnselectedRelative = BuildRelativeLabels(RelativeOrder, InvalidEntityId, InvalidEntityId);
     TestEqual(TEXT("without focus first candidate matches Next"), UnselectedRelative.FindRef(10), FString{TEXT("+1")});
-    TestEqual(TEXT("without focus last candidate matches Previous"), UnselectedRelative.FindRef(50), FString{TEXT("-1")});
+    TestEqual(TEXT("without focus labels follow deterministic screen order"), UnselectedRelative.FindRef(50), FString{TEXT("+5")});
     TestTrue(TEXT("empty relative order is safe"), BuildRelativeLabels({}, 10, 10).IsEmpty());
     TestEqual(TEXT("relative labels discard invalid and duplicate entries"),
         BuildRelativeLabels({10, 10, InvalidEntityId}, 10, 10).Num(), 1);
@@ -323,6 +360,8 @@ bool FCkDebugOverlay_SelectionSession_Test::RunTest(const FString&)
     const auto Valid = TSet<uint32>{0, 2, 3};
     TestEqual(TEXT("cycle skips removed frozen gap"), Cycle(Ordered, Valid, 0, InvalidEntityId, 1), uint32{2});
     TestEqual(TEXT("cycle re-enters from hidden selected child root"), Cycle(Ordered, Valid, 99, 2, 1), uint32{3});
+    TestEqual(TEXT("next stops at the right edge"), Cycle(Ordered, Valid, 3, InvalidEntityId, 1), InvalidEntityId);
+    TestEqual(TEXT("previous stops at the left edge"), Cycle(Ordered, Valid, 0, InvalidEntityId, -1), InvalidEntityId);
     TestEqual(TEXT("cycle empty valid set fails closed"), Cycle(Ordered, {}, 0, 0, 1), InvalidEntityId);
     return true;
 }

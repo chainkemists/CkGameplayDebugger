@@ -21,6 +21,14 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCkDebugOverlay_SelectionSettingsRejectsInvalid
 
 bool FCkDebugOverlay_SelectionSettingsRejectsInvalid_Test::RunTest(const FString&)
 {
+    const auto Defaults = FCk_DebugOverlay_SelectionConfig{};
+    TestEqual(TEXT("default root anchoring matches the accepted live setting"), Defaults.RootAnchor,
+        ECk_DebugOverlay_SelectionRootAnchor::Root);
+    TestEqual(TEXT("default view bias matches the accepted live setting"), Defaults.ViewBias, 0.90f);
+    TestEqual(TEXT("default cone matches the accepted live setting"), Defaults.ConeHalfAngle, 7.0f);
+    TestEqual(TEXT("default family interaction matches the accepted live setting"), Defaults.Family,
+        ECk_DebugOverlay_SelectionFamily::Toggle);
+
     auto* Settings = NewObject<UCk_DebugOverlay_SelectionSettings>();
     TestNotNull(TEXT("transient selection settings are constructed"), Settings);
     if (Settings == nullptr)

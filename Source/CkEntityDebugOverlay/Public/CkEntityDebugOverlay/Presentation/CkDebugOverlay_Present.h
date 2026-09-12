@@ -114,7 +114,7 @@ namespace ck_debugoverlay
         const FCk_DebugOverlay_Layout&                       InLayout) -> TArray<FCk_DebugOverlay_WorldTagBadge>;
 
     // Build distance-scaled world tags / near-plates for the on-screen candidates
-    // (B1 — scale/fade/cull + near-plate badges). Returns
+    // (B1 — scale + range-transition state + near-plate badges). Returns
     // empty when InPC is null or InIsEjected (PC projection reflects a frozen camera).
     // Callers must have set FCandidate::bIsOnScreen on each candidate.
     // Build Slate world-tag plates for the on-screen candidates. ScreenPos is in DPI-scaled
@@ -130,7 +130,8 @@ namespace ck_debugoverlay
         APlayerController*                                   InPC,
         bool                                                 InIsEjected,
         float                                                InDpiScale    = 1.0f,
-        const FCk_Handle&                                    InFocusEntity = FCk_Handle{}) -> TArray<FCk_DebugOverlay_WorldTagInfo>;
+        const FCk_Handle&                                    InFocusEntity = FCk_Handle{},
+        const TSet<uint32>*                                  InRetainedEntityKeys = nullptr) -> TArray<FCk_DebugOverlay_WorldTagInfo>;
 
     // Resolve a layout by index from settings (index clamped to range). Null when no
     // layouts are configured.

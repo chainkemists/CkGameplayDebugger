@@ -41,8 +41,6 @@ namespace
     }
 }
 
-// ====================================================================================================================
-
 auto
     ck_debugoverlay::
     Build_EntityModel(
@@ -558,7 +556,8 @@ auto
         APlayerController*                                   InPC,
         bool                                                 InIsEjected,
         float                                                InDpiScale,
-        const FCk_Handle&                                    InFocusEntity)
+        const FCk_Handle&                                    InFocusEntity,
+        const TSet<uint32>*                                  InRetainedEntityKeys)
     -> TArray<FCk_DebugOverlay_WorldTagInfo>
 {
     auto WorldTags = TArray<FCk_DebugOverlay_WorldTagInfo>{};
@@ -570,12 +569,12 @@ auto
 
     const auto* Settings = GetDefault<UCk_DebugOverlay_Settings>();
 
-    const auto MaxDist       = Settings ? Settings->MaxDist       : 5000.0f;
-    const auto NearDist      = Settings ? Settings->NearDist      : 600.0f;
-    const auto FarDist       = Settings ? Settings->FarDist       : 4000.0f;
-    const auto MinScale      = Settings ? Settings->MinScale      : 0.5f;
-    const auto FadeStartDist = Settings ? Settings->FadeStartDist : 3000.0f;
-    const auto MaxNameChars  = Settings ? Settings->MaxWorldTagNameChars : 24;
+    const auto NearDist = Settings ? Settings->NearDist : 600.0f;
+    const auto FarDist = Settings ? Settings->FarDist : 4000.0f;
+    const auto MinScale = Settings ? Settings->MinScale : 0.5f;
+    const auto MaxDist = Settings && FMath::IsFinite(Settings->MaxDist)
+        ? FMath::Max(0.0f, Settings->MaxDist) : 5000.0f;
+    const auto MaxNameChars = Settings ? Settings->MaxWorldTagNameChars : 24;
 
     auto CamLoc = FVector::ZeroVector;
     {
@@ -585,23 +584,37 @@ auto
 
     const auto NearPlatesEnabled = CVar_DebugOverlay_NearPlates.GetValueOnGameThread() != 0;
 
+    if (InHandles.Num() != InCandidates.Num())
+    { return WorldTags; }
+
+    auto NewInRangeCount = int32{ 0 };
     for (auto CandIdx = 0; CandIdx < InCandidates.Num(); ++CandIdx)
     {
         if (NOT InCandidates[CandIdx].bIsOnScreen)
         { continue; }
 
         const auto& Handle = InHandles[CandIdx];
-
-        const auto Dist = static_cast<float>(
-            FVector::Dist(CamLoc, InCandidates[CandIdx].WorldLocation));
-        if (Dist > MaxDist)
+        if (ck::Is_NOT_Valid(Handle))
         { continue; }
 
+        const auto EntityKey = static_cast<uint32>(Handle.Get_Entity().Get_ID());
+        const auto Dist = static_cast<float>(
+            FVector::Dist(CamLoc, InCandidates[CandIdx].WorldLocation));
+        if (NOT FMath::IsFinite(Dist))
+        { continue; }
+
+        const auto IsInRange = Dist <= MaxDist;
+        const auto WasRetained = InRetainedEntityKeys != nullptr &&
+            InRetainedEntityKeys->Contains(EntityKey);
+        if ((NOT IsInRange && NOT WasRetained) ||
+            (IsInRange && NOT WasRetained &&
+             NewInRangeCount >= WorldTagPresentationBudget))
+        { continue; }
         auto Badges = Build_WorldTagBadges(Handle, InProviders, InLayout);
 
         const auto IsNearPlate = NearPlatesEnabled && Dist <= NearDist;
 
-        const auto DebugName   = UCk_Utils_Handle_UE::Get_DebugName(Handle);
+        const auto DebugName = UCk_Utils_Handle_UE::Get_DebugName(Handle);
         const auto HasRealName = DebugName.IsNone() == false;
 
         // Near plates show when the entity has feature badges OR an explicit name. Far plates
@@ -624,19 +637,16 @@ auto
             FVector2D{ NearDist, FarDist },
             FVector2D{ 1.0f, MinScale },
             Dist);
-        const auto Opacity = FMath::GetMappedRangeValueClamped(
-            FVector2D{ FadeStartDist, MaxDist },
-            FVector2D{ 1.0f, 0.15f },
-            Dist);
 
-        auto TagInfo      = FCk_DebugOverlay_WorldTagInfo{};
+        auto TagInfo = FCk_DebugOverlay_WorldTagInfo{};
+        TagInfo.EntityKey = EntityKey;
         // ProjectWorldToScreen returns raw viewport pixels; a viewport Slate overlay positions
         // children in DPI-scaled units, so divide by the DPI scale to land on the marker.
         TagInfo.ScreenPos = ScreenPos / InDpiScale;
-        TagInfo.Scale     = Scale;
-        TagInfo.Opacity   = Opacity;
-        TagInfo.Distance  = Dist;
-        TagInfo.bIsFocus  = ck::IsValid(InFocusEntity) && Handle == InFocusEntity;
+        TagInfo.Scale = Scale;
+        TagInfo.Distance = Dist;
+        TagInfo.bInRange = IsInRange;
+        TagInfo.bIsFocus = ck::IsValid(InFocusEntity) && Handle == InFocusEntity;
 
         if (IsNearPlate)
         {
@@ -660,8 +670,8 @@ auto
             }
 
             TagInfo.bIsPlate = true;
-            TagInfo.Header   = FText::FromString(Header);
-            TagInfo.Badges   = MoveTemp(Badges);
+            TagInfo.Header = FText::FromString(Header);
+            TagInfo.Badges = MoveTemp(Badges);
         }
         else
         {
@@ -671,10 +681,8 @@ auto
         }
 
         WorldTags.Add(MoveTemp(TagInfo));
-
-        // Hard cap to avoid clutter in dense scenes (e.g. crowds).
-        if (WorldTags.Num() >= 16)
-        { break; }
+        if (IsInRange && NOT WasRetained)
+        { ++NewInRangeCount; }
     }
 
     return WorldTags;

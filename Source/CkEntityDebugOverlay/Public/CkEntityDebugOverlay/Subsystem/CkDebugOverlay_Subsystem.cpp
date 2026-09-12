@@ -111,19 +111,19 @@ auto
             TEXT("Refresh candidates and select the best target."),
             FConsoleCommandDelegate::CreateUObject(this, &UCk_DebugOverlay_Subsystem::DoCmd_Select));
         _Cmd_Settings = MakeUnique<FAutoConsoleCommand>(TEXT("ck.DebugOverlay.Settings"),
-            TEXT("Open/close runtime Selection settings."),
+            TEXT("Open/close runtime Overlay settings."),
             FConsoleCommandDelegate::CreateUObject(this, &UCk_DebugOverlay_Subsystem::DoCmd_Settings));
         _Cmd_Family = MakeUnique<FAutoConsoleCommand>(TEXT("ck.DebugOverlay.Family"),
             TEXT("Toggle the selected family."),
             FConsoleCommandDelegate::CreateUObject(this, &UCk_DebugOverlay_Subsystem::DoCmd_Family));
         _Cmd_Next = MakeUnique<FAutoConsoleCommand>(
             TEXT("ck.DebugOverlay.Next"),
-            TEXT("Cycle to the next numbered candidate until the aim target changes."),
+            TEXT("Select the next screen-right numbered candidate until the aim target changes."),
             FConsoleCommandDelegate::CreateUObject(this, &UCk_DebugOverlay_Subsystem::DoCmd_Next));
 
         _Cmd_Prev = MakeUnique<FAutoConsoleCommand>(
             TEXT("ck.DebugOverlay.Prev"),
-            TEXT("Cycle to the previous numbered candidate until the aim target changes."),
+            TEXT("Select the previous screen-left numbered candidate until the aim target changes."),
             FConsoleCommandDelegate::CreateUObject(this, &UCk_DebugOverlay_Subsystem::DoCmd_Prev));
 
         _Cmd_Lock = MakeUnique<FAutoConsoleCommand>(
@@ -161,6 +161,8 @@ auto
     {
         ck::debug_overlay::Log(TEXT("UCk_DebugOverlay_Subsystem: secondary instance — console commands owned by primary"));
     }
+
+    Register_InputProcessor();
 
     _SelectionSessionInvalidated = ck::DebugSessionLifecycle::Get_OnSessionInvalidated().AddUObject(
         this, &UCk_DebugOverlay_Subsystem::DoDeactivate);
@@ -213,6 +215,12 @@ auto
     -> void
 {
     DoDeactivate();
+    if (_InputProcessor.IsValid())
+    {
+        if (FSlateApplication::IsInitialized())
+        { FSlateApplication::Get().UnregisterInputPreProcessor(_InputProcessor); }
+        _InputProcessor.Reset();
+    }
     ck::DebugSessionLifecycle::Get_OnSessionInvalidated().Remove(_SelectionSessionInvalidated);
     ck::DebugSessionLifecycle::Get_OnWorldInvalidated().Remove(_SelectionWorldInvalidated);
     _Cmd_Select.Reset();
@@ -251,6 +259,7 @@ auto
 {
     Super::PlayerControllerChanged(InNewPlayerController);
     Reset_SelectionSession();
+    Register_InputProcessor();
 
     // The master cvar is a process-global static that SURVIVES PIE restarts, but this
     // subsystem is per-LocalPlayer and recreated each session — with the cvar already
@@ -264,6 +273,51 @@ auto
     {
         DoActivate();   // no-op when already active
     }
+}
+
+auto UCk_DebugOverlay_Subsystem::Register_InputProcessor() -> void
+{
+    if (NOT _bIsPrimaryConsoleOwner || _InputProcessor.IsValid() || NOT FSlateApplication::IsInitialized())
+    { return; }
+
+    const auto WeakSubsystem = TWeakObjectPtr<UCk_DebugOverlay_Subsystem>(this);
+    _InputProcessor = MakeShared<FCkDebugOverlay_InputProcessor>(
+        [WeakSubsystem]()
+        {
+            const auto* Subsystem = WeakSubsystem.Get();
+            return Subsystem != nullptr && Subsystem->CanHandle_SelectionInput();
+        },
+        [WeakSubsystem]()
+        {
+            const auto* Subsystem = WeakSubsystem.Get();
+            return Subsystem != nullptr && Subsystem->CanHandle_GlobalInput();
+        },
+        [WeakSubsystem]()
+        {
+            const auto* Subsystem = WeakSubsystem.Get();
+            return Subsystem != nullptr && Subsystem->_RootWidget.IsValid();
+        },
+        [WeakSubsystem](const ECkDebugOverlayGlobalInputAction InAction)
+        {
+            auto* Subsystem = WeakSubsystem.Get();
+            if (Subsystem == nullptr || Subsystem->_CVar_Master == nullptr)
+            { return; }
+
+            if (InAction == ECkDebugOverlayGlobalInputAction::Deactivate)
+            {
+                if (Subsystem->_CVar_Master->GetValueOnGameThread() != 0)
+                { Subsystem->_CVar_Master->AsVariable()->Set(0, ECVF_SetByConsole); }
+                Subsystem->DoDeactivate();
+                return;
+            }
+            if (Subsystem->_CVar_Master->GetValueOnGameThread() == 0)
+            { Subsystem->_CVar_Master->AsVariable()->Set(1, ECVF_SetByConsole); }
+            Subsystem->DoActivate();
+            if (InAction == ECkDebugOverlayGlobalInputAction::Settings)
+            { Subsystem->DoCmd_Settings(); }
+        });
+    _InputProcessor->SetSelectionBindings(*GetDefault<UCk_DebugOverlay_InputSettings>());
+    FSlateApplication::Get().RegisterInputPreProcessor(_InputProcessor.ToSharedRef());
 }
 
 // ====================================================================================================================
@@ -327,19 +381,11 @@ auto
     // across PIE stop/start cycles.
     _History = MakeUnique<FCk_DebugOverlay_History>();
 
-    // Global Slate input pre-processor — observes key-downs regardless of game-vs-editor
-    // viewport focus, so the double-tap gestures keep working after the user ejects (F8).
-    if (FSlateApplication::IsInitialized())
-    {
-        _InputProcessor = MakeShared<FCkDebugOverlay_InputProcessor>(
-            [WeakSubsystem = TWeakObjectPtr<UCk_DebugOverlay_Subsystem>(this)]()
-            {
-                const auto* Subsystem = WeakSubsystem.Get();
-                return Subsystem != nullptr && Subsystem->CanHandle_SelectionInput();
-            });
-        _InputProcessor->SetSelectionBindings(*GetDefault<UCk_DebugOverlay_InputSettings>());
-        FSlateApplication::Get().RegisterInputPreProcessor(_InputProcessor.ToSharedRef());
-    }
+    // The process-lifetime input pre-processor is registered before activation so plain comma
+    // can open the overlay. Refresh its live per-user bindings on every activation.
+    Register_InputProcessor();
+    if (_InputProcessor.IsValid())
+    { _InputProcessor->SetSelectionBindings(*GetDefault<UCk_DebugOverlay_InputSettings>()); }
 
     // Suppress engine on-screen debug text (AddOnScreenDebugMessage / ck::Trace — same
     // channel) while the overlay is active: the plate now owns the top-left corner and
@@ -391,12 +437,6 @@ auto
         _TickerHandle.Reset();
     }
 
-    if (_InputProcessor.IsValid())
-    {
-        if (FSlateApplication::IsInitialized())
-        { FSlateApplication::Get().UnregisterInputPreProcessor(_InputProcessor); }
-        _InputProcessor.Reset();
-    }
     _PinnedEntities.Reset();
 
     if (_RootWidget.IsValid())
@@ -856,11 +896,12 @@ auto
     DpiScale = FMath::Max(0.01f, DpiScale);
 
     const auto WorldFocus = NOT _FamilyVisible && ck::IsValid(_SelectionRoot) ? _SelectionRoot : InModel.Entity;
+    const auto RetainedWorldTagKeys = _RootWidget->Get_AdmittedWorldTagKeys();
     const auto WorldTags = ck_debugoverlay::Build_WorldTags(
         InCandidateHandles, InCandidates, InProviders, InLayout, InPC, _ViewpointIsEjected,
-        DpiScale, WorldFocus);
+        DpiScale, WorldFocus, &RetainedWorldTagKeys);
 
-    _RootWidget->Update_WorldTags(WorldTags);
+    _RootWidget->Update_WorldTags(WorldTags, InNow);
 
     // ---- Keyboard-hints strip (item 9): built from the live (per-user) key bindings ----
     if (OverlaySettings != nullptr && InputSettings != nullptr)

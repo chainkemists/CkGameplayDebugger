@@ -4,6 +4,8 @@
 #include "CkDebuggerCommon/Window/SCkDebugger_WindowBase.h"
 
 class SCkStyleLab_ControlsPane;
+class FCkUiView;
+class SBox;
 
 // --------------------------------------------------------------------------------------------------------------------
 // CK Debugger Style Lab — the iteration vehicle for the debugger-wide style axes.
@@ -26,12 +28,16 @@ public:
     SLATE_END_ARGS()
 
     auto Construct(const FArguments& InArgs) -> void;
+    virtual ~SCkStyleLabWindow();
     auto Tick(const FGeometry& InAllottedGeometry, double InCurrentTime, float InDeltaTime) -> void override;
 
     virtual auto Get_WindowId() const -> FName override { return WindowId; }
     virtual auto Get_WindowDisplayName() const -> FText override { return FText::FromString(TEXT("Style Lab")); }
+    auto Get_AuthoredShellView() const -> TSharedPtr<FCkUiView> { return _AuthoredShellView; }
 
 private:
+    auto Build_AuthoredShell() -> void;
+    auto Build_NativeShellFallback() -> TSharedRef<SWidget>;
     auto Build_MenuActions() -> TSharedRef<SWidget>;
     auto Get_StatusText() const -> FText;
     auto OnSelectionChanged() -> void;
@@ -40,6 +46,8 @@ private:
     auto Set_ShowAllTones(bool InShowAllTones) -> void;
 
     TSharedPtr<SCkStyleLab_ControlsPane> _ControlsPane;
+    TSharedPtr<SBox> _AuthoredShellHost;
+    TSharedPtr<FCkUiView> _AuthoredShellView;
 
     uint32 _LastSeenRevision = 0;
 };

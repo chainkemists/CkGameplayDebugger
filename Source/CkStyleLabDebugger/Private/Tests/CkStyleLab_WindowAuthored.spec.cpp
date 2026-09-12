@@ -5,6 +5,7 @@
 #include "CkDebuggerCommon/Settings/CkDebuggerStyleSettings.h"
 #include "CkDebuggerCommon/Styles/CkDebuggerAxes.h"
 #include "CkDebuggerCommon/Window/SCkDebug_WindowChrome.h"
+#include "CkSlateLayout/SCkUiSurface.h"
 
 #include "Framework/Application/SlateApplication.h"
 #include "HAL/FileManager.h"
@@ -13,6 +14,7 @@
 #include "Misc/AutomationTest.h"
 #include "Misc/Paths.h"
 #include "Misc/ScopeExit.h"
+#include "Interfaces/IPluginManager.h"
 #include "Widgets/Input/SCheckBox.h"
 #include "Widgets/Layout/SScrollBox.h"
 #include "Widgets/SWindow.h"
@@ -83,6 +85,19 @@ namespace ck_style_lab_window_authored_tests
         return {};
     }
 
+    auto FindTaggedWidget(const TSharedRef<SWidget>& InRoot, const FName InTag) -> TSharedPtr<SWidget>
+    {
+        if (InRoot->GetTag() == InTag) { return InRoot; }
+        const FChildren* Children = InRoot->GetChildren();
+        for (int32 Index = 0; Children != nullptr && Index < Children->Num(); ++Index)
+        {
+            if (const TSharedPtr<SWidget> Found = FindTaggedWidget(ConstCastSharedRef<SWidget>(Children->GetChildAt(Index)), InTag);
+                Found.IsValid())
+            { return Found; }
+        }
+        return {};
+    }
+
     auto FindAllTonesCheckBox(const TSharedRef<SWidget>& InRoot) -> TSharedPtr<SCheckBox>
     {
         if (InRoot->GetTypeAsString() == TEXT("SCheckBox")
@@ -141,19 +156,50 @@ auto FCkStyleLab_WindowAuthored::RunTest(const FString&) -> bool
     };
 
     auto& Slate = FSlateApplication::Get();
-    const TSharedRef<SCkStyleLabWindow> StyleLabWindow = SNew(SCkStyleLabWindow);
-    HostWindow = SNew(SWindow).ClientSize(FVector2D(1200, 820)).CreateTitleBar(false)[StyleLabWindow];
+    TSharedPtr<SCkStyleLabWindow> StyleLabWindow = SNew(SCkStyleLabWindow);
+    HostWindow = SNew(SWindow).ClientSize(FVector2D(1200, 820)).CreateTitleBar(false)[StyleLabWindow.ToSharedRef()];
     Slate.AddWindow(HostWindow.ToSharedRef(), true);
     Tick(Slate);
 
-    const TSharedPtr<SCkDebug_WindowChrome> Chrome = FindChrome(StyleLabWindow);
-    const TSharedPtr<SScrollBox> Scroll = FindScroll(StyleLabWindow);
-    const TSharedPtr<SCheckBox> AllTonesCheckBox = FindAllTonesCheckBox(StyleLabWindow);
-    const TSharedPtr<SCkStyleLab_SamplePane> Sample = FindSamplePane(StyleLabWindow);
+    const TSharedPtr<SCkDebug_WindowChrome> Chrome = FindChrome(StyleLabWindow.ToSharedRef());
+    const TSharedPtr<SScrollBox> Scroll = FindScroll(StyleLabWindow.ToSharedRef());
+    const TSharedPtr<SCheckBox> AllTonesCheckBox = FindAllTonesCheckBox(StyleLabWindow.ToSharedRef());
+    const TSharedPtr<SCkStyleLab_SamplePane> Sample = FindSamplePane(StyleLabWindow.ToSharedRef());
     if (!TestTrue(TEXT("Production Style Lab mounts its shared window chrome"), Chrome.IsValid())
         || !TestTrue(TEXT("Production Style Lab mounts its scrollable content"), Scroll.IsValid())
         || !TestTrue(TEXT("Production chrome mounts the All Tones action"), AllTonesCheckBox.IsValid())
         || !TestTrue(TEXT("Production content mounts a Style Lab sample"), Sample.IsValid())) { return false; }
+
+    TWeakPtr<FCkUiView> WeakShell;
+    {
+        const TSharedPtr<FCkUiView> Shell = StyleLabWindow->Get_AuthoredShellView();
+        WeakShell = Shell;
+        if (!TestTrue(TEXT("Production Style Lab mounts its authored outer shell"),
+            Shell.IsValid() && Shell->GetLastResult().Succeeded))
+        { return false; }
+        const TSharedRef<SWidget> Main = Shell->GetRegion(TEXT("main"));
+        TestTrue(TEXT("Authored shell owns scroll and controls-pane placement"),
+            FindTaggedWidget(Main, TEXT("style-lab-shell-layout")).IsValid() &&
+            FindTaggedWidget(Main, TEXT("style-lab-shell-scroll")).IsValid() &&
+            FindTaggedWidget(Main, TEXT("style-lab-shell-controls")).IsValid());
+
+        const TSharedPtr<IPlugin> Plugin = IPluginManager::Get().FindPlugin(TEXT("CkDebugger"));
+        if (!TestTrue(TEXT("Debugger plugin resolves Style Lab shell resources"), Plugin.IsValid()))
+        { return false; }
+        const FString Directory = FPaths::Combine(Plugin->GetBaseDir(), TEXT("Resources/UI"));
+        const int64 Revision = Shell->GetRevision();
+        TestTrue(TEXT("Compatible shell reload preserves the retained View"),
+            Shell->ReloadFiles(FPaths::Combine(Directory, TEXT("StyleLabShell.ui.html")),
+                FPaths::Combine(Directory, TEXT("StyleLabShell.ui.css"))).Succeeded &&
+            Shell->GetRevision() > Revision && StyleLabWindow->Get_AuthoredShellView() == Shell);
+        const int64 AcceptedRevision = Shell->GetRevision();
+        TestFalse(TEXT("Missing controls port is rejected atomically"),
+            Shell->TryReload(TEXT("<ui version=\"1\"><region name=\"main\"><native bind=\"missing-controls\"/></region></ui>"),
+                TEXT("")).Succeeded);
+        TestTrue(TEXT("Rejected reload preserves the accepted shell"),
+            Shell->GetRevision() == AcceptedRevision &&
+            FindTaggedWidget(Main, TEXT("style-lab-shell-controls")).IsValid());
+    }
 
     TestFalse(TEXT("All Tones starts disabled in the mounted window"), Sample->Get_ShowAllTones());
     TestFalse(TEXT("All Tones checkbox starts unchecked"), AllTonesCheckBox->IsChecked());
@@ -163,10 +209,10 @@ auto FCkStyleLab_WindowAuthored::RunTest(const FString&) -> bool
 
     const FString Output = FPaths::Combine(FPaths::ProjectSavedDir(), TEXT("Automation/StyleLabWindow"));
     IFileManager::Get().MakeDirectory(*Output, true);
-    TestTrue(TEXT("Wide full Style Lab window capture writes"), Capture(Slate, StyleLabWindow, FPaths::Combine(Output, TEXT("Window-Wide.png"))));
+    TestTrue(TEXT("Wide full Style Lab window capture writes"), Capture(Slate, StyleLabWindow.ToSharedRef(), FPaths::Combine(Output, TEXT("Window-Wide.png"))));
     HostWindow->Resize(FVector2D(426, 640));
     Tick(Slate);
-    TestTrue(TEXT("Narrow full Style Lab window capture writes"), Capture(Slate, StyleLabWindow, FPaths::Combine(Output, TEXT("Window-Narrow.png"))));
+    TestTrue(TEXT("Narrow full Style Lab window capture writes"), Capture(Slate, StyleLabWindow.ToSharedRef(), FPaths::Combine(Output, TEXT("Window-Narrow.png"))));
 
     TSharedPtr<SWidget> SampleRoot;
     TSharedPtr<SWidget> BeforeRefreshBody;
@@ -192,6 +238,14 @@ auto FCkStyleLab_WindowAuthored::RunTest(const FString&) -> bool
             && SampleRoot->GetChildren()->Num() > 0
             && &SampleRoot->GetChildren()->GetChildAt(0).Get() != BeforeRefreshBody.Get();
     }));
+
+    const TWeakPtr<SCkStyleLabWindow> WeakWindow = StyleLabWindow;
+    Slate.DestroyWindowImmediately(HostWindow.ToSharedRef());
+    HostWindow.Reset();
+    StyleLabWindow.Reset();
+    Tick(Slate);
+    TestTrue(TEXT("Style Lab teardown releases the production window and authored shell View"),
+        !WeakWindow.IsValid() && !WeakShell.IsValid());
     return true;
 }
 

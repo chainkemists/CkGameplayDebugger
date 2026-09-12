@@ -1,0 +1,5 @@
+.iskm-renderer-inspector { min-width: 0; gap: 3px; }
+.iskm-renderer-row { min-width: 0; gap: 8px; vertical-align: center; }
+.iskm-renderer-label { min-width: 150px; color: #A8B4C4; }
+.iskm-renderer-object-value { min-width: 0; flex-grow: 1; color: #D8E1EC; }
+.iskm-renderer-count { min-width: 0; flex-grow: 1; }

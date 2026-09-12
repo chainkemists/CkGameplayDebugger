@@ -1,0 +1,32 @@
+<ui version="1">
+  <region name="main">
+    <column id="intent-hud-host">
+      <scroll id="intent-hud-body" class="intent-hud-scroll">
+      <column id="intent-hud-controls-root" class="intent-hud-controls-root">
+        <column id="intent-hud-readout-section" class="intent-hud-section">
+          <text id="intent-hud-readout-heading" class="intent-hud-heading">READOUT</text>
+          <row id="intent-hud-metadata-row" class="intent-hud-row"><text id="intent-hud-metadata-label" tooltip="Keys shows state only; Compact adds duration and route; Full adds frames and routing detail." class="intent-hud-label">Metadata</text><button id="intent-hud-metadata-previous" action="intent-hud-metadata-previous" tooltip="Previous option" class="intent-hud-action">◀</button><text id="intent-hud-metadata-value" bind="intent-hud-metadata-value" class="intent-hud-value"/><button id="intent-hud-metadata-next" action="intent-hud-metadata-next" tooltip="Next option" class="intent-hud-action">▶</button></row>
+          <row id="intent-hud-frame-row" class="intent-hud-row"><text id="intent-hud-frame-label" tooltip="Press frame, compact start plus delta, or start to end range." class="intent-hud-label">Frame notation</text><button id="intent-hud-frame-previous" action="intent-hud-frame-previous" tooltip="Previous option" class="intent-hud-action">◀</button><text id="intent-hud-frame-value" bind="intent-hud-frame-value" class="intent-hud-value"/><button id="intent-hud-frame-next" action="intent-hud-frame-next" tooltip="Next option" class="intent-hud-action">▶</button></row>
+          <button id="intent-hud-reset-readout" action="intent-hud-reset-readout" tooltip="Restore readout metadata and frame notation without changing session or project controls." class="intent-hud-reset">Reset readout</button>
+        </column>
+        <column id="intent-hud-session-section" class="intent-hud-section">
+          <text id="intent-hud-session-heading" class="intent-hud-heading">SESSION</text>
+          <row id="intent-hud-mode-row" class="intent-hud-row"><text id="intent-hud-mode-label" tooltip="Keyboard forces keyboard labels; Auto follows the active device." class="intent-hud-label">Mode</text><button id="intent-hud-mode-previous" action="intent-hud-mode-previous" tooltip="Previous option" class="intent-hud-action">◀</button><text id="intent-hud-mode-value" bind="intent-hud-mode-value" class="intent-hud-value"/><button id="intent-hud-mode-next" action="intent-hud-mode-next" tooltip="Next option" class="intent-hud-action">▶</button></row>
+          <row id="intent-hud-corner-row" class="intent-hud-row"><text id="intent-hud-corner-label" tooltip="Viewport corner where the overlay is pinned." class="intent-hud-label">Corner</text><button id="intent-hud-corner-previous" action="intent-hud-corner-previous" tooltip="Previous option" class="intent-hud-action">◀</button><text id="intent-hud-corner-value" bind="intent-hud-corner-value" class="intent-hud-value"/><button id="intent-hud-corner-next" action="intent-hud-corner-next" tooltip="Next option" class="intent-hud-action">▶</button></row>
+          <row id="intent-hud-scale-row" class="intent-hud-row"><text id="intent-hud-scale-label" tooltip="Session display scale." class="intent-hud-label">Scale</text><number-input id="intent-hud-scale-input" value-bind="intent-hud-scale" committed="intent-hud-scale" kind="float" min="0" fractional-digits="2" class="intent-hud-number"/></row>
+          <row id="intent-hud-opacity-row" class="intent-hud-row"><text id="intent-hud-opacity-label" tooltip="Session overlay opacity with a legibility floor." class="intent-hud-label">Opacity</text><number-input id="intent-hud-opacity-input" value-bind="intent-hud-opacity" committed="intent-hud-opacity" kind="float" min="0.15" max="1" fractional-digits="2" class="intent-hud-number"/></row>
+          <row id="intent-hud-offset-x-row" class="intent-hud-row"><text id="intent-hud-offset-x-label" tooltip="Horizontal inset from the selected corner." class="intent-hud-label">Offset X</text><number-input id="intent-hud-offset-x-input" value-bind="intent-hud-offset-x" committed="intent-hud-offset-x" kind="float" min="0" max="512" fractional-digits="0" class="intent-hud-number"/></row>
+          <row id="intent-hud-offset-y-row" class="intent-hud-row"><text id="intent-hud-offset-y-label" tooltip="Vertical inset from the selected corner." class="intent-hud-label">Offset Y</text><number-input id="intent-hud-offset-y-input" value-bind="intent-hud-offset-y" committed="intent-hud-offset-y" kind="float" min="0" max="512" fractional-digits="0" class="intent-hud-number"/></row>
+        </column>
+        <column id="intent-hud-project-section" class="intent-hud-section">
+          <text id="intent-hud-project-heading" class="intent-hud-heading">PROJECT BEHAVIOR</text>
+          <row id="intent-hud-history-cap-row" class="intent-hud-row"><text id="intent-hud-history-cap-label" tooltip="How many released input chips the ribbon keeps." class="intent-hud-label">History cap</text><number-input id="intent-hud-history-cap-input" value-bind="intent-hud-history-cap" committed="intent-hud-history-cap" kind="integer" min="3" max="20" fractional-digits="0" class="intent-hud-number"/></row>
+          <row id="intent-hud-fade-seconds-row" class="intent-hud-row"><text id="intent-hud-fade-seconds-label" tooltip="Lifetime of a released input chip." class="intent-hud-label">Fade seconds</text><number-input id="intent-hud-fade-seconds-input" value-bind="intent-hud-fade-seconds" committed="intent-hud-fade-seconds" kind="float" min="3" max="30" fractional-digits="1" class="intent-hud-number"/></row>
+          <row id="intent-hud-tap-hold-ms-row" class="intent-hud-row"><text id="intent-hud-tap-hold-ms-label" tooltip="Down-time threshold that changes a press from a tap to a hold." class="intent-hud-label">Tap/hold ms</text><number-input id="intent-hud-tap-hold-ms-input" value-bind="intent-hud-tap-hold-ms" committed="intent-hud-tap-hold-ms" kind="float" min="50" max="2000" fractional-digits="0" class="intent-hud-number"/></row>
+          <checkbox id="intent-hud-frames-allowed-input" value-bind="intent-hud-frames-allowed" changed="intent-hud-frames-allowed" label-bind="intent-hud-frames-label"/>
+        </column>
+      </column>
+      </scroll>
+    </column>
+  </region>
+</ui>

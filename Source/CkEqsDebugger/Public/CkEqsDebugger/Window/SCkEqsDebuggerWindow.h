@@ -15,6 +15,8 @@ class SCkEqsDebugger_QueryList;
 class SCkEqsDebugger_CandidatePanel;
 class SCkEqsDebugger_TestBreakdownPanel;
 class SCkDebug_SelectableLabel;
+class FCkUiView;
+class SBox;
 
 // --------------------------------------------------------------------------------------------------------------------
 // Top-level debugger window. Three-pane layout (QueryList | CandidatePanel | TestBreakdownPanel) under a toolbar
@@ -38,12 +40,22 @@ public:
     virtual auto Get_WindowId() const -> FName override { return WindowId; }
     virtual auto Get_WindowDisplayName() const -> FText override { return FText::FromString(TEXT("EQS")); }
 
+    // Test-only observability for the production-owned authored stable shell.
+    auto Get_AuthoredShellView() const -> TSharedPtr<FCkUiView> { return _AuthoredShellView; }
+    auto Get_AuthoredShellLoadFailure() const -> const FString& { return _AuthoredShellLoadFailure; }
+    auto Get_QueryList() const -> TSharedPtr<SCkEqsDebugger_QueryList> { return _QueryList; }
+    auto Get_CandidatePanel() const -> TSharedPtr<SCkEqsDebugger_CandidatePanel> { return _CandidatePanel; }
+    auto Get_TestBreakdownPanel() const -> TSharedPtr<SCkEqsDebugger_TestBreakdownPanel> { return _TestBreakdownPanel; }
+
 protected:
     virtual auto OnStyleRevisionChanged() -> void override;
 
 private:
     auto BuildToolbar() -> TSharedRef<SWidget>;
     auto BuildMenuActions() -> TSharedRef<SWidget>;
+    auto BuildAuthoredShell() -> void;
+    auto BuildNativeShellFallback() -> TSharedRef<SWidget>;
+    auto PollAuthoredShell() -> void;
 
     auto OnEndPIE(const bool InWasSimulating) -> void;
     auto OnBeginPIE(const bool InIsSimulating) -> void;
@@ -54,6 +66,9 @@ private:
     TSharedPtr<SCkEqsDebugger_QueryList>           _QueryList;
     TSharedPtr<SCkEqsDebugger_CandidatePanel>      _CandidatePanel;
     TSharedPtr<SCkEqsDebugger_TestBreakdownPanel>  _TestBreakdownPanel;
+    TSharedPtr<FCkUiView> _AuthoredShellView;
+    TSharedPtr<SBox> _AuthoredShellHost;
+    FString _AuthoredShellLoadFailure;
 
     TSharedPtr<SCkDebug_SelectableLabel> _StatusLabel;
 

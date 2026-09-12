@@ -1,0 +1,9 @@
+.resolver-inspector { min-width: 0; gap: 3px; }
+.resolver-section { min-width: 0; gap: 3px; }
+.resolver-header { color: #D8E1EC; font-size: 10px; }
+.resolver-row { min-width: 0; gap: 8px; vertical-align: center; }
+.resolver-label { min-width: 110px; color: #A8B4C4; }
+.resolver-numeric-value { min-width: 0; color: #99E699; }
+.resolver-tag-value { min-width: 0; flex-grow: 1; color: #CC99FF; }
+.resolver-meter-value { min-width: 0; gap: 8px; vertical-align: center; }
+.resolver-count { min-width: 0; flex-grow: 1; }

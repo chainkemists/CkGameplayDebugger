@@ -1,0 +1,15 @@
+<ui version="1">
+  <region name="main">
+    <column id="resolver-inspector" class="resolver-inspector">
+      <text id="resolver-resolution-header" class="resolver-header">Resolution</text>
+      <row id="resolver-final-value-row" class="resolver-row"><text id="resolver-final-value-label" color-bind="resolver-final-value-diff-color" class="resolver-label">Final Value:</text><text id="resolver-final-value-value" bind="resolver-final-value" class="resolver-numeric-value" /></row>
+      <row id="resolver-phase-row" class="resolver-row"><text id="resolver-phase-label" color-bind="resolver-phase-diff-color" class="resolver-label">Phase:</text><row id="resolver-phase-value" class="resolver-meter-value"><debug-meter id="resolver-phase-meter" fraction-bind="resolver-phase-fraction" fill-bind="resolver-phase-fill" width="72" height="6" /><text id="resolver-phase-text" bind="resolver-phase" class="resolver-numeric-value" /></row></row>
+      <row id="resolver-metadata-tags-row" class="resolver-row"><text id="resolver-metadata-tags-label" color-bind="resolver-metadata-tags-diff-color" class="resolver-label">Metadata Tags:</text><text id="resolver-metadata-tags-value" bind="resolver-metadata-tags" class="resolver-tag-value" /></row>
+      <column id="resolver-pending-section" visible="resolver-pending-visible" class="resolver-section">
+        <text id="resolver-pending-header" class="resolver-header">Pending</text>
+        <row id="resolver-modifier-ops-row" class="resolver-row"><text id="resolver-modifier-ops-label" color-bind="resolver-modifier-ops-diff-color" class="resolver-label">Modifier Ops:</text><debug-status id="resolver-modifier-ops-value" label-bind="resolver-modifier-ops" foreground-bind="resolver-count-foreground" background-bind="resolver-count-background" show-dot="false" class="resolver-count" /></row>
+        <row id="resolver-metadata-ops-row" class="resolver-row"><text id="resolver-metadata-ops-label" color-bind="resolver-metadata-ops-diff-color" class="resolver-label">Metadata Ops:</text><debug-status id="resolver-metadata-ops-value" label-bind="resolver-metadata-ops" foreground-bind="resolver-count-foreground" background-bind="resolver-count-background" show-dot="false" class="resolver-count" /></row>
+      </column>
+    </column>
+  </region>
+</ui>

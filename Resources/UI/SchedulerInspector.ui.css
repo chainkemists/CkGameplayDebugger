@@ -1,0 +1,22 @@
+.scheduler-inspector-overlay { min-width: 0; min-height: 0; }
+.scheduler-inspector-content { min-width: 250px; gap: var(--space-s); padding: var(--space-s); }
+.scheduler-inspector-card { min-width: 0; gap: var(--space-xs); padding: var(--space-s) var(--space-m); background-color: #1E2530; border-color: #354153; border-width: 1px; border-radius: 4px; }
+.scheduler-inspector-header-row { min-width: 0; gap: var(--space-s); vertical-align: center; }
+.scheduler-inspector-row { min-width: 0; gap: var(--space-s); vertical-align: center; }
+.scheduler-inspector-name { min-width: 0; flex-grow: 1; font-family: sans-serif; font-size: 16px; font-weight: bold; color: #E8EDF5; text-wrap: nowrap; text-overflow: ellipsis; }
+.scheduler-inspector-badge { padding: 2px 5px; }
+.scheduler-inspector-badge-text { font-family: monospace; font-size: 10px; text-wrap: nowrap; }
+.scheduler-inspector-dirty-badge { background-color: #5E4216; }
+.scheduler-inspector-dirty-badge-text { color: #F5B85C; }
+.scheduler-inspector-parallel-badge { background-color: #173C5A; }
+.scheduler-inspector-parallel-badge-text { color: #66B8FF; }
+.scheduler-inspector-heading { font-family: sans-serif; font-size: 11px; font-weight: bold; color: #8290A3; text-wrap: nowrap; }
+.scheduler-inspector-key { min-width: 86px; font-family: sans-serif; font-size: 12px; color: #AAB7C8; }
+.scheduler-inspector-value { min-width: 0; flex-grow: 1; font-family: monospace; font-size: 12px; color: #E8EDF5; text-wrap: wrap; overflow-wrap: anywhere; }
+.scheduler-inspector-copy { font-family: sans-serif; font-size: 12px; color: #AAB7C8; text-wrap: wrap; overflow-wrap: anywhere; }
+.scheduler-inspector-conflicts { border-color: #B84C5A; }
+.scheduler-inspector-dependency-records { min-width: 0; gap: var(--space-xs); }
+.scheduler-inspector-dependency { min-width: 0; horizontal-align: left; -ck-button-padding-x: 4px; -ck-button-padding-y: 2px; color: #66B8FF; }
+.scheduler-inspector-empty { min-width: 250px; padding: var(--space-xl); }
+.scheduler-inspector-details { min-width: 0; gap: var(--space-xs); }
+.scheduler-inspector-resolution { font-family: monospace; font-size: 10px; color: #F5B85C; text-wrap: nowrap; }

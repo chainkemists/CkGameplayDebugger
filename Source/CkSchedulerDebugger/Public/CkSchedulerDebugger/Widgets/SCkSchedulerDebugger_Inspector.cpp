@@ -15,11 +15,29 @@
 #include "CkDebuggerCommon/Styles/CkDebuggerAxes.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_SelectableLabel.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_Sparkline.h"
+#include "CkDebuggerCommon/UI/CkDebug_UiRegistry.h"
+#include "CkSlateLayout/CkUiCollection.h"
+#include "CkSlateLayout/CkUiFloatSeries.h"
+#include "CkSlateLayout/SCkUiSurface.h"
+
+#include "Interfaces/IPluginManager.h"
+#include "Misc/Paths.h"
 
 // --------------------------------------------------------------------------------------------------------------------
 
 namespace ck_scheduler_debugger_inspector
 {
+	auto AuthoredTokens() -> FCkUiView::FTokens
+	{
+		return {
+			{TEXT("--space-xs"), FString::SanitizeFloat(CkStyle::SpaceXS)},
+			{TEXT("--space-s"), FString::SanitizeFloat(CkStyle::SpaceS)},
+			{TEXT("--space-m"), FString::SanitizeFloat(CkStyle::SpaceM)},
+			{TEXT("--space-l"), FString::SanitizeFloat(CkStyle::SpaceL)},
+			{TEXT("--space-xl"), FString::SanitizeFloat(CkStyle::SpaceXL)},
+		};
+	}
+
 	// Section headers go through the SectionHeaderStyle axis instead of each site hand-rolling a
 	// bold uppercase STextBlock. Classic keeps the uppercase bold form these sections already used.
 	auto Make_Header(const FString& InLabel, ECk_Tone InTone) -> TSharedRef<SWidget>
@@ -44,13 +62,10 @@ auto
 
 	ChildSlot
 	[
-		SNew(SScrollBox)
-		+ SScrollBox::Slot()
-			[
-				_ContentBox.ToSharedRef()
-			]
+		_ContentBox.ToSharedRef()
 	];
 
+	DoBuildAuthoredView();
 	DoRebuildContent();
 
 	if (_ViewModel.IsValid())
@@ -71,6 +86,12 @@ SCkSchedulerDebugger_Inspector::~SCkSchedulerDebugger_Inspector()
 		_ViewModel->OnSelectionChanged.Remove(_SelectionChangedHandle);
 		_ViewModel->OnDataRefreshed.Remove(_DataRefreshedHandle);
 	}
+	_AuthoredView.Reset();
+	_AuthoredDependencies.Reset();
+	_AuthoredDirtyDetails.Reset();
+	_AuthoredConflicts.Reset();
+	_AuthoredTimingSeries.Reset();
+	_ContentBox.Reset();
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -119,11 +140,311 @@ auto
 
 	if (SelectedIdx == INDEX_NONE || NOT Procs.IsValidIndex(SelectedIdx))
 	{
-		_ContentBox->SetContent(DoBuildEmptyContent());
+		if (_AuthoredMounted)
+		{
+			DoPresentAuthored(nullptr);
+			return;
+		}
+		_ContentBox->SetContent(DoBuildNativeScroll(DoBuildEmptyContent()));
+		return;
+	}
+	if (_AuthoredMounted)
+	{
+		if (NOT DoPresentAuthored(&Procs[SelectedIdx]))
+		{
+			_AuthoredLoadError = TEXT("Scheduler inspector rejected malformed presentation data.");
+			DoClearAuthoredProjection();
+		}
 		return;
 	}
 
-	_ContentBox->SetContent(DoBuildProcessorContent(Procs[SelectedIdx]));
+	_ContentBox->SetContent(DoBuildNativeScroll(DoBuildProcessorContent(Procs[SelectedIdx])));
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+	SCkSchedulerDebugger_Inspector::
+	DoBuildAuthoredView()
+	-> void
+{
+	TSharedPtr<FCkUiCollection> Dependencies;
+	TSharedPtr<FCkUiCollection> DirtyDetails;
+	TSharedPtr<FCkUiCollection> Conflicts;
+	TSharedPtr<FCkUiFloatSeries> TimingSeries;
+	TSharedPtr<const FCkUiWidgetRegistrySnapshot> Registry;
+	const auto DependenciesResult = FCkUiCollection::TryCreate({
+		{TEXT("direction"), ECkUiFieldKind::Text},
+		{TEXT("name"), ECkUiFieldKind::Text},
+		{TEXT("label"), ECkUiFieldKind::Text},
+	}, Dependencies);
+	const auto TimingResult = FCkUiFloatSeries::TryCreate({}, TimingSeries);
+	const auto DirtyResult = FCkUiCollection::TryCreate({
+		{TEXT("key"), ECkUiFieldKind::Text}, {TEXT("value"), ECkUiFieldKind::Text},
+	}, DirtyDetails);
+	const auto ConflictResult = FCkUiCollection::TryCreate({
+		{TEXT("peer"), ECkUiFieldKind::Text}, {TEXT("fragment"), ECkUiFieldKind::Text},
+		{TEXT("resolution"), ECkUiFieldKind::Text},
+	}, Conflicts);
+	const auto RegistryResult = FCkDebug_UiRegistry::TryCreate(Registry);
+	const auto Plugin = IPluginManager::Get().FindPlugin(TEXT("CkDebugger"));
+	if (NOT DependenciesResult.Succeeded || NOT TimingResult.Succeeded || NOT DirtyResult.Succeeded
+		|| NOT ConflictResult.Succeeded || NOT RegistryResult.Succeeded
+		|| NOT Registry.IsValid() || NOT Plugin.IsValid())
+	{
+		auto Errors = TArray<FString>{};
+		Errors.Append(DependenciesResult.Errors);
+		Errors.Append(TimingResult.Errors);
+		Errors.Append(DirtyResult.Errors);
+		Errors.Append(ConflictResult.Errors);
+		Errors.Append(RegistryResult.Errors);
+		if (NOT Registry.IsValid()) { Errors.Add(TEXT("Debugger UI registry is unavailable.")); }
+		if (NOT Plugin.IsValid()) { Errors.Add(TEXT("CkDebugger plugin is unavailable.")); }
+		_AuthoredLoadError = FString::Join(Errors, TEXT("\n"));
+		_AuthoredMounted = false;
+		return;
+	}
+
+	_AuthoredDependencies = Dependencies;
+	_AuthoredDirtyDetails = DirtyDetails;
+	_AuthoredConflicts = Conflicts;
+	_AuthoredTimingSeries = TimingSeries;
+	auto Data = FCkUiView::FDataBindings{};
+	const TWeakPtr<SCkSchedulerDebugger_Inspector> WeakInspector{SharedThis(this)};
+	Data.SlateUserIndex = 0;
+	Data.CanDispatchEvents = TAttribute<bool>::CreateLambda([WeakInspector]() { return WeakInspector.IsValid(); });
+	auto BindText = [&Data, WeakInspector](const FString& InName, FString SCkSchedulerDebugger_Inspector::* InMember)
+	{
+		Data.Text.Add(InName, TAttribute<FText>::CreateLambda([WeakInspector, InMember]()
+		{
+			const auto Inspector = WeakInspector.Pin();
+			return Inspector.IsValid() ? FText::FromString(Inspector.Get()->*InMember) : FText::GetEmpty();
+		}));
+	};
+	BindText(TEXT("scheduler-inspector-name"), &SCkSchedulerDebugger_Inspector::_AuthoredName);
+	BindText(TEXT("scheduler-inspector-status"), &SCkSchedulerDebugger_Inspector::_AuthoredStatus);
+	BindText(TEXT("scheduler-inspector-group"), &SCkSchedulerDebugger_Inspector::_AuthoredGroup);
+	BindText(TEXT("scheduler-inspector-tick-group"), &SCkSchedulerDebugger_Inspector::_AuthoredTickGroup);
+	BindText(TEXT("scheduler-inspector-exec-order"), &SCkSchedulerDebugger_Inspector::_AuthoredExecutionOrder);
+	BindText(TEXT("scheduler-inspector-current-timing"), &SCkSchedulerDebugger_Inspector::_AuthoredCurrentTiming);
+	BindText(TEXT("scheduler-inspector-peak"), &SCkSchedulerDebugger_Inspector::_AuthoredPeakTiming);
+	BindText(TEXT("scheduler-inspector-total-ticks"), &SCkSchedulerDebugger_Inspector::_AuthoredTotalTicks);
+	BindText(TEXT("scheduler-inspector-tick-rate"), &SCkSchedulerDebugger_Inspector::_AuthoredTickRate);
+	BindText(TEXT("scheduler-inspector-dirty-summary"), &SCkSchedulerDebugger_Inspector::_AuthoredDirtySummary);
+	BindText(TEXT("scheduler-inspector-conflict-summary"), &SCkSchedulerDebugger_Inspector::_AuthoredConflictSummary);
+	Data.Visibility.Add(TEXT("scheduler-inspector-has-selection"), TAttribute<bool>::CreateLambda([WeakInspector]()
+	{
+		const auto Inspector = WeakInspector.Pin(); return Inspector.IsValid() && Inspector->_AuthoredHasSelection;
+	}));
+	Data.Visibility.Add(TEXT("scheduler-inspector-empty"), TAttribute<bool>::CreateLambda([WeakInspector]()
+	{
+		const auto Inspector = WeakInspector.Pin(); return NOT Inspector.IsValid() || NOT Inspector->_AuthoredHasSelection;
+	}));
+	Data.Visibility.Add(TEXT("scheduler-inspector-has-dirty"), TAttribute<bool>::CreateLambda([WeakInspector]()
+	{
+		const auto Inspector = WeakInspector.Pin(); return Inspector.IsValid() && Inspector->_AuthoredHasDirty;
+	}));
+	Data.Visibility.Add(TEXT("scheduler-inspector-has-conflicts"), TAttribute<bool>::CreateLambda([WeakInspector]()
+	{
+		const auto Inspector = WeakInspector.Pin(); return Inspector.IsValid() && Inspector->_AuthoredHasConflicts;
+	}));
+	Data.Visibility.Add(TEXT("scheduler-inspector-has-dependencies"), TAttribute<bool>::CreateLambda([WeakInspector]()
+	{
+		const auto Inspector = WeakInspector.Pin(); return Inspector.IsValid() && Inspector->_AuthoredHasDependencies;
+	}));
+	Data.Visibility.Add(TEXT("scheduler-inspector-no-dependencies"), TAttribute<bool>::CreateLambda([WeakInspector]()
+	{
+		const auto Inspector = WeakInspector.Pin(); return NOT Inspector.IsValid() || NOT Inspector->_AuthoredHasDependencies;
+	}));
+	Data.Visibility.Add(TEXT("scheduler-inspector-is-parallel"), TAttribute<bool>::CreateLambda([WeakInspector]()
+	{
+		const auto Inspector = WeakInspector.Pin(); return Inspector.IsValid() && Inspector->_AuthoredIsParallel;
+	}));
+	Data.Color.Add(TEXT("scheduler-inspector-status-foreground"), TAttribute<FLinearColor>::CreateLambda([WeakInspector]()
+	{
+		const auto Inspector = WeakInspector.Pin(); return Inspector.IsValid() ? Inspector->_AuthoredStatusForeground : FLinearColor::White;
+	}));
+	Data.Color.Add(TEXT("scheduler-inspector-status-background"), TAttribute<FLinearColor>::CreateLambda([WeakInspector]()
+	{
+		const auto Inspector = WeakInspector.Pin(); return Inspector.IsValid() ? Inspector->_AuthoredStatusBackground : FLinearColor::Transparent;
+	}));
+	Data.Collections.Add(TEXT("scheduler-inspector-dependencies"), _AuthoredDependencies);
+	Data.Collections.Add(TEXT("scheduler-inspector-dirty-details"), _AuthoredDirtyDetails);
+	Data.Collections.Add(TEXT("scheduler-inspector-conflicts"), _AuthoredConflicts);
+	Data.FloatSeries.Add(TEXT("scheduler-inspector-timing-samples"), _AuthoredTimingSeries);
+	Data.ItemActions.Add(TEXT("scheduler-inspector-navigate"), FCkUiOnItemAction::CreateLambda([WeakInspector](const FString& InKey)
+	{
+		if (const auto Inspector = WeakInspector.Pin(); Inspector.IsValid()) { Inspector->DoNavigateDependency(InKey); }
+	}));
+
+	const auto Candidate = FCkUiView::Create({}, {}, ck_scheduler_debugger_inspector::AuthoredTokens(), FCoreStyle::Get().GetFontStyle("NormalFont"), MoveTemp(Data), Registry);
+	const TSharedRef<SWidget> Main = Candidate->GetRegion(TEXT("main"));
+	const auto ResourceRoot = FPaths::Combine(Plugin->GetBaseDir(), TEXT("Resources/UI"));
+	Candidate->SetFiles(FPaths::Combine(ResourceRoot, TEXT("SchedulerInspector.ui.html")),
+		FPaths::Combine(ResourceRoot, TEXT("SchedulerInspector.ui.css")));
+	Candidate->PollFiles(ck_scheduler_debugger_inspector::AuthoredTokens());
+	if (NOT Candidate->GetLastResult().Succeeded)
+	{
+		_AuthoredLoadError = FString::Join(Candidate->GetLastResult().Errors, TEXT("\n"));
+		_AuthoredDependencies.Reset();
+		_AuthoredDirtyDetails.Reset();
+		_AuthoredConflicts.Reset();
+		_AuthoredTimingSeries.Reset();
+		return;
+	}
+	_AuthoredView = Candidate;
+	_AuthoredMounted = true;
+	_ContentBox->SetContent(Main);
+}
+
+auto
+	SCkSchedulerDebugger_Inspector::
+	DoClearAuthoredProjection()
+	-> void
+{
+	if (_AuthoredDependencies.IsValid()) { _AuthoredDependencies->TrySetRecords({}); }
+	if (_AuthoredDirtyDetails.IsValid()) { _AuthoredDirtyDetails->TrySetRecords({}); }
+	if (_AuthoredConflicts.IsValid()) { _AuthoredConflicts->TrySetRecords({}); }
+	if (_AuthoredTimingSeries.IsValid()) { _AuthoredTimingSeries->TrySetSamples({}); }
+	_AuthoredName.Reset(); _AuthoredStatus.Reset(); _AuthoredGroup.Reset(); _AuthoredTickGroup.Reset();
+	_AuthoredExecutionOrder.Reset(); _AuthoredCurrentTiming.Reset(); _AuthoredPeakTiming.Reset();
+	_AuthoredTotalTicks.Reset(); _AuthoredTickRate.Reset(); _AuthoredDirtySummary.Reset(); _AuthoredConflictSummary.Reset();
+	_AuthoredHasSelection = false; _AuthoredHasDirty = false; _AuthoredHasConflicts = false; _AuthoredHasDependencies = false;
+	_AuthoredIsParallel = false;
+	_AuthoredStatusForeground = FLinearColor::White;
+	_AuthoredStatusBackground = FLinearColor::Transparent;
+}
+
+auto
+	SCkSchedulerDebugger_Inspector::
+	DoPresentAuthored(const FCkSchedulerDebugger_ProcessorInfo* InProc)
+	-> bool
+{
+	if (InProc == nullptr) { DoClearAuthoredProjection(); return true; }
+	if (NOT _AuthoredDependencies.IsValid() || NOT _AuthoredDirtyDetails.IsValid() || NOT _AuthoredConflicts.IsValid()
+		|| NOT _AuthoredTimingSeries.IsValid()) { return false; }
+	if (NOT FMath::IsFinite(InProc->MainPassTimeMs) || NOT FMath::IsFinite(InProc->TickRate)) { return false; }
+	for (const double PumpPassTimeMs : InProc->PumpPassTimesMs)
+	{
+		if (NOT FMath::IsFinite(PumpPassTimeMs)) { return false; }
+	}
+	auto Records = TArray<FCkUiRecordData>{};
+	auto AddDependency = [&Records, this](const int32 InNodeIndex, const TCHAR* InDirection)
+	{
+		auto Name = FString{TEXT("(unknown)")};
+		if (_ViewModel.IsValid())
+		{
+			const auto& Procs = _ViewModel->Get_DataCollector().Get_Processors();
+			if (const auto* Target = Procs.FindByPredicate([InNodeIndex](const FCkSchedulerDebugger_ProcessorInfo& InCandidate) { return InCandidate.NodeIndex == InNodeIndex; }))
+			{ Name = Target->DisplayName; }
+		}
+		auto Record = FCkUiRecordData{};
+		Record.Key = FString::Printf(TEXT("%s:%d"), InDirection, InNodeIndex);
+		Record.Fields.Add(TEXT("direction"), {.Kind = ECkUiFieldKind::Text, .Text = FText::FromString(InDirection)});
+		Record.Fields.Add(TEXT("name"), {.Kind = ECkUiFieldKind::Text, .Text = FText::FromString(Name)});
+		Record.Fields.Add(TEXT("label"), {.Kind = ECkUiFieldKind::Text,
+			.Text = FText::FromString(FString::Printf(TEXT("%s · %s"), InDirection, *Name))});
+		Records.Add(MoveTemp(Record));
+	};
+	for (const int32 Edge : InProc->InEdges) { AddDependency(Edge, TEXT("Run After")); }
+	for (const int32 Edge : InProc->OutEdges) { AddDependency(Edge, TEXT("Run Before")); }
+	const bool HasDependencies = NOT Records.IsEmpty();
+	auto DirtyRecords = TArray<FCkUiRecordData>{};
+	auto AddDetail = [&DirtyRecords](const FString& InKey, const FString& InValue)
+	{
+		auto Record = FCkUiRecordData{}; Record.Key = InKey;
+		Record.Fields.Add(TEXT("key"), {.Kind = ECkUiFieldKind::Text, .Text = FText::FromString(InKey)});
+		Record.Fields.Add(TEXT("value"), {.Kind = ECkUiFieldKind::Text, .Text = FText::FromString(InValue)});
+		DirtyRecords.Add(MoveTemp(Record));
+	};
+	if (InProc->HasDirtyMarker)
+	{
+		AddDetail(TEXT("Marker"), InProc->DirtyMarkerName.IsNone() ? TEXT("(unknown)") : InProc->DirtyMarkerName.ToString());
+		AddDetail(TEXT("Dirty This Frame"), InProc->WasDirtyThisFrame ? TEXT("Yes") : TEXT("No"));
+		AddDetail(TEXT("Pump Count"), FString::FromInt(InProc->PumpCountThisFrame));
+		for (int32 Index = 0; Index < InProc->PumpPassTimesMs.Num(); ++Index)
+		{ AddDetail(FString::Printf(TEXT("Pump Pass %d"), Index), FString::Printf(TEXT("%.3f ms"), InProc->PumpPassTimesMs[Index])); }
+	}
+	auto ConflictRecords = TArray<FCkUiRecordData>{};
+	for (int32 Index = 0; Index < InProc->WriteConflicts.Num(); ++Index)
+	{
+		const auto& Conflict = InProc->WriteConflicts[Index];
+		auto Record = FCkUiRecordData{}; Record.Key = FString::Printf(TEXT("conflict:%d"), Index);
+		Record.Fields.Add(TEXT("peer"), {.Kind = ECkUiFieldKind::Text, .Text = FText::FromString(Conflict.PeerProcessorName.IsNone() ? TEXT("(unknown)") : Conflict.PeerProcessorName.ToString())});
+		Record.Fields.Add(TEXT("fragment"), {.Kind = ECkUiFieldKind::Text, .Text = FText::FromString(Conflict.FragmentName.IsNone() ? TEXT("(unknown fragment)") : Conflict.FragmentName.ToString())});
+		Record.Fields.Add(TEXT("resolution"), {.Kind = ECkUiFieldKind::Text, .Text = FText::FromString(Conflict.WasAutoResolved ? TEXT("auto-edge") : TEXT("UNRESOLVED"))});
+		ConflictRecords.Add(MoveTemp(Record));
+	}
+	auto Samples = TArray<float>{};
+	double Peak = 0.0;
+	for (const double Sample : InProc->TimingHistory)
+	{
+		if (NOT FMath::IsFinite(Sample)) { return false; }
+		const float SampleFloat = static_cast<float>(Sample);
+		if (NOT FMath::IsFinite(SampleFloat)) { return false; }
+		Samples.Add(SampleFloat); Peak = FMath::Max(Peak, Sample);
+	}
+	auto Updates = TArray<FCkUiCollectionUpdate>{};
+	Updates.Add({.Collection = _AuthoredDependencies, .Records = MoveTemp(Records)});
+	Updates.Add({.Collection = _AuthoredDirtyDetails, .Records = MoveTemp(DirtyRecords)});
+	Updates.Add({.Collection = _AuthoredConflicts, .Records = MoveTemp(ConflictRecords)});
+	const auto CollectionResult = FCkUiCollection::TrySetRecordsBatch(MoveTemp(Updates));
+	const auto SeriesResult = _AuthoredTimingSeries->TrySetSamples(MoveTemp(Samples));
+	if (NOT CollectionResult.Succeeded || NOT SeriesResult.Succeeded) { return false; }
+	_AuthoredName = InProc->DisplayName;
+	_AuthoredStatus = InProc->IsGhost ? TEXT("Ghost") : TEXT("Active");
+	_AuthoredStatusForeground = InProc->IsGhost ? CkStyle::None() : CkStyle::Ok();
+	_AuthoredStatusBackground = InProc->IsGhost ? CkStyle::Bg2() : CkStyle::GetToneDimColor(ECk_Tone::Ok);
+	_AuthoredGroup = InProc->GroupName.IsNone() ? TEXT("(ungrouped)") : InProc->GroupName.ToString();
+	_AuthoredTickGroup = DoGetTickGroupName(InProc->TickGroup);
+	_AuthoredExecutionOrder = InProc->ExecutionOrder == INDEX_NONE ? TEXT("N/A") : FString::Printf(TEXT("#%d"), InProc->ExecutionOrder);
+	_AuthoredCurrentTiming = FString::Printf(TEXT("%.3f ms"), InProc->MainPassTimeMs);
+	_AuthoredPeakTiming = FString::Printf(TEXT("%.3f ms"), Peak);
+	_AuthoredTotalTicks = FString::FromInt(InProc->TotalTicks);
+	_AuthoredTickRate = FString::Printf(TEXT("%.1f%%"), InProc->TickRate * 100.0);
+	_AuthoredDirtySummary = FString::Printf(TEXT("%s · %s · %d pump pass%s"),
+		InProc->DirtyMarkerName.IsNone() ? TEXT("(unknown)") : *InProc->DirtyMarkerName.ToString(),
+		InProc->WasDirtyThisFrame ? TEXT("dirty this frame") : TEXT("not dirty this frame"), InProc->PumpCountThisFrame,
+		InProc->PumpCountThisFrame == 1 ? TEXT("") : TEXT("es"));
+	bool AnyUnresolved = false;
+	for (const FCkSchedulerDebugger_WriteConflictInfo& Conflict : InProc->WriteConflicts)
+	{ if (NOT Conflict.WasAutoResolved) { AnyUnresolved = true; break; } }
+	_AuthoredConflictSummary = InProc->WriteConflicts.IsEmpty() ? FString{} : (AnyUnresolved
+		? TEXT("Unresolved write-write conflicts — add RunAfter/RunBefore to fix.")
+		: TEXT("Auto-resolved in declaration order — consider adding explicit ordering."));
+	_AuthoredHasSelection = true;
+	_AuthoredHasDirty = InProc->HasDirtyMarker;
+	_AuthoredHasConflicts = NOT InProc->WriteConflicts.IsEmpty();
+	_AuthoredHasDependencies = HasDependencies;
+	_AuthoredIsParallel = InProc->IsParallel;
+	return true;
+}
+
+auto
+	SCkSchedulerDebugger_Inspector::
+	DoBuildNativeScroll(const TSharedRef<SWidget>& InContent)
+	-> TSharedRef<SWidget>
+{
+	return SNew(SScrollBox)
+		+ SScrollBox::Slot()
+		[
+			InContent
+		];
+}
+
+auto
+	SCkSchedulerDebugger_Inspector::
+	DoNavigateDependency(const FString& InRecordKey)
+	-> void
+{
+	int32 TargetNodeIndex = INDEX_NONE;
+	FString Prefix;
+	FString NodeIndexText;
+	if (NOT InRecordKey.Split(TEXT(":"), &Prefix, &NodeIndexText)
+		|| NOT LexTryParseString(TargetNodeIndex, *NodeIndexText) || NOT _ViewModel.IsValid()) { return; }
+	const auto& Procs = _ViewModel->Get_DataCollector().Get_Processors();
+	const int32 TargetProcessorIndex = Procs.IndexOfByPredicate([TargetNodeIndex](const FCkSchedulerDebugger_ProcessorInfo& InCandidate) { return InCandidate.NodeIndex == TargetNodeIndex; });
+	if (TargetProcessorIndex != INDEX_NONE) { _ViewModel->Set_SelectedProcessorIndex(TargetProcessorIndex); }
 }
 
 // --------------------------------------------------------------------------------------------------------------------

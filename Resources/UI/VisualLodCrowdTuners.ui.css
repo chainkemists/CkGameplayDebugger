@@ -1,0 +1,15 @@
+.vl-crowd-tuners-scroll { min-width: 0; max-height: 560px; }
+.vl-crowd-tuners-content { min-width: 0; gap: 8px; padding: 12px; }
+.vl-crowd-tuners-help { color: #a8b3bd; text-wrap: wrap; }
+.vl-crowd-repeat { gap: 12px; }
+.vl-crowd-record-body { gap: 6px; padding: 8px; background-color: #202832; }
+.vl-crowd-heading { color: #e2e8ef; font-weight: bold; text-wrap: wrap; }
+.vl-band-heading { color: #e2e8ef; font-weight: bold; text-wrap: wrap; }
+.vl-crowd-section { color: #a8b3bd; text-wrap: wrap; }
+.vl-band-repeat { gap: 8px; }
+.vl-band-record-body { gap: 6px; padding: 8px; background-color: #182029; }
+.vl-tuner-row { min-width: 0; gap: 8px; flex-wrap: wrap; vertical-align: center; }
+.vl-tuner-label { min-width: 0; max-width: 180px; flex-grow: 1; flex-shrink: 1; color: #a8b3bd; text-wrap: wrap; }
+.vl-tuner-input { min-width: 88px; max-width: 132px; flex-grow: 1; flex-shrink: 1; }
+.vl-tuner-value { color: #d6dde5; }
+.vl-crowd-empty { color: #a8b3bd; text-wrap: wrap; }

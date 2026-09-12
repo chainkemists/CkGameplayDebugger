@@ -1,4 +1,5 @@
 using UnrealBuildTool;
+using System.IO;
 
 public class CkVisualLodDebugger : CkModuleRules
 {
@@ -26,7 +27,16 @@ public class CkVisualLodDebugger : CkModuleRules
 
             "CkDebuggerCommon",
             "CkEditorTools",  // shared CkStyle:: tokens used directly by the window
+            "CkSlateLayout",
         });
+
+        // The authored arbiter-tuner surface resolves its installed resource pair through IPluginManager.
+        PrivateDependencyModuleNames.Add("Projects");
+
+        RuntimeDependencies.Add(Path.Combine(PluginDirectory, "Resources", "UI", "VisualLodArbiterTuners.ui.html"), StagedFileType.NonUFS);
+        RuntimeDependencies.Add(Path.Combine(PluginDirectory, "Resources", "UI", "VisualLodArbiterTuners.ui.css"), StagedFileType.NonUFS);
+        RuntimeDependencies.Add(Path.Combine(PluginDirectory, "Resources", "UI", "VisualLodCrowdTuners.ui.html"), StagedFileType.NonUFS);
+        RuntimeDependencies.Add(Path.Combine(PluginDirectory, "Resources", "UI", "VisualLodCrowdTuners.ui.css"), StagedFileType.NonUFS);
 
         if (Target.bBuildEditor)
         {

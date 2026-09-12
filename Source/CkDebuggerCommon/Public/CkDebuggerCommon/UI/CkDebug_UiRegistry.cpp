@@ -15,10 +15,233 @@
 #include "CkDebuggerCommon/Widgets/SCkDebug_Switch.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_EntityRef.h"
 
+#include "CkDebuggerCommon/Settings/CkDebuggerStyleSettings.h"
+#include "CkDebuggerCommon/Styles/CkDebuggerAxes.h"
+#include "CkDebuggerCommon/Styles/CkDebuggerCommonStyle.h"
+
+#include "CkEditorTools/Style/CkStyle.h"
+
 #include "Math/UnrealMathUtility.h"
+#include "Widgets/Input/SButton.h"
+#include "Widgets/Layout/SBorder.h"
+#include "Widgets/Layout/SBox.h"
+#include "Widgets/SOverlay.h"
+#include "Widgets/Text/STextBlock.h"
 
 namespace ck_debug_ui_registry
 {
+    enum class EInspectorActionPresentation : uint8
+    {
+        Hidden,
+        Inline,
+        OnHover,
+    };
+
+    struct FInspectorActionConfiguration
+    {
+        TAttribute<FText> Label;
+        TAttribute<bool> Enabled;
+        TAttribute<FText> Tooltip;
+        TAttribute<FText> DisabledReason;
+        TAttribute<bool> CanDispatchEvents;
+        FSimpleDelegate Action;
+        EInspectorActionPresentation Presentation = EInspectorActionPresentation::Inline;
+    };
+
+    auto MakeInspectorActionConfiguration(const FCkUiCustomWidgetArguments& InArguments,
+        FInspectorActionConfiguration& OutConfiguration, FString& OutFailure) -> bool
+    {
+        const TAttribute<FText>* Label = InArguments.TextBindings.Find(TEXT("label"));
+        const FSimpleDelegate* Action = InArguments.Actions.Find(TEXT("action"));
+        if (Label == nullptr || NOT Label->IsSet() || Action == nullptr || NOT Action->IsBound())
+        {
+            OutFailure = TEXT("debug-inspector-action requires label and action bindings.");
+            return false;
+        }
+
+        OutConfiguration.Label = *Label;
+        OutConfiguration.Enabled = InArguments.BoolBindings.FindRef(TEXT("enabled"));
+        OutConfiguration.Tooltip = InArguments.TextBindings.FindRef(TEXT("tooltip"));
+        OutConfiguration.DisabledReason = InArguments.TextBindings.FindRef(TEXT("disabled-reason"));
+        OutConfiguration.CanDispatchEvents = InArguments.CanDispatchEvents;
+        OutConfiguration.Action = *Action;
+        const FCkDebuggerStyleSelection& Selection = UCkDebuggerStyleSettings::Get_Selection();
+        OutConfiguration.Presentation = NOT ck::debug_axes::EditControls_AreVisible(Selection)
+            ? EInspectorActionPresentation::Hidden
+            : ck::debug_axes::EditControls_RevealOnHover(Selection)
+                ? EInspectorActionPresentation::OnHover
+                : EInspectorActionPresentation::Inline;
+        return true;
+    }
+
+    class FInspectorActionComponent final : public ICkUiRetainedWidget, public TSharedFromThis<FInspectorActionComponent>
+    {
+    public:
+        explicit FInspectorActionComponent(FInspectorActionConfiguration InConfiguration)
+            : Configuration(MoveTemp(InConfiguration))
+        {
+        }
+
+        auto Initialize(const FString& InId) -> void
+        {
+            if (Configuration.Presentation == EInspectorActionPresentation::Hidden)
+            {
+                Widget = SNew(SBox).Visibility(EVisibility::Collapsed);
+                return;
+            }
+
+            const TWeakPtr<FInspectorActionComponent> WeakAction = AsShared();
+            SAssignNew(ActionButton, SButton)
+                .Tag(FName(*InId))
+                .ButtonStyle(&FCkDebuggerCommonStyle::Get_FlatButtonStyle())
+                .ContentPadding(FMargin{10.0f, 3.0f})
+                .ToolTipText(TAttribute<FText>::CreateLambda([WeakAction]()
+                {
+                    const TSharedPtr<FInspectorActionComponent> Action = WeakAction.Pin();
+                    return Action.IsValid() ? Action->GetTooltip() : FText::GetEmpty();
+                }))
+                .IsEnabled(TAttribute<bool>::CreateLambda([WeakAction]()
+                {
+                    const TSharedPtr<FInspectorActionComponent> Action = WeakAction.Pin();
+                    return Action.IsValid() && Action->CanDispatch();
+                }))
+                .OnClicked_Lambda([WeakAction]() -> FReply
+                {
+                    if (const TSharedPtr<FInspectorActionComponent> Action = WeakAction.Pin()) { Action->Dispatch(); }
+                    return FReply::Handled();
+                })
+                [
+                    SNew(STextBlock)
+                    .Text_Lambda([WeakAction]()
+                    {
+                        const TSharedPtr<FInspectorActionComponent> Action = WeakAction.Pin();
+                        return Action.IsValid() ? Action->Configuration.Label.Get(FText::GetEmpty()) : FText::GetEmpty();
+                    })
+                    .Font(CkStyle::BoldFont(CkStyle::FontSizeSmall()))
+                    .ColorAndOpacity(FSlateColor{CkStyle::Text()})
+                ];
+            const TSharedRef<SBorder> ButtonBorder = SNew(SBorder)
+                .BorderImage(CkStyle::GetRoundedBrush())
+                .BorderBackgroundColor(FSlateColor{CkStyle::Border()})
+                .Padding(FMargin{1.0f})
+                [ActionButton.ToSharedRef()];
+
+            if (Configuration.Presentation == EInspectorActionPresentation::Inline)
+            {
+                Widget = ButtonBorder;
+                return;
+            }
+
+            SAssignNew(HoverHost, SBox);
+            const auto IsHovered = [WeakAction]()
+            {
+                const TSharedPtr<FInspectorActionComponent> Action = WeakAction.Pin();
+                return Action.IsValid() && Action->HoverHost.IsValid() && Action->HoverHost->IsHovered();
+            };
+            const TSharedRef<STextBlock> ReadOnly = SNew(STextBlock)
+                .Text_Lambda([WeakAction]()
+                {
+                    const TSharedPtr<FInspectorActionComponent> Action = WeakAction.Pin();
+                    return Action.IsValid() ? Action->Configuration.Label.Get(FText::GetEmpty()) : FText::GetEmpty();
+                })
+                .Font(CkStyle::RegularFont(CkStyle::FontSizeSmall()))
+                .ColorAndOpacity(FSlateColor{CkStyle::TextDim()})
+                .Visibility_Lambda([IsHovered]() { return IsHovered() ? EVisibility::Hidden : EVisibility::Visible; });
+            ButtonBorder->SetVisibility(TAttribute<EVisibility>::CreateLambda(
+                [IsHovered]() { return IsHovered() ? EVisibility::Visible : EVisibility::Hidden; }));
+            ActionButton->SetVisibility(TAttribute<EVisibility>::CreateLambda(
+                [IsHovered]() { return IsHovered() ? EVisibility::Visible : EVisibility::Hidden; }));
+            HoverHost->SetContent(
+                SNew(SOverlay)
+                + SOverlay::Slot().VAlign(VAlign_Center)[ReadOnly]
+                + SOverlay::Slot().VAlign(VAlign_Center)[ButtonBorder]);
+            Widget = HoverHost;
+        }
+
+        virtual ~FInspectorActionComponent() override { Active = false; }
+        virtual auto GetWidget() const -> TSharedRef<SWidget> override { return Widget.ToSharedRef(); }
+        virtual auto PrepareReload(const FCkUiCustomWidgetArguments& InArguments,
+            FString& OutFailure) const -> TUniquePtr<ICkUiPreparedWidgetUpdate> override;
+
+    private:
+        class FPreparedUpdate final : public ICkUiPreparedWidgetUpdate
+        {
+        public:
+            FPreparedUpdate(TSharedRef<FInspectorActionComponent> InAction, FInspectorActionConfiguration InConfiguration)
+                : Action(MoveTemp(InAction)), Configuration(MoveTemp(InConfiguration)) {}
+            virtual void Commit() noexcept override { Action->Configuration = MoveTemp(Configuration); }
+
+        private:
+            TSharedRef<FInspectorActionComponent> Action;
+            FInspectorActionConfiguration Configuration;
+        };
+
+        auto CanDispatch() const -> bool
+        {
+            return Active && Configuration.CanDispatchEvents.Get(false)
+                && Configuration.Enabled.Get(true) && Configuration.Action.IsBound();
+        }
+
+        auto GetTooltip() const -> FText
+        {
+            const FText Own = Configuration.Tooltip.Get(FText::GetEmpty());
+            const FText Reason = Configuration.DisabledReason.Get(FText::GetEmpty());
+            if (Reason.IsEmpty()) { return Own; }
+            if (Own.IsEmpty()) { return Reason; }
+            return FText::FromString(Own.ToString() + TEXT("\n\n") + Reason.ToString());
+        }
+
+        auto Dispatch() const -> void
+        {
+            if (NOT CanDispatch()) { return; }
+            const FSimpleDelegate CurrentAction = Configuration.Action;
+            CurrentAction.ExecuteIfBound();
+        }
+
+        TSharedPtr<SWidget> Widget;
+        TSharedPtr<SButton> ActionButton;
+        TSharedPtr<SBox> HoverHost;
+        FInspectorActionConfiguration Configuration;
+        bool Active = true;
+    };
+
+    auto FInspectorActionComponent::PrepareReload(
+        const FCkUiCustomWidgetArguments& InArguments, FString& OutFailure) const -> TUniquePtr<ICkUiPreparedWidgetUpdate>
+    {
+        auto NextConfiguration = FInspectorActionConfiguration{};
+        if (NOT MakeInspectorActionConfiguration(InArguments, NextConfiguration, OutFailure)) { return {}; }
+        if (NextConfiguration.Presentation != Configuration.Presentation)
+        {
+            OutFailure = TEXT("debug-inspector-action presentation cannot change for a retained id.");
+            return {};
+        }
+        return MakeUnique<FPreparedUpdate>(
+            ConstCastSharedRef<FInspectorActionComponent>(AsShared()), MoveTemp(NextConfiguration));
+    }
+
+    auto RegisterInspectorAction(FCkUiWidgetRegistry& InRegistry) -> FCkUiLoadResult
+    {
+        auto Registration = FCkUiCustomWidgetRegistration{};
+        Registration.Schema.Tag = TEXT("debug-inspector-action");
+        Registration.Schema.Properties = {
+            {TEXT("label"), ECkUiCustomPropertyKind::TextBinding},
+            {TEXT("action"), ECkUiCustomPropertyKind::Action},
+            {TEXT("enabled"), ECkUiCustomPropertyKind::BoolBinding, false},
+            {TEXT("tooltip"), ECkUiCustomPropertyKind::TextBinding, false},
+            {TEXT("disabled-reason"), ECkUiCustomPropertyKind::TextBinding, false},
+        };
+        Registration.RetainedFactory = [](const FCkUiCustomWidgetArguments& Arguments,
+            FString& OutFailure) -> TSharedPtr<ICkUiRetainedWidget>
+        {
+            auto Configuration = FInspectorActionConfiguration{};
+            if (NOT MakeInspectorActionConfiguration(Arguments, Configuration, OutFailure)) { return {}; }
+            const TSharedRef<FInspectorActionComponent> Action = MakeShared<FInspectorActionComponent>(MoveTemp(Configuration));
+            Action->Initialize(Arguments.Id);
+            return Action;
+        };
+        return InRegistry.Register(MoveTemp(Registration));
+    }
+
     class FInspectorUpdate final : public ICkUiPreparedWidgetUpdate
     {
     public:
@@ -530,6 +753,8 @@ auto FCkDebug_UiRegistry::TryCreate(TSharedPtr<const FCkUiWidgetRegistrySnapshot
     {
         return StatusResult;
     }
+    if (const FCkUiLoadResult InspectorActionResult = ck_debug_ui_registry::RegisterInspectorAction(Staging); !InspectorActionResult.Succeeded)
+    { return InspectorActionResult; }
     if (const FCkUiLoadResult IconResult = ck_debug_ui_registry::RegisterIcon(Staging); !IconResult.Succeeded)
     {
         return IconResult;

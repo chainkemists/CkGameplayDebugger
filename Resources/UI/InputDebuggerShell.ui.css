@@ -1,0 +1,5 @@
+.input-shell-layout { min-width: 0; min-height: 0; flex-grow: 1; flex-shrink: 1; background-color: var(--input-shell-surface); }
+.input-shell-summary-wrap { padding: 8px 12px; }
+.input-shell-axis-wrap { padding: 0px 12px; }
+.input-shell-scroll { min-width: 0; min-height: 0; flex-grow: 1; flex-shrink: 1; }
+.input-shell-sections { min-width: 0; padding: 4px; }

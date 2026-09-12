@@ -112,6 +112,12 @@ namespace ck_input_debugger
         };
     }
 
+    static auto ShellStyleTokens() -> FCkUiView::FTokens
+    {
+        const auto Color = [](const FLinearColor& InColor) { return TEXT("#") + InColor.ToFColorSRGB().ToHex(); };
+        return {{TEXT("--input-shell-surface"), Color(CkStyle::BgRoot())}};
+    }
+
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -140,6 +146,7 @@ auto
     _KeyStripBox     = SNew(SHorizontalBox);
     _TimelineHost    = SNew(SBox);
     _ControlsHost    = SNew(SBox);
+    _AuthoredShellHost = SNew(SBox);
 
     // Passive application-wide observer for the live surfaces — every handler returns false, so
     // it can never starve viewport input (ck-slate-tools §3).
@@ -159,83 +166,20 @@ auto
         .CommandGroups({FCkDebug_CommandGroup::Context(TEXT("InputContext"), FText::FromString(TEXT("Player and input controls")), BuildToolbar())})
         .ShowRefreshControls(true)
         .Content()
-        [
-        SNew(SVerticalBox)
-
-            + SVerticalBox::Slot().AutoHeight().Padding(CkStyle::SpaceM, CkStyle::SpaceS)
-                [ _SummaryText.ToSharedRef() ]
-
-            + SVerticalBox::Slot().AutoHeight().Padding(CkStyle::SpaceM, 0.0f)
-                [ ck::debug_axes::Make_AxisSeparator() ]
-
-            + SVerticalBox::Slot().FillHeight(1.0f)
-                [
-                    SNew(SScrollBox)
-
-                    + SScrollBox::Slot().Padding(CkStyle::SpaceS)
-                        [
-                            SNew(SVerticalBox)
-
-                            + SVerticalBox::Slot().AutoHeight()
-                                [
-                                    BuildSection(
-                                        FText::FromString(TEXT("Held & Recent Keys")),
-                                        SNullWidget::NullWidget,
-                                        _KeyStripBox.ToSharedRef())
-                                ]
-
-                            + SVerticalBox::Slot().AutoHeight()
-                                [
-                                    BuildSection(
-                                        FText::FromString(TEXT("Devices")),
-                                        SNullWidget::NullWidget,
-                                        BuildDevicesSection())
-                                ]
-
-                            + SVerticalBox::Slot().AutoHeight()
-                                [
-                                    BuildSection(
-                                        FText::FromString(TEXT("Timeline")),
-                                        SNew(STextBlock)
-                                            .Font_Static(&ck_input_debugger::Font_Body)
-                                            .Text(FText::FromString(TEXT("frame axis · wheel zooms · right-drag pans · F = follow live · click a press marker to filter")))
-                                            .ColorAndOpacity(CkStyle::TextMute()),
-                                        _TimelineHost.ToSharedRef())
-                                ]
-
-                            + SVerticalBox::Slot().AutoHeight()
-                                [
-                                    BuildSection(
-                                        FText::FromString(TEXT("Player Bindings — default vs current")),
-                                        BuildBindingsHeader(),
-                                        _BindingsListBox.ToSharedRef())
-                                ]
-
-                            + SVerticalBox::Slot().AutoHeight()
-                                [
-                                    BuildSection(
-                                        FText::FromString(TEXT("Mapping Context Stack")),
-                                        SNullWidget::NullWidget,
-                                        _ContextListBox.ToSharedRef())
-                                ]
-
-                            + SVerticalBox::Slot().AutoHeight()
-                                [
-                                    BuildSection(
-                                        FText::FromString(TEXT("Resolved Bindings (live)")),
-                                        SNullWidget::NullWidget,
-                                        _ResolvedListBox.ToSharedRef())
-                                ]
-                        ]
-                ]
-        ]
+        [_AuthoredShellHost.ToSharedRef()]
     ];
 
+    BuildAuthoredShell();
     DoBuildControlsView();
 }
 
 SCkInputDebuggerWindow::~SCkInputDebuggerWindow()
 {
+    _AuthoredShellView.Reset();
+    _AuthoredShellHost.Reset();
+    _ControlsView.Reset();
+    _ControlsHost.Reset();
+
     if (_KeyObserver.IsValid() && FSlateApplication::IsInitialized())
     { FSlateApplication::Get().UnregisterInputPreProcessor(_KeyObserver); }
 
@@ -243,6 +187,112 @@ SCkInputDebuggerWindow::~SCkInputDebuggerWindow()
     if (_EndPIEHandle.IsValid())
     { FEditorDelegates::EndPIE.Remove(_EndPIEHandle); }
 #endif
+}
+
+auto SCkInputDebuggerWindow::BuildNativeShellFallback() -> TSharedRef<SWidget>
+{
+    return SNew(SVerticalBox)
+        + SVerticalBox::Slot().AutoHeight().Padding(CkStyle::SpaceM, CkStyle::SpaceS)
+        [_SummaryText.ToSharedRef()]
+        + SVerticalBox::Slot().AutoHeight().Padding(CkStyle::SpaceM, 0.0f)
+        [ck::debug_axes::Make_AxisSeparator()]
+        + SVerticalBox::Slot().FillHeight(1.0f)
+        [
+            SNew(SScrollBox)
+            + SScrollBox::Slot().Padding(CkStyle::SpaceS)
+            [
+                SNew(SVerticalBox)
+                + SVerticalBox::Slot().AutoHeight()
+                [BuildSection(FText::FromString(TEXT("Held & Recent Keys")), SNullWidget::NullWidget, _KeyStripBox.ToSharedRef())]
+                + SVerticalBox::Slot().AutoHeight()
+                [BuildSection(FText::FromString(TEXT("Devices")), SNullWidget::NullWidget, BuildDevicesSection())]
+                + SVerticalBox::Slot().AutoHeight()
+                [
+                    BuildSection(
+                        FText::FromString(TEXT("Timeline")),
+                        SNew(STextBlock)
+                            .Font_Static(&ck_input_debugger::Font_Body)
+                            .Text(FText::FromString(TEXT("frame axis · wheel zooms · right-drag pans · F = follow live · click a press marker to filter")))
+                            .ColorAndOpacity(CkStyle::TextMute()),
+                        _TimelineHost.ToSharedRef())
+                ]
+                + SVerticalBox::Slot().AutoHeight()
+                [BuildSection(FText::FromString(TEXT("Player Bindings — default vs current")), BuildBindingsHeader(), _BindingsListBox.ToSharedRef())]
+                + SVerticalBox::Slot().AutoHeight()
+                [BuildSection(FText::FromString(TEXT("Mapping Context Stack")), SNullWidget::NullWidget, _ContextListBox.ToSharedRef())]
+                + SVerticalBox::Slot().AutoHeight()
+                [BuildSection(FText::FromString(TEXT("Resolved Bindings (live)")), SNullWidget::NullWidget, _ResolvedListBox.ToSharedRef())]
+            ]
+        ];
+}
+
+auto SCkInputDebuggerWindow::BuildAuthoredShell() -> void
+{
+    TSharedPtr<const FCkUiWidgetRegistrySnapshot> Registry;
+    const FCkUiLoadResult RegistryResult = FCkDebug_UiRegistry::TryCreate(Registry);
+    const TSharedPtr<IPlugin> Plugin = IPluginManager::Get().FindPlugin(TEXT("CkDebugger"));
+    if (NOT RegistryResult.Succeeded || NOT Registry.IsValid() || NOT Plugin.IsValid())
+    {
+        _AuthoredShellLoadFailure = RegistryResult.Succeeded
+            ? TEXT("CkDebugger plugin is unavailable.")
+            : FString::Join(RegistryResult.Errors, TEXT("\n"));
+        _AuthoredShellHost->SetContent(BuildNativeShellFallback());
+        return;
+    }
+
+    FCkUiView::FNativeBindings NativeBindings;
+    NativeBindings.Add(TEXT("input-summary"), _SummaryText.ToSharedRef());
+    NativeBindings.Add(TEXT("input-axis"), ck::debug_axes::Make_AxisSeparator());
+    NativeBindings.Add(TEXT("input-key-section"),
+        BuildSection(FText::FromString(TEXT("Held & Recent Keys")), SNullWidget::NullWidget, _KeyStripBox.ToSharedRef()));
+    NativeBindings.Add(TEXT("input-devices-section"),
+        BuildSection(FText::FromString(TEXT("Devices")), SNullWidget::NullWidget, BuildDevicesSection()));
+    NativeBindings.Add(TEXT("input-timeline-section"), BuildSection(
+        FText::FromString(TEXT("Timeline")),
+        SNew(STextBlock)
+            .Font_Static(&ck_input_debugger::Font_Body)
+            .Text(FText::FromString(TEXT("frame axis · wheel zooms · right-drag pans · F = follow live · click a press marker to filter")))
+            .ColorAndOpacity(CkStyle::TextMute()),
+        _TimelineHost.ToSharedRef()));
+    NativeBindings.Add(TEXT("input-bindings-section"),
+        BuildSection(FText::FromString(TEXT("Player Bindings — default vs current")), BuildBindingsHeader(), _BindingsListBox.ToSharedRef()));
+    NativeBindings.Add(TEXT("input-context-section"),
+        BuildSection(FText::FromString(TEXT("Mapping Context Stack")), SNullWidget::NullWidget, _ContextListBox.ToSharedRef()));
+    NativeBindings.Add(TEXT("input-resolved-section"),
+        BuildSection(FText::FromString(TEXT("Resolved Bindings (live)")), SNullWidget::NullWidget, _ResolvedListBox.ToSharedRef()));
+
+    const TSharedRef<FCkUiView> Candidate = FCkUiView::Create(
+        MoveTemp(NativeBindings), {}, ck_input_debugger::ShellStyleTokens(),
+        CkStyle::RegularFont(CkStyle::FontSizeBody()), {}, Registry);
+    const TSharedRef<SWidget> Main = Candidate->GetRegion(TEXT("main"));
+    const FString ResourceRoot = FPaths::Combine(Plugin->GetBaseDir(), TEXT("Resources/UI"));
+    Candidate->SetFiles(
+        FPaths::Combine(ResourceRoot, TEXT("InputDebuggerShell.ui.html")),
+        FPaths::Combine(ResourceRoot, TEXT("InputDebuggerShell.ui.css")));
+    Candidate->PollFiles();
+    if (NOT Candidate->GetLastResult().Succeeded)
+    {
+        _AuthoredShellLoadFailure = FString::Join(Candidate->GetLastResult().Errors, TEXT("\n"));
+        _AuthoredShellHost->SetContent(BuildNativeShellFallback());
+        return;
+    }
+
+    _AuthoredShellView = Candidate;
+    _AuthoredShellLoadFailure.Reset();
+    _AuthoredShellHost->SetContent(Main);
+}
+
+auto SCkInputDebuggerWindow::PollAuthoredShell(const double InCurrentTime) -> void
+{
+    constexpr double PollIntervalSeconds = 0.5;
+    if (InCurrentTime < _NextShellPollSeconds || NOT _AuthoredShellView.IsValid()) { return; }
+
+    _NextShellPollSeconds = InCurrentTime + PollIntervalSeconds;
+    _AuthoredShellView->PollFiles(ck_input_debugger::ShellStyleTokens());
+    if (_AuthoredShellView->GetLastResult().Succeeded)
+    { _AuthoredShellLoadFailure.Reset(); }
+    else
+    { _AuthoredShellLoadFailure = FString::Join(_AuthoredShellView->GetLastResult().Errors, TEXT("\n")); }
 }
 
 auto
@@ -488,6 +538,7 @@ auto
     -> void
 {
     SCkDebugger_WindowBase::Tick(InAllottedGeometry, InCurrentTime, InDeltaTime);
+    PollAuthoredShell(InCurrentTime);
     DoPollControlsFiles(InCurrentTime);
 
     if (NOT FCkDebuggerRefreshGate::Should_RefreshNow(WindowId))

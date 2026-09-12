@@ -1,0 +1,12 @@
+.path-network-follower-inspector { min-width: 0; gap: 3px; }
+.path-network-follower-row { min-width: 0; gap: 8px; vertical-align: center; }
+.path-network-follower-label { min-width: 110px; color: #A8B4C4; }
+.path-network-follower-status { min-width: 0; flex-grow: 1; }
+.path-network-follower-goal { min-width: 0; flex-grow: 1; }
+.path-network-follower-value { min-width: 0; flex-grow: 1; }
+.path-network-follower-goal { gap: 8px; }
+.path-network-follower-axis-x { color: #E87878; }
+.path-network-follower-axis-y { color: #78D987; }
+.path-network-follower-axis-z { color: #7BA8EA; }
+.path-network-follower-value { color: #D8E1EC; }
+.path-network-follower-action { min-width: 0; }

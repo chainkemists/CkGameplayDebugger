@@ -60,6 +60,8 @@ public class CkGoapDebugger : CkModuleRules
 		RuntimeDependencies.Add(Path.Combine(PluginDirectory, "Resources", "UI", "GoapDebuggerSearchTrace.ui.css"), StagedFileType.NonUFS);
 		RuntimeDependencies.Add(Path.Combine(PluginDirectory, "Resources", "UI", "GoapDebuggerShell.ui.html"), StagedFileType.NonUFS);
 		RuntimeDependencies.Add(Path.Combine(PluginDirectory, "Resources", "UI", "GoapDebuggerShell.ui.css"), StagedFileType.NonUFS);
+		RuntimeDependencies.Add(Path.Combine(PluginDirectory, "Resources", "UI", "GoapInspectorGateway.ui.html"), StagedFileType.NonUFS);
+		RuntimeDependencies.Add(Path.Combine(PluginDirectory, "Resources", "UI", "GoapInspectorGateway.ui.css"), StagedFileType.NonUFS);
 
 		if (Target.bBuildEditor)
 		{

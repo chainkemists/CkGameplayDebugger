@@ -8,6 +8,8 @@
 // ====================================================================================================================
 
 class SVerticalBox;
+class SBox;
+class FCkUiView;
 class UWorld;
 
 // ====================================================================================================================
@@ -48,6 +50,7 @@ public:
     SLATE_END_ARGS()
 
     auto Construct(const FArguments& InArgs) -> void;
+    virtual ~SCkGoapDebugger_InspectorGateway() override;
     auto Tick(const FGeometry& InAllottedGeometry, double InCurrentTime, float InDeltaTime) -> void override;
 
     // Used by the inspector wrapper when selection changes — swaps the entity
@@ -55,7 +58,13 @@ public:
     auto Set_Entity(const FCk_Handle& InEntity) -> void;
 
 private:
+    friend class FCkGoapDebugger_InspectorGatewayAuthored;
+
     auto Resolve_World() const -> UWorld*;
+    auto Build_AuthoredView() -> void;
+    auto Poll_AuthoredFiles() -> void;
+    auto Clear_Sections() -> void;
+    auto Mount_Section(const TSharedPtr<SBox>& InHost, const TSharedRef<SWidget>& InContent) -> void;
 
     // Rebuild the inner Slate tree from the latest snapshot.
     auto Rebuild() -> void;
@@ -79,7 +88,17 @@ private:
 
 private:
     FCk_Handle                    _Entity;
+    TSharedPtr<SBox>              _RootHost;
     TSharedPtr<SVerticalBox>      _ContentBox;
+    TSharedPtr<SBox>              _HeaderHost;
+    TSharedPtr<SBox>              _ActionSetsHost;
+    TSharedPtr<SBox>              _ActiveChainHost;
+    TSharedPtr<SBox>              _LeafActionHost;
+    TSharedPtr<SBox>              _PlanPreviewHost;
+    TSharedPtr<SBox>              _EmptyHost;
+    TSharedPtr<FCkUiView>         _AuthoredView;
+    FString                       _AuthoredLoadError;
+    bool                          _AuthoredMounted = false;
 
     // Coarse hash of the last rendered snapshot — keeps Tick from rebuilding
     // every frame.

@@ -1,0 +1,8 @@
+.astar-inspector { min-width: 0; gap: 3px; }
+.astar-section { min-width: 0; gap: 3px; }
+.astar-header { color: #D8E1EC; font-size: 10px; }
+.astar-row { min-width: 0; gap: 8px; vertical-align: center; }
+.astar-label { min-width: 130px; color: #A8B4C4; }
+.astar-status { min-width: 0; flex-grow: 1; }
+.astar-numeric-value { min-width: 0; color: #99E699; }
+.astar-meter-value { min-width: 0; gap: 8px; vertical-align: center; }

@@ -280,6 +280,11 @@ FCkInspector_RowCaptureScope::~FCkInspector_RowCaptureScope()
     ck_inspector_widget_builder::GActiveRowCapture = _Previous;
 }
 
+auto FCkInspector_RowCaptureScope::Is_Active() -> bool
+{
+    return ck_inspector_widget_builder::GActiveRowCapture != nullptr;
+}
+
 // --------------------------------------------------------------------------------------------------------------------
 
 FCkInspector_DiffMarkScope::FCkInspector_DiffMarkScope(const TSet<FString>* InDifferingLabels)
@@ -292,6 +297,14 @@ FCkInspector_DiffMarkScope::FCkInspector_DiffMarkScope(const TSet<FString>* InDi
 FCkInspector_DiffMarkScope::~FCkInspector_DiffMarkScope()
 {
     ck_inspector_widget_builder::GActiveDiffMark = _Previous;
+}
+
+auto FCkInspector_DiffMarkScope::Is_LabelMarked(const FString& InLabel) -> bool
+{
+    const auto* Labels = ck_inspector_widget_builder::GActiveDiffMark != nullptr
+        ? ck_inspector_widget_builder::GActiveDiffMark->_Labels
+        : nullptr;
+    return Labels != nullptr && Labels->Contains(InLabel);
 }
 
 // ====================================================================================================================

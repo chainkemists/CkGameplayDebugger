@@ -70,5 +70,8 @@ public class CkDebuggerCommon : CkModuleRules
         {
             RuntimeDependencies.Add(CommonResource, StagedFileType.NonUFS);
         }
+
+        RuntimeDependencies.Add(Path.Combine(PluginDirectory, "Resources", "UI", "DebuggerWindowChrome.ui.html"), StagedFileType.NonUFS);
+        RuntimeDependencies.Add(Path.Combine(PluginDirectory, "Resources", "UI", "DebuggerWindowChrome.ui.css"), StagedFileType.NonUFS);
     }
 }

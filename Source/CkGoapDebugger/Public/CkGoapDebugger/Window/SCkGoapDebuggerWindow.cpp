@@ -8,7 +8,6 @@
 #include "CkGoapDebugger/Data/CkGoapDebugger_Targeting.h"
 #include "CkGoapDebugger/ViewModel/CkGoapDebugger_ViewModel.h"
 #include "CkGoapDebugger/Window/SCkGoapDebugger_AgentColumn.h"
-#include "CkGoapDebugger/Window/SCkGoapDebugger_AgentListPanel.h"
 #include "CkGoapDebugger/Window/SCkGoapDebugger_CatalogPanel.h"
 #include "CkGoapDebugger/Window/SCkGoapDebugger_DecisionPanel.h"
 #include "CkGoapDebugger/Window/SCkGoapDebugger_GraphPane.h"
@@ -46,7 +45,9 @@
 #include "CkDebuggerCommon/Widgets/SCkDebug_Switch.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_UnderlineTabs.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_WorldSelector.h"
+#include "CkDebuggerCommon/UI/CkDebug_UiRegistry.h"
 #include "CkDebuggerCommon/Window/CkDebuggerRefreshGate.h"
+#include "CkSlateLayout/SCkUiSurface.h"
 
 #include "CkEditorTools/Style/CkStyle.h"
 
@@ -66,7 +67,9 @@
 
 #include "Engine/Engine.h"
 #include "Engine/World.h"
+#include "Interfaces/IPluginManager.h"
 #include "Kismet/GameplayStatics.h"
+#include "Misc/Paths.h"
 
 #if WITH_EDITOR
     #include "Editor.h"
@@ -84,6 +87,14 @@ const FName SCkGoapDebuggerWindow::CTab_Decision = FName(TEXT("Decision"));
 const FName SCkGoapDebuggerWindow::CTab_Graph    = FName(TEXT("Graph"));
 const FName SCkGoapDebuggerWindow::CTab_Search   = FName(TEXT("Search"));
 
+namespace ck_goap_debugger_shell
+{
+    auto Tokens() -> FCkUiView::FTokens
+    {
+        return {{TEXT("--goap-shell-surface"), TEXT("#") + CkStyle::Bg2().ToFColorSRGB().ToHex()}};
+    }
+}
+
 // ====================================================================================================================
 // LIFETIME
 // ====================================================================================================================
@@ -95,6 +106,9 @@ SCkGoapDebuggerWindow::~SCkGoapDebuggerWindow()
 
     if (_SessionInvalidatedHandle.IsValid())
     { ck::DebugSessionLifecycle::Get_OnSessionInvalidated().Remove(_SessionInvalidatedHandle); }
+
+    if (_SelectionSyncHandle.IsValid())
+    { ck::DebugSelectionSync::Get_OnSelection().Remove(_SelectionSyncHandle); }
 }
 
 auto
@@ -118,10 +132,6 @@ auto
     _PlannerPickerHandles.Reset();
     if (_AgentPicker.IsValid())   { _AgentPicker->RefreshOptions(); }
     if (_PlannerPicker.IsValid()) { _PlannerPicker->RefreshOptions(); }
-
-    // Agent rows hold FCk_Handle copies — drop them while the registry lives.
-    if (_AgentList.IsValid())
-    { _AgentList->Reset_ForWorldChange(); }
 
     if (_Sidebar.IsValid())
     { _Sidebar->Reset_ForWorldChange(); }
@@ -233,6 +243,8 @@ auto
         this, &SCkGoapDebuggerWindow::HandleWorldChanged);
     _SessionInvalidatedHandle = ck::DebugSessionLifecycle::Get_OnSessionInvalidated().AddSP(
         this, &SCkGoapDebuggerWindow::HandleWorldTornDown);
+    _SelectionSyncHandle = ck::DebugSelectionSync::Get_OnSelection().AddSP(
+        this, &SCkGoapDebuggerWindow::HandleGlobalSelectionSync);
 
     _ActiveTab = Tab_Inspector;
     _CenterTab = CTab_Decision;
@@ -240,14 +252,14 @@ auto
     SAssignNew(_Sidebar, SCkGoapDebugger_Sidebar, _ViewModel);
     SAssignNew(_AgentColumn, SCkGoapDebugger_AgentColumn)
         .ViewModel(_ViewModel);
-    SAssignNew(_AgentList, SCkGoapDebugger_AgentListPanel)
-        .ViewModel(_ViewModel);
     SAssignNew(_WorldStateRail, SCkGoapDebugger_WorldStateRail)
         .ViewModel(_ViewModel);
 
-    auto SquadView     = BuildSquadView();
-    auto InspectorView = BuildInspectorView();
-    auto CatalogView   = BuildCatalogView();
+    BuildSquadView();
+    BuildInspectorPorts();
+    BuildCatalogView();
+    const TSharedRef<SWidget> NerdStrip = BuildNerdStrip();
+    const TSharedRef<SWidget> AlertStrip = BuildAlertStrip();
 
     ChildSlot
     [
@@ -261,53 +273,11 @@ auto
             ]
             .Content()
             [
-                SNew(SBorder)
-            .BorderImage(CkStyle::GetFilledBrush())
-            .BorderBackgroundColor(FSlateColor(CkStyle::Bg1()))
-            .Padding(FMargin(0.0f))
-            [
-                SNew(SVerticalBox)
-
-                    // Nerd strip — search internals; only in nerd mode.
-                    + SVerticalBox::Slot()
-                        .AutoHeight()
-                        [
-                            BuildNerdStrip()
-                        ]
-
-                    // Alert strip — sandbox banner + fallback-active warning.
-                    + SVerticalBox::Slot()
-                        .AutoHeight()
-                        [
-                            BuildAlertStrip()
-                        ]
-
-                    // Top tabs: Squad / Agent Inspector / Catalog Audit
-                    + SVerticalBox::Slot()
-                        .AutoHeight()
-                        [
-                            BuildTopTabs()
-                        ]
-
-                    // Active view
-                    + SVerticalBox::Slot()
-                        .FillHeight(1.0f)
-                        [
-                            SNew(SWidgetSwitcher)
-                                .WidgetIndex_Lambda([this]() -> int32
-                                {
-                                    if (_ActiveTab == Tab_Squad)   { return 0; }
-                                    if (_ActiveTab == Tab_Catalog) { return 2; }
-                                    return 1;
-                                })
-
-                                + SWidgetSwitcher::Slot() [ SquadView ]
-                                + SWidgetSwitcher::Slot() [ InspectorView ]
-                                + SWidgetSwitcher::Slot() [ CatalogView ]
-                        ]
-            ]
+                SAssignNew(_AuthoredShellHost, SBox)
             ]
     ];
+
+    BuildAuthoredShell(NerdStrip, AlertStrip);
 
     // Subscribe to ViewModel changes so the sidebar's structural-hash check
     // gets a chance to fire on selection / snapshot changes.
@@ -351,6 +321,7 @@ auto
     // MUST be the direct base, not SCompoundWidget: the base's Tick is what polls the Layer-B style
     // revision behind the refresh gate. Calling the grandparent kills live style-apply silently.
     SCkDebugger_WindowBase::Tick(InAllottedGeometry, InCurrentTime, InDeltaTime);
+    PollAuthoredShell();
 
     // Viewport-picker ticks stay ungated so input handling keeps working even
     // when the panel refresh is paused.
@@ -385,9 +356,6 @@ auto
         }
     }
 
-    RefreshAgentList();
-    if (_AgentList.IsValid())
-    { _AgentList->RestoreSelectionFromViewModel(); }
 }
 
 // ====================================================================================================================
@@ -895,62 +863,95 @@ auto
 }
 
 // ====================================================================================================================
-// BUILD — TOP TABS + VIEWS (Mission Control)
+// BUILD — AUTHORED STABLE SHELL (Mission Control)
 // ====================================================================================================================
 
 auto
     SCkGoapDebuggerWindow::
-    BuildTopTabs()
-    -> TSharedRef<SWidget>
+    BuildAuthoredShell(
+        const TSharedRef<SWidget>& InNerdStrip,
+        const TSharedRef<SWidget>& InAlertStrip)
+    -> void
 {
-    auto Tabs = TArray<FCkDebug_UnderlineTabDesc>{};
-
+    TSharedPtr<const FCkUiWidgetRegistrySnapshot> Registry;
+    const FCkUiLoadResult RegistryResult = FCkDebug_UiRegistry::TryCreate(Registry);
+    const TSharedPtr<IPlugin> Plugin = IPluginManager::Get().FindPlugin(TEXT("CkDebugger"));
+    if (NOT RegistryResult.Succeeded || NOT Registry.IsValid() || NOT Plugin.IsValid())
     {
-        auto Squad = FCkDebug_UnderlineTabDesc{};
-        Squad.Id = Tab_Squad;
-        Squad.Label = FText::FromString(TEXT("Squad"));
-        Squad.CountText = TAttribute<FText>::CreateLambda([this]() -> FText
-        {
-            if (NOT _ViewModel.IsValid()) { return FText::GetEmpty(); }
-            const auto Count = _ViewModel->Get_Roster().Num();
-            return Count > 0 ? FText::AsNumber(Count) : FText::GetEmpty();
-        });
-        Tabs.Add(MoveTemp(Squad));
-    }
-    {
-        auto Inspector = FCkDebug_UnderlineTabDesc{};
-        Inspector.Id = Tab_Inspector;
-        Inspector.Label = FText::FromString(TEXT("Agent Inspector"));
-        Tabs.Add(MoveTemp(Inspector));
-    }
-    {
-        auto Catalog = FCkDebug_UnderlineTabDesc{};
-        Catalog.Id = Tab_Catalog;
-        Catalog.Label = FText::FromString(TEXT("Catalog Audit"));
-        // Warn dot — cheap field reads only (no per-paint lint): unregistered
-        // goal keys, dependency cycles, or a missing fallback all warrant a look.
-        Catalog.ShowWarnDot = TAttribute<bool>::CreateLambda([this]() -> bool
-        {
-            if (NOT _ViewModel.IsValid()) { return false; }
-            const auto* Planner = _ViewModel->GetSelectedPlannerInfo();
-            if (Planner == nullptr) { return false; }
-            return Planner->InvalidGoalAuthored.Num() > 0
-                || Planner->DependencyCyclesDisplay.Num() > 0
-                || (NOT Planner->HasUnconditionalFallback && NOT Planner->AllowPlanFailed);
-        });
-        Tabs.Add(MoveTemp(Catalog));
+        _AuthoredShellLoadFailure = RegistryResult.Succeeded
+            ? TEXT("CkDebugger plugin is unavailable.")
+            : FString::Join(RegistryResult.Errors, TEXT("\n"));
+        ActivateNativeShellFallback(InNerdStrip, InAlertStrip);
+        return;
     }
 
-    return SNew(SBorder)
-        .BorderImage(CkStyle::GetFilledBrush())
-        .BorderBackgroundColor(FSlateColor(CkStyle::Bg2()))
-        .Padding(FMargin(CkStyle::SpaceL, 0.0f, CkStyle::SpaceL, 0.0f))
-        [
-            SNew(SCkDebug_UnderlineTabs)
-                .Tabs(Tabs)
-                .ActiveTabId_Lambda([this] { return _ActiveTab; })
-                .OnTabSelected_Lambda([this](FName InTab) { _ActiveTab = InTab; })
-        ];
+    FCkUiView::FNativeBindings NativeBindings;
+    NativeBindings.Add(TEXT("goap-nerd-strip"), InNerdStrip);
+    NativeBindings.Add(TEXT("goap-alert-strip"), InAlertStrip);
+    NativeBindings.Add(TEXT("goap-squad-view"), _SquadTable);
+    NativeBindings.Add(TEXT("goap-agent-column"), _AgentColumn);
+    NativeBindings.Add(TEXT("goap-sidebar"), _Sidebar);
+    NativeBindings.Add(TEXT("goap-decision"), _DecisionPanel);
+    NativeBindings.Add(TEXT("goap-graph"), _GraphPane);
+    NativeBindings.Add(TEXT("goap-search-trace"), _SearchTracePanel);
+    NativeBindings.Add(TEXT("goap-world-state"), _WorldStateRail);
+    NativeBindings.Add(TEXT("goap-timeline"), _TimelineDock);
+    NativeBindings.Add(TEXT("goap-catalog"), _CatalogPanel);
+
+    auto Data = FCkUiView::FDataBindings{};
+    const TWeakPtr<SCkGoapDebuggerWindow> WeakWindow{SharedThis(this)};
+    Data.SlateUserIndex = 0;
+    Data.CanDispatchEvents = TAttribute<bool>::CreateLambda([WeakWindow]() { return WeakWindow.IsValid(); });
+    Data.String.Add(TEXT("goap-top-tab"), TAttribute<FString>::CreateLambda([WeakWindow]()
+    { const TSharedPtr<SCkGoapDebuggerWindow> Window = WeakWindow.Pin(); return Window.IsValid() ? Window->_ActiveTab.ToString() : FString{}; }));
+    Data.StringChanged.Add(TEXT("goap-top-tab-changed"), FCkUiOnStringChanged::CreateLambda([WeakWindow](const FString& InValue)
+    {
+        const TSharedPtr<SCkGoapDebuggerWindow> Window = WeakWindow.Pin();
+        if (Window.IsValid() && (InValue == Tab_Squad.ToString() || InValue == Tab_Inspector.ToString() || InValue == Tab_Catalog.ToString()))
+        { Window->_ActiveTab = FName(*InValue); }
+    }));
+    Data.String.Add(TEXT("goap-center-tab"), TAttribute<FString>::CreateLambda([WeakWindow]()
+    {
+        const TSharedPtr<SCkGoapDebuggerWindow> Window = WeakWindow.Pin();
+        return Window.IsValid() && (Window->_CenterTab != CTab_Search || Window->_NerdMode) ? Window->_CenterTab.ToString() : CTab_Decision.ToString();
+    }));
+    Data.StringChanged.Add(TEXT("goap-center-tab-changed"), FCkUiOnStringChanged::CreateLambda([WeakWindow](const FString& InValue)
+    {
+        const TSharedPtr<SCkGoapDebuggerWindow> Window = WeakWindow.Pin();
+        if (Window.IsValid() && (InValue == CTab_Decision.ToString() || InValue == CTab_Graph.ToString() || (InValue == CTab_Search.ToString() && Window->_NerdMode)))
+        { Window->_CenterTab = FName(*InValue); }
+    }));
+    Data.Text.Add(TEXT("goap-squad-label"), TAttribute<FText>::CreateLambda([WeakWindow]()
+    {
+        const TSharedPtr<SCkGoapDebuggerWindow> Window = WeakWindow.Pin();
+        const int32 Count = Window.IsValid() && Window->_ViewModel.IsValid() ? Window->_ViewModel->Get_Roster().Num() : 0;
+        return Count > 0 ? FText::Format(NSLOCTEXT("CkGoapDebugger", "SquadTab", "Squad ({0})"), FText::AsNumber(Count)) : FText::FromString(TEXT("Squad"));
+    }));
+    Data.Text.Add(TEXT("goap-catalog-label"), TAttribute<FText>::CreateLambda([WeakWindow]()
+    {
+        const TSharedPtr<SCkGoapDebuggerWindow> Window = WeakWindow.Pin();
+        const FCkGoapDebugger_PlannerInfo* Planner = Window.IsValid() && Window->_ViewModel.IsValid() ? Window->_ViewModel->GetSelectedPlannerInfo() : nullptr;
+        const bool bWarn = Planner != nullptr && (Planner->InvalidGoalAuthored.Num() > 0 || Planner->DependencyCyclesDisplay.Num() > 0 || (NOT Planner->HasUnconditionalFallback && NOT Planner->AllowPlanFailed));
+        return FText::FromString(bWarn ? TEXT("Catalog Audit !") : TEXT("Catalog Audit"));
+    }));
+    Data.Visibility.Add(TEXT("goap-search-enabled"), TAttribute<bool>::CreateLambda([WeakWindow]()
+    { const TSharedPtr<SCkGoapDebuggerWindow> Window = WeakWindow.Pin(); return Window.IsValid() && Window->_NerdMode; }));
+
+    const TSharedRef<FCkUiView> Candidate = FCkUiView::Create(MoveTemp(NativeBindings), {}, ck_goap_debugger_shell::Tokens(), CkStyle::RegularFont(CkStyle::FontSizeBody()), MoveTemp(Data), Registry);
+    const TSharedRef<SWidget> ShellRegion = Candidate->GetRegion(TEXT("main"));
+    Candidate->SetFiles(FPaths::Combine(Plugin->GetBaseDir(), TEXT("Resources/UI/GoapDebuggerShell.ui.html")),
+        FPaths::Combine(Plugin->GetBaseDir(), TEXT("Resources/UI/GoapDebuggerShell.ui.css")));
+    Candidate->PollFiles();
+    if (!Candidate->GetLastResult().Succeeded)
+    {
+        _AuthoredShellLoadFailure = FString::Join(Candidate->GetLastResult().Errors, TEXT("\n"));
+        ActivateNativeShellFallback(InNerdStrip, InAlertStrip);
+        return;
+    }
+    _AuthoredShellView = Candidate;
+    _AuthoredShellMounted = true;
+    _AuthoredShellLoadFailure.Reset();
+    _AuthoredShellHost->SetContent(ShellRegion);
 }
 
 auto
@@ -959,9 +960,7 @@ auto
     -> TSharedRef<SWidget>
 {
     // One row per top-level Planner world-wide; Inspect flips to the Agent
-    // Inspector with that planner selected. (_AgentList stays constructed —
-    // it still receives cross-debugger selection-sync broadcasts — but the
-    // table carries the tab; the list retires with the P9 sweep.)
+    // Inspector with that planner selected.
     return SAssignNew(_SquadTable, SCkGoapDebugger_SquadTable)
         .ViewModel(_ViewModel)
         .OnInspect(FOnCkGoapDebug_SquadInspect::CreateLambda(
@@ -977,83 +976,17 @@ auto
 
 auto
     SCkGoapDebuggerWindow::
-    BuildInspectorView()
-    -> TSharedRef<SWidget>
+    BuildInspectorPorts()
+    -> void
 {
-    auto SidebarWidget = _Sidebar.ToSharedRef();
-    const auto WrapPane = [](
-        const TSharedRef<SWidget>& InContent,
-        const ECkDebugPaneContent InContentMode = ECkDebugPaneContent::Passive) -> TSharedRef<SWidget>
-    {
-        return SNew(SCkDebug_PaneHost)
-            .ContentMode(InContentMode)
-            [
-                InContent
-            ];
-    };
-
-    return SNew(SSplitter)
-        .Orientation(Orient_Vertical)
-
-        + SSplitter::Slot()
-            .Value(0.70f)
-            [
-                SNew(SSplitter)
-                    .Orientation(Orient_Horizontal)
-
-                    // LEFT — mockup agent column stacked over the Planner tree.
-                    // The tree stays as the planner-selection surface until a
-                    // chrome planner-picker exists.
-                    + SSplitter::Slot()
-                        .Value(0.28f)
-                        .MinSize(260.0f)
-                        [
-                            SNew(SSplitter)
-                                .Orientation(Orient_Vertical)
-
-                                + SSplitter::Slot()
-                                    .Value(0.62f)
-                                    [
-                                        WrapPane(_AgentColumn.ToSharedRef())
-                                    ]
-
-                                + SSplitter::Slot()
-                                    .Value(0.38f)
-                                    .MinSize(120.0f)
-                                    [
-                                        WrapPane(SidebarWidget)
-                                    ]
-                        ]
-
-                    + SSplitter::Slot()
-                        .Value(0.49f)
-                        [
-                            WrapPane(BuildCenterColumn(), ECkDebugPaneContent::OpaqueRenderer)
-                        ]
-
-                    + SSplitter::Slot()
-                        .Value(0.23f)
-                        .MinSize(220.0f)
-                        [
-                            WrapPane(_WorldStateRail.ToSharedRef())
-                        ]
-            ]
-
-        + SSplitter::Slot()
-            .Value(0.30f)
-            .MinSize(100.0f)
-            [
-                SNew(SCkDebug_PaneHost)
-                    .ContentMode(ECkDebugPaneContent::OpaqueRenderer)
-                    [
-                        SAssignNew(_TimelineDock, SCkGoapDebugger_TimelineDock)
-                            .ViewModel(_ViewModel)
-                            .PauseOnReplan_Lambda([this]() -> bool { return _PauseOnReplan; })
-                            .PauseOnPlanFailed_Lambda([this]() -> bool { return _PauseOnPlanFailed; })
-                            .PauseExecution(FSimpleDelegate::CreateSP(this, &SCkGoapDebuggerWindow::Request_PauseExecution))
-                    ]
-            ]
-    ;
+    SAssignNew(_DecisionPanel, SCkGoapDebugger_DecisionPanel).ViewModel(_ViewModel);
+    SAssignNew(_SearchTracePanel, SCkGoapDebugger_SearchTracePanel).ViewModel(_ViewModel);
+    SAssignNew(_GraphPane, SCkGoapDebugger_GraphPane).ViewModel(_ViewModel);
+    SAssignNew(_TimelineDock, SCkGoapDebugger_TimelineDock)
+        .ViewModel(_ViewModel)
+        .PauseOnReplan_Lambda([this]() -> bool { return _PauseOnReplan; })
+        .PauseOnPlanFailed_Lambda([this]() -> bool { return _PauseOnPlanFailed; })
+        .PauseExecution(FSimpleDelegate::CreateSP(this, &SCkGoapDebuggerWindow::Request_PauseExecution));
 }
 
 auto
@@ -1065,85 +998,175 @@ auto
         .ViewModel(_ViewModel);
 }
 
-// ====================================================================================================================
-// BUILD — CENTER COLUMN (Decision / Plan graph / Search trace tabs)
-// ====================================================================================================================
+auto
+    SCkGoapDebuggerWindow::
+    BuildNativeTopTabs()
+    -> TSharedRef<SWidget>
+{
+    auto Tabs = TArray<FCkDebug_UnderlineTabDesc>{};
+    auto Squad = FCkDebug_UnderlineTabDesc{};
+    Squad.Id = Tab_Squad;
+    Squad.Label = FText::FromString(TEXT("Squad"));
+    Squad.CountText = TAttribute<FText>::CreateLambda([this]() -> FText
+    {
+        const int32 Count = _ViewModel.IsValid() ? _ViewModel->Get_Roster().Num() : 0;
+        return Count > 0 ? FText::AsNumber(Count) : FText::GetEmpty();
+    });
+    Tabs.Add(MoveTemp(Squad));
+
+    auto Inspector = FCkDebug_UnderlineTabDesc{};
+    Inspector.Id = Tab_Inspector;
+    Inspector.Label = FText::FromString(TEXT("Agent Inspector"));
+    Tabs.Add(MoveTemp(Inspector));
+
+    auto Catalog = FCkDebug_UnderlineTabDesc{};
+    Catalog.Id = Tab_Catalog;
+    Catalog.Label = FText::FromString(TEXT("Catalog Audit"));
+    Catalog.ShowWarnDot = TAttribute<bool>::CreateLambda([this]() -> bool
+    {
+        const auto* Planner = _ViewModel.IsValid() ? _ViewModel->GetSelectedPlannerInfo() : nullptr;
+        return Planner != nullptr && (Planner->InvalidGoalAuthored.Num() > 0
+            || Planner->DependencyCyclesDisplay.Num() > 0
+            || (NOT Planner->HasUnconditionalFallback && NOT Planner->AllowPlanFailed));
+    });
+    Tabs.Add(MoveTemp(Catalog));
+
+    return SNew(SBorder)
+        .BorderImage(CkStyle::GetFilledBrush())
+        .BorderBackgroundColor(FSlateColor(CkStyle::Bg2()))
+        .Padding(FMargin(CkStyle::SpaceL, 0.0f))
+        [
+            SNew(SCkDebug_UnderlineTabs)
+                .Tabs(Tabs)
+                .ActiveTabId_Lambda([this] { return _ActiveTab; })
+                .OnTabSelected_Lambda([this](const FName InTab) { _ActiveTab = InTab; })
+        ];
+}
+auto
+    SCkGoapDebuggerWindow::
+    BuildNativeCenterColumn()
+    -> TSharedRef<SWidget>
+{
+    auto Tabs = TArray<FCkDebug_UnderlineTabDesc>{};
+    for (const auto& Pair : TArray<TPair<FName, FText>>{
+        {CTab_Decision, FText::FromString(TEXT("Decision"))},
+        {CTab_Graph, FText::FromString(TEXT("Plan graph"))}})
+    {
+        auto Tab = FCkDebug_UnderlineTabDesc{};
+        Tab.Id = Pair.Key;
+        Tab.Label = Pair.Value;
+        Tabs.Add(MoveTemp(Tab));
+    }
+    auto Search = FCkDebug_UnderlineTabDesc{};
+    Search.Id = CTab_Search;
+    Search.Label = FText::FromString(TEXT("Search trace"));
+    Search.Visibility = TAttribute<EVisibility>::CreateLambda([this]
+    { return _NerdMode ? EVisibility::Visible : EVisibility::Collapsed; });
+    Tabs.Add(MoveTemp(Search));
+
+    return SNew(SVerticalBox)
+        + SVerticalBox::Slot().AutoHeight()
+        [
+            SNew(SBorder)
+                .BorderImage(CkStyle::GetFilledBrush())
+                .BorderBackgroundColor(FSlateColor(CkStyle::Bg2()))
+                .Padding(FMargin(CkStyle::SpaceM, 0.0f))
+                [
+                    SNew(SCkDebug_UnderlineTabs)
+                        .Tabs(Tabs)
+                        .FontSize(CkStyle::FontSizeSmall())
+                        .TabPadding(FMargin(10.0f, 6.0f))
+                        .ActiveTabId_Lambda([this]
+                        { return _CenterTab == CTab_Search && NOT _NerdMode ? CTab_Decision : _CenterTab; })
+                        .OnTabSelected_Lambda([this](const FName InTab) { _CenterTab = InTab; })
+                ]
+        ]
+        + SVerticalBox::Slot().FillHeight(1.0f)
+        [
+            SNew(SWidgetSwitcher)
+                .WidgetIndex_Lambda([this]()
+                {
+                    if (_CenterTab == CTab_Graph) { return 1; }
+                    if (_CenterTab == CTab_Search && _NerdMode) { return 2; }
+                    return 0;
+                })
+                + SWidgetSwitcher::Slot()[_DecisionPanel.ToSharedRef()]
+                + SWidgetSwitcher::Slot()[_GraphPane.ToSharedRef()]
+                + SWidgetSwitcher::Slot()[_SearchTracePanel.ToSharedRef()]
+        ];
+}
 
 auto
     SCkGoapDebuggerWindow::
-    BuildCenterColumn()
+    BuildNativeInspectorView()
     -> TSharedRef<SWidget>
 {
-    // Mockup ".ctabs" — Decision is the designer default; the graph is a view,
-    // not the centerpiece; Search trace only surfaces in nerd mode.
-    auto CenterTabs = TArray<FCkDebug_UnderlineTabDesc>{};
+    const auto WrapPane = [](const TSharedRef<SWidget>& InContent, const ECkDebugPaneContent InMode = ECkDebugPaneContent::Passive)
     {
-        auto Decision = FCkDebug_UnderlineTabDesc{};
-        Decision.Id = CTab_Decision;
-        Decision.Label = FText::FromString(TEXT("Decision"));
-        CenterTabs.Add(MoveTemp(Decision));
-    }
+        return StaticCastSharedRef<SWidget>(SNew(SCkDebug_PaneHost).ContentMode(InMode)[InContent]);
+    };
+    return SNew(SSplitter).Orientation(Orient_Vertical)
+        + SSplitter::Slot().Value(0.70f)
+        [
+            SNew(SSplitter).Orientation(Orient_Horizontal)
+                + SSplitter::Slot().Value(0.28f).MinSize(260.0f)
+                [
+                    SNew(SSplitter).Orientation(Orient_Vertical)
+                        + SSplitter::Slot().Value(0.62f)[WrapPane(_AgentColumn.ToSharedRef())]
+                        + SSplitter::Slot().Value(0.38f).MinSize(120.0f)[WrapPane(_Sidebar.ToSharedRef())]
+                ]
+                + SSplitter::Slot().Value(0.49f)[WrapPane(BuildNativeCenterColumn(), ECkDebugPaneContent::OpaqueRenderer)]
+                + SSplitter::Slot().Value(0.23f).MinSize(220.0f)[WrapPane(_WorldStateRail.ToSharedRef())]
+        ]
+        + SSplitter::Slot().Value(0.30f).MinSize(100.0f)
+        [WrapPane(_TimelineDock.ToSharedRef(), ECkDebugPaneContent::OpaqueRenderer)];
+}
+
+auto
+    SCkGoapDebuggerWindow::
+    ActivateNativeShellFallback(
+        const TSharedRef<SWidget>& InNerdStrip,
+        const TSharedRef<SWidget>& InAlertStrip)
+    -> void
+{
+    _AuthoredShellMounted = false;
+    _AuthoredShellHost->SetContent(SNew(SVerticalBox)
+        + SVerticalBox::Slot().AutoHeight()[InNerdStrip]
+        + SVerticalBox::Slot().AutoHeight()[InAlertStrip]
+        + SVerticalBox::Slot().AutoHeight()[BuildNativeTopTabs()]
+        + SVerticalBox::Slot().FillHeight(1.0f)
+        [
+            SNew(SWidgetSwitcher)
+                .WidgetIndex_Lambda([this]()
+                {
+                    if (_ActiveTab == Tab_Squad) { return 0; }
+                    if (_ActiveTab == Tab_Catalog) { return 2; }
+                    return 1;
+                })
+                + SWidgetSwitcher::Slot()[_SquadTable.ToSharedRef()]
+                + SWidgetSwitcher::Slot()[BuildNativeInspectorView()]
+                + SWidgetSwitcher::Slot()[_CatalogPanel.ToSharedRef()]
+        ]);
+}
+
+auto
+    SCkGoapDebuggerWindow::
+    PollAuthoredShell()
+    -> void
+{
+    if (NOT _AuthoredShellView.IsValid()) { return; }
+    _AuthoredShellView->PollFiles(ck_goap_debugger_shell::Tokens());
+    if (NOT _AuthoredShellView->GetLastResult().Succeeded)
     {
-        auto Graph = FCkDebug_UnderlineTabDesc{};
-        Graph.Id = CTab_Graph;
-        Graph.Label = FText::FromString(TEXT("Plan graph"));
-        CenterTabs.Add(MoveTemp(Graph));
+        _AuthoredShellLoadFailure = FString::Join(_AuthoredShellView->GetLastResult().Errors, TEXT("\n"));
+        return; // Atomic rejection leaves an admitted tree and its retained ports untouched.
     }
+    _AuthoredShellLoadFailure.Reset();
+    if (NOT _AuthoredShellMounted && _AuthoredShellHost.IsValid())
     {
-        auto Search = FCkDebug_UnderlineTabDesc{};
-        Search.Id = CTab_Search;
-        Search.Label = FText::FromString(TEXT("Search trace"));
-        Search.Visibility = TAttribute<EVisibility>::CreateLambda([this]() -> EVisibility
-        { return _NerdMode ? EVisibility::Visible : EVisibility::Collapsed; });
-        CenterTabs.Add(MoveTemp(Search));
+        _AuthoredShellMounted = true;
+        _AuthoredShellHost->SetContent(_AuthoredShellView->GetRegion(TEXT("main")));
     }
-
-    SAssignNew(_DecisionPanel, SCkGoapDebugger_DecisionPanel)
-        .ViewModel(_ViewModel);
-    SAssignNew(_SearchTracePanel, SCkGoapDebugger_SearchTracePanel)
-        .ViewModel(_ViewModel);
-    SAssignNew(_GraphPane, SCkGoapDebugger_GraphPane)
-        .ViewModel(_ViewModel);
-
-    return SNew(SVerticalBox)
-
-                + SVerticalBox::Slot()
-                    .AutoHeight()
-                    [
-                        SNew(SBorder)
-                            .BorderImage(CkStyle::GetFilledBrush())
-                            .BorderBackgroundColor(FSlateColor(CkStyle::Bg2()))
-                            .Padding(FMargin(CkStyle::SpaceM, 0.0f, CkStyle::SpaceM, 0.0f))
-                            [
-                                SNew(SCkDebug_UnderlineTabs)
-                                    .Tabs(CenterTabs)
-                                    .FontSize(CkStyle::FontSizeSmall())
-                                    .TabPadding(FMargin(10.0f, 6.0f))
-                                    .ActiveTabId_Lambda([this]
-                                    {
-                                        // Nerd-off while Search is active → snap back to Decision.
-                                        if (_CenterTab == CTab_Search && NOT _NerdMode) { return CTab_Decision; }
-                                        return _CenterTab;
-                                    })
-                                    .OnTabSelected_Lambda([this](FName InTab) { _CenterTab = InTab; })
-                            ]
-                    ]
-
-                + SVerticalBox::Slot()
-                    .FillHeight(1.0f)
-                    [
-                        SNew(SWidgetSwitcher)
-                            .WidgetIndex_Lambda([this]() -> int32
-                            {
-                                if (_CenterTab == CTab_Graph)               { return 1; }
-                                if (_CenterTab == CTab_Search && _NerdMode) { return 2; }
-                                return 0;
-                            })
-
-                            + SWidgetSwitcher::Slot() [ _DecisionPanel.ToSharedRef() ]
-                            + SWidgetSwitcher::Slot() [ _GraphPane.ToSharedRef() ]
-                            + SWidgetSwitcher::Slot() [ _SearchTracePanel.ToSharedRef() ]
-                    ];
 }
 
 // ====================================================================================================================
@@ -1167,6 +1190,25 @@ auto
     auto Window = FCkGoapDebuggerModule::Get().Get_DebuggerWindow();
     if (Window.IsValid())
     { Window->Set_SelectedEntityExternal(InEntity); }
+}
+
+auto
+    SCkGoapDebuggerWindow::
+    HandleGlobalSelectionSync(
+        const FCk_Handle& InSelected,
+        const FName InSource)
+    -> void
+{
+    if (InSource == TEXT("GoapDebugger") || NOT _ViewModel.IsValid() || ck::Is_NOT_Valid(InSelected))
+    { return; }
+
+    const FCkGoapDebugger_RosterEntry* Match = _ViewModel->Get_Roster().FindByPredicate(
+        [&InSelected](const FCkGoapDebugger_RosterEntry& InEntry)
+        { return ck::DebugSelectionSync::Is_SameLineage(InEntry.EntityHandle, InSelected); });
+    if (Match == nullptr) { return; }
+
+    const ck::DebugSelectionSync::FApplyGuard Guard;
+    _ViewModel->SetSelectedEntity(Match->EntityHandle);
 }
 
 auto
@@ -1211,18 +1253,3 @@ auto
                     _PauseOnPlanFailed = InIsOn;
                 })}});
 }
-
-// ====================================================================================================================
-// AGENT LIST
-// ====================================================================================================================
-
-auto
-    SCkGoapDebuggerWindow::
-    RefreshAgentList()
-    -> void
-{
-    if (_AgentList.IsValid())
-    { _AgentList->RefreshFromViewModel(); }
-}
-
-// ====================================================================================================================

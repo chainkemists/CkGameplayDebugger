@@ -324,8 +324,8 @@ struct FCkGoapDebugger_EntitySnapshot
 // for every agent in the world is what made the window unusable at ~150 agents.
 //
 // The roster is the flat mirror: one row per TOP-LEVEL Planner, carrying only
-// what the all-agents surfaces actually render (SquadTable, AgentListPanel,
-// chrome pickers) plus what event detection needs to diff. NO recursion, NO
+// what the all-agents surfaces actually render (SquadTable and chrome pickers),
+// plus what window-owned selection sync and event detection need. NO recursion, NO
 // world-state entries, NO catalog.
 // ====================================================================================================================
 

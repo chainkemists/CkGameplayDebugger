@@ -1,0 +1,12 @@
+.debugger-window-frame {
+  min-width: 0;
+  min-height: 0;
+  background-color: var(--window-chrome-surface);
+}
+
+.debugger-window-content {
+  flex-grow: 1;
+  flex-shrink: 1;
+  min-width: 0;
+  min-height: 0;
+}

@@ -114,8 +114,8 @@ forest, a second full catalog walk through the legacy `BuildActionSetInfo` shim,
 and a whole-world-state key scan per planner — is what made the window crawl at
 BusterBlock's ~150-agent town (the module was built against 1-5-agent gyms).
 
-- **All-agents surfaces read `ViewModel::Get_Roster()`**: SquadTable, AgentListPanel,
-  the chrome agent picker, the Squad tab count.
+- **All-agents surfaces read `ViewModel::Get_Roster()`**: SquadTable, the chrome
+  agent picker, the Squad tab count, and the window-owned cross-debugger selection sync.
 - **Selected-agent surfaces read `GetCurrentEntitySnapshot()` / `GetSelectedPlannerInfo()`**
   and friends, unchanged: Sidebar, AgentColumn, DecisionPanel, SearchTracePanel,
   WorldStateRail, CatalogPanel, GraphPane, TimelineDock.
@@ -185,14 +185,14 @@ by the sandbox; per-layer Pop buttons live in the rail's layer stack.
   rebuilds. Never `ChildSlot[...]` per tick.
 - **`FCkDebuggerRefreshGate::Should_RefreshNow(WindowId)`** gates the window
   Tick.
-- **EndPIE / world teardown**: `HandleWorldTornDown` resets AgentList,
-  Sidebar, AgentColumn, DecisionPanel (edited-cost planner handles!),
+- **EndPIE / world teardown**: `HandleWorldTornDown` resets Sidebar,
+  AgentColumn, DecisionPanel (edited-cost planner handles!),
   TimelineDock, SquadTable, CatalogPanel, GraphPane, then the ViewModel — the
   ViewModel reset broadcasts, which clears the WS rail's cached WS handle
   while the registry is alive. Every new pane holding `FCk_Handle` state must
   join this chain.
 - **Stable `TSharedPtr` identity** in the Squad table (rows keyed by planner
-  handle) and Agent list. Weak-capture (`WeakRail`/`WeakPanel` — NEVER
+  handle). Weak-capture (`WeakRail`/`WeakPanel` — NEVER
   `WeakThis`, it shadows `TSharedFromThis::WeakThis` and C4458 is an error)
   in attribute lambdas; feature handles captured by value + `ck::IsValid`
   checked per read.
@@ -201,9 +201,9 @@ by the sandbox; per-layer Pop buttons live in the rail's layer stack.
 
 ## Legacy / transitional notes
 
-- `SCkGoapDebugger_AgentListPanel` is constructed but **unslotted** — it still
-  receives cross-debugger selection-sync broadcasts. Re-home the sync
-  subscription (window- or SquadTable-side) before deleting it.
+- Cross-debugger selection sync is owned by `SCkGoapDebuggerWindow`; its
+  subscription is removed in the window destructor. The former unslotted
+  AgentList panel and its authored resources were retired after that role transfer.
 - `SCkGoapDebugger_Sidebar` still owns an internal history widget that is no
   longer slotted (the TimelineDock replaced it); its tree remains the planner
   selection surface until a chrome planner-picker exists. Its scrub track is the

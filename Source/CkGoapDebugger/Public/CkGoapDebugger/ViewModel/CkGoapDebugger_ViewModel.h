@@ -91,8 +91,8 @@ public:
     auto GetSelectedPlannerInfo() const -> const FCkGoapDebugger_PlannerInfo*;
     auto GetPlannerInfoByHandle(FCk_Handle_Goap_Planner InHandle) const -> const FCkGoapDebugger_PlannerInfo*;
 
-    // All-agents tier. Every world-wide surface (Squad table, agent list,
-    // chrome pickers) reads THIS, never a per-agent deep snapshot — building
+    // All-agents tier. Every world-wide surface (Squad table, chrome pickers,
+    // window-owned selection sync) reads THIS, never a per-agent deep snapshot — building
     // the deep forest for every agent is what made the window unusable at
     // ~150 agents.
     auto Get_Roster() const -> const TArray<FCkGoapDebugger_RosterEntry>&;

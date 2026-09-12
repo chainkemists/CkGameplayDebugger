@@ -4,7 +4,7 @@
 world's dialogue-line registry (lines + banks + readiness) and every dialog emitter (tags, active cooldowns,
 last-query pass/fail summary). Opened via the `ck.DialogDebugger` console command or the shared debugger launcher.
 
-**Depends on:** `CkCore`, `CkEcs`, `CkRecord`, `CkDialog`, `CkEntityTag`, `CkDebuggerCommon`, `CkEditorTools`
+**Depends on:** `CkCore`, `CkEcs`, `CkRecord`, `CkDialog`, `CkEntityTag`, `CkDebuggerCommon`, `CkEditorTools`, `CkSlateLayout`, `Projects`
 (+ Slate/GraphEditor/UnrealEd editor modules). Mirrors `CkSmDebugger`'s module registration.
 
 ---
@@ -19,8 +19,10 @@ last-query pass/fail summary). Opened via the `ck.DialogDebugger` console comman
   (`TransientEntity.View<FFragment_DialogEmitter_Params, _Current>()`), reading the
   `FFragment_DialogEmitter_Debug` ring for query history.
 - `Window/SCkDialogDebuggerWindow.h/.cpp` — `SCkDebugger_WindowBase` subclass. Gated `Tick`
-  (`FCkDebuggerRefreshGate::Should_RefreshNow`) collects + rebuilds the scroll content from shared
-  `CkDebuggerCommon` widgets (`SCkDebug_SectionHeader`/`KeyValueRow`/`StatusPill`/`EntityRef`/`DualSearchBar`).
+  (`FCkDebuggerRefreshGate::Should_RefreshNow`) collects a live snapshot and drives the retained authored
+  four-region UI: cooldown controls, runtime commands, search, and main content. The main region owns the live
+  collection projection, grouped cooldown records, empty/count state, and diagnostic text. The authored path has
+  focused real-RHI production-window coverage for controls, collection identity, reload, and teardown.
 
 ---
 
@@ -38,7 +40,10 @@ introspection); the graph is a follow-up. The runtime data-hook it would need al
 ## Lifetime / safety
 
 - The window is a `SCkDebugger_WindowBase` — call `Register_WithGate()` in `Construct`; the base auto-unregisters
-  from the refresh gate in its destructor. No manual EndPIE handling needed here because the collector snapshot is
-  rebuilt every tick from the live world and holds no long-lived handles across PIE sessions (each `Collect` starts
-  from a fresh `FCkDialogDebugger_RegistrySnapshot{}`).
+  from the refresh gate in its destructor. Synchronous session/world invalidation must clear the live collection,
+  disable world-gated commands, and advance the view generation before detaching or replacing authored widgets.
+  Bindings and actions capture only weak world/owner state plus the generation gate; they must reject after teardown
+  or target replacement. Release retained views, collections, and world handles from the destructor before the
+  owner disappears. A fresh collector snapshot per tick does not replace this explicit EndPIE/session lifetime
+  handling.
 - All world access is read-only; the collector never mutates ECS state.

@@ -1,0 +1,10 @@
+.vl-arbiter-scroll { max-width: 480px; max-height: 560px; min-width: 0; }
+.vl-arbiter-content { min-width: 0; gap: 6px; padding: 12px; }
+.vl-arbiter-status { text-wrap: wrap; }
+.vl-arbiter-help { color: #a8b3bd; text-wrap: wrap; }
+.vl-arbiter-row { min-width: 0; gap: 8px; flex-wrap: wrap; vertical-align: center; }
+.vl-arbiter-label { min-width: 0; max-width: 180px; flex-grow: 1; flex-shrink: 1; color: #a8b3bd; text-wrap: wrap; }
+.vl-arbiter-number { min-width: 88px; max-width: 132px; flex-grow: 1; flex-shrink: 1; }
+.vl-arbiter-value { min-width: 76px; flex-grow: 1; flex-shrink: 1; text-wrap: wrap; }
+.vl-arbiter-action { flex-shrink: 0; }
+.vl-arbiter-reset { flex-shrink: 0; }

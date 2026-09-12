@@ -13,6 +13,8 @@
 // --------------------------------------------------------------------------------------------------------------------
 
 class FCkDebug_ViewportPicker;
+class FCkUiView;
+class FCkUiCollection;
 class SBox;
 class SCkDebug_DualSearchBar;
 class SCkDebug_EventLog;
@@ -50,7 +52,7 @@ class UWorld;
 // tick — the debugger has no hook on the arbiter's update. They are a trend, and the pane says so.
 // ====================================================================================================================
 
-class SCkVisualLodDebuggerWindow : public SCkDebugger_WindowBase
+class CKVISUALLODDEBUGGER_API SCkVisualLodDebuggerWindow : public SCkDebugger_WindowBase
 {
 public:
     static const FName WindowId;
@@ -96,6 +98,12 @@ public:
     TargetEntity(
         const FCk_Handle& InEntity) -> void;
 
+    /** Retained authored surface for the static arbiter runtime-tuner section. */
+    auto Get_ArbiterTunersView() const -> TSharedPtr<FCkUiView> { return _ArbiterTunersView; }
+    /** Retained authored surface and stable-key model for dynamic crowd/render-band tuners. */
+    auto Get_CrowdTunersView() const -> TSharedPtr<FCkUiView> { return _CrowdTunersView; }
+    auto Get_CrowdTunersCollection() const -> TSharedPtr<const FCkUiCollection> { return _CrowdTunersCollection; }
+
     // F frames the selected member in the ejected editor viewport (the context menu carries the discoverable twin).
     virtual auto OnKeyDown(const FGeometry& InGeometry, const FKeyEvent& InKeyEvent) -> FReply override;
     // Deliberately NOT overriding SupportsKeyboardFocus: a focusable window means EVERY click on the
@@ -120,6 +128,14 @@ private:
     auto DoBuild_TunersRow() -> TSharedRef<SWidget>;
     auto DoBuild_TunersWorkspace() -> TSharedRef<SWidget>;
     auto DoBuild_ArbiterTuners() -> TSharedRef<SWidget>;
+    auto DoBuild_CrowdTuners() -> TSharedRef<SWidget>;
+    auto DoPublish_CrowdTunerRecords() -> void;
+    /** Resolves a repeat key against the current snapshot; never lets a stale UI item retain an array index. */
+    auto TryResolve_CrowdTunerKey(const FString& InKey, int32& OutCrowdIndex, int32& OutBandIndex) const -> bool;
+    auto DoRebuild_ArbiterTuners() -> void;
+    auto DoInvalidate_ArbiterTuners() -> void;
+    auto DoPoll_ArbiterTunersFiles(double InCurrentTime) -> void;
+    auto CanDispatch_ArbiterTuners(int64 InGeneration) const -> bool;
 
     auto DoRequest_RuntimeTuners(
         TFunctionRef<void(FCk_VisualLodArbiter_RuntimeTuners&)> InMutate) -> void;
@@ -225,6 +241,12 @@ private:
     FCkVisualLodDebugger_ArbiterInfo _Live;
     bool _HasLiveArbiter = false;
     bool _TunersExpanded = false;
+    int64 _ArbiterTunersGeneration = 0;
+    double _NextArbiterTunersPollSeconds = 0.0;
+    TSharedPtr<FCkUiView> _ArbiterTunersView;
+    TSharedPtr<SBox> _ArbiterTunersHost;
+    TSharedPtr<FCkUiView> _CrowdTunersView;
+    TSharedPtr<FCkUiCollection> _CrowdTunersCollection;
 
     FName _SelectedDomain;
 
@@ -234,7 +256,6 @@ private:
     // Crowd topology is rendered into two hosts together: monitoring stays in the overview while every
     // mutating control lives in the independently scrollable tuner workspace.
     TSharedPtr<SVerticalBox>  _CrowdPoolBox;
-    TSharedPtr<SVerticalBox>  _CrowdTunerBox;
     TSharedPtr<SVerticalBox>  _AlertBox;
 
     TSharedPtr<SVerticalBox>  _RosterPaneBox;

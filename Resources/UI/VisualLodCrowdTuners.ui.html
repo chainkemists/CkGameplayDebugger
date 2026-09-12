@@ -1,0 +1,58 @@
+<ui version="1">
+  <region name="main">
+    <column id="vl-crowd-tuners-root">
+      <scroll id="vl-crowd-tuners-scroll" class="vl-crowd-tuners-scroll">
+        <column id="vl-crowd-tuners-content" class="vl-crowd-tuners-content">
+        <text id="vl-crowd-tuners-help" class="vl-crowd-tuners-help">Crowd and render-profile overrides are deferred to the selected arbiter. They affect this session only; authored crowd/profile topology remains unchanged.</text>
+        <repeat id="vl-crowd-repeat" bind="vl-crowds" direction="vertical" class="vl-crowd-repeat">
+          <debug-inspector id="vl-crowd-record" title-field="heading" start-expanded="false">
+            <slot name="body">
+            <column id="vl-crowd-record-body" class="vl-crowd-record-body">
+              <text id="vl-crowd-animation-heading" class="vl-crowd-section">Far animation tuners — session only</text>
+              <row id="vl-crowd-idle-row" class="vl-tuner-row"><text id="vl-crowd-idle-label" tooltip="Deferred session-only crowd tuning." class="vl-tuner-label">Idle sequence</text><int32-input id="vl-crowd-idle" value-field="idle-sequence" item-committed="crowd-idle-sequence" min="0" class="vl-tuner-input"/></row>
+              <row id="vl-crowd-move-row" class="vl-tuner-row"><text id="vl-crowd-move-label" tooltip="Deferred session-only crowd tuning." class="vl-tuner-label">Move sequence</text><int32-input id="vl-crowd-move" value-field="move-sequence" item-committed="crowd-move-sequence" min="0" class="vl-tuner-input"/></row>
+              <row id="vl-crowd-threshold-row" class="vl-tuner-row"><text id="vl-crowd-threshold-label" tooltip="Deferred session-only crowd tuning." class="vl-tuner-label">Move threshold</text><number-input id="vl-crowd-threshold" value-field="move-threshold" item-committed="crowd-move-threshold" kind="float" min="0" fractional-digits="2" class="vl-tuner-input"/></row>
+              <row id="vl-crowd-speed-row" class="vl-tuner-row"><text id="vl-crowd-speed-label" tooltip="Deferred session-only crowd tuning." class="vl-tuner-label">Move authored speed</text><number-input id="vl-crowd-speed" value-field="move-authored-speed" item-committed="crowd-move-authored-speed" kind="float" min="0" fractional-digits="2" class="vl-tuner-input"/></row>
+              <row id="vl-crowd-rate-min-row" class="vl-tuner-row"><text id="vl-crowd-rate-min-label" tooltip="Deferred session-only crowd tuning." class="vl-tuner-label">Move rate min</text><number-input id="vl-crowd-rate-min" value-field="move-rate-min" item-committed="crowd-move-rate-min" kind="float" min="0" fractional-digits="2" class="vl-tuner-input"/></row>
+              <row id="vl-crowd-rate-max-row" class="vl-tuner-row"><text id="vl-crowd-rate-max-label" tooltip="Deferred session-only crowd tuning." class="vl-tuner-label">Move rate max</text><number-input id="vl-crowd-rate-max" value-field="move-rate-max" item-committed="crowd-move-rate-max" kind="float" min="0" fractional-digits="2" class="vl-tuner-input"/></row>
+              <repeat id="vl-band-repeat" child-bind="bands" direction="vertical" class="vl-band-repeat">
+              <debug-inspector id="vl-band-record" title-field="heading" start-expanded="false">
+                <slot name="body">
+                <column id="vl-band-record-body" class="vl-band-record-body">
+                  <row id="vl-band-threshold-readonly" visible-field="threshold-readonly" class="vl-tuner-row"><text id="vl-band-threshold-readonly-label" class="vl-tuner-label">Threshold (cm)</text><text id="vl-band-threshold-readonly-value" bind-field="threshold-text" class="vl-tuner-value"/></row>
+                <row id="vl-band-threshold-row" visible-field="threshold-editable" class="vl-tuner-row"><text id="vl-band-threshold-label" tooltip="Deferred session-only render-band tuning." class="vl-tuner-label">Threshold (cm)</text><number-input id="vl-band-threshold" value-field="threshold" item-committed="band-threshold" kind="float" min="0" fractional-digits="0" class="vl-tuner-input"/></row>
+                <row id="vl-band-hysteresis-row" class="vl-tuner-row"><text id="vl-band-hysteresis-label" tooltip="Deferred session-only render-band tuning." class="vl-tuner-label">Return hysteresis</text><number-input id="vl-band-hysteresis" value-field="return-hysteresis" item-committed="band-return-hysteresis" kind="float" min="0" fractional-digits="0" class="vl-tuner-input"/></row>
+                <row id="vl-profile-shadow-row" class="vl-tuner-row"><text id="vl-profile-shadow-label" class="vl-tuner-label">Cast shadow</text><debug-switch id="vl-profile-shadow" checked-field="cast-shadow" item-changed="profile-cast-shadow"/></row>
+                <row id="vl-profile-main-row" class="vl-tuner-row"><text id="vl-profile-main-label" class="vl-tuner-label">Main pass</text><debug-switch id="vl-profile-main" checked-field="main-pass" item-changed="profile-main-pass"/></row>
+                <row id="vl-profile-depth-row" class="vl-tuner-row"><text id="vl-profile-depth-label" class="vl-tuner-label">Depth pass</text><debug-switch id="vl-profile-depth" checked-field="depth-pass" item-changed="profile-depth-pass"/></row>
+                <row id="vl-profile-decals-row" class="vl-tuner-row"><text id="vl-profile-decals-label" class="vl-tuner-label">Receives decals</text><debug-switch id="vl-profile-decals" checked-field="decals" item-changed="profile-decals"/></row>
+                <row id="vl-profile-occluder-row" class="vl-tuner-row"><text id="vl-profile-occluder-label" class="vl-tuner-label">Use as occluder</text><debug-switch id="vl-profile-occluder" checked-field="occluder" item-changed="profile-occluder"/></row>
+                <row id="vl-profile-custom-depth-row" class="vl-tuner-row"><text id="vl-profile-custom-depth-label" class="vl-tuner-label">Custom depth</text><debug-switch id="vl-profile-custom-depth" checked-field="custom-depth" item-changed="profile-custom-depth"/></row>
+                <row id="vl-profile-contact-shadow-row" class="vl-tuner-row"><text id="vl-profile-contact-shadow-label" class="vl-tuner-label">Contact shadow</text><debug-switch id="vl-profile-contact-shadow" checked-field="contact-shadow" item-changed="profile-contact-shadow"/></row>
+                <row id="vl-profile-indirect-row" class="vl-tuner-row"><text id="vl-profile-indirect-label" class="vl-tuner-label">Dynamic indirect</text><debug-switch id="vl-profile-indirect" checked-field="dynamic-indirect" item-changed="profile-dynamic-indirect"/></row>
+                <row id="vl-profile-distance-field-row" class="vl-tuner-row"><text id="vl-profile-distance-field-label" class="vl-tuner-label">Distance field</text><debug-switch id="vl-profile-distance-field" checked-field="distance-field" item-changed="profile-distance-field"/></row>
+                <row id="vl-profile-ray-tracing-row" class="vl-tuner-row"><text id="vl-profile-ray-tracing-label" class="vl-tuner-label">Ray tracing</text><debug-switch id="vl-profile-ray-tracing" checked-field="ray-tracing" item-changed="profile-ray-tracing"/></row>
+                <row id="vl-profile-velocity-row" class="vl-tuner-row"><text id="vl-profile-velocity-label" class="vl-tuner-label">Output velocity</text><debug-switch id="vl-profile-velocity" checked-field="output-velocity" item-changed="profile-output-velocity"/></row>
+                <row id="vl-profile-min-draw-row" class="vl-tuner-row"><text id="vl-profile-min-draw-label" tooltip="Deferred session-only render-profile tuning." class="vl-tuner-label">Min draw distance</text><number-input id="vl-profile-min-draw" value-field="min-draw" item-committed="profile-min-draw" kind="float" min="0" fractional-digits="0" class="vl-tuner-input"/></row>
+                <row id="vl-profile-max-draw-row" class="vl-tuner-row"><text id="vl-profile-max-draw-label" tooltip="Deferred session-only render-profile tuning." class="vl-tuner-label">Max draw distance</text><number-input id="vl-profile-max-draw" value-field="max-draw" item-committed="profile-max-draw" kind="float" min="0" fractional-digits="0" class="vl-tuner-input"/></row>
+                <row id="vl-profile-min-lod-row" class="vl-tuner-row"><text id="vl-profile-min-lod-label" tooltip="Deferred session-only render-profile tuning." class="vl-tuner-label">Min LOD</text><int32-input id="vl-profile-min-lod" value-field="min-lod" item-committed="profile-min-lod" min="0" class="vl-tuner-input"/></row>
+                <row id="vl-profile-bounds-row" class="vl-tuner-row"><text id="vl-profile-bounds-label" tooltip="Deferred session-only render-profile tuning." class="vl-tuner-label">Bounds scale</text><number-input id="vl-profile-bounds" value-field="bounds-scale" item-committed="profile-bounds-scale" kind="float" min="0.01" fractional-digits="2" class="vl-tuner-input"/></row>
+                <row id="vl-profile-interval-row" class="vl-tuner-row"><text id="vl-profile-interval-label" tooltip="Deferred session-only render-profile tuning." class="vl-tuner-label">Far update interval (s)</text><number-input id="vl-profile-interval" value-field="far-interval" item-committed="profile-far-interval" kind="float" min="0" fractional-digits="3" class="vl-tuner-input"/></row>
+                <row id="vl-profile-freeze-row" class="vl-tuner-row"><text id="vl-profile-freeze-label" class="vl-tuner-label">Freeze far animation</text><debug-switch id="vl-profile-freeze" checked-field="freeze-far" item-changed="profile-freeze-far"/></row>
+                <row id="vl-profile-channel0-row" class="vl-tuner-row"><text id="vl-profile-channel0-label" class="vl-tuner-label">Lighting channel 0</text><debug-switch id="vl-profile-channel0" checked-field="channel0" item-changed="profile-channel0"/></row>
+                <row id="vl-profile-channel1-row" class="vl-tuner-row"><text id="vl-profile-channel1-label" class="vl-tuner-label">Lighting channel 1</text><debug-switch id="vl-profile-channel1" checked-field="channel1" item-changed="profile-channel1"/></row>
+                <row id="vl-profile-channel2-row" class="vl-tuner-row"><text id="vl-profile-channel2-label" class="vl-tuner-label">Lighting channel 2</text><debug-switch id="vl-profile-channel2" checked-field="channel2" item-changed="profile-channel2"/></row>
+                </column>
+                </slot>
+              </debug-inspector>
+              </repeat>
+            </column>
+            </slot>
+          </debug-inspector>
+        </repeat>
+        <text id="vl-crowd-empty" bind="vl-crowd-empty" class="vl-crowd-empty"/>
+        </column>
+      </scroll>
+    </column>
+  </region>
+</ui>

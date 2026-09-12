@@ -31,6 +31,8 @@ public class CkInputDebugger : CkModuleRules
 
         RuntimeDependencies.Add(Path.Combine(PluginDirectory, "Resources", "UI", "InputDebuggerControls.ui.html"), StagedFileType.NonUFS);
         RuntimeDependencies.Add(Path.Combine(PluginDirectory, "Resources", "UI", "InputDebuggerControls.ui.css"), StagedFileType.NonUFS);
+        RuntimeDependencies.Add(Path.Combine(PluginDirectory, "Resources", "UI", "InputDebuggerShell.ui.html"), StagedFileType.NonUFS);
+        RuntimeDependencies.Add(Path.Combine(PluginDirectory, "Resources", "UI", "InputDebuggerShell.ui.css"), StagedFileType.NonUFS);
 
         if (Target.bBuildEditor)
         {

@@ -108,6 +108,8 @@ public:
     virtual auto Get_WindowId() const -> FName override { return WindowId; }
     virtual auto Get_WindowDisplayName() const -> FText override { return FText::FromString(TEXT("Enhanced Input")); }
     auto Get_ControlsView() const -> TSharedPtr<FCkUiView> { return _ControlsView; }
+    auto Get_AuthoredShellView() const -> TSharedPtr<FCkUiView> { return _AuthoredShellView; }
+    auto Get_AuthoredShellLoadFailure() const -> const FString& { return _AuthoredShellLoadFailure; }
     auto Get_FilterString() const -> const FString& { return _FilterString; }
     auto Get_HighlightString() const -> const FString& { return _HighlightString; }
     auto Get_ShowActiveActionsOnly() const -> bool { return _ShowActiveActionsOnly; }
@@ -125,6 +127,9 @@ private:
     auto BuildDevicesSection() -> TSharedRef<SWidget>;
     auto BuildBindingsHeader() -> TSharedRef<SWidget>;
     auto BuildSection(const FText& InLabel, const TSharedRef<SWidget>& InHeaderExtra, const TSharedRef<SWidget>& InBody) -> TSharedRef<SWidget>;
+    auto BuildNativeShellFallback() -> TSharedRef<SWidget>;
+    auto BuildAuthoredShell() -> void;
+    auto PollAuthoredShell(double InCurrentTime) -> void;
     auto DoBuildControlsView() -> void;
     auto DoPollControlsFiles(double InCurrentTime) -> void;
 
@@ -168,6 +173,9 @@ private:
     TSharedPtr<STextBlock>                     _SummaryText;
     TSharedPtr<SBox>                           _ControlsHost;
     TSharedPtr<FCkUiView>                      _ControlsView;
+    TSharedPtr<SBox>                           _AuthoredShellHost;
+    TSharedPtr<FCkUiView>                      _AuthoredShellView;
+    FString                                    _AuthoredShellLoadFailure;
 
     // ---- Body containers ----
     TSharedPtr<SVerticalBox>   _ContextListBox;
@@ -221,6 +229,7 @@ private:
     bool    _ShowActiveActionsOnly = false;
     ECkInputDebugger_BindingsFilterMode _BindingsFilterMode = ECkInputDebugger_BindingsFilterMode::All;
     double _NextControlsPollSeconds = 0.0;
+    double _NextShellPollSeconds = 0.0;
 
     // ---- Live key activity (passive observer; holds keys only, never handles) ----
     TSharedPtr<FCkDebug_KeyActivityObserver> _KeyObserver;

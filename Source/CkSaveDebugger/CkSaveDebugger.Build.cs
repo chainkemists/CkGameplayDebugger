@@ -1,4 +1,5 @@
 using UnrealBuildTool;
+using System.IO;
 
 public class CkSaveDebugger : CkModuleRules
 {
@@ -26,7 +27,13 @@ public class CkSaveDebugger : CkModuleRules
 
             "CkDebuggerCommon",
             "CkEditorTools",  // shared CkStyle:: tokens used directly by the window
+            "CkSlateLayout",  // authored entity-navigation surface
         });
+
+        RuntimeDependencies.Add(Path.Combine(PluginDirectory, "Resources", "UI", "SaveDebugger.ui.html"), StagedFileType.NonUFS);
+        RuntimeDependencies.Add(Path.Combine(PluginDirectory, "Resources", "UI", "SaveDebugger.ui.css"), StagedFileType.NonUFS);
+
+        PrivateDependencyModuleNames.Add("Projects");
 
         if (Target.bBuildEditor)
         {

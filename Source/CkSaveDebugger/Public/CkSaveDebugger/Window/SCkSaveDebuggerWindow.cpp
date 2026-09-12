@@ -38,16 +38,23 @@
 #include "CkDebuggerCommon/Widgets/SCkDebug_ToggleSurface.h"
 #include "CkDebuggerCommon/Window/SCkDebug_WindowChrome.h"
 
+#include "CkDebuggerCommon/UI/CkDebug_UiRegistry.h"
+#include "CkSlateLayout/CkUiTreeCollection.h"
+#include "CkSlateLayout/SCkUiSurface.h"
+#include "CkSlateLayout/SCkUiTree.h"
+
 #include "CkEditorTools/Style/CkStyle.h"
 
 #include <DesktopPlatformModule.h>
 #include <Engine/World.h>
 #include <Framework/Application/SlateApplication.h>
+#include <Styling/SlateBrush.h>
 #include <Framework/MultiBox/MultiBoxBuilder.h>
 #include <HAL/PlatformApplicationMisc.h>
 #include <Misc/FileHelper.h>
 #include <Misc/PackageName.h>
 #include <Misc/Paths.h>
+#include <Interfaces/IPluginManager.h>
 
 #if WITH_EDITOR
 #include <Editor.h>
@@ -271,6 +278,29 @@ namespace ck_save_debugger_window
             Rotation.Pitch, Rotation.Yaw, Rotation.Roll,
             Scale.X, Scale.Y, Scale.Z);
     }
+
+    auto Get_EntityUiKey(const FCkSaveDebugger_TreeNode& InNode) -> FString
+    {
+        return ck::Format_UE(TEXT("{}:{}"), static_cast<int32>(InNode.Kind), InNode.SavedId);
+    }
+
+    auto EntityNavigationSchema() -> TArray<FCkUiFieldSchema>
+    {
+        return {
+            {TEXT("identity"), ECkUiFieldKind::Text}, {TEXT("provenance"), ECkUiFieldKind::Text},
+            {TEXT("visible"), ECkUiFieldKind::Bool},
+            {TEXT("problem-brush"), ECkUiFieldKind::Image}, {TEXT("problem-meaning"), ECkUiFieldKind::Text}, {TEXT("problem-color"), ECkUiFieldKind::Color},
+            {TEXT("node-brush"), ECkUiFieldKind::Image}, {TEXT("node-meaning"), ECkUiFieldKind::Text}, {TEXT("node-color"), ECkUiFieldKind::Color},
+            {TEXT("identity-color"), ECkUiFieldKind::Color}, {TEXT("provenance-color"), ECkUiFieldKind::Color},
+        };
+    }
+
+    auto EntityNavigationStyleTokens() -> FCkUiView::FTokens
+    {
+        return {
+            {TEXT("--space-s"), FString::SanitizeFloat(CkStyle::SpaceS)},
+        };
+    }
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -281,6 +311,8 @@ auto
         const FArguments& InArgs)
     -> void
 {
+    DoInitialize_EntityNavigation();
+
     ChildSlot
     [
         SNew(SCkDebug_WindowChrome)
@@ -319,6 +351,11 @@ auto
 
     Register_WithGate();
 
+    // The region is mounted by DoCreate_Body before loading, so a rejected designer document leaves a live,
+    // visible error surface instead of replacing the navigation pane with an unmounted candidate.
+    DoReload_EntityNavigationLayout();
+    RegisterActiveTimer(0.5f, FWidgetActiveTimerDelegate::CreateSP(this, &SCkSaveDebuggerWindow::DoTick_EntityNavigationLayout));
+
 #if WITH_EDITOR
     // AddSP self-unbinds when the widget dies; the explicit RemoveAll in the destructor is just determinism.
     USelection::SelectionChangedEvent.AddSP(this, &SCkSaveDebuggerWindow::DoOnEditorSelectionChanged);
@@ -330,6 +367,12 @@ auto
 
 SCkSaveDebuggerWindow::~SCkSaveDebuggerWindow()
 {
+    if (_EntityNavigationView.IsValid())
+    {
+        if (const TSharedPtr<SCkUiTree> Tree = _EntityNavigationView->GetTree(TEXT("entity-tree")); Tree.IsValid())
+        { Tree->ReleaseContextMenu(); }
+    }
+
 #if WITH_EDITOR
     USelection::SelectionChangedEvent.RemoveAll(this);
     FEditorDelegates::OnMapOpened.RemoveAll(this);
@@ -358,6 +401,155 @@ auto
     DoRebuild_EntityDetail();
     DoRebuild_BlobDetail();
     DoRebuild_DiffDetail();
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto SCkSaveDebuggerWindow::TryReload_EntityNavigationLayout(const FString& InMarkup, const FString& InStylesheet) -> FCkUiLoadResult
+{
+    const FCkUiLoadResult Result = _EntityNavigationView.IsValid()
+        ? _EntityNavigationView->TryReload(InMarkup, InStylesheet, TEXT("SaveDebugger"))
+        : FCkUiLoadResult{false, {TEXT("Authored entity navigation is unavailable.")}};
+    if (Result.Succeeded)
+    {
+        _EntityNavigationPublicationError.Reset();
+        if (const TSharedPtr<SCkUiTree> Tree = Get_AuthoredEntityTree(); Tree.IsValid())
+        { Tree->SetHostKeyDownHandler(FOnKeyDown::CreateSP(this, &SCkSaveDebuggerWindow::DoOnTreeKeyDown)); }
+    }
+    return Result;
+}
+
+auto SCkSaveDebuggerWindow::Get_AuthoredEntityTree() const -> TSharedPtr<SCkUiTree>
+{
+    return _EntityNavigationView.IsValid() ? _EntityNavigationView->GetTree(TEXT("entity-tree")) : nullptr;
+}
+
+auto SCkSaveDebuggerWindow::Get_EntityNavigationLayoutRevision() const -> int64
+{
+    return _EntityNavigationView.IsValid() ? _EntityNavigationView->GetRevision() : 0;
+}
+
+auto SCkSaveDebuggerWindow::Get_EntityNavigationLayoutError() const -> FText
+{
+    if (!_EntityNavigationPublicationError.IsEmpty()) { return FText::FromString(_EntityNavigationPublicationError); }
+    if (!_EntityNavigationView.IsValid() || _EntityNavigationView->GetLastResult().Succeeded) { return FText::GetEmpty(); }
+    return FText::FromString(FString::Join(_EntityNavigationView->GetLastResult().Errors, TEXT("\n")));
+}
+
+auto SCkSaveDebuggerWindow::Get_EntityUiKey(const uint32 InSavedId) const -> TOptional<FString>
+{
+    for (const auto& Pair : _EntityNodesByUiKey)
+    {
+        const TSharedPtr<FCkSaveDebugger_TreeNode> Node = Pair.Value.Pin();
+        if (Node.IsValid() && Node->Kind == ECkSaveDebugger_NodeKind::Entity && Node->SavedId == InSavedId)
+        { return Pair.Key; }
+    }
+    return {};
+}
+
+auto SCkSaveDebuggerWindow::Get_EntityFilterStringForTest() const -> const FString&
+{
+    return _Model.Get_FilterString();
+}
+
+auto SCkSaveDebuggerWindow::Get_EntityHighlightStringForTest() const -> const FString&
+{
+    return _Model.Get_HighlightString();
+}
+
+auto SCkSaveDebuggerWindow::Open_SaveFileForTest(const FString& InAbsolutePath) -> bool
+{
+    if (InAbsolutePath.IsEmpty() || !FPaths::FileExists(InAbsolutePath)) { return false; }
+    DoOpen_Path(InAbsolutePath);
+    return _CurrentPath == InAbsolutePath;
+}
+
+auto SCkSaveDebuggerWindow::DoInitialize_EntityNavigation() -> void
+{
+    TSharedPtr<const FCkUiWidgetRegistrySnapshot> Registry;
+    const FCkUiLoadResult RegistryResult = FCkDebug_UiRegistry::TryCreate(Registry);
+    const FCkUiLoadResult ModelResult = FCkUiTreeCollection::TryCreate(ck_save_debugger_window::EntityNavigationSchema(), _EntityNavigationModel);
+    if (!RegistryResult.Succeeded || !ModelResult.Succeeded)
+    {
+        _EntityNavigationPublicationError = FString::Join(RegistryResult.Errors, TEXT("\n"));
+        if (!_EntityNavigationPublicationError.IsEmpty() && !ModelResult.Errors.IsEmpty()) { _EntityNavigationPublicationError += TEXT("\n"); }
+        _EntityNavigationPublicationError += FString::Join(ModelResult.Errors, TEXT("\n"));
+        return;
+    }
+
+    const TWeakPtr<SCkSaveDebuggerWindow> WeakWindow = StaticCastSharedRef<SCkSaveDebuggerWindow>(AsShared());
+    auto Data = FCkUiView::FDataBindings{};
+    Data.Text.Add(TEXT("problems-only-label"), FText::FromString(TEXT("Problems only")));
+    Data.Text.Add(TEXT("provenance-engine-label"), FText::FromString(TEXT("Engine Owned")));
+    Data.Text.Add(TEXT("provenance-construct-label"), FText::FromString(TEXT("Construct Spawned")));
+    Data.Text.Add(TEXT("provenance-runtime-label"), FText::FromString(TEXT("Runtime Spawned")));
+    Data.Text.Add(TEXT("provenance-definition-label"), FText::FromString(TEXT("Definition Built")));
+    Data.Text.Add(TEXT("filter"), TAttribute<FText>::CreateLambda([WeakWindow]() { const TSharedPtr<SCkSaveDebuggerWindow> Window = WeakWindow.Pin(); return Window.IsValid() ? FText::FromString(Window->_Model.Get_FilterString()) : FText::GetEmpty(); }));
+    Data.Text.Add(TEXT("highlight"), TAttribute<FText>::CreateLambda([WeakWindow]() { const TSharedPtr<SCkSaveDebuggerWindow> Window = WeakWindow.Pin(); return Window.IsValid() ? FText::FromString(Window->_Model.Get_HighlightString()) : FText::GetEmpty(); }));
+    Data.Trees.Add(TEXT("entity-tree"), _EntityNavigationModel);
+    Data.TreeSelectionChanged.Add(TEXT("select-entity"), FOnCkUiTreeSelectionChanged::CreateSP(this, &SCkSaveDebuggerWindow::DoOnAuthoredEntitySelectionChanged));
+    Data.ContextActions.Add(TEXT("copy-identity"), FOnCkUiContextAction::CreateSP(this, &SCkSaveDebuggerWindow::DoOnCopyEntityIdentity));
+    Data.ContextActions.Add(TEXT("copy-saved-id"), FOnCkUiContextAction::CreateSP(this, &SCkSaveDebuggerWindow::DoOnCopyEntitySavedId));
+    Data.TextChanged.Add(TEXT("filter"), FOnTextChanged::CreateLambda([WeakWindow](const FText& InText)
+    {
+        if (const TSharedPtr<SCkSaveDebuggerWindow> Window = WeakWindow.Pin())
+        {
+            if (Window->_Model.Get_FilterString() != InText.ToString()) { Window->_Model.Set_FilterString(InText.ToString()); Window->DoRefresh_Filters(); }
+        }
+    }));
+    Data.TextChanged.Add(TEXT("highlight"), FOnTextChanged::CreateLambda([WeakWindow](const FText& InText)
+    {
+        if (const TSharedPtr<SCkSaveDebuggerWindow> Window = WeakWindow.Pin())
+        {
+            if (Window->_Model.Get_HighlightString() != InText.ToString()) { Window->_Model.Set_HighlightString(InText.ToString()); Window->DoRefresh_Filters(); }
+        }
+    }));
+    Data.Visibility.Add(TEXT("problems-only"), TAttribute<bool>::CreateLambda([WeakWindow]() { const TSharedPtr<SCkSaveDebuggerWindow> Window = WeakWindow.Pin(); return Window.IsValid() && Window->_Model.Get_ProblemsOnly(); }));
+    Data.BoolChanged.Add(TEXT("set-problems-only"), FCkUiOnBoolChanged::CreateLambda([WeakWindow](const bool InValue)
+    { if (const TSharedPtr<SCkSaveDebuggerWindow> Window = WeakWindow.Pin(); Window.IsValid() && Window->_Model.Get_ProblemsOnly() != InValue) { Window->_Model.Set_ProblemsOnly(InValue); Window->DoRefresh_Filters(); } }));
+    for (const ECk_Snapshot_V3_Provenance Provenance : ck_save_debugger_window::k_ProvenanceOrder)
+    {
+        const FString Binding = FString::Printf(TEXT("provenance-%d"), static_cast<int32>(Provenance));
+        Data.Visibility.Add(Binding, TAttribute<bool>::CreateLambda([WeakWindow, Provenance]() { const TSharedPtr<SCkSaveDebuggerWindow> Window = WeakWindow.Pin(); return Window.IsValid() && ck_save_debugger_model::Passes_ProvenanceMask(Provenance, Window->_Model.Get_ProvenanceMask()); }));
+        Data.BoolChanged.Add(Binding, FCkUiOnBoolChanged::CreateLambda([WeakWindow, Provenance](const bool InValue)
+        {
+            const TSharedPtr<SCkSaveDebuggerWindow> Window = WeakWindow.Pin();
+            if (!Window.IsValid()) { return; }
+            const uint8 Mask = Window->_Model.Get_ProvenanceMask(); const uint8 Bit = ck_save_debugger_model::Get_ProvenanceBit(Provenance);
+            const uint8 Next = static_cast<uint8>(InValue ? Mask | Bit : Mask & ~Bit);
+            if (Next != Mask) { Window->_Model.Set_ProvenanceMask(Next); Window->DoRefresh_Filters(); }
+        }));
+    }
+    _EntityNavigationView = FCkUiView::Create({}, {}, ck_save_debugger_window::EntityNavigationStyleTokens(),
+        CkStyle::RegularFont(CkStyle::FontSizeBody()), MoveTemp(Data), Registry);
+}
+
+auto SCkSaveDebuggerWindow::DoReload_EntityNavigationLayout() -> void
+{
+    if (!_EntityNavigationView.IsValid()) { return; }
+    const TSharedPtr<IPlugin> Plugin = IPluginManager::Get().FindPlugin(TEXT("CkDebugger"));
+    if (!Plugin.IsValid()) { _EntityNavigationPublicationError = TEXT("CkDebugger plugin resources are unavailable."); return; }
+    const FString Directory = FPaths::Combine(Plugin->GetBaseDir(), TEXT("Resources/UI"));
+    const FCkUiLoadResult Result = _EntityNavigationView->ReloadFiles(FPaths::Combine(Directory, TEXT("SaveDebugger.ui.html")), FPaths::Combine(Directory, TEXT("SaveDebugger.ui.css")));
+    if (!Result.Succeeded) { _EntityNavigationPublicationError = FString::Join(Result.Errors, TEXT("\n")); return; }
+    _EntityNavigationPublicationError.Reset();
+    if (const TSharedPtr<SCkUiTree> Tree = Get_AuthoredEntityTree(); Tree.IsValid())
+    { Tree->SetHostKeyDownHandler(FOnKeyDown::CreateSP(this, &SCkSaveDebuggerWindow::DoOnTreeKeyDown)); }
+}
+
+auto SCkSaveDebuggerWindow::DoTick_EntityNavigationLayout(double InCurrentTime, float InDeltaTime) -> EActiveTimerReturnType
+{
+    if (_EntityNavigationView.IsValid() && _EntityNavigationView->PollFiles())
+    {
+        if (_EntityNavigationView->GetLastResult().Succeeded)
+        {
+            _EntityNavigationPublicationError.Reset();
+            if (const TSharedPtr<SCkUiTree> Tree = Get_AuthoredEntityTree(); Tree.IsValid())
+            { Tree->SetHostKeyDownHandler(FOnKeyDown::CreateSP(this, &SCkSaveDebuggerWindow::DoOnTreeKeyDown)); }
+        }
+        else { _EntityNavigationPublicationError = FString::Join(_EntityNavigationView->GetLastResult().Errors, TEXT("\n")); }
+    }
+    return EActiveTimerReturnType::Continue;
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -734,51 +926,21 @@ auto
                     SNew(SCkDebug_PaneHost)
                     [
                         SNew(SVerticalBox)
-
-                + SVerticalBox::Slot()
-                .AutoHeight()
-                .Padding(CkStyle::SpaceS)
-                [
-                    SNew(SCkDebug_DualSearchBar)
-                    .FilterHintText(FText::FromString(TEXT("Filter entities...")))
-                    .HighlightHintText(FText::FromString(TEXT("Highlight...")))
-                    .OnFilterTextChanged_Lambda([this](const FString& InText)
-                    {
-                        if (_Model.Get_FilterString() == InText)
-                        { return; }
-
-                        _Model.Set_FilterString(InText);
-                        DoRefresh_Filters();
-                    })
-                    .OnHighlightTextChanged_Lambda([this](const FString& InText)
-                    {
-                        if (_Model.Get_HighlightString() == InText)
-                        { return; }
-
-                        _Model.Set_HighlightString(InText);
-                        DoRefresh_Filters();
-                    })
-                ]
-
-                + SVerticalBox::Slot()
-                .AutoHeight()
-                .Padding(CkStyle::SpaceS, 0.0f, CkStyle::SpaceS, CkStyle::SpaceXS)
-                [
-                    DoCreate_ProvenanceChips()
-                ]
-
-                + SVerticalBox::Slot()
-                .FillHeight(1.0f)
-                [
-                    SAssignNew(_EntityTree, STreeView<TSharedPtr<FCkSaveDebugger_TreeNode>>)
-                    .TreeItemsSource(&_VisibleRoots)
-                    .OnGenerateRow(this, &SCkSaveDebuggerWindow::DoGenerate_EntityRow)
-                    .OnGetChildren(this, &SCkSaveDebuggerWindow::DoGet_EntityChildren)
-                    .OnSelectionChanged(this, &SCkSaveDebuggerWindow::DoOnEntitySelectionChanged)
-                    .OnContextMenuOpening(this, &SCkSaveDebuggerWindow::DoOnEntityContextMenu)
-                    .OnKeyDownHandler(this, &SCkSaveDebuggerWindow::DoOnTreeKeyDown)
-                    .SelectionMode(ESelectionMode::Single)
-                ]
+                        + SVerticalBox::Slot().AutoHeight()
+                        [
+                            SNew(STextBlock)
+                            .Text_Lambda([this]() -> FText { return FText::FromString(_EntityNavigationPublicationError); })
+                            .AutoWrapText(true)
+                            .ColorAndOpacity(FSlateColor{CkStyle::Err()})
+                            .Visibility_Lambda([this]() -> EVisibility
+                            { return _EntityNavigationPublicationError.IsEmpty() ? EVisibility::Collapsed : EVisibility::Visible; })
+                        ]
+                        + SVerticalBox::Slot().FillHeight(1.0f)
+                        [
+                            _EntityNavigationView.IsValid()
+                                ? _EntityNavigationView->GetRegion(TEXT("entity-navigation"))
+                                : SNullWidget::NullWidget
+                        ]
                     ]
             ]
 
@@ -2458,24 +2620,8 @@ auto
     DoRebuild_Tree()
     -> void
 {
-    const auto SetChanged = _Model.Rebuild_Tree();
-
+    _Model.Rebuild_Tree();
     DoRefresh_Filters();
-
-    if (NOT SetChanged || NOT _EntityTree.IsValid())
-    { return; }
-
-    // Ownership depth is untrusted input — walk with an explicit stack, never recursion.
-    auto Stack = _VisibleRoots;
-    while (Stack.Num() > 0)
-    {
-        const auto Node = Stack.Pop();
-        if (NOT Node.IsValid())
-        { continue; }
-
-        _EntityTree->SetItemExpansion(Node, true);
-        Stack.Append(Node->Children);
-    }
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -2487,15 +2633,88 @@ auto
 {
     _Model.Apply_Filters();
 
-    _VisibleRoots.Reset();
-    for (const auto& Root : _Model.Get_TreeRoots())
-    {
-        if (Root.IsValid() && Root->IsVisible)
-        { _VisibleRoots.Add(Root); }
-    }
+    DoPublish_EntityNavigation();
+}
 
-    if (_EntityTree.IsValid())
-    { _EntityTree->RequestTreeRefresh(); }
+// --------------------------------------------------------------------------------------------------------------------
+
+auto SCkSaveDebuggerWindow::DoPublish_EntityNavigation() -> void
+{
+    if (!_EntityNavigationModel.IsValid()) { return; }
+    auto Nodes = TArray<FCkUiTreeNodeData>{};
+    auto NodeMap = TMap<FString, TWeakPtr<FCkSaveDebugger_TreeNode>>{};
+    auto Stack = TArray<TPair<TSharedPtr<FCkSaveDebugger_TreeNode>, TOptional<FString>>>{};
+    for (int32 Index = _Model.Get_TreeRoots().Num() - 1; Index >= 0; --Index) { Stack.Emplace(_Model.Get_TreeRoots()[Index], TOptional<FString>{}); }
+    while (!Stack.IsEmpty())
+    {
+        const auto Current = Stack.Pop(); const TSharedPtr<FCkSaveDebugger_TreeNode> Node = Current.Key;
+        if (!Node.IsValid()) { continue; }
+        const FString Key = ck_save_debugger_window::Get_EntityUiKey(*Node);
+        FCkUiTreeNodeData Data; Data.Key = Key; Data.ParentKey = Current.Value;
+        const auto AddText = [&Data](const TCHAR* Name, const FString& Value) { Data.Fields.Add(Name, FCkUiFieldValue{.Kind=ECkUiFieldKind::Text, .Text=FText::FromString(Value)}); };
+        const auto AddColor = [&Data](const TCHAR* Name, const FLinearColor Value) { Data.Fields.Add(Name, FCkUiFieldValue{.Kind=ECkUiFieldKind::Color, .Color=Value}); };
+        const auto AddImage = [this, &Data](const TCHAR* Name, const FSlateBrush* Value)
+        {
+            TSharedPtr<const FSlateBrush>& Cached = _EntityNavigationBrushes.FindOrAdd(Value);
+            if (!Cached.IsValid() && Value != nullptr) { Cached = MakeShared<FSlateBrush>(*Value); }
+            Data.Fields.Add(Name, FCkUiFieldValue{.Kind=ECkUiFieldKind::Image, .Image=Cached});
+        };
+        const ECk_Tone Tone = ck_save_debugger_model::Get_NodeKindTone(Node->Kind);
+        AddText(TEXT("identity"), Node->DisplayText); AddText(TEXT("provenance"), Node->ProvenanceText);
+        Data.Fields.Add(TEXT("visible"), FCkUiFieldValue{.Kind=ECkUiFieldKind::Bool, .Bool=Node->IsVisible});
+        AddImage(TEXT("problem-brush"), CkStyle::GetRoundedBrush_Pill());
+        AddText(TEXT("problem-meaning"), TEXT("This row, or something under it, is named by an Error or Warning diagnostic"));
+        AddColor(TEXT("problem-color"), Node->HasProblems ? CkStyle::Err() : FLinearColor::Transparent);
+        AddImage(TEXT("node-brush"), ck_save_debugger_window::Get_IconBrush(Node->Icon));
+        AddText(TEXT("node-meaning"), Node->Kind == ECkSaveDebugger_NodeKind::Entity ? ck::Format_UE(TEXT("Captured as {}"), Node->ProvenanceText) : Node->DisplayText);
+        AddColor(TEXT("node-color"), Tone == ECk_Tone::Neutral ? CkStyle::TextMute() : CkStyle::GetToneColor(Tone));
+        AddColor(TEXT("identity-color"), Tone == ECk_Tone::Err ? CkStyle::Err() : Node->IsSearchMatch ? CkStyle::Text() : CkStyle::TextMute());
+        AddColor(TEXT("provenance-color"), CkStyle::TextMute());
+        Nodes.Add(MoveTemp(Data)); NodeMap.Add(Key, Node);
+        for (int32 Index = Node->Children.Num() - 1; Index >= 0; --Index) { Stack.Emplace(Node->Children[Index], TOptional<FString>{Key}); }
+    }
+    const FCkUiLoadResult Result = _EntityNavigationModel->TrySetNodes(MoveTemp(Nodes));
+    if (!Result.Succeeded) { _EntityNavigationPublicationError = FString::Join(Result.Errors, TEXT("\n")); return; }
+    _EntityNavigationPublicationError.Reset(); _EntityNodesByUiKey = MoveTemp(NodeMap);
+    const TSharedPtr<SCkUiTree> Tree = Get_AuthoredEntityTree();
+    if (!Tree.IsValid()) { return; }
+    if (!_EntityNavigationInitialExpansionApplied)
+    {
+        for (const TSharedPtr<const FCkUiTreeNode>& Root : _EntityNavigationModel->GetRoots()) { if (Root.IsValid()) { Tree->TrySetExpanded(Root->GetKey(), true); } }
+        _EntityNavigationInitialExpansionApplied = true;
+    }
+    if (const TOptional<FString> Key = Get_EntityUiKey(_Model.Get_SelectedEntitySavedId()); Key.IsSet()) { Tree->TrySelectKey(Key); }
+}
+
+auto SCkSaveDebuggerWindow::TryGet_EntityNodeForUiKey(const FString& InKey) const -> TSharedPtr<FCkSaveDebugger_TreeNode>
+{
+    const TWeakPtr<FCkSaveDebugger_TreeNode>* Found = _EntityNodesByUiKey.Find(InKey);
+    const TSharedPtr<FCkSaveDebugger_TreeNode> Node = Found != nullptr ? Found->Pin() : nullptr;
+    return Node.IsValid() && _EntityNavigationModel.IsValid() && _EntityNavigationModel->FindNode(InKey).IsValid() ? Node : nullptr;
+}
+
+auto SCkSaveDebuggerWindow::DoOnAuthoredEntitySelectionChanged(TOptional<FString> InKey, ESelectInfo::Type InSelectInfo) -> void
+{
+    if (_SuppressSelectionEcho || InSelectInfo == ESelectInfo::Direct || !InKey.IsSet()) { return; }
+    const TSharedPtr<FCkSaveDebugger_TreeNode> Node = TryGet_EntityNodeForUiKey(InKey.GetValue());
+    if (!Node.IsValid() || Node->Kind != ECkSaveDebugger_NodeKind::Entity) { return; }
+    _Model.Set_SelectedEntitySavedId(Node->SavedId); _Model.Set_SelectedPayloadIndex(INDEX_NONE);
+    DoVisualize_SyncSelection(); DoRebuild_EntityDetail(); DoRebuild_BlobDetail();
+}
+
+auto SCkSaveDebuggerWindow::DoOnCopyEntityIdentity(const FString& InKey) -> void
+{
+    const TSharedPtr<FCkSaveDebugger_TreeNode> Node = TryGet_EntityNodeForUiKey(InKey);
+    if (!Node.IsValid()) { return; }
+    _LastEntityContextActionKey = InKey; ++_EntityContextActionCount; FPlatformApplicationMisc::ClipboardCopy(*Node->DisplayText);
+}
+
+auto SCkSaveDebuggerWindow::DoOnCopyEntitySavedId(const FString& InKey) -> void
+{
+    const TSharedPtr<FCkSaveDebugger_TreeNode> Node = TryGet_EntityNodeForUiKey(InKey);
+    if (!Node.IsValid()) { return; }
+    _LastEntityContextActionKey = InKey; ++_EntityContextActionCount;
+    FPlatformApplicationMisc::ClipboardCopy(*ck_save_debugger_model::Build_SavedIdText(Node->SavedId));
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -3253,33 +3472,18 @@ auto
     _Model.Set_SelectedEntitySavedId(InSavedId);
     _Model.Set_SelectedPayloadIndex(INDEX_NONE);
 
-    if (_EntityTree.IsValid())
+    if (const TOptional<FString> Key = Get_EntityUiKey(InSavedId); Key.IsSet())
     {
-        // The tree owns no key index of its own — walk the visible forest once and select the matching row.
-        auto Stack = _VisibleRoots;
-        while (Stack.Num() > 0)
+        if (const TSharedPtr<SCkUiTree> Tree = Get_AuthoredEntityTree(); Tree.IsValid())
         {
-            const auto Node = Stack.Pop();
-            if (NOT Node.IsValid())
-            { continue; }
-
-            if (Node->Kind == ECkSaveDebugger_NodeKind::Entity && Node->SavedId == InSavedId)
+            _SuppressSelectionEcho = true;
+            Tree->TrySelectKey(Key);
+            if (const TSharedPtr<STreeView<SCkUiTree::FNode>> NativeTree = Tree->GetTree(); NativeTree.IsValid())
             {
-                const auto Current = _EntityTree->GetSelectedItems();
-                const auto AlreadySelected = Current.Num() == 1 && Current[0] == Node;
-
-                if (NOT AlreadySelected)
-                {
-                    _SuppressSelectionEcho = true;
-                    _EntityTree->SetItemSelection(Node, true, ESelectInfo::Direct);
-                    _EntityTree->RequestScrollIntoView(Node);
-                    _SuppressSelectionEcho = false;
-                }
-
-                break;
+                if (const TSharedPtr<const FCkUiTreeNode> UiNode = _EntityNavigationModel->FindNode(Key.GetValue()); UiNode.IsValid())
+                { NativeTree->RequestScrollIntoView(UiNode); }
             }
-
-            Stack.Append(Node->Children);
+            _SuppressSelectionEcho = false;
         }
     }
 
@@ -3321,206 +3525,6 @@ auto
 
 // --------------------------------------------------------------------------------------------------------------------
 // Views
-// --------------------------------------------------------------------------------------------------------------------
-
-auto
-    SCkSaveDebuggerWindow::
-    DoGenerate_EntityRow(
-        TSharedPtr<FCkSaveDebugger_TreeNode> InItem,
-        const TSharedRef<STableViewBase>& InOwnerTable)
-    -> TSharedRef<ITableRow>
-{
-    using namespace ck_save_debugger_window;
-
-    const auto WeakNode = TWeakPtr<FCkSaveDebugger_TreeNode>{InItem};
-
-    // The glyph is resolved once from the row's own model-assigned id; a row's kind and provenance never change
-    // under a stable key, so only the tints need to be attribute-bound.
-    const auto IconBrush = InItem.IsValid() ? Get_IconBrush(InItem->Icon) : nullptr;
-
-    const auto IconMeaning = NOT InItem.IsValid()
-        ? FString{}
-        : InItem->Kind == ECkSaveDebugger_NodeKind::Entity
-            ? ck::Format_UE(TEXT("Captured as {}"), InItem->ProvenanceText)
-            : InItem->DisplayText;
-
-    return SNew(STableRow<TSharedPtr<FCkSaveDebugger_TreeNode>>, InOwnerTable)
-        .Style(&Get_RowStyle())
-        .Padding(FMargin{0.0f, 1.0f})
-        .ShowSelection(true)
-        .Content()
-        [
-            SNew(SHorizontalBox)
-
-            + SHorizontalBox::Slot()
-            .AutoWidth()
-            .VAlign(VAlign_Center)
-            .Padding(0.0f, 0.0f, CkStyle::SpaceS, 0.0f)
-            [
-                SNew(SCkDebug_Icon)
-                .Brush(CkStyle::GetRoundedBrush_Pill())
-                .Meaning(FText::FromString(TEXT("This row, or something under it, is named by an Error or Warning diagnostic")))
-                .ColorAndOpacity_Lambda([WeakNode]() -> FSlateColor
-                {
-                    const auto Node = WeakNode.Pin();
-                    if (NOT Node.IsValid() || NOT Node->HasProblems)
-                    { return FSlateColor{FLinearColor::Transparent}; }
-
-                    return FSlateColor{CkStyle::Err()};
-                })
-                .Size(FVector2D{k_ProblemDotSize, k_ProblemDotSize})
-            ]
-
-            + SHorizontalBox::Slot()
-            .AutoWidth()
-            .VAlign(VAlign_Center)
-            .Padding(0.0f, 0.0f, CkStyle::SpaceS, 0.0f)
-            [
-                SNew(SCkDebug_Icon)
-                .Brush(IconBrush)
-                .Meaning(FText::FromString(IconMeaning))
-                .ColorAndOpacity_Lambda([WeakNode]() -> FSlateColor
-                {
-                    const auto Node = WeakNode.Pin();
-                    if (NOT Node.IsValid())
-                    { return FSlateColor{CkStyle::TextMute()}; }
-
-                    // A Non-Persisted Owner group is normal top-level shape — only a cycle earns the error tone.
-                    const auto Tone = ck_save_debugger_model::Get_NodeKindTone(Node->Kind);
-                    return FSlateColor{Tone == ECk_Tone::Neutral ? CkStyle::TextMute() : CkStyle::GetToneColor(Tone)};
-                })
-                .Size(FVector2D{k_RowIconSize, k_RowIconSize})
-            ]
-
-            + SHorizontalBox::Slot()
-            .FillWidth(1.0f)
-            .VAlign(VAlign_Center)
-            [
-                SNew(STextBlock)
-                .Text_Lambda([WeakNode]() -> FText
-                {
-                    const auto Node = WeakNode.Pin();
-                    return Node.IsValid() ? FText::FromString(Node->DisplayText) : FText::GetEmpty();
-                })
-                .ColorAndOpacity_Lambda([WeakNode]() -> FSlateColor
-                {
-                    const auto Node = WeakNode.Pin();
-                    if (NOT Node.IsValid())
-                    { return Get_RowTextColor(false); }
-
-                    if (ck_save_debugger_model::Get_NodeKindTone(Node->Kind) == ECk_Tone::Err)
-                    { return FSlateColor{CkStyle::Err()}; }
-
-                    return Get_RowTextColor(Node->IsSearchMatch);
-                })
-            ]
-
-            + SHorizontalBox::Slot()
-            .AutoWidth()
-            .VAlign(VAlign_Center)
-            [
-                SNew(SBox)
-                .WidthOverride(k_ProvenanceWidth)
-                [
-                    SNew(STextBlock)
-                    .Text_Lambda([WeakNode]() -> FText
-                    {
-                        const auto Node = WeakNode.Pin();
-                        return Node.IsValid() ? FText::FromString(Node->ProvenanceText) : FText::GetEmpty();
-                    })
-                    .ColorAndOpacity(FSlateColor{CkStyle::TextMute()})
-                ]
-            ]
-        ];
-}
-
-// --------------------------------------------------------------------------------------------------------------------
-
-auto
-    SCkSaveDebuggerWindow::
-    DoGet_EntityChildren(
-        TSharedPtr<FCkSaveDebugger_TreeNode> InItem,
-        TArray<TSharedPtr<FCkSaveDebugger_TreeNode>>& OutChildren)
-    -> void
-{
-    if (NOT InItem.IsValid())
-    { return; }
-
-    for (const auto& Child : InItem->Children)
-    {
-        if (Child.IsValid() && Child->IsVisible)
-        { OutChildren.Add(Child); }
-    }
-}
-
-// --------------------------------------------------------------------------------------------------------------------
-
-auto
-    SCkSaveDebuggerWindow::
-    DoOnEntitySelectionChanged(
-        TSharedPtr<FCkSaveDebugger_TreeNode> InItem,
-        ESelectInfo::Type InSelectInfo)
-    -> void
-{
-    if (_SuppressSelectionEcho || InSelectInfo == ESelectInfo::Direct)
-    { return; }
-
-    if (NOT InItem.IsValid() || InItem->Kind != ECkSaveDebugger_NodeKind::Entity)
-    { return; }
-
-    _Model.Set_SelectedEntitySavedId(InItem->SavedId);
-    _Model.Set_SelectedPayloadIndex(INDEX_NONE);
-
-    DoVisualize_SyncSelection();
-
-    DoRebuild_EntityDetail();
-    DoRebuild_BlobDetail();
-}
-
-// --------------------------------------------------------------------------------------------------------------------
-
-auto
-    SCkSaveDebuggerWindow::
-    DoOnEntityContextMenu()
-    -> TSharedPtr<SWidget>
-{
-    if (NOT _EntityTree.IsValid())
-    { return nullptr; }
-
-    const auto Selected = _EntityTree->GetSelectedItems();
-    if (Selected.Num() == 0)
-    { return nullptr; }
-
-    auto Names = TArray<FString>{};
-    auto Ids = TArray<FString>{};
-
-    for (const auto& Node : Selected)
-    {
-        if (NOT Node.IsValid())
-        { continue; }
-
-        Names.Add(Node->DisplayText);
-        Ids.Add(ck_save_debugger_model::Build_SavedIdText(Node->SavedId));
-    }
-
-    if (Names.Num() == 0)
-    { return nullptr; }
-
-    auto MenuBuilder = FMenuBuilder{true, nullptr};
-
-    ck::DebugCopyMenu::AddCopyEntry(MenuBuilder,
-        FText::FromString(TEXT("Copy Identity")),
-        FText::FromString(TEXT("Copy the selected row's identity text")),
-        FString::Join(Names, TEXT("\n")));
-
-    ck::DebugCopyMenu::AddCopyEntry(MenuBuilder,
-        FText::FromString(TEXT("Copy Saved Id")),
-        FText::FromString(TEXT("Copy the selected row's saved id")),
-        FString::Join(Ids, TEXT("\n")));
-
-    return MenuBuilder.MakeWidget();
-}
-
 // --------------------------------------------------------------------------------------------------------------------
 
 auto

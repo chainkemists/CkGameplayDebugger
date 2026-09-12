@@ -18,6 +18,11 @@ class SCkDebug_SelectableLabel;
 class STextBlock;
 class SVerticalBox;
 class SWidgetSwitcher;
+class FCkUiView;
+class FCkUiTreeCollection;
+class SCkUiTree;
+struct FCkUiLoadResult;
+struct FSlateBrush;
 
 // --------------------------------------------------------------------------------------------------------------------
 
@@ -30,7 +35,7 @@ class SWidgetSwitcher;
  *
  *  Consequence for refresh: this debugger never polls. Every rebuild is driven by an explicit event — open, reload,
  *  filter, selection, decode — so the base's gated style-revision watch is the only per-tick work in the window. */
-class SCkSaveDebuggerWindow : public SCkDebugger_WindowBase
+class CKSAVEDEBUGGER_API SCkSaveDebuggerWindow : public SCkDebugger_WindowBase
 {
 public:
     static const FName WindowId;
@@ -48,6 +53,18 @@ public:
 
     virtual auto Get_WindowId() const -> FName override { return WindowId; }
     virtual auto Get_WindowDisplayName() const -> FText override { return FText::FromString(TEXT("CK Save Debugger")); }
+
+    /** Narrow authored-navigation seams for production-path widget coverage. */
+    auto TryReload_EntityNavigationLayout(const FString& InMarkup, const FString& InStylesheet) -> FCkUiLoadResult;
+    auto Get_AuthoredEntityTree() const -> TSharedPtr<SCkUiTree>;
+    auto Get_EntityNavigationLayoutRevision() const -> int64;
+    auto Get_EntityNavigationLayoutError() const -> FText;
+    auto Get_EntityUiKey(uint32 InSavedId) const -> TOptional<FString>;
+    auto Get_EntityFilterStringForTest() const -> const FString&;
+    auto Get_EntityHighlightStringForTest() const -> const FString&;
+    auto Open_SaveFileForTest(const FString& InAbsolutePath) -> bool;
+    const FString& Get_LastEntityContextActionKey() const { return _LastEntityContextActionKey; }
+    int32 Get_EntityContextActionCount() const { return _EntityContextActionCount; }
 
 protected:
     virtual auto OnStyleRevisionChanged() -> void override;
@@ -101,24 +118,20 @@ private:
     auto DoRebuild_Diff() -> void;
     auto DoRebuild_DiffDetail() -> void;
 
+    // ---- Authored entity navigation ----
+    auto DoInitialize_EntityNavigation() -> void;
+    auto DoReload_EntityNavigationLayout() -> void;
+    auto DoTick_EntityNavigationLayout(double InCurrentTime, float InDeltaTime) -> EActiveTimerReturnType;
+    auto DoPublish_EntityNavigation() -> void;
+    auto DoOnAuthoredEntitySelectionChanged(TOptional<FString> InKey, ESelectInfo::Type InSelectInfo) -> void;
+    auto DoOnCopyEntityIdentity(const FString& InKey) -> void;
+    auto DoOnCopyEntitySavedId(const FString& InKey) -> void;
+    auto TryGet_EntityNodeForUiKey(const FString& InKey) const -> TSharedPtr<FCkSaveDebugger_TreeNode>;
+
     auto DoSelect_Entity(uint32 InSavedId) -> void;
     auto DoSelect_Payload(int32 InPayloadIndex) -> void;
 
     // ---- Views ----
-    auto DoGenerate_EntityRow(
-        TSharedPtr<FCkSaveDebugger_TreeNode> InItem,
-        const TSharedRef<STableViewBase>& InOwnerTable) -> TSharedRef<ITableRow>;
-
-    auto DoGet_EntityChildren(
-        TSharedPtr<FCkSaveDebugger_TreeNode> InItem,
-        TArray<TSharedPtr<FCkSaveDebugger_TreeNode>>& OutChildren) -> void;
-
-    auto DoOnEntitySelectionChanged(
-        TSharedPtr<FCkSaveDebugger_TreeNode> InItem,
-        ESelectInfo::Type InSelectInfo) -> void;
-
-    auto DoOnEntityContextMenu() -> TSharedPtr<SWidget>;
-
     auto DoGenerate_PayloadRow(
         TSharedPtr<FCkSaveDebugger_PayloadRow> InItem,
         const TSharedRef<STableViewBase>& InOwnerTable) -> TSharedRef<ITableRow>;
@@ -187,8 +200,15 @@ private:
 
     FString _CurrentPath;
 
-    TSharedPtr<STreeView<TSharedPtr<FCkSaveDebugger_TreeNode>>> _EntityTree;
-    TArray<TSharedPtr<FCkSaveDebugger_TreeNode>> _VisibleRoots;
+    TSharedPtr<FCkUiView> _EntityNavigationView;
+    TSharedPtr<FCkUiTreeCollection> _EntityNavigationModel;
+    TMap<FString, TWeakPtr<FCkSaveDebugger_TreeNode>> _EntityNodesByUiKey;
+    /** Own copied style brushes: authored Image fields may outlive the style pointer used to publish a row. */
+    TMap<const FSlateBrush*, TSharedPtr<const FSlateBrush>> _EntityNavigationBrushes;
+    FString _EntityNavigationPublicationError;
+    bool _EntityNavigationInitialExpansionApplied = false;
+    FString _LastEntityContextActionKey;
+    int32 _EntityContextActionCount = 0;
 
     TSharedPtr<SListView<TSharedPtr<FCkSaveDebugger_PayloadRow>>> _PayloadList;
     TArray<TSharedPtr<FCkSaveDebugger_PayloadRow>> _PayloadRows;

@@ -1,0 +1,27 @@
+<ui version="1">
+  <menu id="entity-context">
+    <menu-item key="copy-identity" label="Copy Identity" tooltip="Copy the selected row's identity text" action="copy-identity" />
+    <menu-item key="copy-saved-id" label="Copy Saved Id" tooltip="Copy the selected row's saved id" action="copy-saved-id" />
+  </menu>
+  <region name="entity-navigation">
+    <column id="entity-navigation-root" class="entity-navigation-root">
+      <search id="entity-filter" bind="filter" placeholder="Filter entities..." />
+      <search id="entity-highlight" bind="highlight" placeholder="Highlight..." />
+      <checkbox id="problems-only" value-bind="problems-only" changed="set-problems-only" label-bind="problems-only-label" />
+      <row id="provenance-filters" class="provenance-filters">
+        <checkbox id="provenance-engine" value-bind="provenance-0" changed="provenance-0" label-bind="provenance-engine-label" />
+        <checkbox id="provenance-construct" value-bind="provenance-1" changed="provenance-1" label-bind="provenance-construct-label" />
+        <checkbox id="provenance-runtime" value-bind="provenance-2" changed="provenance-2" label-bind="provenance-runtime-label" />
+        <checkbox id="provenance-definition" value-bind="provenance-3" changed="provenance-3" label-bind="provenance-definition-label" />
+      </row>
+      <tree id="entity-tree" bind="entity-tree" projection-field="visible" selection-action="select-entity" context-menu="entity-context" row-height="22" class="entity-tree">
+        <row id="entity-tree-cell" class="entity-tree-cell">
+          <debug-icon id="problem-dot" icon-field="problem-brush" meaning-field="problem-meaning" color-field="problem-color" size="8" />
+          <debug-icon id="node-icon" icon-field="node-brush" meaning-field="node-meaning" color-field="node-color" size="12" />
+          <text id="identity" bind-field="identity" color-field="identity-color" class="entity-identity" />
+          <text id="provenance" bind-field="provenance" color-field="provenance-color" class="entity-provenance" />
+        </row>
+      </tree>
+    </column>
+  </region>
+</ui>

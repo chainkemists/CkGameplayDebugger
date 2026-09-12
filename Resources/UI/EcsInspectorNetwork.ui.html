@@ -1,0 +1,14 @@
+<ui version="1">
+  <region name="main">
+    <column id="network-inspector" class="network-inspector">
+      <row id="network-net-mode-row" class="network-row">
+        <text id="network-net-mode-label" color-bind="network-net-mode-diff-color" class="network-label">NetMode:</text>
+        <debug-status id="network-net-mode-value" label-bind="network-net-mode" foreground-bind="network-net-mode-foreground" background-bind="network-net-mode-background" show-dot="true" class="network-status" />
+      </row>
+      <row id="network-net-role-row" class="network-row">
+        <text id="network-net-role-label" color-bind="network-net-role-diff-color" class="network-label">NetRole:</text>
+        <debug-status id="network-net-role-value" label-bind="network-net-role" foreground-bind="network-net-role-foreground" background-bind="network-net-role-background" show-dot="true" class="network-status" />
+      </row>
+    </column>
+  </region>
+</ui>

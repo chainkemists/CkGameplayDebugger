@@ -1,0 +1,32 @@
+<ui version="1">
+  <region name="main">
+    <scroll id="ai-shell-scroll" direction="horizontal">
+      <splitter id="ai-shell-root" direction="horizontal" class="ai-shell-root">
+        <native id="ai-shell-roster" bind="ai-roster-pane" class="ai-roster-pane" />
+        <splitter id="ai-workspace-split" direction="vertical" class="ai-workspace-pane">
+          <splitter id="ai-overview-split" direction="vertical" class="ai-overview-pane">
+            <column id="ai-summary-stack" class="ai-summary-stack">
+              <splitter id="ai-summary-split" direction="horizontal" class="ai-summary-split">
+                <native id="ai-shell-identity" bind="ai-identity-pane" class="ai-identity-pane" />
+                <native id="ai-shell-behavior" bind="ai-behavior-pane" class="ai-behavior-pane" />
+                <native id="ai-shell-drill" bind="ai-drill-pane" class="ai-drill-pane" />
+              </splitter>
+              <native id="ai-shell-stage" bind="ai-stage-pane" class="ai-stage-pane" />
+            </column>
+            <splitter id="ai-topology-split" direction="horizontal" class="ai-topology-pane">
+              <native id="ai-shell-goap" bind="ai-goap-pane" class="ai-half-pane" />
+              <native id="ai-shell-state-machine" bind="ai-state-machine-pane" class="ai-half-pane" />
+            </splitter>
+          </splitter>
+          <splitter id="ai-diagnostics-split" direction="horizontal" class="ai-diagnostics-pane">
+            <splitter id="ai-diagnostics-list-split" direction="vertical" class="ai-diagnostics-list-pane">
+              <native id="ai-shell-evidence" bind="ai-evidence-pane" class="ai-evidence-pane" />
+              <native id="ai-shell-events" bind="ai-events-pane" class="ai-events-pane" />
+            </splitter>
+            <native id="ai-shell-spatial" bind="ai-spatial-pane" class="ai-spatial-pane" />
+          </splitter>
+        </splitter>
+      </splitter>
+    </scroll>
+  </region>
+</ui>

@@ -1,0 +1,17 @@
+.ai-shell-root { min-width: 980px; min-height: 680px; flex-grow: 1; flex-shrink: 1; background-color: var(--ai-shell-surface); }
+.ai-roster-pane { min-width: 190px; min-height: 0; flex-grow: 0.20; flex-shrink: 1; }
+.ai-workspace-pane { min-width: 0; min-height: 0; flex-grow: 0.80; flex-shrink: 1; }
+.ai-overview-pane { min-width: 0; min-height: 0; flex-grow: 0.52; flex-shrink: 1; }
+.ai-summary-stack { min-width: 0; min-height: 220px; flex-grow: 0.46; flex-shrink: 1; }
+.ai-summary-split { min-width: 0; min-height: 0; flex-grow: 1; flex-shrink: 1; }
+.ai-identity-pane { min-width: 0; min-height: 0; flex-grow: 0.38; flex-shrink: 1; }
+.ai-behavior-pane { min-width: 0; min-height: 0; flex-grow: 0.34; flex-shrink: 1; }
+.ai-drill-pane { min-width: 0; min-height: 0; flex-grow: 0.28; flex-shrink: 1; }
+.ai-stage-pane { min-width: 0; min-height: 96px; flex-grow: 0; flex-shrink: 0; }
+.ai-topology-pane { min-width: 0; min-height: 0; flex-grow: 0.54; flex-shrink: 1; }
+.ai-half-pane { min-width: 0; min-height: 0; flex-grow: 0.50; flex-shrink: 1; }
+.ai-diagnostics-pane { min-width: 0; min-height: 0; flex-grow: 0.48; flex-shrink: 1; }
+.ai-diagnostics-list-pane { min-width: 300px; min-height: 0; flex-grow: 0.42; flex-shrink: 1; }
+.ai-evidence-pane { min-width: 0; min-height: 0; flex-grow: 0.58; flex-shrink: 1; }
+.ai-events-pane { min-width: 0; min-height: 0; flex-grow: 0.42; flex-shrink: 1; }
+.ai-spatial-pane { min-width: 360px; min-height: 0; flex-grow: 0.58; flex-shrink: 1; }

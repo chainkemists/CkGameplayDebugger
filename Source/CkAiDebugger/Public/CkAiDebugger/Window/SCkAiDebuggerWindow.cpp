@@ -215,6 +215,11 @@ namespace ck_ai_debugger_window
             {TEXT("--ai-roster-text-strong"), Color(CkStyle::TextStrong())},
         };
     }
+
+    auto ShellTokens() -> FCkUiView::FTokens
+    {
+        return {{TEXT("--ai-shell-surface"), TEXT("#") + CkStyle::Bg2().ToFColorSRGB().ToHex()}};
+    }
 }
 
 auto SCkAiDebuggerWindow::Construct(const FArguments&) -> void
@@ -281,8 +286,13 @@ auto SCkAiDebuggerWindow::Construct(const FArguments&) -> void
                         { _NameDepth = InDepth; }))
                 ]
             ]
-            .Content()[Build_Body()]
+            .Content()
+            [
+                SAssignNew(_AuthoredShellHost, SBox)
+            ]
     ];
+
+    Build_AuthoredShell();
 
     if (CollectionResult.Succeeded) { Build_AiRosterView(); }
     else if (_AiRosterHost.IsValid())
@@ -300,6 +310,7 @@ SCkAiDebuggerWindow::~SCkAiDebuggerWindow()
     if (_WorldInvalidatedHandle.IsValid())
     { ck::DebugSessionLifecycle::Get_OnWorldInvalidated().Remove(_WorldInvalidatedHandle); }
     if (_ViewportPicker.IsValid()) { _ViewportPicker->Deactivate(); }
+    _AuthoredShellView.Reset();
     _AiProviders.Reset();
     Clear_Diagnostics();
     // FCk_Handle is deliberately released while ECS registries still exist.
@@ -314,6 +325,7 @@ auto SCkAiDebuggerWindow::Tick(const FGeometry& InGeometry, double InNow, float 
 {
     TRACE_CPUPROFILER_EVENT_SCOPE(CkAiDbg_WindowTick);
     SCkDebugger_WindowBase::Tick(InGeometry, InNow, InDeltaSeconds);
+    Poll_AuthoredShell();
     if (_ViewportPicker.IsValid()) { _ViewportPicker->Tick(InDeltaSeconds); }
 
     auto* World = Get_TargetWorld();
@@ -482,163 +494,144 @@ auto SCkAiDebuggerWindow::Build_Model(const FCk_Handle& InEntity, double InNow) 
         ck_ai_debugger_window::MakeAiBuildOptions());
 }
 
-auto SCkAiDebuggerWindow::Build_Body() -> TSharedRef<SWidget>
+auto SCkAiDebuggerWindow::Build_AuthoredShell() -> void
+{
+    const TArray<TPair<FName, TSharedRef<SWidget>>> Panes{
+        {TEXT("Roster"), Build_RosterPanel()},
+        {TEXT("Identity"), Build_IdentityPanel()},
+        {TEXT("Behavior"), Build_BehaviorPanel()},
+        {TEXT("Drill"), Build_DrillPanel()},
+        {TEXT("Stage"), Build_StagePanel()},
+        {TEXT("Goap"), Build_TopologyPanel(true)},
+        {TEXT("StateMachine"), Build_TopologyPanel(false)},
+        {TEXT("Evidence"), Build_CurrentEvidencePanel()},
+        {TEXT("Events"), Build_EventLogPanel()},
+        {TEXT("Spatial"), Build_SpatialPanel()},
+    };
+
+    TSharedPtr<const FCkUiWidgetRegistrySnapshot> Registry;
+    const FCkUiLoadResult RegistryResult = FCkDebug_UiRegistry::TryCreate(Registry);
+    const TSharedPtr<IPlugin> Plugin = IPluginManager::Get().FindPlugin(TEXT("CkDebugger"));
+    if (NOT RegistryResult.Succeeded || NOT Registry.IsValid() || NOT Plugin.IsValid())
+    {
+        _AuthoredShellLoadError = RegistryResult.Succeeded
+            ? TEXT("CkDebugger plugin is unavailable.")
+            : FString::Join(RegistryResult.Errors, TEXT("\n"));
+        _AuthoredShellHost->SetContent(Build_NativeShellFallback(Panes));
+        return;
+    }
+
+    FCkUiView::FNativeBindings NativeBindings;
+    NativeBindings.Add(TEXT("ai-roster-pane"), Panes[0].Value);
+    NativeBindings.Add(TEXT("ai-identity-pane"), Panes[1].Value);
+    NativeBindings.Add(TEXT("ai-behavior-pane"), Panes[2].Value);
+    NativeBindings.Add(TEXT("ai-drill-pane"), Panes[3].Value);
+    NativeBindings.Add(TEXT("ai-stage-pane"), Panes[4].Value);
+    NativeBindings.Add(TEXT("ai-goap-pane"), Panes[5].Value);
+    NativeBindings.Add(TEXT("ai-state-machine-pane"), Panes[6].Value);
+    NativeBindings.Add(TEXT("ai-evidence-pane"), Panes[7].Value);
+    NativeBindings.Add(TEXT("ai-events-pane"), Panes[8].Value);
+    NativeBindings.Add(TEXT("ai-spatial-pane"), Panes[9].Value);
+
+    auto Data = FCkUiView::FDataBindings{};
+    const TWeakPtr<SCkAiDebuggerWindow> WeakWindow{SharedThis(this)};
+    Data.SlateUserIndex = 0;
+    Data.CanDispatchEvents = TAttribute<bool>::CreateLambda([WeakWindow]() { return WeakWindow.IsValid(); });
+
+    const TSharedRef<FCkUiView> Candidate = FCkUiView::Create(
+        MoveTemp(NativeBindings), {}, ck_ai_debugger_window::ShellTokens(),
+        CkStyle::RegularFont(CkStyle::FontSizeBody()), MoveTemp(Data), Registry);
+    const TSharedRef<SWidget> Main = Candidate->GetRegion(TEXT("main"));
+    const FString ResourceRoot = FPaths::Combine(Plugin->GetBaseDir(), TEXT("Resources/UI"));
+    Candidate->SetFiles(
+        FPaths::Combine(ResourceRoot, TEXT("AiDebuggerShell.ui.html")),
+        FPaths::Combine(ResourceRoot, TEXT("AiDebuggerShell.ui.css")));
+    Candidate->PollFiles();
+    if (NOT Candidate->GetLastResult().Succeeded)
+    {
+        _AuthoredShellLoadError = FString::Join(Candidate->GetLastResult().Errors, TEXT("\n"));
+        _AuthoredShellHost->SetContent(Build_NativeShellFallback(Panes));
+        return;
+    }
+
+    _AuthoredShellView = Candidate;
+    _AuthoredShellMounted = true;
+    _AuthoredShellLoadError.Reset();
+    _AuthoredShellHost->SetContent(Main);
+}
+
+auto SCkAiDebuggerWindow::Build_NativeShellFallback(
+    const TArray<TPair<FName, TSharedRef<SWidget>>>& InPanes) -> TSharedRef<SWidget>
 {
     return SNew(SSplitter)
-        .Orientation(Orient_Horizontal)
-        .PhysicalSplitterHandleSize(5.0f)
-        + SSplitter::Slot().Value(0.20f)
-        [
-            SNew(SCkDebug_Card).BodyPadding(FMargin{CkStyle::SpaceM})
-            [
-                SNew(SVerticalBox)
-                + SVerticalBox::Slot().AutoHeight()[SNew(SCkDebug_SectionHeader).Label(LOCTEXT("Roster", "NPC health")).Underline(true)]
-                + SVerticalBox::Slot().FillHeight(1.0f).Padding(0.0f, CkStyle::SpaceS)
-                [
-                    SAssignNew(_AiRosterHost, SBox)
-                ]
-            ]
-        ]
+        .Orientation(Orient_Horizontal).PhysicalSplitterHandleSize(5.0f)
+        + SSplitter::Slot().Value(0.20f)[InPanes[0].Value]
         + SSplitter::Slot().Value(0.80f)
         [
             SNew(SSplitter)
-            .Orientation(Orient_Vertical)
-            .PhysicalSplitterHandleSize(5.0f)
+            .Orientation(Orient_Vertical).PhysicalSplitterHandleSize(5.0f)
             + SSplitter::Slot().Value(0.52f)
             [
-                Build_OverviewPane()
+                SNew(SSplitter)
+                .Orientation(Orient_Vertical).PhysicalSplitterHandleSize(5.0f)
+                + SSplitter::Slot().Value(0.46f)
+                [
+                    SNew(SVerticalBox)
+                    + SVerticalBox::Slot().FillHeight(1.0f)
+                    [
+                        SNew(SSplitter)
+                        .Orientation(Orient_Horizontal).PhysicalSplitterHandleSize(5.0f)
+                        + SSplitter::Slot().Value(0.38f)[InPanes[1].Value]
+                        + SSplitter::Slot().Value(0.34f)[InPanes[2].Value]
+                        + SSplitter::Slot().Value(0.28f)[InPanes[3].Value]
+                    ]
+                    + SVerticalBox::Slot().AutoHeight()[InPanes[4].Value]
+                ]
+                + SSplitter::Slot().Value(0.54f)
+                [
+                    SNew(SSplitter)
+                    .Orientation(Orient_Horizontal).PhysicalSplitterHandleSize(5.0f)
+                    + SSplitter::Slot().Value(0.50f)[InPanes[5].Value]
+                    + SSplitter::Slot().Value(0.50f)[InPanes[6].Value]
+                ]
             ]
             + SSplitter::Slot().Value(0.48f)
             [
                 SNew(SSplitter)
-                .Orientation(Orient_Horizontal)
-                .PhysicalSplitterHandleSize(5.0f)
+                .Orientation(Orient_Horizontal).PhysicalSplitterHandleSize(5.0f)
                 + SSplitter::Slot().Value(0.42f)
                 [
                     SNew(SSplitter)
-                    .Orientation(Orient_Vertical)
-                    .PhysicalSplitterHandleSize(5.0f)
-                    + SSplitter::Slot().Value(0.58f)
-                    [
-                        SNew(SCkDebug_Card).BodyPadding(FMargin{CkStyle::SpaceM})
-                        [
-                            SNew(SVerticalBox)
-                            + SVerticalBox::Slot().AutoHeight()
-                            [SNew(SCkDebug_SectionHeader).Label(LOCTEXT("CurrentEvidence", "Current evidence")).Underline(true)]
-                            + SVerticalBox::Slot().FillHeight(1.0f).Padding(0.0f, CkStyle::SpaceS)
-                            [
-                                SAssignNew(_CurrentEvidenceList, SCkDebug_EvidenceList)
-                                .MaxItems(200)
-                                .EmptyText(LOCTEXT("NoCurrentEvidence", "Select or pick an AI entity to inspect its current evidence."))
-                            ]
-                        ]
-                    ]
-                    + SSplitter::Slot().Value(0.42f)
-                    [
-                        SNew(SCkDebug_Card).BodyPadding(FMargin{CkStyle::SpaceM})
-                        [
-                            SNew(SVerticalBox)
-                            + SVerticalBox::Slot().AutoHeight()
-                            [SNew(SCkDebug_SectionHeader).Label(LOCTEXT("CrossSystemEvents", "Recent cross-system events")).Underline(true)]
-                            + SVerticalBox::Slot().FillHeight(1.0f).Padding(0.0f, CkStyle::SpaceS)
-                            [
-                                SAssignNew(_EventLog, SCkDebug_EventLog)
-                                .MaxEntries(200)
-                                .EmptyText(LOCTEXT("NoCrossSystemEvents", "No changes since this entity was selected."))
-                            ]
-                        ]
-                    ]
+                    .Orientation(Orient_Vertical).PhysicalSplitterHandleSize(5.0f)
+                    + SSplitter::Slot().Value(0.58f)[InPanes[7].Value]
+                    + SSplitter::Slot().Value(0.42f)[InPanes[8].Value]
                 ]
-                + SSplitter::Slot().Value(0.58f)
-                [
-                    SNew(SCkDebug_Card).BodyPadding(FMargin{CkStyle::SpaceS})
-                    [
-                        SNew(SVerticalBox)
-                        + SVerticalBox::Slot().AutoHeight()
-                        [SNew(SCkDebug_SectionHeader).Label(LOCTEXT("Spatial", "Spatial evidence")).Underline(true)]
-                        + SVerticalBox::Slot().FillHeight(1.0f).Padding(0.0f, CkStyle::SpaceS)
-                        [_SpatialViewport.ToSharedRef()]
-                    ]
-                ]
+                + SSplitter::Slot().Value(0.58f)[InPanes[9].Value]
             ]
         ];
 }
 
-auto SCkAiDebuggerWindow::Build_OverviewPane() -> TSharedRef<SWidget>
+auto SCkAiDebuggerWindow::Poll_AuthoredShell() -> void
 {
-    return SNew(SSplitter)
-        .Orientation(Orient_Vertical)
-        .PhysicalSplitterHandleSize(5.0f)
-        + SSplitter::Slot().Value(0.46f)
+    if (NOT _AuthoredShellView.IsValid()) { return; }
+    _AuthoredShellView->PollFiles(ck_ai_debugger_window::ShellTokens());
+    if (NOT _AuthoredShellView->GetLastResult().Succeeded)
+    {
+        _AuthoredShellLoadError = FString::Join(_AuthoredShellView->GetLastResult().Errors, TEXT("\n"));
+        return;
+    }
+    _AuthoredShellLoadError.Reset();
+}
+
+auto SCkAiDebuggerWindow::Build_RosterPanel() -> TSharedRef<SWidget>
+{
+    return SNew(SCkDebug_Card).BodyPadding(FMargin{CkStyle::SpaceM})
         [
             SNew(SVerticalBox)
-            + SVerticalBox::Slot().FillHeight(1.0f)
-            [
-                SNew(SSplitter)
-                .Orientation(Orient_Horizontal)
-                .PhysicalSplitterHandleSize(5.0f)
-                + SSplitter::Slot().Value(0.38f)
-                [Build_IdentityPanel()]
-                + SSplitter::Slot().Value(0.34f)
-                [
-                    SNew(SCkDebug_Card).BodyPadding(FMargin{CkStyle::SpaceM})
-                    [
-                        SNew(SVerticalBox)
-                        + SVerticalBox::Slot().AutoHeight()
-                        [SNew(SCkDebug_SectionHeader).Label(LOCTEXT("BehaviorOverrides", "Behavior controls")).Underline(true)]
-                        + SVerticalBox::Slot().AutoHeight().Padding(0.0f, CkStyle::SpaceS)
-                        [SNew(SCkDebug_BehaviorOverridePanel)]
-                    ]
-                ]
-                + SSplitter::Slot().Value(0.28f)
-                [
-                    SNew(SCkDebug_Card).BodyPadding(FMargin{CkStyle::SpaceM})
-                    [
-                        SNew(SVerticalBox)
-                        + SVerticalBox::Slot().AutoHeight()
-                        [SNew(SCkDebug_SectionHeader).Label(LOCTEXT("DrillInto", "Drill into")).Underline(true)]
-                        + SVerticalBox::Slot().AutoHeight().Padding(0.0f, CkStyle::SpaceS)
-                        [SNew(SCkDebug_EntityDebuggerLinks).Entity_Lambda([this]() { return _SelectedEntity; }).ExcludeTabId(FCkAiDebuggerModule::Get_TabName())]
-                    ]
-                ]
-            ]
-            + SVerticalBox::Slot().AutoHeight()[Build_StagePanel()]
-        ]
-        + SSplitter::Slot().Value(0.54f)
-        [
-            SNew(SSplitter)
-            .Orientation(Orient_Horizontal)
-            .PhysicalSplitterHandleSize(5.0f)
-            + SSplitter::Slot().Value(0.50f)
-            [
-                SNew(SCkDebug_Card).BodyPadding(FMargin{CkStyle::SpaceM})
-                [
-                    SNew(SVerticalBox)
-                    + SVerticalBox::Slot().AutoHeight()
-                    [SNew(SCkDebug_SectionHeader).Label(LOCTEXT("GoapTopology", "GOAP hierarchy")).Underline(true)]
-                    + SVerticalBox::Slot().FillHeight(1.0f).Padding(0.0f, CkStyle::SpaceS)
-                    [
-                        SAssignNew(_GoapTopologyList, SCkDebug_EvidenceList)
-                        .MaxItems(100)
-                        .EmptyText(LOCTEXT("NoGoapTopology", "No GOAP instances reported."))
-                    ]
-                ]
-            ]
-            + SSplitter::Slot().Value(0.50f)
-            [
-                SNew(SCkDebug_Card).BodyPadding(FMargin{CkStyle::SpaceM})
-                [
-                    SNew(SVerticalBox)
-                    + SVerticalBox::Slot().AutoHeight()
-                    [SNew(SCkDebug_SectionHeader).Label(LOCTEXT("StateMachineTopology", "State Machine hierarchy")).Underline(true)]
-                    + SVerticalBox::Slot().FillHeight(1.0f).Padding(0.0f, CkStyle::SpaceS)
-                    [
-                        SAssignNew(_StateMachineTopologyList, SCkDebug_EvidenceList)
-                        .MaxItems(100)
-                        .EmptyText(LOCTEXT("NoStateMachineTopology", "No State Machine instances reported."))
-                    ]
-                ]
-            ]
+            + SVerticalBox::Slot().AutoHeight()
+            [SNew(SCkDebug_SectionHeader).Label(LOCTEXT("Roster", "NPC health")).Underline(true)]
+            + SVerticalBox::Slot().FillHeight(1.0f).Padding(0.0f, CkStyle::SpaceS)
+            [SAssignNew(_AiRosterHost, SBox)]
         ];
 }
 
@@ -652,6 +645,30 @@ auto SCkAiDebuggerWindow::Build_IdentityPanel() -> TSharedRef<SWidget>
         [SNew(SCkDebug_EntityRef).Entity_Lambda([this]() { return _SelectedEntity; }).ShowName(true)]
         + SVerticalBox::Slot().AutoHeight().Padding(0.0f, CkStyle::SpaceS)
         [SNew(SCkDebug_SelectableLabel).Text_Lambda([this]() { return _Model.Header; }).ColorAndOpacity(CkStyle::TextDim())]
+    ];
+}
+
+auto SCkAiDebuggerWindow::Build_BehaviorPanel() -> TSharedRef<SWidget>
+{
+    return SNew(SCkDebug_Card).BodyPadding(FMargin{CkStyle::SpaceM})
+    [
+        SNew(SVerticalBox)
+        + SVerticalBox::Slot().AutoHeight()
+        [SNew(SCkDebug_SectionHeader).Label(LOCTEXT("BehaviorOverrides", "Behavior controls")).Underline(true)]
+        + SVerticalBox::Slot().AutoHeight().Padding(0.0f, CkStyle::SpaceS)
+        [SNew(SCkDebug_BehaviorOverridePanel)]
+    ];
+}
+
+auto SCkAiDebuggerWindow::Build_DrillPanel() -> TSharedRef<SWidget>
+{
+    return SNew(SCkDebug_Card).BodyPadding(FMargin{CkStyle::SpaceM})
+    [
+        SNew(SVerticalBox)
+        + SVerticalBox::Slot().AutoHeight()
+        [SNew(SCkDebug_SectionHeader).Label(LOCTEXT("DrillInto", "Drill into")).Underline(true)]
+        + SVerticalBox::Slot().AutoHeight().Padding(0.0f, CkStyle::SpaceS)
+        [SNew(SCkDebug_EntityDebuggerLinks).Entity_Lambda([this]() { return _SelectedEntity; }).ExcludeTabId(FCkAiDebuggerModule::Get_TabName())]
     ];
 }
 
@@ -694,6 +711,70 @@ auto SCkAiDebuggerWindow::Build_StagePanel() -> TSharedRef<SWidget>
         + SVerticalBox::Slot().AutoHeight()[SNew(SCkDebug_SectionHeader).Label(LOCTEXT("DecisionMotion", "Decision → motion")).SubText(LOCTEXT("ModelSource", "overlay provider model")).Underline(true)]
         + SVerticalBox::Slot().AutoHeight().Padding(0.0f, CkStyle::SpaceS)
         [SNew(SCkDebug_StageStrip).Stages(MoveTemp(Stages))]
+    ];
+}
+
+auto SCkAiDebuggerWindow::Build_TopologyPanel(const bool InGoap) -> TSharedRef<SWidget>
+{
+    const FText Heading = InGoap ? LOCTEXT("GoapTopology", "GOAP hierarchy")
+                                 : LOCTEXT("StateMachineTopology", "State Machine hierarchy");
+    const FText Empty = InGoap ? LOCTEXT("NoGoapTopology", "No GOAP instances reported.")
+                               : LOCTEXT("NoStateMachineTopology", "No State Machine instances reported.");
+    TSharedPtr<SCkDebug_EvidenceList> List;
+    const TSharedRef<SWidget> Panel = SNew(SCkDebug_Card).BodyPadding(FMargin{CkStyle::SpaceM})
+    [
+        SNew(SVerticalBox)
+        + SVerticalBox::Slot().AutoHeight()
+        [SNew(SCkDebug_SectionHeader).Label(Heading).Underline(true)]
+        + SVerticalBox::Slot().FillHeight(1.0f).Padding(0.0f, CkStyle::SpaceS)
+        [SAssignNew(List, SCkDebug_EvidenceList).MaxItems(100).EmptyText(Empty)]
+    ];
+    if (InGoap) { _GoapTopologyList = List; }
+    else { _StateMachineTopologyList = List; }
+    return Panel;
+}
+
+auto SCkAiDebuggerWindow::Build_CurrentEvidencePanel() -> TSharedRef<SWidget>
+{
+    return SNew(SCkDebug_Card).BodyPadding(FMargin{CkStyle::SpaceM})
+    [
+        SNew(SVerticalBox)
+        + SVerticalBox::Slot().AutoHeight()
+        [SNew(SCkDebug_SectionHeader).Label(LOCTEXT("CurrentEvidence", "Current evidence")).Underline(true)]
+        + SVerticalBox::Slot().FillHeight(1.0f).Padding(0.0f, CkStyle::SpaceS)
+        [
+            SAssignNew(_CurrentEvidenceList, SCkDebug_EvidenceList)
+            .MaxItems(200)
+            .EmptyText(LOCTEXT("NoCurrentEvidence", "Select or pick an AI entity to inspect its current evidence."))
+        ]
+    ];
+}
+
+auto SCkAiDebuggerWindow::Build_EventLogPanel() -> TSharedRef<SWidget>
+{
+    return SNew(SCkDebug_Card).BodyPadding(FMargin{CkStyle::SpaceM})
+    [
+        SNew(SVerticalBox)
+        + SVerticalBox::Slot().AutoHeight()
+        [SNew(SCkDebug_SectionHeader).Label(LOCTEXT("CrossSystemEvents", "Recent cross-system events")).Underline(true)]
+        + SVerticalBox::Slot().FillHeight(1.0f).Padding(0.0f, CkStyle::SpaceS)
+        [
+            SAssignNew(_EventLog, SCkDebug_EventLog)
+            .MaxEntries(200)
+            .EmptyText(LOCTEXT("NoCrossSystemEvents", "No changes since this entity was selected."))
+        ]
+    ];
+}
+
+auto SCkAiDebuggerWindow::Build_SpatialPanel() -> TSharedRef<SWidget>
+{
+    return SNew(SCkDebug_Card).BodyPadding(FMargin{CkStyle::SpaceS})
+    [
+        SNew(SVerticalBox)
+        + SVerticalBox::Slot().AutoHeight()
+        [SNew(SCkDebug_SectionHeader).Label(LOCTEXT("Spatial", "Spatial evidence")).Underline(true)]
+        + SVerticalBox::Slot().FillHeight(1.0f).Padding(0.0f, CkStyle::SpaceS)
+        [_SpatialViewport.ToSharedRef()]
     ];
 }
 
@@ -899,6 +980,7 @@ auto SCkAiDebuggerWindow::Build_AiRosterView() -> void
 
 auto SCkAiDebuggerWindow::OnStyleRevisionChanged() -> void
 {
+    if (_AuthoredShellView.IsValid()) { _AuthoredShellView->PollFiles(ck_ai_debugger_window::ShellTokens()); }
     if (_AiRosterView.IsValid()) { _AiRosterView->PollFiles(ck_ai_debugger_window::AiRosterStyleTokens()); }
 }
 

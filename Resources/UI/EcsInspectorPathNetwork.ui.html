@@ -1,0 +1,22 @@
+<ui version="1">
+  <region name="main">
+    <column id="path-network-inspector" class="path-network-inspector">
+      <row id="path-network-built-row" class="path-network-row">
+        <text id="path-network-built-label" color-bind="path-network-built-diff-color" class="path-network-label">Built:</text>
+        <debug-status id="path-network-built-value" label-bind="path-network-built" foreground-bind="path-network-built-foreground" background-bind="path-network-built-background" show-dot="true" class="path-network-status" />
+      </row>
+      <row id="path-network-nodes-row" class="path-network-row">
+        <text id="path-network-nodes-label" color-bind="path-network-nodes-diff-color" class="path-network-label">Nodes:</text>
+        <debug-status id="path-network-nodes-value" label-bind="path-network-nodes" foreground-bind="path-network-nodes-foreground" background-bind="path-network-nodes-background" show-dot="false" class="path-network-status" />
+      </row>
+      <row id="path-network-edges-row" class="path-network-row">
+        <text id="path-network-edges-label" color-bind="path-network-edges-diff-color" class="path-network-label">Edges:</text>
+        <debug-status id="path-network-edges-value" label-bind="path-network-edges" foreground-bind="path-network-edges-foreground" background-bind="path-network-edges-background" show-dot="false" class="path-network-status" />
+      </row>
+      <row id="path-network-build-epoch-row" class="path-network-row">
+        <text id="path-network-build-epoch-label" color-bind="path-network-build-epoch-diff-color" class="path-network-label">Build Epoch:</text>
+        <text id="path-network-build-epoch-value" bind="path-network-build-epoch" color-bind="path-network-build-epoch-foreground" class="path-network-numeric-value" />
+      </row>
+    </column>
+  </region>
+</ui>

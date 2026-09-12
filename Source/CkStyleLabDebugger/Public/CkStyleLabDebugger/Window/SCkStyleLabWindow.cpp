@@ -6,17 +6,32 @@
 #include "CkCore/Macros/CkMacros.h"
 
 #include "CkDebuggerCommon/Settings/CkDebuggerStyleSettings.h"
+#include "CkDebuggerCommon/UI/CkDebug_UiRegistry.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_IconToggle.h"
 #include "CkDebuggerCommon/Window/CkDebuggerRefreshGate.h"
 #include "CkDebuggerCommon/Window/SCkDebug_WindowChrome.h"
 
 #include "CkEditorTools/Style/CkStyle.h"
 
+#include "CkSlateLayout/SCkUiSurface.h"
+
+#include "Interfaces/IPluginManager.h"
+#include "Misc/Paths.h"
+#include "Widgets/Layout/SBox.h"
 #include "Widgets/Layout/SScrollBox.h"
+#include "Widgets/SNullWidget.h"
 
 // --------------------------------------------------------------------------------------------------------------------
 
 const FName SCkStyleLabWindow::WindowId = FName(TEXT("StyleLabDebugger"));
+
+namespace ck_style_lab_window
+{
+    auto ShellStyleTokens() -> FCkUiView::FTokens
+    {
+        return {{TEXT("--style-lab-shell-surface"), TEXT("#") + CkStyle::BgRoot().ToFColorSRGB().ToHex()}};
+    }
+}
 
 // ====================================================================================================================
 
@@ -31,6 +46,10 @@ auto
     if (const auto* Settings = UCkDebuggerStyleSettings::Get())
     { _LastSeenRevision = Settings->Get_Revision(); }
 
+    _ControlsPane = SNew(SCkStyleLab_ControlsPane)
+        .OnSelectionChanged(FOnCkStyleLab_SelectionChanged::CreateSP(this, &SCkStyleLabWindow::OnSelectionChanged));
+    _AuthoredShellHost = SNew(SBox);
+
     ChildSlot
     [
         SNew(SCkDebug_WindowChrome)
@@ -41,17 +60,51 @@ auto
                 FCkDebug_CommandGroup::Primary(TEXT("StylePreview"), FText::FromString(TEXT("Style preview controls")), Build_MenuActions())
             })
             .Content()
-            [
-                SNew(SScrollBox)
-
-                + SScrollBox::Slot().Padding(CkStyle::SpaceM)
-                    [
-                        SAssignNew(_ControlsPane, SCkStyleLab_ControlsPane)
-                            .OnSelectionChanged(FOnCkStyleLab_SelectionChanged::CreateSP(
-                                this, &SCkStyleLabWindow::OnSelectionChanged))
-                    ]
-            ]
+            [_AuthoredShellHost.ToSharedRef()]
     ];
+
+    Build_AuthoredShell();
+}
+
+SCkStyleLabWindow::~SCkStyleLabWindow()
+{
+    if (_AuthoredShellHost.IsValid())
+    { _AuthoredShellHost->SetContent(SNullWidget::NullWidget); }
+
+    _AuthoredShellView.Reset();
+    _ControlsPane.Reset();
+    _AuthoredShellHost.Reset();
+}
+
+auto SCkStyleLabWindow::Build_NativeShellFallback() -> TSharedRef<SWidget>
+{
+    return SNew(SScrollBox)
+        + SScrollBox::Slot().Padding(CkStyle::SpaceM)
+            [_ControlsPane.ToSharedRef()];
+}
+
+auto SCkStyleLabWindow::Build_AuthoredShell() -> void
+{
+    TSharedPtr<const FCkUiWidgetRegistrySnapshot> Registry;
+    const FCkUiLoadResult RegistryResult = FCkDebug_UiRegistry::TryCreate(Registry);
+    const TSharedPtr<IPlugin> Plugin = IPluginManager::Get().FindPlugin(TEXT("CkDebugger"));
+    if (NOT RegistryResult.Succeeded || NOT Registry.IsValid() || NOT Plugin.IsValid())
+    {
+        _AuthoredShellHost->SetContent(Build_NativeShellFallback());
+        return;
+    }
+
+    FCkUiView::FNativeBindings NativeBindings;
+    NativeBindings.Add(TEXT("style-lab-shell-controls"), _ControlsPane.ToSharedRef());
+    const TSharedRef<FCkUiView> View = FCkUiView::Create(MoveTemp(NativeBindings), {},
+        ck_style_lab_window::ShellStyleTokens(), CkStyle::RegularFont(CkStyle::FontSizeBody()), {}, Registry);
+    const TSharedRef<SWidget> Main = View->GetRegion(TEXT("main"));
+    const FString Directory = FPaths::Combine(Plugin->GetBaseDir(), TEXT("Resources/UI"));
+    View->SetFiles(FPaths::Combine(Directory, TEXT("StyleLabShell.ui.html")),
+        FPaths::Combine(Directory, TEXT("StyleLabShell.ui.css")));
+    _AuthoredShellView = View;
+    View->PollFiles();
+    _AuthoredShellHost->SetContent(View->GetLastResult().Succeeded ? Main : Build_NativeShellFallback());
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -64,7 +117,15 @@ auto
         float            InDeltaTime)
     -> void
 {
-    SCompoundWidget::Tick(InAllottedGeometry, InCurrentTime, InDeltaTime);
+    SCkDebugger_WindowBase::Tick(InAllottedGeometry, InCurrentTime, InDeltaTime);
+
+    if (_AuthoredShellView.IsValid())
+    {
+        const bool WasAccepted = _AuthoredShellView->GetLastResult().Succeeded;
+        _AuthoredShellView->PollFiles(ck_style_lab_window::ShellStyleTokens());
+        if (!WasAccepted && _AuthoredShellView->GetLastResult().Succeeded)
+        { _AuthoredShellHost->SetContent(_AuthoredShellView->GetRegion(TEXT("main"))); }
+    }
 
     if (NOT FCkDebuggerRefreshGate::Should_RefreshNow(WindowId))
     { return; }

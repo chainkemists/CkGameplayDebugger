@@ -38,6 +38,8 @@ public class CkStyleLabDebugger : CkModuleRules
         RuntimeDependencies.Add(Path.Combine(PluginDirectory, "Resources", "UI", "StyleLabProfiles.ui.css"), StagedFileType.NonUFS);
         RuntimeDependencies.Add(Path.Combine(PluginDirectory, "Resources", "UI", "StyleLabControls.ui.html"), StagedFileType.NonUFS);
         RuntimeDependencies.Add(Path.Combine(PluginDirectory, "Resources", "UI", "StyleLabControls.ui.css"), StagedFileType.NonUFS);
+        RuntimeDependencies.Add(Path.Combine(PluginDirectory, "Resources", "UI", "StyleLabShell.ui.html"), StagedFileType.NonUFS);
+        RuntimeDependencies.Add(Path.Combine(PluginDirectory, "Resources", "UI", "StyleLabShell.ui.css"), StagedFileType.NonUFS);
 
         if (Target.bBuildEditor)
         {

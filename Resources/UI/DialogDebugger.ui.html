@@ -1,0 +1,26 @@
+<ui version="1">
+  <region name="cooldown-controls">
+    <column id="dialog-cooldown-controls">
+      <checkbox id="dialog-active-only" value-bind="dialog-active-only" changed="dialog-active-only" label-bind="dialog-active-only-label" />
+    </column>
+  </region>
+  <region name="runtime-commands">
+    <column id="dialog-runtime-commands">
+      <row id="dialog-command-row" class="dialog-command-row"><button id="dialog-save" action="dialog-save" enabled-bind="dialog-available" tooltip="Runs the Ck_Save console command in the active PIE session" class="dialog-action">Save</button><button id="dialog-load" action="dialog-load" enabled-bind="dialog-available" tooltip="Runs the Ck_Load console command in the active PIE session" class="dialog-action">Load</button></row>
+    </column>
+  </region>
+  <region name="search">
+    <column id="dialog-search">
+      <column id="dialog-search-fields" class="dialog-search-fields"><search id="dialog-filter" bind="dialog-filter" placeholder="Filter lines/emitters…"/><search id="dialog-highlight" bind="dialog-highlight" placeholder="Highlight lines/emitters…"/></column>
+    </column>
+  </region>
+  <region name="main">
+    <column id="dialog-main">
+      <row id="dialog-count-row" class="dialog-count-row"><text id="dialog-count-label" bind="dialog-count" class="dialog-count"/></row>
+      <overlay id="dialog-cooldowns-overlay" class="dialog-overlay"><scroll id="dialog-cooldowns-scroll" class="dialog-scroll"><column id="dialog-content" class="dialog-content">
+        <repeat id="dialog-cooldown-records" bind="dialog-cooldown-records" direction="vertical" class="dialog-records"><column id="dialog-record" class="dialog-record"><row id="dialog-emitter-record" visible-field="dialog-is-emitter" class="dialog-emitter-row"><text id="dialog-emitter-heading" bind-field="dialog-heading" class="dialog-emitter-heading"/><text id="dialog-emitter-tags" bind-field="dialog-tags" class="dialog-emitter-tags"/></row><row id="dialog-cooldown-record" visible-field="dialog-is-cooldown" class="dialog-cooldown-row"><text id="dialog-line-id" bind-field="dialog-line-id" class="dialog-line-id"/><column id="dialog-meter-column" class="dialog-meter-column"><debug-meter id="dialog-meter" fraction-field="dialog-fraction" fill-field="dialog-meter-color"/><text id="dialog-remaining" bind-field="dialog-remaining" color-field="dialog-text-color" class="dialog-remaining"/></column></row></column></repeat>
+        <column id="dialog-empty-row" class="dialog-empty-row"><text id="dialog-empty" bind="dialog-empty-state" class="dialog-empty"/></column><text id="dialog-diagnostic" bind="dialog-diagnostic" class="dialog-diagnostic"/>
+      </column></scroll></overlay>
+    </column>
+  </region>
+</ui>

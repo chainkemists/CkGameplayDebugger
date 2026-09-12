@@ -1,0 +1,24 @@
+<ui version="1">
+  <region name="main">
+    <column id="input-shell-root">
+      <column id="input-shell-layout" class="input-shell-layout">
+        <column id="input-shell-summary-wrap" class="input-shell-summary-wrap">
+          <native id="input-shell-summary" bind="input-summary" />
+        </column>
+        <column id="input-shell-axis-wrap" class="input-shell-axis-wrap">
+          <native id="input-shell-axis" bind="input-axis" />
+        </column>
+        <scroll id="input-shell-scroll" class="input-shell-scroll">
+          <column id="input-shell-sections" class="input-shell-sections">
+            <native id="input-shell-keys" bind="input-key-section" />
+            <native id="input-shell-devices" bind="input-devices-section" />
+            <native id="input-shell-timeline" bind="input-timeline-section" />
+            <native id="input-shell-bindings" bind="input-bindings-section" />
+            <native id="input-shell-context" bind="input-context-section" />
+            <native id="input-shell-resolved" bind="input-resolved-section" />
+          </column>
+        </scroll>
+      </column>
+    </column>
+  </region>
+</ui>

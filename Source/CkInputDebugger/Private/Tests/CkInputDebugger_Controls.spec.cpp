@@ -182,6 +182,22 @@ auto FCkInputDebugger_Controls::RunTest(const FString&) -> bool
         AddError(FString::Printf(TEXT("Mounted production Input Debugger controls did not load installed resources: %s"), *LoadErrors));
         return false;
     }
+    TSharedPtr<FCkUiView> ShellView = Panel->Get_AuthoredShellView();
+    if (!TestTrue(TEXT("Production Input window admits the authored stable shell"),
+        ShellView.IsValid() && ShellView->GetLastResult().Succeeded))
+    {
+        AddError(Panel->Get_AuthoredShellLoadFailure());
+        return false;
+    }
+    const TSharedRef<SWidget> ShellRegion = ShellView->GetRegion(TEXT("main"));
+    const TArray<FName> ShellIds{
+        TEXT("input-shell-root"), TEXT("input-shell-summary"), TEXT("input-shell-axis"),
+        TEXT("input-shell-scroll"), TEXT("input-shell-sections"), TEXT("input-shell-keys"),
+        TEXT("input-shell-devices"), TEXT("input-shell-timeline"), TEXT("input-shell-bindings"),
+        TEXT("input-shell-context"), TEXT("input-shell-resolved")};
+    for (const FName Id : ShellIds)
+    { TestTrue(*FString::Printf(TEXT("Authored Input shell owns '%s'"), *Id.ToString()), FindTaggedWidget(ShellRegion, Id).IsValid()); }
+
     const TSharedRef<SWidget> Region = View->GetRegion(TEXT("controls"));
     const TArray<FName> ControlIds{TEXT("input-controls-root"), TEXT("input-active-actions"), TEXT("input-overlay"),
         TEXT("input-filter"), TEXT("input-highlight"), TEXT("input-bindings-all"), TEXT("input-bindings-rebound"), TEXT("input-bindings-default")};
@@ -250,6 +266,22 @@ auto FCkInputDebugger_Controls::RunTest(const FString&) -> bool
     const TSharedPtr<IPlugin> Plugin = IPluginManager::Get().FindPlugin(TEXT("CkDebugger"));
     if (!TestTrue(TEXT("Debugger plugin resolves authored control resources"), Plugin.IsValid())) { return false; }
     const FString Directory = FPaths::Combine(Plugin->GetBaseDir(), TEXT("Resources/UI"));
+    const int64 ShellRevision = ShellView->GetRevision();
+    if (!TestTrue(TEXT("Compatible Input shell reload succeeds"), ShellView->ReloadFiles(
+        FPaths::Combine(Directory, TEXT("InputDebuggerShell.ui.html")),
+        FPaths::Combine(Directory, TEXT("InputDebuggerShell.ui.css"))).Succeeded)) { return false; }
+    Tick(Slate);
+    TestTrue(TEXT("Compatible shell reload retains the production view and advances its revision"),
+        Panel->Get_AuthoredShellView() == ShellView && ShellView->GetRevision() > ShellRevision);
+    const TSharedRef<SWidget> ShellMainBeforeRejectedReload = ShellView->GetRegion(TEXT("main"));
+    const int64 ShellRevisionBeforeRejectedReload = ShellView->GetRevision();
+    TestFalse(TEXT("Rejected Input shell reload fails"), ShellView->TryReload(
+        TEXT("<ui version=\"1\"><region name=\"main\"><native id=\"missing\" bind=\"missing-port\" /></region></ui>"),
+        TEXT(""), TEXT("InputDebuggerShell rejected test candidate")).Succeeded);
+    TestTrue(TEXT("Rejected shell reload preserves the accepted tree and revision"),
+        ShellView->GetRegion(TEXT("main")) == ShellMainBeforeRejectedReload
+            && ShellView->GetRevision() == ShellRevisionBeforeRejectedReload);
+
     const FString CaptureDirectory = FPaths::Combine(FPaths::ProjectSavedDir(), TEXT("Automation/InputDebugger"));
     TestTrue(TEXT("Wide mounted controls capture writes PNG"), SaveCapture(Slate, Panel.ToSharedRef(),
         FPaths::Combine(CaptureDirectory, TEXT("Controls-Wide.png"))));
@@ -297,9 +329,11 @@ auto FCkInputDebugger_Controls::RunTest(const FString&) -> bool
         ? TOptional<int32>{OverlayCVar->GetInt()} : TOptional<int32>{};
 
     const TWeakPtr<SCkInputDebuggerWindow> WeakPanel = Panel;
+    const TWeakPtr<FCkUiView> WeakShellView = ShellView;
     Slate.DestroyWindowImmediately(HostWindow.ToSharedRef());
     HostWindow.Reset();
     Panel.Reset();
+    ShellView.Reset();
     Tick(Slate);
     Active->SimulateClick();
     Overlay->SimulateClick();
@@ -313,6 +347,7 @@ auto FCkInputDebugger_Controls::RunTest(const FString&) -> bool
         && ReleasedFilter == TEXT("Jump") && ReleasedHighlight == TEXT("Look") && ReleasedActiveOnly
         && ReleasedBindingsMode == ECkInputDebugger_BindingsFilterMode::All
         && (!ReleasedOverlayValue.IsSet() || (OverlayCVar != nullptr && OverlayCVar->GetInt() == ReleasedOverlayValue.GetValue())));
+    TestFalse(TEXT("Input window teardown releases its authored shell view"), WeakShellView.IsValid());
     return true;
 }
 

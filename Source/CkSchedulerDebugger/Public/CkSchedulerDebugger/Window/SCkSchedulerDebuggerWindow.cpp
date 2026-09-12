@@ -13,6 +13,9 @@
 #include "CkDebuggerCommon/Widgets/SCkDebug_WorldSelector.h"
 #include "CkDebuggerCommon/Window/CkDebuggerRefreshGate.h"
 #include "CkDebuggerCommon/Window/SCkDebug_WindowChrome.h"
+#include "CkDebuggerCommon/UI/CkDebug_UiRegistry.h"
+
+#include "CkSlateLayout/SCkUiSurface.h"
 
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SSpacer.h"
@@ -24,6 +27,8 @@
 #include "Widgets/SBoxPanel.h"
 
 #include "Engine/World.h"
+#include "Interfaces/IPluginManager.h"
+#include "Misc/Paths.h"
 
 // --------------------------------------------------------------------------------------------------------------------
 
@@ -57,6 +62,11 @@ namespace ck_scheduler_debugger_window
 	private:
 		FText _Name;
 	};
+
+	auto ShellStyleTokens() -> FCkUiView::FTokens
+	{
+		return {{TEXT("--scheduler-shell-surface"), TEXT("#") + CkStyle::BgRoot().ToFColorSRGB().ToHex()}};
+	}
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -78,6 +88,10 @@ auto
 	_Pages.Add(MakeShared<FCkSchedulerDebuggerPage_TreeView>());
 
 	_ContentContainer = SNew(SBox);
+	_AuthoredShellHost = SNew(SBox);
+	_StatsBar = DoBuildStatsBar();
+	DoBuildFrameStrip();
+	_TabBar = DoBuildTabBar();
 
 	ChildSlot
 	[
@@ -87,69 +101,126 @@ auto
 			.ShowRefreshControls(true)
 			.CommandGroups(DoBuildCommandGroups())
 			.Content()
-			[
-				SNew(SBorder)
-			.BorderImage(FCoreStyle::Get().GetBrush("NoBorder"))
-			.ColorAndOpacity(FLinearColor::White)
-			.Padding(0.0f)
-			[
-				SNew(SVerticalBox)
-
-				+ SVerticalBox::Slot()
-					.AutoHeight()
-					.Padding(FCkSchedulerDebuggerStyle::Padding_Medium, 0.0f)
-					[
-						DoBuildStatsBar()
-					]
-
-				+ SVerticalBox::Slot()
-					.AutoHeight()
-					[
-						SAssignNew(_FrameStrip, SCkDebug_FrameStrip)
-							.DesiredHeight(44.0f)
-							// Absolute banding, not relative-to-max: 0.15 ms puts Warn exactly on the
-							// scheduler's per-frame budget line and saturates Err at 0.30 ms, which is
-							// what the retired four-band Get_TimingColor drew.
-							.BudgetMs(FCkSchedulerDebuggerStyle::TimingBudgetMs)
-							// Column HEIGHT stays relative to the strip's own range — the old bar
-							// normalized against its tallest sample, and that is the spike-spotting read.
-							.HeightScale(ECkDebug_FrameStripHeightScale::RelativeToMax)
-							.SelectedIndexFromEnd_Lambda([this]() -> int32
-							{
-								return _ViewModel.IsValid() ? _ViewModel->Get_SelectedFrameOffset() : 0;
-							})
-							.MarkerMeaning(FString{TEXT("pumped")})
-							.CopyText_Lambda([this]() -> FString
-							{
-								return DoComposeSelectedFrameText();
-							})
-							.OnScrubbed_Lambda([this](int32 InIndexFromEnd)
-							{
-								if (NOT _ViewModel.IsValid())
-								{ return; }
-
-								// Every navigation path — drag, arrows, Home/End, double-click — funnels
-								// here, exactly as the old widget funnelled into Set_SelectedFrameOffset.
-								_ViewModel->Set_SelectedFrameOffset(InIndexFromEnd);
-							})
-					]
-
-				+ SVerticalBox::Slot()
-					.AutoHeight()
-					[
-						DoBuildTabBar()
-					]
-
-				+ SVerticalBox::Slot()
-					.FillHeight(1.0f)
-					[
-						_ContentContainer.ToSharedRef()
-					]
-			]
-			]
+			[_AuthoredShellHost.ToSharedRef()]
 	];
 
+	DoBuildAuthoredShell();
 	DoSwitchToPage(0);
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+SCkSchedulerDebuggerWindow::~SCkSchedulerDebuggerWindow()
+{
+	if (_AuthoredShellHost.IsValid())
+	{ _AuthoredShellHost->SetContent(SNullWidget::NullWidget); }
+
+	_AuthoredShellView.Reset();
+	_ContentContainer.Reset();
+	_FrameStrip.Reset();
+	_StatsBar.Reset();
+	_TabBar.Reset();
+	_Pages.Reset();
+	_ViewModel.Reset();
+	_WorldModel.Reset();
+	_AuthoredShellHost.Reset();
+}
+
+auto SCkSchedulerDebuggerWindow::DoBuildFrameStrip() -> TSharedRef<SWidget>
+{
+	return SAssignNew(_FrameStrip, SCkDebug_FrameStrip)
+		.DesiredHeight(44.0f)
+		// Absolute banding, not relative-to-max: 0.15 ms puts Warn exactly on the
+		// scheduler's per-frame budget line and saturates Err at 0.30 ms.
+		.BudgetMs(FCkSchedulerDebuggerStyle::TimingBudgetMs)
+		// Column height stays relative to the strip's own range for spike spotting.
+		.HeightScale(ECkDebug_FrameStripHeightScale::RelativeToMax)
+		.SelectedIndexFromEnd_Lambda([this]() -> int32
+		{
+			return _ViewModel.IsValid() ? _ViewModel->Get_SelectedFrameOffset() : 0;
+		})
+		.MarkerMeaning(FString{TEXT("pumped")})
+		.CopyText_Lambda([this]() -> FString
+		{
+			return DoComposeSelectedFrameText();
+		})
+		.OnScrubbed_Lambda([this](int32 InIndexFromEnd)
+		{
+			if (NOT _ViewModel.IsValid()) { return; }
+			_ViewModel->Set_SelectedFrameOffset(InIndexFromEnd);
+		});
+}
+
+auto SCkSchedulerDebuggerWindow::DoBuildNativeShellFallback() -> TSharedRef<SWidget>
+{
+	return SNew(SBorder)
+		.BorderImage(FCoreStyle::Get().GetBrush("NoBorder"))
+		.ColorAndOpacity(FLinearColor::White)
+		.Padding(0.0f)
+		[
+			SNew(SVerticalBox)
+			+ SVerticalBox::Slot().AutoHeight().Padding(FCkSchedulerDebuggerStyle::Padding_Medium, 0.0f)
+			[_StatsBar.ToSharedRef()]
+			+ SVerticalBox::Slot().AutoHeight()
+			[_FrameStrip.ToSharedRef()]
+			+ SVerticalBox::Slot().AutoHeight()
+			[_TabBar.ToSharedRef()]
+			+ SVerticalBox::Slot().FillHeight(1.0f)
+			[_ContentContainer.ToSharedRef()]
+		];
+}
+
+auto SCkSchedulerDebuggerWindow::DoBuildAuthoredShell() -> void
+{
+	TSharedPtr<const FCkUiWidgetRegistrySnapshot> Registry;
+	const FCkUiLoadResult RegistryResult = FCkDebug_UiRegistry::TryCreate(Registry);
+	const TSharedPtr<IPlugin> Plugin = IPluginManager::Get().FindPlugin(TEXT("CkDebugger"));
+	if (NOT RegistryResult.Succeeded || NOT Registry.IsValid() || NOT Plugin.IsValid())
+	{
+		_AuthoredShellLoadFailure = RegistryResult.Succeeded
+			? TEXT("CkDebugger plugin is unavailable.")
+			: FString::Join(RegistryResult.Errors, TEXT("\n"));
+		_AuthoredShellHost->SetContent(DoBuildNativeShellFallback());
+		return;
+	}
+
+	FCkUiView::FNativeBindings NativeBindings;
+	NativeBindings.Add(TEXT("scheduler-stats"), _StatsBar.ToSharedRef());
+	NativeBindings.Add(TEXT("scheduler-frame-strip"), _FrameStrip.ToSharedRef());
+	NativeBindings.Add(TEXT("scheduler-tabs"), _TabBar.ToSharedRef());
+	NativeBindings.Add(TEXT("scheduler-page"), _ContentContainer.ToSharedRef());
+	const TSharedRef<FCkUiView> Candidate = FCkUiView::Create(
+		MoveTemp(NativeBindings), {}, ck_scheduler_debugger_window::ShellStyleTokens(),
+		CkStyle::RegularFont(CkStyle::FontSizeBody()), {}, Registry);
+	const TSharedRef<SWidget> Main = Candidate->GetRegion(TEXT("main"));
+	const FString ResourceRoot = FPaths::Combine(Plugin->GetBaseDir(), TEXT("Resources/UI"));
+	Candidate->SetFiles(
+		FPaths::Combine(ResourceRoot, TEXT("SchedulerDebuggerShell.ui.html")),
+		FPaths::Combine(ResourceRoot, TEXT("SchedulerDebuggerShell.ui.css")));
+	Candidate->PollFiles();
+	if (NOT Candidate->GetLastResult().Succeeded)
+	{
+		_AuthoredShellLoadFailure = FString::Join(Candidate->GetLastResult().Errors, TEXT("\n"));
+		_AuthoredShellHost->SetContent(DoBuildNativeShellFallback());
+		return;
+	}
+
+	_AuthoredShellView = Candidate;
+	_AuthoredShellLoadFailure.Reset();
+	_AuthoredShellHost->SetContent(Main);
+}
+
+auto SCkSchedulerDebuggerWindow::DoPollAuthoredShell(const double InCurrentTime) -> void
+{
+	constexpr double PollIntervalSeconds = 0.5;
+	if (InCurrentTime < _NextAuthoredShellPollSeconds || NOT _AuthoredShellView.IsValid()) { return; }
+
+	_NextAuthoredShellPollSeconds = InCurrentTime + PollIntervalSeconds;
+	_AuthoredShellView->PollFiles(ck_scheduler_debugger_window::ShellStyleTokens());
+	if (_AuthoredShellView->GetLastResult().Succeeded)
+	{ _AuthoredShellLoadFailure.Reset(); }
+	else
+	{ _AuthoredShellLoadFailure = FString::Join(_AuthoredShellView->GetLastResult().Errors, TEXT("\n")); }
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -165,6 +236,7 @@ auto
 	// MUST be the WindowBase super, not SCompoundWidget — the base Tick drives the gated
 	// style-revision watch that routes into OnStyleRevisionChanged.
 	SCkDebugger_WindowBase::Tick(AllottedGeometry, InCurrentTime, InDeltaTime);
+	DoPollAuthoredShell(InCurrentTime);
 
 	// Honour per-window refresh settings. This gate short-circuits the whole
 	// data-collection + OnDataRefreshed broadcast chain when the window is

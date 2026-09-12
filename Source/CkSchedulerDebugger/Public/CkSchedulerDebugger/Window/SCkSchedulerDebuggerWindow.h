@@ -10,6 +10,7 @@
 #include "Widgets/Layout/SBox.h"
 
 class SCkDebug_FrameStrip;
+class FCkUiView;
 
 // --------------------------------------------------------------------------------------------------------------------
 
@@ -22,10 +23,13 @@ public:
 	SLATE_END_ARGS()
 
 	auto Construct(const FArguments& InArgs) -> void;
+	virtual ~SCkSchedulerDebuggerWindow();
 	virtual auto Tick(const FGeometry& AllottedGeometry, double InCurrentTime, float InDeltaTime) -> void override;
 
 	virtual auto Get_WindowId() const -> FName override { return WindowId; }
 	virtual auto Get_WindowDisplayName() const -> FText override { return FText::FromString(TEXT("Scheduler")); }
+	auto Get_AuthoredShellView() const -> TSharedPtr<FCkUiView> { return _AuthoredShellView; }
+	auto Get_AuthoredShellLoadFailure() const -> const FString& { return _AuthoredShellLoadFailure; }
 
 protected:
 	virtual auto OnStyleRevisionChanged() -> void override;
@@ -34,6 +38,10 @@ private:
 	auto DoBuildCommandGroups() -> TArray<FCkDebug_CommandGroup>;
 	auto DoBuildStatsBar() -> TSharedRef<SWidget>;
 	auto DoBuildTabBar() -> TSharedRef<SWidget>;
+	auto DoBuildFrameStrip() -> TSharedRef<SWidget>;
+	auto DoBuildNativeShellFallback() -> TSharedRef<SWidget>;
+	auto DoBuildAuthoredShell() -> void;
+	auto DoPollAuthoredShell(double InCurrentTime) -> void;
 	auto DoSwitchToPage(int32 InPageIndex) -> void;
 
 	auto DoMakeStatItem(
@@ -56,7 +64,13 @@ private:
 	TArray<TSharedPtr<ICkSchedulerDebuggerPage>> _Pages;
 	int32 _ActivePageIndex = 0;
 	TSharedPtr<SBox> _ContentContainer;
+	TSharedPtr<SWidget> _StatsBar;
+	TSharedPtr<SWidget> _TabBar;
 	TSharedPtr<SCkDebug_FrameStrip> _FrameStrip;
+	TSharedPtr<SBox> _AuthoredShellHost;
+	TSharedPtr<FCkUiView> _AuthoredShellView;
+	FString _AuthoredShellLoadFailure;
+	double _NextAuthoredShellPollSeconds = 0.0;
 
 	// Highlight-filter state moved from the retired FrameHistoryBar: the strip renders the verdict,
 	// the window owns the query and answers it.

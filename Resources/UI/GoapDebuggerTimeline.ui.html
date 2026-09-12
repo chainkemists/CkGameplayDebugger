@@ -1,0 +1,16 @@
+<ui version="1">
+  <region name="main">
+    <column id="goap-timeline-root">
+      <column id="goap-timeline-empty" visible="timeline-empty-visible" class="goap-timeline-empty">
+        <text id="goap-timeline-empty-text" bind="timeline-empty" />
+      </column>
+      <column id="goap-timeline-selected" visible="timeline-selected-visible" class="goap-timeline-selected">
+        <row id="goap-timeline-header" class="goap-timeline-header">
+          <text id="goap-timeline-title" bind="timeline-title" class="goap-timeline-title" />
+          <text id="goap-timeline-status" bind="timeline-status" class="goap-timeline-status" />
+        </row>
+        <native id="timeline-body" bind="timeline-body" class="goap-timeline-body" />
+      </column>
+    </column>
+  </region>
+</ui>

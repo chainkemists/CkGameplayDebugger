@@ -1,0 +1,44 @@
+<ui version="1">
+  <region name="main">
+    <column id="goap-squad-root" class="goap-squad-root">
+      <row id="goap-squad-search-row" class="goap-squad-search-row">
+        <search id="goap-squad-filter" bind="goap-squad-filter" placeholder="Filter squad…" />
+        <search id="goap-squad-highlight" bind="goap-squad-highlight" placeholder="Highlight…" />
+      </row>
+      <overlay id="goap-squad-overlay" class="goap-squad-overlay">
+        <scroll id="goap-squad-scroll" direction="horizontal" class="goap-squad-scroll">
+          <repeat id="goap-squad-records" bind="goap-squad-records" direction="vertical" class="goap-squad-records">
+            <column id="goap-squad-record" class="goap-squad-record">
+              <row id="goap-squad-row" class="goap-squad-row">
+                <row id="goap-squad-agent" class="goap-squad-agent">
+                  <column id="goap-squad-avatar-wrap" class="goap-squad-avatar-wrap">
+                    <text id="goap-squad-avatar" bind-field="squad-avatar" class="goap-squad-avatar" />
+                  </column>
+                  <column id="goap-squad-agent-copy" class="goap-squad-agent-copy">
+                    <text id="goap-squad-agent-name" bind-field="squad-agent-name" color-field="squad-agent-color" class="goap-squad-agent-name" />
+                    <debug-entity-ref id="goap-squad-entity" entity-id-field="squad-entity-id" name-field="squad-agent-name" show-name="false" item-action="squad-entity-navigate" class="goap-squad-entity" />
+                  </column>
+                </row>
+                <text id="goap-squad-planner" bind-field="squad-planner" class="goap-squad-planner" />
+                <debug-status id="goap-squad-status" label-field="squad-status" foreground-field="squad-status-foreground" background-field="squad-status-background" show-dot="true" class="goap-squad-status" />
+                <text id="goap-squad-chain" bind-field="squad-chain" color-field="squad-chain-color" class="goap-squad-chain" />
+                <text id="goap-squad-cost" bind-field="squad-cost" class="goap-squad-cost" />
+                <text id="goap-squad-attempts" bind-field="squad-attempts" class="goap-squad-attempts" />
+                <debug-sparkline id="goap-squad-sparkline" samples-field="squad-replan-samples" width="96" height="20" color="#66B8FFFF" fill-opacity="0.18" class="goap-squad-sparkline" />
+                <row id="goap-squad-alerts" class="goap-squad-alerts">
+                  <debug-status id="goap-squad-alert-fallback" visible-field="squad-alert-fallback-visible" label-field="squad-alert-fallback" foreground-field="squad-alert-warning-foreground" background-field="squad-alert-warning-background" show-dot="false" />
+                  <debug-status id="goap-squad-alert-no-fallback" visible-field="squad-alert-no-fallback-visible" label-field="squad-alert-no-fallback" foreground-field="squad-alert-error-foreground" background-field="squad-alert-error-background" show-dot="false" />
+                  <debug-status id="goap-squad-alert-threshold" visible-field="squad-alert-threshold-visible" label-field="squad-alert-threshold" foreground-field="squad-alert-warning-foreground" background-field="squad-alert-warning-background" show-dot="false" />
+                </row>
+                <button id="goap-squad-inspect" item-action="goap-squad-inspect" class="goap-squad-inspect">Inspect ›</button>
+              </row>
+            </column>
+          </repeat>
+        </scroll>
+        <column id="goap-squad-empty-wrap" visible="goap-squad-empty-visible" class="goap-squad-empty-wrap">
+          <text id="goap-squad-empty" bind="goap-squad-empty" class="goap-squad-empty" />
+        </column>
+      </overlay>
+    </column>
+  </region>
+</ui>

@@ -28,6 +28,7 @@
 // ====================================================================================================================
 
 class FCkGoapDebugger_ViewModel;
+class FCkUiView;
 class SCkDebug_EventTimeline;
 class SHorizontalBox;
 class SVerticalBox;
@@ -64,7 +65,22 @@ public:
     // History indices die with the world.
     auto Reset_ForWorldChange() -> void;
 
+    /** Test-only inspection of the retained production authored shell. */
+    auto Get_AuthoredView() const -> TSharedPtr<FCkUiView>
+    {
+        return _AuthoredView;
+    }
+
+    auto Get_AuthoredLoadFailure() const -> const FString&
+    {
+        return _AuthoredLoadFailure;
+    }
+
 private:
+    auto TryActivateAuthoredView() -> void;
+    auto ActivateNativeFallback() -> void;
+    auto ClearAuthoredNativePort() -> void;
+    auto ClearHistoryPresentation() -> void;
     auto DoRebuildTimeline(const TArray<FCkGoapDebugger_HistoryEvent>& InHistory) -> void;
     auto DoRebuildJumpButtons(const TArray<FCkGoapDebugger_HistoryEvent>& InHistory) -> void;
     auto DoRebuildDiffCard(const TArray<FCkGoapDebugger_HistoryEvent>& InHistory) -> void;
@@ -82,6 +98,12 @@ private:
     TSharedPtr<SHorizontalBox> _JumpButtons;
     TSharedPtr<SBox>           _DiffHost;
     TSharedPtr<SVerticalBox>   _EventLog;
+    TSharedPtr<SBox> _ContentHost;
+    TSharedPtr<SWidget> _NativeContent;
+    TSharedPtr<SBox> _TimelineBodyPort;
+    TSharedPtr<FCkUiView> _AuthoredView;
+    FString _AuthoredLoadFailure;
+    uint64 _AuthoredGeneration = 0;
 
     TAttribute<bool> _PauseOnReplan;
     TAttribute<bool> _PauseOnPlanFailed;

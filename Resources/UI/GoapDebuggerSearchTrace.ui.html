@@ -1,0 +1,25 @@
+<ui version="1">
+  <region name="main">
+    <column id="goap-search-trace-root" class="goap-search-trace-root">
+      <column id="goap-search-trace-empty-wrap" class="goap-search-trace-empty-wrap">
+        <text id="goap-search-trace-empty" bind="goap-search-trace-empty" class="goap-search-trace-empty" />
+      </column>
+      <column id="goap-search-trace-content" visible="goap-search-trace-has-records" class="goap-search-trace-content">
+        <text id="goap-search-trace-explainer" class="goap-search-trace-explainer">Regressive A* — the search walks BACKWARD from the goal. Each row is a constraint set still unsatisfied at that state; an action trades it for the set its preconditions demand. Green rows are already satisfied by the world state — the search terminates there.</text>
+        <text id="goap-search-trace-stats" bind="goap-search-trace-stats" class="goap-search-trace-stats" />
+        <scroll id="goap-search-trace-scroll" direction="horizontal" class="goap-search-trace-scroll">
+          <repeat id="goap-search-trace-records" bind="goap-search-trace-records" direction="vertical" class="goap-search-trace-records">
+            <row id="goap-search-trace-row" class="goap-search-trace-row">
+              <text id="goap-search-trace-index" bind-field="trace-index" class="goap-search-trace-index" />
+              <debug-status id="goap-search-trace-satisfaction" label-field="trace-satisfaction" foreground-field="trace-satisfaction-foreground" background-field="trace-satisfaction-background" show-dot="true" class="goap-search-trace-satisfaction" />
+              <text id="goap-search-trace-conditions" bind-field="trace-conditions" color-field="trace-row-color" class="goap-search-trace-conditions" />
+              <text id="goap-search-trace-via" bind-field="trace-via" class="goap-search-trace-via" />
+              <text id="goap-search-trace-heuristic" bind-field="trace-heuristic" color-field="trace-row-color" class="goap-search-trace-heuristic" />
+            </row>
+          </repeat>
+        </scroll>
+        <text id="goap-search-trace-footer" bind="goap-search-trace-footer" class="goap-search-trace-footer" />
+      </column>
+    </column>
+  </region>
+</ui>

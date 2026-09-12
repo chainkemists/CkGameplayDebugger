@@ -7,6 +7,10 @@
 #include "Widgets/Views/SListView.h"
 
 class FCkGoapDebugger_ViewModel;
+class FCkUiCollection;
+class FCkUiView;
+class SCkUiTable;
+class SBox;
 
 // ====================================================================================================================
 // SCkGoapDebugger_AgentListPanel — list of every GOAP-bearing entity in the
@@ -26,16 +30,21 @@ class FCkGoapDebugger_ViewModel;
 class CKGOAPDEBUGGER_API SCkGoapDebugger_AgentListPanel : public SCompoundWidget
 {
 public:
-    SLATE_BEGIN_ARGS(SCkGoapDebugger_AgentListPanel) {}
-        SLATE_ARGUMENT(TSharedPtr<FCkGoapDebugger_ViewModel>, ViewModel)
+    SLATE_BEGIN_ARGS(SCkGoapDebugger_AgentListPanel)
+    {
+    }
+    SLATE_ARGUMENT(TSharedPtr<FCkGoapDebugger_ViewModel>, ViewModel)
     SLATE_END_ARGS()
 
-    auto Construct(const FArguments& InArgs) -> void;
+    auto Construct(const FArguments &InArgs) -> void;
     virtual ~SCkGoapDebugger_AgentListPanel() override;
 
     // F — frame the selected agent in the ejected editor viewport.
-    virtual auto OnKeyDown(const FGeometry& InGeometry, const FKeyEvent& InKeyEvent) -> FReply override;
-    virtual auto SupportsKeyboardFocus() const -> bool override { return true; }
+    virtual auto OnKeyDown(const FGeometry &InGeometry, const FKeyEvent &InKeyEvent) -> FReply override;
+    virtual auto SupportsKeyboardFocus() const -> bool override
+    {
+        return true;
+    }
 
     // Identity-stable refresh off the ViewModel's snapshot batch. Cheap when
     // the entity set is unchanged.
@@ -50,20 +59,48 @@ public:
     // clicks get stamped over before mouse-up commits them.
     auto RestoreSelectionFromViewModel() -> void;
 
+    // Test-only inspection of the mounted production authored surface.
+    auto Get_AuthoredView() const -> TSharedPtr<FCkUiView>
+    {
+        return _AuthoredView;
+    }
+    auto Get_AuthoredCollection() const -> TSharedPtr<const FCkUiCollection>
+    {
+        return _AuthoredCollection;
+    }
+    auto Get_AuthoredTable() const -> TSharedPtr<SCkUiTable>
+    {
+        return GetAuthoredTable();
+    }
+
+    auto Get_AuthoredLoadFailure() const -> const FString&
+    {
+        return _AuthoredLoadFailure;
+    }
+
 private:
     struct FAgentRow
     {
         FCk_Handle Handle;
-        FString    Name;
-        int32      PlannerCount = 0;
-        bool       IsHighlightMatch = true;
+        FString Name;
+        int32 PlannerCount = 0;
+        bool IsHighlightMatch = true;
     };
     using ItemPtr = TSharedPtr<FAgentRow>;
 
-    auto OnGenerateRow(ItemPtr InItem, const TSharedRef<STableViewBase>& InTable) -> TSharedRef<ITableRow>;
+    auto OnGenerateRow(ItemPtr InItem, const TSharedRef<STableViewBase> &InTable) -> TSharedRef<ITableRow>;
     auto OnSelectionChanged(ItemPtr InItem, ESelectInfo::Type InSelectInfo) -> void;
     auto OnContextMenuOpening() -> TSharedPtr<SWidget>;
-    auto OnGlobalSelectionSync(const FCk_Handle& InSelected, FName InSource) -> void;
+    auto OnGlobalSelectionSync(const FCk_Handle &InSelected, FName InSource) -> void;
+    auto OnAuthoredSelectionChanged(TOptional<FString> InKey, ESelectInfo::Type InSelectInfo) -> void;
+    auto OnAuthoredEntityNavigate(const FString &InKey) -> void;
+    auto OnAuthoredContextMenuOpening() -> TSharedPtr<SWidget>;
+    auto TryActivateAuthoredView() -> void;
+    auto ActivateNativeFallback() -> void;
+    auto PublishAuthoredRows() -> void;
+    auto GetAuthoredTable() const -> TSharedPtr<SCkUiTable>;
+    auto FindItemByUiKey(const FString &InKey) const -> ItemPtr;
+    auto MakeUiKey(const FCk_Handle &InHandle) const -> FString;
 
     // Rebuild _Visible from _AllItems using the filter string, re-stamp
     // highlight flags, refresh the list, and restore the ViewModel selection.
@@ -72,10 +109,20 @@ private:
 private:
     TSharedPtr<FCkGoapDebugger_ViewModel> _ViewModel;
 
-    TArray<ItemPtr> _AllItems;   // one per entity snapshot, stable by handle
-    TArray<ItemPtr> _Visible;    // filter-surviving subset (list source)
+    TArray<ItemPtr> _AllItems; // one per entity snapshot, stable by handle
+    TArray<ItemPtr> _Visible;  // filter-surviving subset (list source)
 
     TSharedPtr<SListView<ItemPtr>> _ListView;
+    TSharedPtr<SBox> _ContentHost;
+    TSharedPtr<SWidget> _NativeContent;
+
+    // Authored rows are keyed by the complete entity identity (number + version), never their
+    // display name or bare entity number. The native rows remain the stable pointer owner.
+    TSharedPtr<FCkUiCollection> _AuthoredCollection;
+    TSharedPtr<FCkUiView> _AuthoredView;
+    TMap<FString, TWeakPtr<FAgentRow>> _AuthoredRows;
+    FString _AuthoredLoadFailure;
+    bool _AuthoredProjectionReady = false;
 
     FString _FilterString;
     FString _HighlightString;

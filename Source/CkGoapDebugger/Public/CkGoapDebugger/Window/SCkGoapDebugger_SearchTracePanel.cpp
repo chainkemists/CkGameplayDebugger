@@ -8,10 +8,16 @@
 
 #include "CkDebuggerCommon/Widgets/SCkDebug_Chip.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_SelectableLabel.h"
+#include "CkDebuggerCommon/UI/CkDebug_UiRegistry.h"
 
 #include "CkEditorTools/Style/CkStyle.h"
 
 #include "CkGoap/EntityScripts/CkGoapAction_EntityScript.h"
+#include "CkSlateLayout/CkUiCollection.h"
+#include "CkSlateLayout/SCkUiSurface.h"
+
+#include "Interfaces/IPluginManager.h"
+#include "Misc/Paths.h"
 
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/Layout/SBorder.h"
@@ -24,6 +30,42 @@
 
 namespace ck_goap_debugger_search_trace
 {
+    auto TextField(const FString& InValue) -> FCkUiFieldValue
+    {
+        return {.Kind = ECkUiFieldKind::Text, .Text = FText::FromString(InValue)};
+    }
+
+    auto ColorField(const FLinearColor& InValue) -> FCkUiFieldValue
+    {
+        return {.Kind = ECkUiFieldKind::Color, .Color = InValue};
+    }
+
+    auto Schema() -> TArray<FCkUiFieldSchema>
+    {
+        return {{TEXT("trace-index"), ECkUiFieldKind::Text},
+                {TEXT("trace-conditions"), ECkUiFieldKind::Text},
+                {TEXT("trace-via"), ECkUiFieldKind::Text},
+                {TEXT("trace-heuristic"), ECkUiFieldKind::Text},
+                {TEXT("trace-row-color"), ECkUiFieldKind::Color},
+                {TEXT("trace-satisfaction"), ECkUiFieldKind::Text},
+                {TEXT("trace-satisfaction-foreground"), ECkUiFieldKind::Color},
+                {TEXT("trace-satisfaction-background"), ECkUiFieldKind::Color}};
+    }
+
+    auto Tokens() -> FCkUiView::FTokens
+    {
+        return {{TEXT("--space-xs"), FString::SanitizeFloat(CkStyle::SpaceXS)},
+                {TEXT("--space-s"), FString::SanitizeFloat(CkStyle::SpaceS)},
+                {TEXT("--space-m"), FString::SanitizeFloat(CkStyle::SpaceM)},
+                {TEXT("--space-l"), FString::SanitizeFloat(CkStyle::SpaceL)},
+                {TEXT("--goap-search-trace-body-font-size"), FString::FromInt(ck::debug_axes::Get_ScaledFontSize(CkStyle::FontSizeBody()))},
+                {TEXT("--goap-search-trace-small-font-size"), FString::FromInt(ck::debug_axes::Get_ScaledFontSize(CkStyle::FontSizeSmall()))},
+                {TEXT("--goap-search-trace-micro-font-size"), FString::FromInt(ck::debug_axes::Get_ScaledFontSize(CkStyle::FontSizeMicro()))},
+                {TEXT("--goap-search-trace-text"), TEXT("#") + CkStyle::Text().ToFColorSRGB().ToHex()},
+                {TEXT("--goap-search-trace-text-dim"), TEXT("#") + CkStyle::TextDim().ToFColorSRGB().ToHex()},
+                {TEXT("--goap-search-trace-text-mute"), TEXT("#") + CkStyle::TextMute().ToFColorSRGB().ToHex()}};
+    }
+
     auto LeafOfTag(const FGameplayTag& InTag) -> FString
     {
         auto Full = InTag.ToString();
@@ -49,24 +91,33 @@ auto
         const FArguments& InArgs)
     -> void
 {
+    using namespace ck_goap_debugger_search_trace;
+
     _ViewModel = InArgs._ViewModel;
 
-    ChildSlot
-    [
+    _NativeContent =
         SNew(SBorder)
             .BorderImage(CkStyle::GetFilledBrush())
             .BorderBackgroundColor(FSlateColor(CkStyle::Bg1()))
             .Padding(FMargin(CkStyle::SpaceL))
-            [
-                SNew(SScrollBox)
-                    .Orientation(Orient_Vertical)
+    [
+        SNew(SScrollBox)
+            .Orientation(Orient_Vertical)
 
-                    + SScrollBox::Slot()
-                    [
-                        SAssignNew(_Body, SVerticalBox)
-                    ]
+            + SScrollBox::Slot()
+            [
+                SAssignNew(_Body, SVerticalBox)
             ]
     ];
+    ChildSlot[SAssignNew(_ContentHost, SBox)[_NativeContent.ToSharedRef()]];
+
+    const FCkUiLoadResult CollectionResult = FCkUiCollection::TryCreate(Schema(), _AuthoredCollection);
+    _AuthoredProjectionReady = CollectionResult.Succeeded;
+    if (!CollectionResult.Succeeded)
+    {
+        _AuthoredLoadFailure = FString::Join(CollectionResult.Errors, TEXT("\n"));
+    }
+    TryActivateAuthoredView();
 
     RefreshFromViewModel();
 }
@@ -79,6 +130,21 @@ auto
     using namespace ck_goap_debugger_search_trace;
 
     if (NOT _ViewModel.IsValid() || NOT _Body.IsValid()) { return; }
+
+    if (_AuthoredView.IsValid())
+    {
+        _AuthoredView->PollFiles(Tokens());
+        if (!_AuthoredView->GetLastResult().Succeeded)
+        {
+            // PollFiles retains the last admitted document on failure. Keep that mounted surface and
+            // collection intact so a corrected authored file can be accepted on a later poll.
+            _AuthoredLoadFailure = FString::Join(_AuthoredView->GetLastResult().Errors, TEXT("\n"));
+        }
+        else
+        {
+            _AuthoredLoadFailure.Reset();
+        }
+    }
 
     const auto* Planner = _ViewModel->GetSelectedPlannerInfo();
 
@@ -111,6 +177,7 @@ auto
                     .ColorAndOpacity(FSlateColor(CkStyle::TextDim()))
                     .Justification(ETextJustify::Center)
             ];
+        PublishAuthoredProjection();
         return;
     }
 
@@ -170,6 +237,134 @@ auto
                 { return ck::debug_axes::ScaledFont("Regular", CkStyle::FontSizeMicro()); })
                 .ColorAndOpacity(FSlateColor(CkStyle::TextMute()))
         ];
+
+    PublishAuthoredProjection();
+
+}
+
+auto SCkGoapDebugger_SearchTracePanel::PublishAuthoredProjection() -> void
+{
+    using namespace ck_goap_debugger_search_trace;
+
+    if (!_AuthoredCollection.IsValid()) { return; }
+
+    TArray<FCkUiRecordData> Records;
+    const auto* Planner = _ViewModel.IsValid() ? _ViewModel->GetSelectedPlannerInfo() : nullptr;
+    if (Planner != nullptr)
+    {
+        Records.Reserve(Planner->SearchDebug.Num());
+        for (int32 Index = 0; Index < Planner->SearchDebug.Num(); ++Index)
+        {
+            const FCk_Goap_SearchDebugRow& Row = Planner->SearchDebug[Index];
+            FString Conditions;
+            for (const FCk_GoapWS_Condition_Authored& Condition : Row.Get_Conditions())
+            {
+                if (!Conditions.IsEmpty()) { Conditions += TEXT(", "); }
+                Conditions += Condition.Get_Key().ToString();
+                if (!Condition.Get_Value()) { Conditions += TEXT(" = false"); }
+            }
+            if (Conditions.IsEmpty()) { Conditions = TEXT("(empty set)"); }
+
+            FCkUiRecordData Record;
+            // Selection identity plus discovery index is stable for the retained last-search snapshot.
+            Record.Key = FString::Printf(TEXT("goap-search-trace:%d:%d:%d"),
+                static_cast<int32>(Planner->PlannerHandle.Get_Entity().Get_EntityNumber()),
+                static_cast<int32>(Planner->PlannerHandle.Get_Entity().Get_VersionNumber()), Index);
+            Record.Fields.Add(TEXT("trace-index"), TextField(FString::Printf(TEXT("%02d"), Index)));
+            Record.Fields.Add(TEXT("trace-conditions"), TextField(MoveTemp(Conditions)));
+            Record.Fields.Add(TEXT("trace-via"), TextField(FString::Printf(TEXT("via %s"), *LeafOfClass(Row.Get_ViaActionClass()))));
+            Record.Fields.Add(TEXT("trace-heuristic"), TextField(FString::Printf(TEXT("h=%d"), Row.Get_UnsatisfiedCount())));
+            Record.Fields.Add(TEXT("trace-row-color"), ColorField(Row.Get_SatisfiedByWorldState() ? CkStyle::Ok() : CkStyle::TextMute()));
+            Record.Fields.Add(TEXT("trace-satisfaction"), TextField(Row.Get_SatisfiedByWorldState() ? TEXT("SATISFIED") : TEXT("OPEN")));
+            Record.Fields.Add(TEXT("trace-satisfaction-foreground"), ColorField(Row.Get_SatisfiedByWorldState() ? CkStyle::Ok() : CkStyle::TextMute()));
+            Record.Fields.Add(TEXT("trace-satisfaction-background"), ColorField(Row.Get_SatisfiedByWorldState() ? CkStyle::OkDim() : CkStyle::Bg2()));
+            Records.Add(MoveTemp(Record));
+        }
+    }
+
+    const FCkUiLoadResult Result = _AuthoredCollection->TrySetRecords(MoveTemp(Records));
+    if (!Result.Succeeded)
+    {
+        _AuthoredLoadFailure = FString::Join(Result.Errors, TEXT("\n"));
+        if (!_AuthoredView.IsValid()) { ActivateNativeFallback(); }
+    }
+}
+
+auto SCkGoapDebugger_SearchTracePanel::TryActivateAuthoredView() -> void
+{
+    using namespace ck_goap_debugger_search_trace;
+
+    if (_AuthoredView.IsValid() || !_ContentHost.IsValid() || !_AuthoredProjectionReady || !_AuthoredCollection.IsValid()) { return; }
+
+    TSharedPtr<const FCkUiWidgetRegistrySnapshot> Registry;
+    const FCkUiLoadResult RegistryResult = FCkDebug_UiRegistry::TryCreate(Registry);
+    if (!RegistryResult.Succeeded)
+    {
+        _AuthoredLoadFailure = FString::Join(RegistryResult.Errors, TEXT("\n"));
+        ActivateNativeFallback();
+        return;
+    }
+    const TSharedPtr<IPlugin> Plugin = IPluginManager::Get().FindPlugin(TEXT("CkDebugger"));
+    if (!Plugin.IsValid())
+    {
+        _AuthoredLoadFailure = TEXT("CkDebugger plugin is unavailable.");
+        ActivateNativeFallback();
+        return;
+    }
+
+    const TWeakPtr<SCkGoapDebugger_SearchTracePanel> WeakPanel{SharedThis(this)};
+    FCkUiView::FDataBindings Data;
+    Data.SlateUserIndex = 0;
+    Data.CanDispatchEvents = TAttribute<bool>::CreateLambda([WeakPanel]() { return WeakPanel.IsValid(); });
+    Data.Text.Add(TEXT("goap-search-trace-empty"), TAttribute<FText>::CreateLambda([WeakPanel]()
+    {
+        const TSharedPtr<SCkGoapDebugger_SearchTracePanel> Panel = WeakPanel.Pin();
+        const auto* Planner = Panel.IsValid() && Panel->_ViewModel.IsValid() ? Panel->_ViewModel->GetSelectedPlannerInfo() : nullptr;
+        return FText::FromString(Planner == nullptr
+            ? TEXT("Select a Planner to see its last search trace.")
+            : (Planner->SearchDebug.IsEmpty() ? TEXT("No search trace yet — this Planner hasn't run a search this session.") : TEXT("")));
+    }));
+    Data.Visibility.Add(TEXT("goap-search-trace-has-records"), TAttribute<bool>::CreateLambda([WeakPanel]()
+    {
+        const TSharedPtr<SCkGoapDebugger_SearchTracePanel> Panel = WeakPanel.Pin();
+        const auto* Planner = Panel.IsValid() && Panel->_ViewModel.IsValid() ? Panel->_ViewModel->GetSelectedPlannerInfo() : nullptr;
+        return Planner != nullptr && !Planner->SearchDebug.IsEmpty();
+    }));
+    Data.Text.Add(TEXT("goap-search-trace-stats"), TAttribute<FText>::CreateLambda([WeakPanel]()
+    {
+        const TSharedPtr<SCkGoapDebugger_SearchTracePanel> Panel = WeakPanel.Pin();
+        const auto* Planner = Panel.IsValid() && Panel->_ViewModel.IsValid() ? Panel->_ViewModel->GetSelectedPlannerInfo() : nullptr;
+        if (Planner == nullptr) { return FText::GetEmpty(); }
+        const auto& Stats = Planner->SearchStats;
+        return FText::FromString(FString::Printf(TEXT("iterations %d · state pool %d · elapsed %lld µs · plan length %d · cost %.1f · seeded from flattened WS snapshot"), Stats.Get_Iterations(), Stats.Get_StatePoolSize(), Stats.Get_ElapsedMicroseconds(), Stats.Get_PlanLength(), Stats.Get_PlanCost()));
+    }));
+    Data.Text.Add(TEXT("goap-search-trace-footer"), TAttribute<FText>::CreateLambda([WeakPanel]()
+    {
+        const TSharedPtr<SCkGoapDebugger_SearchTracePanel> Panel = WeakPanel.Pin();
+        const auto* Planner = Panel.IsValid() && Panel->_ViewModel.IsValid() ? Panel->_ViewModel->GetSelectedPlannerInfo() : nullptr;
+        return Planner == nullptr ? FText::GetEmpty() : FText::FromString(FString::Printf(TEXT("%d explored constraint sets retained from the last search (pool holds every state the search touched)."), Planner->SearchDebug.Num()));
+    }));
+    Data.Collections.Add(TEXT("goap-search-trace-records"), _AuthoredCollection);
+    const TSharedRef<FCkUiView> Candidate = FCkUiView::Create({}, {}, Tokens(), CkStyle::RegularFont(CkStyle::FontSizeBody()), MoveTemp(Data), Registry);
+    const TSharedRef<SWidget> Main = Candidate->GetRegion(TEXT("main"));
+    const FString Directory = FPaths::Combine(Plugin->GetBaseDir(), TEXT("Resources/UI"));
+    Candidate->SetFiles(FPaths::Combine(Directory, TEXT("GoapDebuggerSearchTrace.ui.html")), FPaths::Combine(Directory, TEXT("GoapDebuggerSearchTrace.ui.css")));
+    Candidate->PollFiles();
+    if (!Candidate->GetLastResult().Succeeded)
+    {
+        _AuthoredLoadFailure = FString::Join(Candidate->GetLastResult().Errors, TEXT("\n"));
+        ActivateNativeFallback();
+        return;
+    }
+    _AuthoredLoadFailure.Reset();
+    _AuthoredView = Candidate;
+    _ContentHost->SetContent(Main);
+}
+
+auto SCkGoapDebugger_SearchTracePanel::ActivateNativeFallback() -> void
+{
+    _AuthoredView.Reset();
+    if (_ContentHost.IsValid() && _NativeContent.IsValid()) { _ContentHost->SetContent(_NativeContent.ToSharedRef()); }
 }
 
 // ====================================================================================================================

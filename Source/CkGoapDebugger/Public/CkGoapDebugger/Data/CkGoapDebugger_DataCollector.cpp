@@ -1,4 +1,4 @@
-﻿#include "CkGoapDebugger/Data/CkGoapDebugger_DataCollector.h"
+#include "CkGoapDebugger/Data/CkGoapDebugger_DataCollector.h"
 
 #include "CkGoap/Action/CkGoap_Action_Utils.h"
 
@@ -510,9 +510,13 @@ namespace ck_goap_debugger_data_collector_internal
         // chain. For top-level Planners themselves (no Action role) treat
         // IsActive as the answer.
         {
-            const auto AsAction = UCk_Utils_Goap_Action_UE::CastChecked(
-                static_cast<FCk_Handle>(InPlannerHandle));
-            Info.IsInActiveChain = InChainDepthByHandle.Contains(AsAction) || Info.IsActive;
+            const auto PlannerHandle = static_cast<FCk_Handle>(InPlannerHandle);
+            Info.IsInActiveChain = Info.IsActive;
+            if (UCk_Utils_Goap_Action_UE::Has(PlannerHandle))
+            {
+                const auto AsAction = UCk_Utils_Goap_Action_UE::CastChecked(PlannerHandle);
+                Info.IsInActiveChain = InChainDepthByHandle.Contains(AsAction) || Info.IsActive;
+            }
         }
 
         // PR-B.1b Stage 5: the canonical-entity redirect is gone. PlanState /

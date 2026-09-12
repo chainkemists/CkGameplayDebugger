@@ -9,13 +9,17 @@
 #include "CkCore/Validation/CkIsValid.h"
 
 #include "CkDebuggerCommon/Widgets/SCkDebug_EventTimeline.h"
+#include "CkDebuggerCommon/UI/CkDebug_UiRegistry.h"
 #include "CkGoapDebugger/CkGoapDebugger_Axes.h"
 
 #include "CkDebuggerCommon/Widgets/SCkDebug_SectionHeader.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_SelectableLabel.h"
 
 #include "CkEditorTools/Style/CkStyle.h"
+#include "CkSlateLayout/SCkUiSurface.h"
 
+#include "Interfaces/IPluginManager.h"
+#include "Misc/Paths.h"
 #include "Styling/CoreStyle.h"
 
 #include "Widgets/SBoxPanel.h"
@@ -24,12 +28,22 @@
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/Layout/SScrollBox.h"
 #include "Widgets/Layout/SSplitter.h"
+#include "Widgets/SNullWidget.h"
 #include "Widgets/Text/STextBlock.h"
 
 // ====================================================================================================================
 
 namespace ck_goap_debugger_timeline_dock
 {
+    auto Tokens() -> FCkUiView::FTokens
+    {
+        return {{TEXT("--space-s"), FString::SanitizeFloat(CkStyle::SpaceS)},
+                {TEXT("--space-m"), FString::SanitizeFloat(CkStyle::SpaceM)},
+                {TEXT("--space-l"), FString::SanitizeFloat(CkStyle::SpaceL)},
+                {TEXT("--timeline-text"), TEXT("#") + CkStyle::Text().ToFColorSRGB().ToHex()},
+                {TEXT("--timeline-text-mute"), TEXT("#") + CkStyle::TextMute().ToFColorSRGB().ToHex()}};
+    }
+
     constexpr auto Lane_Ws     = 0;
     constexpr auto Lane_Replan = 1;
     constexpr auto Lane_Active = 2;
@@ -91,9 +105,17 @@ auto
     _PauseOnPlanFailed = InArgs._PauseOnPlanFailed;
     _PauseExecution = InArgs._PauseExecution;
 
-    ChildSlot
-    [
-        SNew(SBorder)
+    // Preserve the specialized timeline as one native unit. At narrow dock
+    // widths its fixed information density remains reachable by scrolling the
+    // whole body horizontally instead of compressing or restacking controls.
+    _NativeContent = SNew(SScrollBox)
+            .Orientation(Orient_Horizontal)
+            .ScrollBarVisibility(EVisibility::Visible)
+            + SScrollBox::Slot()
+                .FillSize(1.0f)
+                .MinSize(800.0f)
+            [
+                SNew(SBorder)
             .BorderImage(CkStyle::GetFilledBrush())
             .BorderBackgroundColor(FSlateColor(CkStyle::Bg1()))
             .Padding(FMargin(0.0f))
@@ -187,9 +209,18 @@ auto
                                             ]
                                     ]
                         ]
-            ]
+                    ]
     ];
 
+    ChildSlot
+    [
+        SAssignNew(_ContentHost, SBox)
+        [
+            _NativeContent.ToSharedRef()
+        ]
+    ];
+
+    TryActivateAuthoredView();
     RefreshFromViewModel();
 }
 
@@ -197,6 +228,17 @@ auto
     SCkGoapDebugger_TimelineDock::
     Reset_ForWorldChange()
     -> void
+{
+    ++_AuthoredGeneration;
+    ClearAuthoredNativePort();
+    _AuthoredView.Reset();
+    _TimelineBodyPort.Reset();
+    ActivateNativeFallback();
+
+    ClearHistoryPresentation();
+}
+
+auto SCkGoapDebugger_TimelineDock::ClearHistoryPresentation() -> void
 {
     _SeenEventCount = 0;
     _LastHash = 0;
@@ -211,6 +253,121 @@ auto
     { _EventLog->ClearChildren(); }
 }
 
+auto SCkGoapDebugger_TimelineDock::ClearAuthoredNativePort() -> void
+{
+    if (_TimelineBodyPort.IsValid())
+    {
+        _TimelineBodyPort->SetContent(SNullWidget::NullWidget);
+    }
+}
+
+auto SCkGoapDebugger_TimelineDock::ActivateNativeFallback() -> void
+{
+    if (_ContentHost.IsValid() && _NativeContent.IsValid())
+    {
+        _ContentHost->SetContent(_NativeContent.ToSharedRef());
+    }
+}
+
+auto SCkGoapDebugger_TimelineDock::TryActivateAuthoredView() -> void
+{
+    using namespace ck_goap_debugger_timeline_dock;
+
+    if (_AuthoredView.IsValid() || !_ContentHost.IsValid() || !_NativeContent.IsValid())
+    {
+        return;
+    }
+
+    TSharedPtr<const FCkUiWidgetRegistrySnapshot> Registry;
+    const FCkUiLoadResult RegistryResult = FCkDebug_UiRegistry::TryCreate(Registry);
+    if (!RegistryResult.Succeeded)
+    {
+        _AuthoredLoadFailure = FString::Join(RegistryResult.Errors, TEXT("\n"));
+        ActivateNativeFallback();
+        return;
+    }
+
+    const TSharedPtr<IPlugin> Plugin = IPluginManager::Get().FindPlugin(TEXT("CkDebugger"));
+    if (!Plugin.IsValid())
+    {
+        _AuthoredLoadFailure = TEXT("CkDebugger plugin is unavailable.");
+        ActivateNativeFallback();
+        return;
+    }
+
+    // Do not detach the visible fallback until candidate admission succeeds.
+    _TimelineBodyPort = SNew(SBox)
+    [
+        SNullWidget::NullWidget
+    ];
+
+    FCkUiView::FNativeBindings NativeBindings;
+    NativeBindings.Add(TEXT("timeline-body"), _TimelineBodyPort);
+
+    const TWeakPtr<SCkGoapDebugger_TimelineDock> WeakDock{SharedThis(this)};
+    const uint64 Generation = ++_AuthoredGeneration;
+    const auto GetSelectedEntity = [WeakDock, Generation]() -> FCk_Handle
+    {
+        const TSharedPtr<SCkGoapDebugger_TimelineDock> Dock = WeakDock.Pin();
+        return Dock.IsValid() && Dock->_AuthoredGeneration == Generation && Dock->_ViewModel.IsValid()
+            ? Dock->_ViewModel->GetSelectedEntity()
+            : FCk_Handle{};
+    };
+
+    FCkUiView::FDataBindings Data;
+    Data.SlateUserIndex = 0;
+    Data.CanDispatchEvents = TAttribute<bool>::CreateLambda([WeakDock, Generation]()
+    {
+        const TSharedPtr<SCkGoapDebugger_TimelineDock> Dock = WeakDock.Pin();
+        return Dock.IsValid() && Dock->_AuthoredGeneration == Generation && Dock->_AuthoredView.IsValid();
+    });
+    Data.Visibility.Add(TEXT("timeline-empty-visible"), TAttribute<bool>::CreateLambda([GetSelectedEntity]()
+    {
+        return ck::Is_NOT_Valid(GetSelectedEntity());
+    }));
+    Data.Visibility.Add(TEXT("timeline-selected-visible"), TAttribute<bool>::CreateLambda([GetSelectedEntity]()
+    {
+        return !ck::Is_NOT_Valid(GetSelectedEntity());
+    }));
+    Data.Text.Add(TEXT("timeline-empty"), TAttribute<FText>::CreateLambda([]()
+    {
+        return FText::FromString(TEXT("Select an agent to inspect its GOAP event timeline."));
+    }));
+    Data.Text.Add(TEXT("timeline-title"), TAttribute<FText>::CreateLambda([]()
+    {
+        return FText::FromString(TEXT("Timeline"));
+    }));
+    Data.Text.Add(TEXT("timeline-status"), TAttribute<FText>::CreateLambda([GetSelectedEntity]()
+    {
+        const FCk_Handle Entity = GetSelectedEntity();
+        if (ck::Is_NOT_Valid(Entity))
+        {
+            return FText::GetEmpty();
+        }
+        return FText::FromString(FString::Printf(TEXT("%d events"), FCkGoapDebugger_DataCollector::GetHistory(Entity).Num()));
+    }));
+
+    const TSharedRef<FCkUiView> Candidate = FCkUiView::Create(MoveTemp(NativeBindings), FCkUiView::FActions{}, Tokens(),
+        CkStyle::RegularFont(CkStyle::FontSizeBody()), MoveTemp(Data), Registry);
+    const TSharedRef<SWidget> Main = Candidate->GetRegion(TEXT("main"));
+    const FString Directory = FPaths::Combine(Plugin->GetBaseDir(), TEXT("Resources/UI"));
+    Candidate->SetFiles(FPaths::Combine(Directory, TEXT("GoapDebuggerTimeline.ui.html")),
+        FPaths::Combine(Directory, TEXT("GoapDebuggerTimeline.ui.css")));
+    Candidate->PollFiles();
+    if (!Candidate->GetLastResult().Succeeded)
+    {
+        _AuthoredLoadFailure = FString::Join(Candidate->GetLastResult().Errors, TEXT("\n"));
+        ClearAuthoredNativePort();
+        ActivateNativeFallback();
+        return;
+    }
+
+    _AuthoredLoadFailure.Reset();
+    _TimelineBodyPort->SetContent(_NativeContent.ToSharedRef());
+    _AuthoredView = Candidate;
+    _ContentHost->SetContent(Main);
+}
+
 // ====================================================================================================================
 // REFRESH
 // ====================================================================================================================
@@ -220,12 +377,33 @@ auto
     RefreshFromViewModel()
     -> void
 {
+    if (_AuthoredView.IsValid())
+    {
+        _AuthoredView->PollFiles(ck_goap_debugger_timeline_dock::Tokens());
+        if (!_AuthoredView->GetLastResult().Succeeded)
+        {
+            // Rejected live admission leaves the accepted tree and retained timeline mounted.
+            _AuthoredLoadFailure = FString::Join(_AuthoredView->GetLastResult().Errors, TEXT("\n"));
+        }
+        else
+        {
+            _AuthoredLoadFailure.Reset();
+        }
+    }
+    else
+    {
+        TryActivateAuthoredView();
+    }
+
     if (NOT _ViewModel.IsValid()) { return; }
 
     const auto Entity = _ViewModel->GetSelectedEntity();
     if (ck::Is_NOT_Valid(Entity))
     {
-        Reset_ForWorldChange();
+        // Selection is transient. Keep the admitted authored shell and its
+        // retained native port alive so its empty state can render; only an
+        // actual world teardown releases that state through Reset_ForWorldChange.
+        ClearHistoryPresentation();
         return;
     }
 

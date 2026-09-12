@@ -1,0 +1,16 @@
+<ui version="1">
+  <region name="main">
+    <column id="goap-world-root" class="goap-world-root">
+      <column id="goap-world-empty" visible="goap-world-empty-visible" class="goap-world-empty">
+        <text id="goap-world-empty-text">Select an agent to inspect world state.</text>
+      </column>
+      <column id="goap-world-selected" visible="goap-world-selected-visible" class="goap-world-selected">
+        <row id="goap-world-header" class="goap-world-header">
+          <text id="goap-world-title" bind="goap-world-title" class="goap-world-title" />
+          <text id="goap-world-count" bind="goap-world-count" class="goap-world-count" />
+        </row>
+        <native id="goap-world-body" bind="goap-world-body" class="goap-world-body" />
+      </column>
+    </column>
+  </region>
+</ui>

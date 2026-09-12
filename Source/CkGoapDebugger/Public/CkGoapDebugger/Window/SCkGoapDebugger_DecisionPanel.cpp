@@ -2,6 +2,7 @@
 
 #include "CkGoapDebugger/CkGoapDebuggerStyle.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_NameLabel.h"
+#include "CkDebuggerCommon/UI/CkDebug_UiRegistry.h"
 #include "CkGoapDebugger/ViewModel/CkGoapDebugger_ViewModel.h"
 
 #include "CkCore/Algorithms/CkAlgorithms.h"
@@ -20,7 +21,10 @@
 
 #include "CkGoap/EntityScripts/CkGoapAction_EntityScript.h"
 #include "CkGoap/Planner/CkGoap_Planner_Utils.h"
+#include "CkSlateLayout/SCkUiSurface.h"
 
+#include "Interfaces/IPluginManager.h"
+#include "Misc/Paths.h"
 #include "Styling/CoreStyle.h"
 
 #include "Widgets/SBoxPanel.h"
@@ -29,6 +33,7 @@
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/Layout/SScrollBox.h"
 #include "Widgets/Layout/SWrapBox.h"
+#include "Widgets/SNullWidget.h"
 #include "Widgets/Text/STextBlock.h"
 
 // ====================================================================================================================
@@ -38,6 +43,39 @@
 namespace ck_goap_debugger_decision_panel
 {
     using namespace ck_goap_debugger_decision_model;
+
+    auto Tokens() -> FCkUiView::FTokens
+    {
+        return {{TEXT("--space-s"), FString::SanitizeFloat(CkStyle::SpaceS)},
+                {TEXT("--space-m"), FString::SanitizeFloat(CkStyle::SpaceM)},
+                {TEXT("--space-l"), FString::SanitizeFloat(CkStyle::SpaceL)},
+                {TEXT("--decision-text"), TEXT("#") + CkStyle::Text().ToFColorSRGB().ToHex()},
+                {TEXT("--decision-text-mute"), TEXT("#") + CkStyle::TextMute().ToFColorSRGB().ToHex()}};
+    }
+
+    auto StatusText(const ECk_GoapPlanStatus InStatus) -> FText
+    {
+        switch (InStatus)
+        {
+            case ECk_GoapPlanStatus::PlanFound: return FText::FromString(TEXT("Plan Found"));
+            case ECk_GoapPlanStatus::Planning: return FText::FromString(TEXT("Planning…"));
+            case ECk_GoapPlanStatus::PlanFailed: return FText::FromString(TEXT("Plan Failed"));
+            case ECk_GoapPlanStatus::CostThresholdReached: return FText::FromString(TEXT("Cost Threshold"));
+            default: return FText::FromString(TEXT("Idle"));
+        }
+    }
+
+    auto StatusForeground(const ECk_GoapPlanStatus InStatus) -> FLinearColor
+    {
+        switch (InStatus)
+        {
+            case ECk_GoapPlanStatus::PlanFound: return CkStyle::Ok();
+            case ECk_GoapPlanStatus::PlanFailed: return CkStyle::Err();
+            case ECk_GoapPlanStatus::CostThresholdReached: return CkStyle::Warn();
+            case ECk_GoapPlanStatus::Planning: return CkStyle::Accent();
+            default: return CkStyle::TextMute();
+        }
+    }
 
     auto LeafOfTag(const FGameplayTag& InTag) -> FString
     {
@@ -123,23 +161,29 @@ auto
 {
     _ViewModel = InArgs._ViewModel;
 
+    _NativeContent = SNew(SBorder)
+        .BorderImage(CkStyle::GetFilledBrush())
+        .BorderBackgroundColor(FSlateColor(CkStyle::Bg1()))
+        .Padding(FMargin(CkStyle::SpaceL))
+        [
+            SNew(SScrollBox)
+                .Orientation(Orient_Vertical)
+
+                + SScrollBox::Slot()
+                [
+                    SAssignNew(_Body, SVerticalBox)
+                ]
+        ];
+
     ChildSlot
     [
-        SNew(SBorder)
-            .BorderImage(CkStyle::GetFilledBrush())
-            .BorderBackgroundColor(FSlateColor(CkStyle::Bg1()))
-            .Padding(FMargin(CkStyle::SpaceL))
-            [
-                SNew(SScrollBox)
-                    .Orientation(Orient_Vertical)
-
-                    + SScrollBox::Slot()
-                    [
-                        SAssignNew(_Body, SVerticalBox)
-                    ]
-            ]
+        SAssignNew(_ContentHost, SBox)
+        [
+            _NativeContent.ToSharedRef()
+        ]
     ];
 
+    TryActivateAuthoredView();
     RefreshFromViewModel();
 }
 
@@ -153,9 +197,139 @@ auto
     _EditTargets.Reset();
     _OriginalCosts.Reset();
     _LastHash = 0;
+    ++_AuthoredGeneration;
+    ClearAuthoredNativePort();
+    _AuthoredView.Reset();
+    _DecisionBodyPort.Reset();
+    ActivateNativeFallback();
 
     if (_Body.IsValid())
     { _Body->ClearChildren(); }
+}
+
+auto SCkGoapDebugger_DecisionPanel::ClearAuthoredNativePort() -> void
+{
+    if (_DecisionBodyPort.IsValid())
+    {
+        _DecisionBodyPort->SetContent(SNullWidget::NullWidget);
+    }
+}
+
+auto SCkGoapDebugger_DecisionPanel::ActivateNativeFallback() -> void
+{
+    if (_ContentHost.IsValid() && _NativeContent.IsValid())
+    {
+        _ContentHost->SetContent(_NativeContent.ToSharedRef());
+    }
+}
+
+auto SCkGoapDebugger_DecisionPanel::TryActivateAuthoredView() -> void
+{
+    using namespace ck_goap_debugger_decision_panel;
+
+    if (_AuthoredView.IsValid() || !_ContentHost.IsValid() || !_NativeContent.IsValid())
+    {
+        return;
+    }
+
+    TSharedPtr<const FCkUiWidgetRegistrySnapshot> Registry;
+    const FCkUiLoadResult RegistryResult = FCkDebug_UiRegistry::TryCreate(Registry);
+    if (!RegistryResult.Succeeded)
+    {
+        _AuthoredLoadFailure = FString::Join(RegistryResult.Errors, TEXT("\n"));
+        ActivateNativeFallback();
+        return;
+    }
+
+    const TSharedPtr<IPlugin> Plugin = IPluginManager::Get().FindPlugin(TEXT("CkDebugger"));
+    if (!Plugin.IsValid())
+    {
+        _AuthoredLoadFailure = TEXT("CkDebugger plugin is unavailable.");
+        ActivateNativeFallback();
+        return;
+    }
+
+    // Keep the currently visible fallback body attached until candidate admission succeeds.
+    // The port receives that same native body only as the accepted authored tree is published.
+    _DecisionBodyPort = SNew(SBox)
+    [
+        SNullWidget::NullWidget
+    ];
+
+    FCkUiView::FNativeBindings NativeBindings;
+    NativeBindings.Add(TEXT("decision-body"), _DecisionBodyPort);
+
+    const TWeakPtr<SCkGoapDebugger_DecisionPanel> WeakPanel{SharedThis(this)};
+    const uint64 Generation = ++_AuthoredGeneration;
+    const auto GetPlanner = [WeakPanel, Generation]() -> const FCkGoapDebugger_PlannerInfo*
+    {
+        const TSharedPtr<SCkGoapDebugger_DecisionPanel> Panel = WeakPanel.Pin();
+        return Panel.IsValid() && Panel->_AuthoredGeneration == Generation && Panel->_ViewModel.IsValid()
+            ? Panel->_ViewModel->GetSelectedPlannerInfo()
+            : nullptr;
+    };
+
+    FCkUiView::FDataBindings Data;
+    Data.SlateUserIndex = 0;
+    Data.CanDispatchEvents = TAttribute<bool>::CreateLambda([WeakPanel, Generation]()
+    {
+        const TSharedPtr<SCkGoapDebugger_DecisionPanel> Panel = WeakPanel.Pin();
+        return Panel.IsValid() && Panel->_AuthoredGeneration == Generation && Panel->_AuthoredView.IsValid();
+    });
+    Data.Visibility.Add(TEXT("decision-empty-visible"), TAttribute<bool>::CreateLambda([GetPlanner]()
+    {
+        return GetPlanner() == nullptr;
+    }));
+    Data.Visibility.Add(TEXT("decision-selected-visible"), TAttribute<bool>::CreateLambda([GetPlanner]()
+    {
+        return GetPlanner() != nullptr;
+    }));
+    Data.Text.Add(TEXT("decision-empty"), TAttribute<FText>::CreateLambda([]()
+    {
+        return FText::FromString(TEXT("Select a Planner to see its decision breakdown."));
+    }));
+    Data.Text.Add(TEXT("decision-title"), TAttribute<FText>::CreateLambda([GetPlanner]()
+    {
+        const FCkGoapDebugger_PlannerInfo* Planner = GetPlanner();
+        return Planner != nullptr
+            ? FText::FromString(FString::Printf(TEXT("Decision: %s"), *Planner->DisplayName))
+            : FText::GetEmpty();
+    }));
+    Data.Text.Add(TEXT("decision-status"), TAttribute<FText>::CreateLambda([GetPlanner]()
+    {
+        const FCkGoapDebugger_PlannerInfo* Planner = GetPlanner();
+        return Planner != nullptr ? StatusText(Planner->PlanStatus) : FText::GetEmpty();
+    }));
+    Data.Color.Add(TEXT("decision-status-foreground"), TAttribute<FLinearColor>::CreateLambda([GetPlanner]()
+    {
+        const FCkGoapDebugger_PlannerInfo* Planner = GetPlanner();
+        return Planner != nullptr ? StatusForeground(Planner->PlanStatus) : CkStyle::TextMute();
+    }));
+    Data.Color.Add(TEXT("decision-status-background"), TAttribute<FLinearColor>::CreateLambda([GetPlanner]()
+    {
+        const FCkGoapDebugger_PlannerInfo* Planner = GetPlanner();
+        return Planner != nullptr ? CkStyle::OverlayOf(StatusForeground(Planner->PlanStatus), 0.12f) : FLinearColor::Transparent;
+    }));
+
+    const TSharedRef<FCkUiView> Candidate = FCkUiView::Create(MoveTemp(NativeBindings), FCkUiView::FActions{}, Tokens(),
+        CkStyle::RegularFont(CkStyle::FontSizeBody()), MoveTemp(Data), Registry);
+    const TSharedRef<SWidget> Main = Candidate->GetRegion(TEXT("main"));
+    const FString Directory = FPaths::Combine(Plugin->GetBaseDir(), TEXT("Resources/UI"));
+    Candidate->SetFiles(FPaths::Combine(Directory, TEXT("GoapDebuggerDecision.ui.html")),
+        FPaths::Combine(Directory, TEXT("GoapDebuggerDecision.ui.css")));
+    Candidate->PollFiles();
+    if (!Candidate->GetLastResult().Succeeded)
+    {
+        _AuthoredLoadFailure = FString::Join(Candidate->GetLastResult().Errors, TEXT("\n"));
+        ClearAuthoredNativePort();
+        ActivateNativeFallback();
+        return;
+    }
+
+    _AuthoredLoadFailure.Reset();
+    _DecisionBodyPort->SetContent(_NativeContent.ToSharedRef());
+    _AuthoredView = Candidate;
+    _ContentHost->SetContent(Main);
 }
 
 // ====================================================================================================================
@@ -168,6 +342,24 @@ auto
     -> void
 {
     if (NOT _ViewModel.IsValid() || NOT _Body.IsValid()) { return; }
+
+    if (_AuthoredView.IsValid())
+    {
+        _AuthoredView->PollFiles(ck_goap_debugger_decision_panel::Tokens());
+        if (!_AuthoredView->GetLastResult().Succeeded)
+        {
+            // Failed live admission leaves the last accepted authored tree and native body mounted.
+            _AuthoredLoadFailure = FString::Join(_AuthoredView->GetLastResult().Errors, TEXT("\n"));
+        }
+        else
+        {
+            _AuthoredLoadFailure.Reset();
+        }
+    }
+    else
+    {
+        TryActivateAuthoredView();
+    }
 
     const auto* Planner = _ViewModel->GetSelectedPlannerInfo();
 

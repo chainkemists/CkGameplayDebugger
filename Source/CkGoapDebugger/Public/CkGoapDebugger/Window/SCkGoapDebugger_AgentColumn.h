@@ -24,6 +24,9 @@
 // ====================================================================================================================
 
 class FCkGoapDebugger_ViewModel;
+class FCkUiCollection;
+class FCkUiView;
+class SBox;
 class SVerticalBox;
 class SCkGoapDebuggerWindow;
 
@@ -55,6 +58,17 @@ public:
     // Drop handle-bearing state while the registry is alive.
     auto Reset_ForWorldChange() -> void;
 
+    /** Test-only inspection of the retained production authored surface. */
+    auto Get_AuthoredView() const -> TSharedPtr<FCkUiView>
+    {
+        return _AuthoredView;
+    }
+
+    auto Get_AuthoredLoadFailure() const -> const FString&
+    {
+        return _AuthoredLoadFailure;
+    }
+
 private:
     auto DoRebuild(const FCkGoapDebugger_PlannerInfo& InPlanner, const FString& InAgentName) -> void;
 
@@ -63,10 +77,27 @@ private:
     auto DoBuildGoalPanel(const FCkGoapDebugger_PlannerInfo& InPlanner) -> TSharedRef<SWidget>;
     auto DoBuildPlanPanel(const FCkGoapDebugger_PlannerInfo& InPlanner) -> TSharedRef<SWidget>;
     auto DoBuildSettingsDrawer(const FCkGoapDebugger_PlannerInfo& InPlanner) -> TSharedRef<SWidget>;
+    auto DoBuildSearchBudgetEditor(const FCkGoapDebugger_PlannerInfo& InPlanner) -> TSharedRef<SWidget>;
+    auto TryActivateAuthoredView() -> void;
+    auto ActivateNativeFallback() -> void;
+    auto ClearAuthoredNativePorts() -> void;
 
 private:
     TSharedPtr<FCkGoapDebugger_ViewModel> _ViewModel;
     TSharedPtr<SVerticalBox> _Body;
+    TSharedPtr<SBox> _ContentHost;
+    TSharedPtr<SWidget> _NativeContent;
+
+    // Planner-dependent bodies and the int64 search-budget editor remain native. The authored
+    // document owns the stable shell and all supported primitive controls around these ports.
+    TSharedPtr<SBox> _BreadcrumbPort;
+    TSharedPtr<SBox> _GoalPort;
+    TSharedPtr<SBox> _PlanPort;
+    TSharedPtr<SBox> _SearchBudgetPort;
+    TSharedPtr<FCkUiCollection> _PolicyOptions;
+    TSharedPtr<FCkUiView> _AuthoredView;
+    FString _AuthoredLoadFailure;
+    uint64 _AuthoredGeneration = 0;
 
     uint32 _LastHash = 0;
 };

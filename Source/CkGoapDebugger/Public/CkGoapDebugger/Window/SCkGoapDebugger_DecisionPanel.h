@@ -32,6 +32,8 @@
 // ====================================================================================================================
 
 class FCkGoapDebugger_ViewModel;
+class FCkUiView;
+class SBox;
 class SVerticalBox;
 
 class CKGOAPDEBUGGER_API SCkGoapDebugger_DecisionPanel : public SCompoundWidget
@@ -63,8 +65,22 @@ public:
     // tracking resets too — a new world means new authored costs.
     auto Reset_ForWorldChange() -> void;
 
+    /** Test-only inspection of the retained production authored shell. */
+    auto Get_AuthoredView() const -> TSharedPtr<FCkUiView>
+    {
+        return _AuthoredView;
+    }
+
+    auto Get_AuthoredLoadFailure() const -> const FString&
+    {
+        return _AuthoredLoadFailure;
+    }
+
 private:
     auto DoRebuild(const FCkGoapDebugger_PlannerInfo& InPlanner) -> void;
+    auto TryActivateAuthoredView() -> void;
+    auto ActivateNativeFallback() -> void;
+    auto ClearAuthoredNativePort() -> void;
 
     // One scored group for a planner tier. InGroupLabel is the mockup's
     // "<name> — every candidate, scored" / "↳ inside <name> — …" header.
@@ -86,6 +102,12 @@ private:
 private:
     TSharedPtr<FCkGoapDebugger_ViewModel> _ViewModel;
     TSharedPtr<SVerticalBox> _Body;
+    TSharedPtr<SBox> _ContentHost;
+    TSharedPtr<SWidget> _NativeContent;
+    TSharedPtr<SBox> _DecisionBodyPort;
+    TSharedPtr<FCkUiView> _AuthoredView;
+    FString _AuthoredLoadFailure;
+    uint64 _AuthoredGeneration = 0;
 
     // ClassName → the cost BEFORE the first stepper edit this session. Drives
     // the "edited" badge and the reset button; entries whose current cost

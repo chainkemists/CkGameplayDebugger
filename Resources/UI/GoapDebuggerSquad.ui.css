@@ -1,0 +1,23 @@
+.goap-squad-root { min-width: 0; min-height: 0; gap: var(--space-s); padding: var(--space-m); }
+.goap-squad-search-row { min-width: 0; gap: var(--space-s); flex-wrap: wrap; }
+.goap-squad-overlay { min-width: 0; min-height: 0; flex-grow: 1; }
+.goap-squad-scroll { min-width: 0; min-height: 0; flex-grow: 1; }
+.goap-squad-records { min-width: 920px; gap: var(--space-xs); padding: 0 0 var(--space-s); }
+.goap-squad-record { min-width: 0; }
+.goap-squad-row { min-width: 0; min-height: 54px; gap: var(--space-m); padding: var(--space-s) var(--space-m); background-color: #1E2530; border-color: #354153; border-width: 1px; border-radius: 6px; flex-wrap: nowrap; vertical-align: center; }
+.goap-squad-agent { min-width: 178px; flex-grow: 0.22; gap: var(--space-s); vertical-align: center; }
+.goap-squad-avatar-wrap { width: 30px; height: 24px; padding: 2px 4px; background-color: #293445; border-radius: 6px; horizontal-align: center; vertical-align: center; }
+.goap-squad-avatar { font-family: sans-serif; font-size: var(--goap-squad-micro-font-size); font-weight: bold; color: #66B8FF; text-wrap: nowrap; }
+.goap-squad-agent-copy { min-width: 0; flex-grow: 1; gap: 2px; }
+.goap-squad-agent-name { min-width: 0; font-family: sans-serif; font-size: var(--goap-squad-row-font-size); font-weight: bold; color: #E8EDF5; text-wrap: nowrap; text-overflow: ellipsis; }
+.goap-squad-entity { min-width: 0; }
+.goap-squad-planner { min-width: 96px; flex-grow: 0.12; font-family: monospace; font-size: var(--goap-squad-micro-font-size); color: #AAB7C8; text-wrap: nowrap; text-overflow: ellipsis; }
+.goap-squad-status { min-width: 96px; }
+.goap-squad-chain { min-width: 220px; flex-grow: 0.34; font-family: sans-serif; font-size: var(--goap-squad-row-font-size); color: #B8C4D4; text-wrap: nowrap; text-overflow: ellipsis; }
+.goap-squad-cost { width: 44px; font-family: monospace; font-size: var(--goap-squad-row-font-size); color: #E8EDF5; text-wrap: nowrap; }
+.goap-squad-attempts { width: 32px; font-family: monospace; font-size: var(--goap-squad-row-font-size); color: #AAB7C8; text-wrap: nowrap; }
+.goap-squad-sparkline { width: 96px; height: 20px; }
+.goap-squad-alerts { min-width: 150px; flex-grow: 0.16; gap: var(--space-xs); flex-wrap: wrap; vertical-align: center; }
+.goap-squad-inspect { min-width: 76px; -ck-button-padding-x: 8px; -ck-button-padding-y: 4px; font-family: sans-serif; font-size: var(--goap-squad-micro-font-size); font-weight: bold; color: #66B8FF; text-wrap: nowrap; }
+.goap-squad-empty-wrap { min-width: 0; padding: var(--space-l); horizontal-align: center; vertical-align: center; }
+.goap-squad-empty { min-width: 0; font-family: monospace; font-size: var(--goap-squad-row-font-size); color: #8290A3; text-wrap: wrap; overflow-wrap: anywhere; }

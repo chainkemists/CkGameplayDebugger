@@ -1,0 +1,8 @@
+.goap-graph-root { min-width: 0; min-height: 0; }
+.goap-graph-empty { min-width: 0; padding: var(--space-l); horizontal-align: center; vertical-align: center; }
+.goap-graph-empty-text { font-family: sans-serif; color: #8A93A3; text-wrap: wrap; }
+.goap-graph-selected { flex-grow: 1; min-width: 0; min-height: 0; gap: var(--space-s); }
+.goap-graph-header { min-width: 0; padding: var(--space-m) var(--space-l) 0 var(--space-l); gap: var(--space-s); vertical-align: center; }
+.goap-graph-title { flex-grow: 1; font-family: sans-serif; font-weight: bold; color: #E6E8ED; text-wrap: nowrap; text-overflow: ellipsis; }
+.goap-graph-status { font-family: sans-serif; color: #8A93A3; text-wrap: nowrap; }
+.goap-graph-body { flex-grow: 1; min-width: 0; min-height: 0; }

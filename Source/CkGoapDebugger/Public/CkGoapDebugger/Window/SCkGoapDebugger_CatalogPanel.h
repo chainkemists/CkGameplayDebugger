@@ -30,6 +30,7 @@
 // ====================================================================================================================
 
 class FCkGoapDebugger_ViewModel;
+class FCkUiView;
 class SBox;
 class SWidgetSwitcher;
 
@@ -60,8 +61,22 @@ public:
 
     auto Reset_ForWorldChange() -> void;
 
+    /** Test-only inspection of the retained production authored shell. */
+    auto Get_AuthoredView() const -> TSharedPtr<FCkUiView>
+    {
+        return _AuthoredView;
+    }
+
+    auto Get_AuthoredLoadFailure() const -> const FString&
+    {
+        return _AuthoredLoadFailure;
+    }
+
 private:
     auto DoRebuild(const FCkGoapDebugger_PlannerInfo& InPlanner) -> void;
+    auto TryActivateAuthoredView() -> void;
+    auto ActivateNativeFallback() -> void;
+    auto ClearAuthoredNativePort() -> void;
 
     auto DoBuildCardSection(const FCkGoapDebugger_PlannerInfo& InTier, const FString& InLabel) -> TSharedRef<SWidget>;
     auto DoBuildActionCard(const FCkGoapDebugger_PlannerInfo& InTier, const FCkGoapDebugger_ActionInfo& InAction) -> TSharedRef<SWidget>;
@@ -80,6 +95,12 @@ private:
     TSharedPtr<SBox> _CatalogHost;
     TSharedPtr<SBox> _HealthHost;
     TSharedPtr<SBox> _MatrixHost;
+    TSharedPtr<SBox> _ContentHost;
+    TSharedPtr<SWidget> _NativeContent;
+    TSharedPtr<SBox> _CatalogBodyPort;
+    TSharedPtr<FCkUiView> _AuthoredView;
+    FString _AuthoredLoadFailure;
+    uint64 _AuthoredGeneration = 0;
 
     uint32 _LastHash = 0;
 };

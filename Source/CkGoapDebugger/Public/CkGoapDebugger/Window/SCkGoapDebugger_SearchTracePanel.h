@@ -20,16 +20,19 @@
 // ====================================================================================================================
 
 class FCkGoapDebugger_ViewModel;
+class FCkUiCollection;
+class FCkUiView;
+class SBox;
 class SVerticalBox;
 
 class CKGOAPDEBUGGER_API SCkGoapDebugger_SearchTracePanel : public SCompoundWidget
 {
-public:
+  public:
     SLATE_BEGIN_ARGS(SCkGoapDebugger_SearchTracePanel) {}
-        SLATE_ARGUMENT(TSharedPtr<FCkGoapDebugger_ViewModel>, ViewModel)
+    SLATE_ARGUMENT(TSharedPtr<FCkGoapDebugger_ViewModel>, ViewModel)
     SLATE_END_ARGS()
 
-    auto Construct(const FArguments& InArgs) -> void;
+    auto Construct(const FArguments &InArgs) -> void;
 
     // Called by the window when the ViewModel publishes a change.
     auto RefreshFromViewModel() -> void;
@@ -46,13 +49,38 @@ public:
         RefreshFromViewModel();
     }
 
+    /** Test-only inspection of the retained production authored surface. */
+    auto Get_AuthoredView() const -> TSharedPtr<FCkUiView>
+    {
+        return _AuthoredView;
+    }
 
-private:
-    auto DoBuildRow(const FCk_Goap_SearchDebugRow& InRow, int32 InIndex) -> TSharedRef<SWidget>;
+    auto Get_AuthoredCollection() const -> TSharedPtr<const FCkUiCollection>
+    {
+        return _AuthoredCollection;
+    }
 
-private:
+    auto Get_AuthoredLoadFailure() const -> const FString&
+    {
+        return _AuthoredLoadFailure;
+    }
+
+  private:
+    auto DoBuildRow(const FCk_Goap_SearchDebugRow &InRow, int32 InIndex) -> TSharedRef<SWidget>;
+    auto TryActivateAuthoredView() -> void;
+    auto ActivateNativeFallback() -> void;
+    auto PublishAuthoredProjection() -> void;
+
+  private:
     TSharedPtr<FCkGoapDebugger_ViewModel> _ViewModel;
     TSharedPtr<SVerticalBox> _Body;
+    TSharedPtr<SBox> _ContentHost;
+    TSharedPtr<SWidget> _NativeContent;
+
+    TSharedPtr<FCkUiCollection> _AuthoredCollection;
+    TSharedPtr<FCkUiView> _AuthoredView;
+    FString _AuthoredLoadFailure;
+    bool _AuthoredProjectionReady = false;
 
     uint32 _LastHash = 0;
 };

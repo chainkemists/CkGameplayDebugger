@@ -1,0 +1,16 @@
+<ui version="1">
+  <region name="main">
+    <column id="goap-graph-root" class="goap-graph-root">
+      <column id="goap-graph-empty" visible="graph-empty-visible" class="goap-graph-empty">
+        <text id="goap-graph-empty-text" class="goap-graph-empty-text">Select a planner action to inspect its graph.</text>
+      </column>
+      <column id="goap-graph-selected" visible="graph-selected-visible" class="goap-graph-selected">
+        <row id="goap-graph-header" class="goap-graph-header">
+          <text id="goap-graph-title" bind="graph-title" class="goap-graph-title" />
+          <text id="goap-graph-status" bind="graph-status" class="goap-graph-status" />
+        </row>
+        <native id="graph-body" bind="graph-body" class="goap-graph-body" />
+      </column>
+    </column>
+  </region>
+</ui>

@@ -10,6 +10,7 @@
 // ====================================================================================================================
 
 class FCkGoapDebugger_ViewModel;
+class FCkUiView;
 class STextBlock;
 class SBox;
 class SVerticalBox;
@@ -57,6 +58,10 @@ public:
     auto Construct(const FArguments& InArgs) -> void;
     ~SCkGoapDebugger_WorldStateRail();
 
+    // Called while the old world's registry is still alive. This makes every
+    // retained authored binding inert before the ViewModel is cleared.
+    auto Reset_ForWorldChange() -> void;
+
     // Called by the parent window on ViewModel::OnChanged.
     auto RefreshFromViewModel() -> void;
     /**
@@ -76,6 +81,8 @@ public:
     // Read by the window's alert strip — the sandbox banner shows as soon as
     // the sandbox is ARMED, not only once a key is actually overridden.
     auto Get_IsSandboxMode() const -> bool { return _SandboxMode; }
+    auto Get_AuthoredView() const -> TSharedPtr<FCkUiView> { return _AuthoredView; }
+    auto Get_AuthoredLoadFailure() const -> const FString& { return _AuthoredLoadFailure; }
 
 private:
     // -----------------------------------------------------------------------------------------------------------------
@@ -141,6 +148,9 @@ private:
 
     // Cycles the key-row sort order (Name ⇄ TRUE-first).
     auto HandleClick_CycleSortMode() -> FReply;
+    auto TryActivateAuthoredView() -> void;
+    auto ActivateNativeFallback() -> void;
+    auto ClearAuthoredNativePort() -> void;
 
 private:
     TSharedPtr<FCkGoapDebugger_ViewModel> _ViewModel;
@@ -149,6 +159,13 @@ private:
     TSharedPtr<SBox>         _HeaderHost;
     TSharedPtr<SVerticalBox> _Body;
     TSharedPtr<SBox>         _FooterHost;
+    TSharedPtr<SBox> _ContentHost;
+    TSharedPtr<SWidget> _NativeContent;
+    TSharedPtr<SBox> _WorldBodyPort;
+    TSharedPtr<FCkUiView> _AuthoredView;
+    FString _AuthoredLoadFailure;
+    uint64 _AuthoredGeneration = 0;
+    bool _IsNativeBodyMounted = false;
 
     // Resolved WS handle for the currently-rendered selection. Updated each
     // refresh; used by click handlers and TAttribute lambdas that consult the

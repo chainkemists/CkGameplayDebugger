@@ -1,0 +1,24 @@
+<ui version="1">
+  <region name="main">
+    <scroll id="goap-agent-column-scroll" direction="vertical" class="goap-agent-column-scroll">
+      <column id="goap-agent-column-root" class="goap-agent-column-root">
+        <column id="goap-agent-empty" visible="goap-agent-empty-visible" class="goap-agent-empty"><text id="goap-agent-empty-text" bind="goap-agent-empty" /></column>
+        <column id="goap-agent-card" visible="goap-agent-card-visible" class="goap-agent-card">
+          <row id="goap-agent-card-header" class="goap-agent-card-header"><text id="goap-agent-name" bind="goap-agent-name" class="goap-agent-name" /><debug-status id="goap-agent-status" label-bind="goap-agent-status" foreground-bind="goap-agent-status-foreground" background-bind="goap-agent-status-background" show-dot="true" /></row>
+          <row id="goap-agent-breadcrumb" class="goap-agent-breadcrumb"><native id="goap-agent-breadcrumb-body" bind="goap-agent-breadcrumb-body" /></row>
+          <row id="goap-agent-facts" class="goap-agent-facts"><text id="goap-agent-plan-on-start" class="goap-agent-fact" bind="goap-agent-plan-on-start" /><text id="goap-agent-defaults" class="goap-agent-fact" bind="goap-agent-defaults" /><text id="goap-agent-last-result" class="goap-agent-fact" bind="goap-agent-last-result" /><text id="goap-agent-planner-tag" class="goap-agent-fact" bind="goap-agent-planner-tag" /><text id="goap-agent-world-state" class="goap-agent-fact" bind="goap-agent-world-state" /></row>
+          <column id="goap-agent-goal" class="goap-agent-section"><text id="goap-agent-goal-title" class="goap-agent-section-title">GOAL</text><native id="goap-agent-goal-body" bind="goap-agent-goal-body" /></column>
+          <column id="goap-agent-plan" class="goap-agent-section"><text id="goap-agent-plan-title" class="goap-agent-section-title">PLAN</text><native id="goap-agent-plan-body" bind="goap-agent-plan-body" /></column>
+          <column id="goap-agent-settings" class="goap-agent-section"><text id="goap-agent-settings-title" class="goap-agent-section-title">SETTINGS</text>
+            <row id="goap-agent-policy-row" class="goap-agent-setting"><text id="goap-agent-policy-label" class="goap-agent-setting-label">Replan policy</text><select id="goap-agent-policy" value-bind="goap-agent-policy" options-bind="goap-agent-policy-options" changed="goap-agent-policy-changed" read-only-bind="goap-agent-policy-read-only" /></row>
+            <row id="goap-agent-enabled-row" class="goap-agent-setting"><text id="goap-agent-enabled-label" class="goap-agent-setting-label">Enabled</text><debug-switch id="goap-agent-enabled" checked-bind="goap-agent-enabled" changed="goap-agent-enabled-changed" /></row>
+            <row id="goap-agent-budget-row" class="goap-agent-setting"><text id="goap-agent-budget-label" class="goap-agent-setting-label">Search budget</text><native id="goap-agent-budget-body" bind="goap-agent-budget-body" /></row>
+            <row id="goap-agent-interval-row" class="goap-agent-setting"><text id="goap-agent-interval-label" class="goap-agent-setting-label">Min interval</text><number-input id="goap-agent-min-interval" value-bind="goap-agent-min-interval" committed="goap-agent-min-interval-committed" kind="float" min="0" fractional-digits="3" /></row>
+            <row id="goap-agent-threshold-row" class="goap-agent-setting"><text id="goap-agent-threshold-label" class="goap-agent-setting-label">Cost threshold</text><number-input id="goap-agent-threshold" value-bind="goap-agent-threshold" committed="goap-agent-threshold-committed" kind="float" min="0" fractional-digits="2" /></row>
+            <row id="goap-agent-actions" class="goap-agent-actions"><button id="goap-agent-replan" class="goap-agent-action" action="goap-agent-replan">Replan</button><button id="goap-agent-cancel" class="goap-agent-action" action="goap-agent-cancel">Cancel</button><button id="goap-agent-reset" class="goap-agent-action" action="goap-agent-reset">Reset</button></row>
+          </column>
+        </column>
+      </column>
+    </scroll>
+  </region>
+</ui>

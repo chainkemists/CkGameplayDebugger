@@ -1,0 +1,13 @@
+.poi-inspector { min-width: 0; gap: 3px; }
+.poi-row { min-width: 0; gap: 8px; vertical-align: center; }
+.poi-label { min-width: 110px; color: #A8B4C4; }
+.poi-category-tags-row { vertical-align: top; }
+.poi-chips { min-width: 0; flex-grow: 1; gap: 4px; }
+.poi-chip { padding: 2px 7px; background-color: #26303D; border-color: #465367; border-width: 1px; border-radius: 6px; }
+.poi-chip-text { color: #DCE5F2; }
+.poi-empty { color: #788596; }
+.poi-value { min-width: 0; color: #99E699; }
+.poi-label-value { color: #B8D7FF; }
+.poi-status { min-width: 0; flex-grow: 1; }
+.poi-switch { min-width: 30px; }
+.poi-position { min-width: 0; gap: 8px; }

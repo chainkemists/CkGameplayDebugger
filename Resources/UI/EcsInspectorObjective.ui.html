@@ -1,0 +1,18 @@
+<ui version="1">
+  <region name="main">
+    <column id="objective-inspector" class="objective-inspector">
+      <row id="objective-name-row" class="objective-row"><text id="objective-name-label" color-bind="objective-name-diff-color" class="objective-label">Name:</text><text id="objective-name-value" bind="objective-name" class="objective-value objective-name" /></row>
+      <row id="objective-display-row" visible="objective-has-display" class="objective-row"><text id="objective-display-label" color-bind="objective-display-diff-color" class="objective-label">Display:</text><text id="objective-display-value" bind="objective-display" class="objective-value" /></row>
+      <row id="objective-description-row" visible="objective-has-description" class="objective-row objective-description-row"><text id="objective-description-label" color-bind="objective-description-diff-color" class="objective-label">Description:</text><text id="objective-description-value" bind="objective-description" class="objective-value objective-description" /></row>
+      <row id="objective-status-row" class="objective-row"><text id="objective-status-label" color-bind="objective-status-diff-color" class="objective-label">Status:</text><debug-status id="objective-status-value" label-bind="objective-status" foreground-bind="objective-status-foreground" background-bind="objective-status-background" show-dot="true" class="objective-status" /></row>
+      <row id="objective-control-row" class="objective-row">
+        <text id="objective-control-label" color-bind="objective-control-diff-color" class="objective-label">Control:</text>
+        <row id="objective-control-actions" class="objective-actions">
+          <debug-inspector-action id="objective-start" label-bind="objective-start-label" action="objective-start" enabled-bind="objective-available" tooltip-bind="objective-start-tooltip" disabled-reason-bind="objective-disabled-reason" class="objective-action" />
+          <debug-inspector-action id="objective-complete" label-bind="objective-complete-label" action="objective-complete" enabled-bind="objective-available" tooltip-bind="objective-complete-tooltip" disabled-reason-bind="objective-disabled-reason" class="objective-action" />
+          <debug-inspector-action id="objective-fail" label-bind="objective-fail-label" action="objective-fail" enabled-bind="objective-available" tooltip-bind="objective-fail-tooltip" disabled-reason-bind="objective-disabled-reason" class="objective-action" />
+        </row>
+      </row>
+    </column>
+  </region>
+</ui>

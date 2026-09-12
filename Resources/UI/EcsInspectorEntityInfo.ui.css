@@ -1,0 +1,6 @@
+.entity-info-inspector { min-width: 0; gap: 3px; }
+.entity-info-row { min-width: 0; gap: 8px; vertical-align: center; }
+.entity-info-label { min-width: 110px; color: #A8B4C4; }
+.entity-info-value { min-width: 0; flex-grow: 1; color: #E8EDF5; }
+.entity-info-name-input { min-width: 0; flex-grow: 1; }
+.entity-info-native-value { min-width: 0; flex-grow: 1; }

@@ -1,0 +1,22 @@
+<ui version="1">
+  <region name="main">
+    <column id="entity-info-inspector" class="entity-info-inspector">
+      <row id="entity-info-name-row" class="entity-info-row">
+        <text id="entity-info-name-label" color-bind="entity-info-name-diff-color" class="entity-info-label">Name:</text>
+        <text id="entity-info-name-value" bind="entity-info-name-value" class="entity-info-value" />
+      </row>
+      <row id="entity-info-set-name-row" class="entity-info-row">
+        <text id="entity-info-set-name-label" color-bind="entity-info-set-name-diff-color" class="entity-info-label">Set Name:</text>
+        <text-input id="entity-info-name-input" value-bind="entity-info-name-input" changed="entity-info-name-changed" committed="entity-info-name-committed" class="entity-info-name-input" />
+      </row>
+      <row id="entity-info-id-row" class="entity-info-row">
+        <text id="entity-info-id-label" color-bind="entity-info-id-diff-color" class="entity-info-label">ID:</text>
+        <native id="entity-info-id-native" bind="entity-info-id-port" class="entity-info-native-value" />
+      </row>
+      <row id="entity-info-actor-row" class="entity-info-row">
+        <text id="entity-info-actor-label" color-bind="entity-info-actor-diff-color" class="entity-info-label">Actor:</text>
+        <text id="entity-info-actor-value" bind="entity-info-actor-value" color-bind="entity-info-actor-color" class="entity-info-value" />
+      </row>
+    </column>
+  </region>
+</ui>

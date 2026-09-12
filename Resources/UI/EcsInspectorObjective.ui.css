@@ -1,0 +1,10 @@
+.objective-inspector { min-width: 0; gap: 3px; }
+.objective-row { min-width: 0; gap: 8px; vertical-align: center; }
+.objective-description-row { vertical-align: top; }
+.objective-label { min-width: 110px; color: #A8B4C4; }
+.objective-value { min-width: 0; flex-grow: 1; color: #D8E1EC; }
+.objective-name { color: #67D4C7; }
+.objective-description { color: #91A0B2; }
+.objective-status { min-width: 0; flex-grow: 1; }
+.objective-actions { min-width: 0; gap: 6px; flex-grow: 1; }
+.objective-action { min-width: 0; }

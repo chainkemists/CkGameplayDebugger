@@ -1,0 +1,18 @@
+<ui version="1">
+  <region name="main">
+    <column id="relationships-inspector" class="relationships-inspector">
+      <row id="relationships-team-row" class="relationships-row">
+        <text id="relationships-team-label" color-bind="relationships-team-diff-color" class="relationships-label">Team:</text>
+        <text id="relationships-team-value" bind="relationships-team-value" color-bind="relationships-team-color" class="relationships-value" />
+      </row>
+      <row id="relationships-context-owner-row" class="relationships-row">
+        <text id="relationships-context-owner-label" color-bind="relationships-context-owner-diff-color" class="relationships-label">Context Owner:</text>
+        <native id="relationships-context-owner-native" bind="relationships-context-owner-port" class="relationships-native-value" />
+      </row>
+      <row id="relationships-lifetime-owner-row" class="relationships-row">
+        <text id="relationships-lifetime-owner-label" color-bind="relationships-lifetime-owner-diff-color" class="relationships-label">Lifetime Owner:</text>
+        <native id="relationships-lifetime-owner-native" bind="relationships-lifetime-owner-port" class="relationships-native-value" />
+      </row>
+    </column>
+  </region>
+</ui>

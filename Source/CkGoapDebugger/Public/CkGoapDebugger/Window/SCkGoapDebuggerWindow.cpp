@@ -1,4 +1,4 @@
-﻿#include "CkGoapDebugger/Window/SCkGoapDebuggerWindow.h"
+#include "CkGoapDebugger/Window/SCkGoapDebuggerWindow.h"
 
 #include "CkGoapDebugger/CkGoapDebugger_Module.h"
 #include "CkEditorTools/Style/CkIconStyle.h"
@@ -135,6 +135,9 @@ auto
     if (_TimelineDock.IsValid())
     { _TimelineDock->Reset_ForWorldChange(); }
 
+    if (_WorldStateRail.IsValid())
+    { _WorldStateRail->Reset_ForWorldChange(); }
+
     if (_SquadTable.IsValid())
     { _SquadTable->Reset_ForWorldChange(); }
 
@@ -149,6 +152,9 @@ auto
 
     if (_ViewModel.IsValid())
     { _ViewModel->Reset_ForWorldChange(); }
+
+    if (_GraphPane.IsValid())
+    { _GraphPane->Resume_AfterWorldChange(); }
 }
 
 auto SCkGoapDebuggerWindow::HandleWorldChanged(UWorld*) -> void

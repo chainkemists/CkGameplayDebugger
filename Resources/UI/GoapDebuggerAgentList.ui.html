@@ -1,0 +1,29 @@
+<ui version="1">
+  <region name="main">
+    <column id="goap-agent-list-root" class="goap-agent-list-root">
+      <text id="goap-agent-list-heading" class="goap-agent-list-heading">AGENTS</text>
+      <row id="goap-agent-list-search" class="goap-agent-list-search">
+        <search id="goap-agent-list-filter" bind="goap-agent-list-filter" placeholder="Filter agents…" />
+        <search id="goap-agent-list-highlight" bind="goap-agent-list-highlight" placeholder="Highlight…" />
+      </row>
+      <overlay id="goap-agent-list-overlay" class="goap-agent-list-overlay">
+        <scroll id="goap-agent-list-scroll" direction="horizontal" class="goap-agent-list-scroll">
+          <table id="goap-agent-list-table" bind="goap-agent-list-records" selection-action="select-goap-agent" context-menu-action="goap-agent-context" row-height="28" class="goap-agent-list-table">
+            <table-column id="goap-agent-entity-column" label="Entity" class="goap-agent-entity-column">
+              <row id="goap-agent-entity-cell-wrap" class="goap-agent-list-cell">
+                <debug-entity-ref id="goap-agent-entity-cell" entity-id-field="agent-entity-id" name-field="agent-name" show-name="false" item-action="goap-agent-navigate" />
+              </row>
+            </table-column>
+            <table-column id="goap-agent-name-column" label="Agent" class="goap-agent-name-column">
+              <row id="goap-agent-name-cell-wrap" class="goap-agent-list-cell"><text id="goap-agent-name-cell" bind-field="agent-name" color-field="agent-name-color" class="goap-agent-name-cell" /></row>
+            </table-column>
+            <table-column id="goap-agent-planners-column" label="Planners" class="goap-agent-planners-column">
+              <row id="goap-agent-planners-cell-wrap" class="goap-agent-list-cell"><text id="goap-agent-planners-cell" bind-field="agent-planners" class="goap-agent-planners-cell" /></row>
+            </table-column>
+          </table>
+        </scroll>
+        <column id="goap-agent-list-empty" visible="goap-agent-list-empty-visible" class="goap-agent-list-empty"><text id="goap-agent-list-empty-text" bind="goap-agent-list-empty" class="goap-agent-list-empty-text" /></column>
+      </overlay>
+    </column>
+  </region>
+</ui>

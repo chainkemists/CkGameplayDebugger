@@ -2,12 +2,14 @@
 
 #include "CkCore/Validation/CkIsValid.h"
 #include "CkDebuggerCommon/Graph/SCkDebug_GraphCanvas.h"
+#include "CkDebuggerCommon/UI/CkDebug_UiRegistry.h"
 #include "CkDebuggerCommon/Styles/CkDebuggerAxes.h"
 #include "CkDebuggerCommon/Styles/CkDebuggerCommonStyle.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_IconToggle.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_NameLabel.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_SelectableLabel.h"
 #include "CkEditorTools/Style/CkStyle.h"
+#include "CkSlateLayout/SCkUiSurface.h"
 #include "CkGoap/Planner/CkGoap_Planner_Fragment_Data.h"
 #include "CkGoapDebugger/CkGoapDebuggerStyle.h"
 #include "CkGoapDebugger/CkGoapDebugger_Axes.h"
@@ -15,6 +17,8 @@
 #include "CkGoapDebugger/Graph/CkGoapRuntimeGraphModel.h"
 #include "CkGoapDebugger/ViewModel/CkGoapDebugger_ViewModel.h"
 #include "Styling/CoreStyle.h"
+#include "Interfaces/IPluginManager.h"
+#include "Misc/Paths.h"
 #include "Widgets/Images/SImage.h"
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Layout/SBorder.h"
@@ -26,6 +30,15 @@
 
 namespace ck_goap_debugger_graph_pane
 {
+    auto Tokens() -> FCkUiView::FTokens
+    {
+        return {{TEXT("--space-s"), FString::SanitizeFloat(CkStyle::SpaceS)},
+                {TEXT("--space-m"), FString::SanitizeFloat(CkStyle::SpaceM)},
+                {TEXT("--space-l"), FString::SanitizeFloat(CkStyle::SpaceL)},
+                {TEXT("--graph-text"), TEXT("#") + CkStyle::Text().ToFColorSRGB().ToHex()},
+                {TEXT("--graph-text-mute"), TEXT("#") + CkStyle::TextMute().ToFColorSRGB().ToHex()}};
+    }
+
     auto MakePlannerScopeId(const FCk_Handle_Goap_Planner& InPlanner) -> uint64
     {
         if (ck::Is_NOT_Valid(InPlanner))
@@ -462,7 +475,7 @@ auto SCkGoapDebugger_GraphPane::Construct(const FArguments& InArgs) -> void
     constexpr auto IsNodeDraggingEnabled = true;
     _ViewModel = InArgs._ViewModel;
     _Graph = MakeShared<FCkGoapRuntimeGraphModel>();
-    ChildSlot[SNew(SBorder).BorderImage(
+    _NativeContent = SNew(SBorder).BorderImage(
         FCkGoapDebuggerStyle::Get().GetBrush(TEXT("CkGoap.Bg.Surface")))
                   [SNew(SVerticalBox) + SVerticalBox::Slot().AutoHeight()[BuildHeader()] +
                    SVerticalBox::Slot().FillHeight(
@@ -471,14 +484,40 @@ auto SCkGoapDebugger_GraphPane::Construct(const FArguments& InArgs) -> void
                                .OnSelectionChanged(FOnCkDebug_GraphCanvasSelectionChanged::CreateSP(
                                    this, &SCkGoapDebugger_GraphPane::OnGraphSelectionChanged))
                                .OnNodeMoved(FOnCkDebug_GraphCanvasNodeMoved::CreateSP(
-                                   this, &SCkGoapDebugger_GraphPane::OnGraphNodeMoved))]]];
+                                   this, &SCkGoapDebugger_GraphPane::OnGraphNodeMoved))]];
+    ChildSlot[SAssignNew(_ContentHost, SBox)[_NativeContent.ToSharedRef()]];
     if (_ViewModel.IsValid())
         _OnChangedHandle =
             _ViewModel->OnChanged.AddSP(this, &SCkGoapDebugger_GraphPane::RefreshFromViewModel);
+    TryActivateAuthoredView();
     RefreshFromViewModel();
 }
 
 auto SCkGoapDebugger_GraphPane::Reset_ForWorldChange() -> void
+{
+    if (_OnChangedHandle.IsValid() && _ViewModel.IsValid())
+    {
+        _ViewModel->OnChanged.Remove(_OnChangedHandle);
+        _OnChangedHandle.Reset();
+    }
+    ++_AuthoredGeneration;
+    ClearAuthoredNativePort();
+    _AuthoredView.Reset();
+    _GraphBodyPort.Reset();
+    ActivateNativeFallback();
+    ResetGraphState();
+}
+
+auto SCkGoapDebugger_GraphPane::Resume_AfterWorldChange() -> void
+{
+    if (!_OnChangedHandle.IsValid() && _ViewModel.IsValid())
+    {
+        _OnChangedHandle =
+            _ViewModel->OnChanged.AddSP(this, &SCkGoapDebugger_GraphPane::RefreshFromViewModel);
+    }
+}
+
+auto SCkGoapDebugger_GraphPane::ResetGraphState() -> void
 {
     if (_Graph.IsValid())
         _Graph->Reset();
@@ -498,6 +537,100 @@ auto SCkGoapDebugger_GraphPane::Reset_ForWorldChange() -> void
     if (_HeaderText.IsValid())
         _HeaderText->SetText(FText::FromString(TEXT("Action graph - (no selection)")));
 }
+
+auto SCkGoapDebugger_GraphPane::ClearAuthoredNativePort() -> void
+{
+    if (_GraphBodyPort.IsValid())
+    {
+        _GraphBodyPort->SetContent(SNullWidget::NullWidget);
+    }
+}
+
+auto SCkGoapDebugger_GraphPane::ActivateNativeFallback() -> void
+{
+    if (_ContentHost.IsValid() && _NativeContent.IsValid())
+    {
+        _ContentHost->SetContent(_NativeContent.ToSharedRef());
+    }
+}
+
+auto SCkGoapDebugger_GraphPane::TryActivateAuthoredView() -> void
+{
+    using namespace ck_goap_debugger_graph_pane;
+    if (_AuthoredView.IsValid() || !_ContentHost.IsValid() || !_NativeContent.IsValid())
+    {
+        return;
+    }
+
+    TSharedPtr<const FCkUiWidgetRegistrySnapshot> Registry;
+    const FCkUiLoadResult RegistryResult = FCkDebug_UiRegistry::TryCreate(Registry);
+    if (!RegistryResult.Succeeded)
+    {
+        _AuthoredLoadFailure = FString::Join(RegistryResult.Errors, TEXT("\n"));
+        ActivateNativeFallback();
+        return;
+    }
+    const TSharedPtr<IPlugin> Plugin = IPluginManager::Get().FindPlugin(TEXT("CkDebugger"));
+    if (!Plugin.IsValid())
+    {
+        _AuthoredLoadFailure = TEXT("CkDebugger plugin is unavailable.");
+        ActivateNativeFallback();
+        return;
+    }
+
+    _GraphBodyPort = SNew(SBox)[SNullWidget::NullWidget];
+    FCkUiView::FNativeBindings NativeBindings;
+    NativeBindings.Add(TEXT("graph-body"), _GraphBodyPort);
+    const TWeakPtr<SCkGoapDebugger_GraphPane> WeakPane{SharedThis(this)};
+    const uint64 Generation = ++_AuthoredGeneration;
+    const auto GetPlanner = [WeakPane, Generation]() -> const FCkGoapDebugger_PlannerInfo*
+    {
+        const TSharedPtr<SCkGoapDebugger_GraphPane> Pane = WeakPane.Pin();
+        return Pane.IsValid() && Pane->_AuthoredGeneration == Generation && Pane->_ViewModel.IsValid()
+            ? Pane->_ViewModel->GetSelectedPlannerInfo() : nullptr;
+    };
+    FCkUiView::FDataBindings Data;
+    Data.SlateUserIndex = 0;
+    Data.CanDispatchEvents = TAttribute<bool>::CreateLambda([WeakPane, Generation]()
+    {
+        const TSharedPtr<SCkGoapDebugger_GraphPane> Pane = WeakPane.Pin();
+        return Pane.IsValid() && Pane->_AuthoredGeneration == Generation && Pane->_AuthoredView.IsValid();
+    });
+    Data.Visibility.Add(TEXT("graph-empty-visible"), TAttribute<bool>::CreateLambda([GetPlanner]() { return GetPlanner() == nullptr; }));
+    Data.Visibility.Add(TEXT("graph-selected-visible"), TAttribute<bool>::CreateLambda([GetPlanner]() { return GetPlanner() != nullptr; }));
+    Data.Text.Add(TEXT("graph-title"), TAttribute<FText>::CreateLambda([GetPlanner]()
+    {
+        const FCkGoapDebugger_PlannerInfo* Planner = GetPlanner();
+        return Planner != nullptr ? FText::FromString(FString::Printf(TEXT("Action graph: %s"), *Planner->DisplayName)) : FText::GetEmpty();
+    }));
+    Data.Text.Add(TEXT("graph-status"), TAttribute<FText>::CreateLambda([WeakPane, GetPlanner]()
+    {
+        const TSharedPtr<SCkGoapDebugger_GraphPane> Pane = WeakPane.Pin();
+        const FCkGoapDebugger_PlannerInfo* Planner = GetPlanner();
+        return Planner != nullptr && Pane.IsValid() && Pane->_Graph.IsValid()
+            ? FText::FromString(FString::Printf(TEXT("%d actions · %d edges"), Pane->_Graph->GetActionCount(), Pane->_Graph->GetEdgeCount()))
+            : FText::GetEmpty();
+    }));
+
+    const TSharedRef<FCkUiView> Candidate = FCkUiView::Create(MoveTemp(NativeBindings), FCkUiView::FActions{}, Tokens(),
+        CkStyle::RegularFont(CkStyle::FontSizeBody()), MoveTemp(Data), Registry);
+    const TSharedRef<SWidget> Main = Candidate->GetRegion(TEXT("main"));
+    const FString Directory = FPaths::Combine(Plugin->GetBaseDir(), TEXT("Resources/UI"));
+    Candidate->SetFiles(FPaths::Combine(Directory, TEXT("GoapDebuggerGraph.ui.html")),
+        FPaths::Combine(Directory, TEXT("GoapDebuggerGraph.ui.css")));
+    Candidate->PollFiles();
+    if (!Candidate->GetLastResult().Succeeded)
+    {
+        _AuthoredLoadFailure = FString::Join(Candidate->GetLastResult().Errors, TEXT("\n"));
+        ClearAuthoredNativePort();
+        ActivateNativeFallback();
+        return;
+    }
+    _AuthoredLoadFailure.Reset();
+    _GraphBodyPort->SetContent(_NativeContent.ToSharedRef());
+    _AuthoredView = Candidate;
+    _ContentHost->SetContent(Main);
+}
 auto SCkGoapDebugger_GraphPane::Get_MaxNameDepth() const -> int32
 {
     return _Graph.IsValid() ? _Graph->GetMaxNameDepth() : 1;
@@ -515,12 +648,24 @@ auto SCkGoapDebugger_GraphPane::Refresh_ForStyleChange() -> void
 
 auto SCkGoapDebugger_GraphPane::RefreshFromViewModel() -> void
 {
+    if (_AuthoredView.IsValid())
+    {
+        _AuthoredView->PollFiles(ck_goap_debugger_graph_pane::Tokens());
+        if (!_AuthoredView->GetLastResult().Succeeded)
+        { _AuthoredLoadFailure = FString::Join(_AuthoredView->GetLastResult().Errors, TEXT("\n")); }
+        else
+        { _AuthoredLoadFailure.Reset(); }
+    }
+    else
+    {
+        TryActivateAuthoredView();
+    }
     if (!_Graph.IsValid())
         return;
     const auto* Planner = _ViewModel.IsValid() ? _ViewModel->GetSelectedPlannerInfo() : nullptr;
     if (Planner == nullptr)
     {
-        Reset_ForWorldChange();
+        ResetGraphState();
         if (_HeaderText.IsValid())
             _HeaderText->SetText(FText::FromString(TEXT("Action graph - (no Planner selected)")));
         return;
@@ -769,6 +914,12 @@ auto SCkGoapDebugger_GraphPane::BuildHeader() -> TSharedRef<SWidget>
              SHorizontalBox::Slot().FillWidth(
                  1)[SAssignNew(_HeaderText, SCkDebug_SelectableLabel)
                         .Text(FText::FromString(TEXT("Action graph - (no selection)")))
+                        // The authored shell owns title/status while mounted;
+                        // the legacy label remains the native-fallback title.
+                        .Visibility_Lambda([this]()
+                        {
+                            return _AuthoredView.IsValid() ? EVisibility::Collapsed : EVisibility::Visible;
+                        })
                         .ColorAndOpacity(FSlateColor(CkStyle::Text()))] +
               SHorizontalBox::Slot().AutoWidth()[SNew(SButton)
                                                      .Text(FText::FromString(TEXT("Fit")))

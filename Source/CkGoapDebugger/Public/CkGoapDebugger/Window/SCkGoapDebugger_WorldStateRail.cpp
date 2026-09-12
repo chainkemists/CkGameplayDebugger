@@ -15,14 +15,19 @@
 #include "CkDebuggerCommon/Widgets/SCkDebug_SelectableLabel.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_Switch.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_ValuePill.h"
+#include "CkDebuggerCommon/UI/CkDebug_UiRegistry.h"
 
 #include "CkEditorTools/Style/CkStyle.h"
+#include "CkSlateLayout/SCkUiSurface.h"
 
 #include "CkGoap/Algorithm/CkGoap_WorldState.h"
 #include "CkGoap/WorldState/CkGoap_WorldState_Utils.h"
 
 #include "Styling/CoreStyle.h"
 #include "Styling/StyleDefaults.h"
+
+#include "Interfaces/IPluginManager.h"
+#include "Misc/Paths.h"
 
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/Images/SImage.h"
@@ -48,6 +53,15 @@ namespace ck_goap_debugger_wsrail_internal
     // for hands-on toggles from the rail.
     static const FName WsRail_DebugUiLayerName = FName{TEXT("DebugUI")};
 
+    auto Tokens() -> FCkUiView::FTokens
+    {
+        return {{TEXT("--space-s"), FString::SanitizeFloat(CkStyle::SpaceS)},
+                {TEXT("--space-m"), FString::SanitizeFloat(CkStyle::SpaceM)},
+                {TEXT("--space-l"), FString::SanitizeFloat(CkStyle::SpaceL)},
+                {TEXT("--world-text"), TEXT("#") + CkStyle::Text().ToFColorSRGB().ToHex()},
+                {TEXT("--world-text-mute"), TEXT("#") + CkStyle::TextMute().ToFColorSRGB().ToHex()}};
+    }
+
     auto TruncateKey(const FString& InKey) -> FString
     {
         if (InKey.Len() <= WsRail_MaxKeyChars) { return InKey; }
@@ -71,75 +85,217 @@ auto
 {
     _ViewModel = InArgs._ViewModel;
 
-    ChildSlot
+    _NativeContent = SNew(SBorder)
+        .BorderImage(FCkGoapDebuggerStyle::Get().GetBrush(TEXT("CkGoap.Bg.Panel")))
+        .Padding(FMargin(0.0f))
     [
-        SNew(SBorder)
-            .BorderImage(FCkGoapDebuggerStyle::Get().GetBrush(TEXT("CkGoap.Bg.Panel")))
-            .Padding(FMargin(0.0f))
-            [
-                SNew(SVerticalBox)
+        SNew(SVerticalBox)
 
-                    // ---- Header (pane-head) ----------------------------------
-                    + SVerticalBox::Slot()
-                        .AutoHeight()
+            // ---- Header (pane-head) ----------------------------------
+            + SVerticalBox::Slot()
+                .AutoHeight()
+                [
+                    SAssignNew(_HeaderHost, SBox)
+                ]
+
+            + SVerticalBox::Slot()
+                .AutoHeight()
+                [
+                    SNew(SBox)
+                        .HeightOverride_Lambda([]() -> FOptionalSize
+                        { return FOptionalSize{ck_goap_debugger_axes::Get_SeparatorThickness()}; })
+                        .Visibility_Lambda([]()
+                        {
+                            return ck_goap_debugger_axes::Get_SeparatorThickness() > 0.0f
+                                ? EVisibility::Visible : EVisibility::Collapsed;
+                        })
                         [
-                            SAssignNew(_HeaderHost, SBox)
+                            SNew(SImage)
+                                .Image(CkStyle::GetFilledBrush())
+                                .ColorAndOpacity(FSlateColor(CkStyle::Border()))
                         ]
+                ]
 
-                    + SVerticalBox::Slot()
-                        .AutoHeight()
-                        [
-                            SNew(SBox)
-                                .HeightOverride_Lambda([]() -> FOptionalSize
-                                { return FOptionalSize{ck_goap_debugger_axes::Get_SeparatorThickness()}; })
-                                .Visibility_Lambda([]()
-                                {
-                                    return ck_goap_debugger_axes::Get_SeparatorThickness() > 0.0f
-                                        ? EVisibility::Visible : EVisibility::Collapsed;
-                                })
-                                [
-                                    SNew(SImage)
-                                        .Image(CkStyle::GetFilledBrush())
-                                        .ColorAndOpacity(FSlateColor(CkStyle::Border()))
-                                ]
-                        ]
+            // ---- Search + sort (fixed chrome — keeps input focus) ----
+            + SVerticalBox::Slot()
+                .AutoHeight()
+                .Padding(FMargin(FCkGoapDebuggerStyle::Padding_Small,
+                                 FCkGoapDebuggerStyle::Padding_Small))
+                [
+                    BuildSearchAndSortBar()
+                ]
 
-                    // ---- Search + sort (fixed chrome — keeps input focus) ----
-                    + SVerticalBox::Slot()
-                        .AutoHeight()
-                        .Padding(FMargin(FCkGoapDebuggerStyle::Padding_Small,
+            // ---- Body (scrollable key list) --------------------------
+            + SVerticalBox::Slot()
+                .FillHeight(1.0f)
+                [
+                    SNew(SScrollBox)
+                        .Orientation(Orient_Vertical)
+                        + SScrollBox::Slot()
+                        .Padding(FMargin(FCkGoapDebuggerStyle::Padding_Medium,
                                          FCkGoapDebuggerStyle::Padding_Small))
                         [
-                            BuildSearchAndSortBar()
+                            SAssignNew(_Body, SVerticalBox)
                         ]
+                ]
 
-                    // ---- Body (scrollable key list) --------------------------
-                    + SVerticalBox::Slot()
-                        .FillHeight(1.0f)
-                        [
-                            SNew(SScrollBox)
-                                .Orientation(Orient_Vertical)
-                                + SScrollBox::Slot()
-                                .Padding(FMargin(FCkGoapDebuggerStyle::Padding_Medium,
-                                                 FCkGoapDebuggerStyle::Padding_Small))
-                                [
-                                    SAssignNew(_Body, SVerticalBox)
-                                ]
-                        ]
-
-                    // ---- Footer ----------------------------------------------
-                    + SVerticalBox::Slot()
-                        .AutoHeight()
-                        [
-                            SAssignNew(_FooterHost, SBox)
-                        ]
-            ]
+            // ---- Footer ----------------------------------------------
+            + SVerticalBox::Slot()
+                .AutoHeight()
+                [
+                    SAssignNew(_FooterHost, SBox)
+                ]
     ];
 
+    ChildSlot
+    [
+        SAssignNew(_ContentHost, SBox)
+        [
+            _NativeContent.ToSharedRef()
+        ]
+    ];
+
+    TryActivateAuthoredView();
     RefreshFromViewModel();
 }
 
 SCkGoapDebugger_WorldStateRail::~SCkGoapDebugger_WorldStateRail() = default;
+
+auto SCkGoapDebugger_WorldStateRail::Reset_ForWorldChange() -> void
+{
+    ++_AuthoredGeneration;
+    ClearAuthoredNativePort();
+    _AuthoredView.Reset();
+    _WorldBodyPort.Reset();
+    _IsNativeBodyMounted = false;
+    ActivateNativeFallback();
+
+    _CurrentWorldState = FCk_Handle_Goap_WorldState{};
+    _ExpandedLayers.Reset();
+    _LastContentHash = 0;
+    _HasMaterialized = false;
+    if (_HeaderHost.IsValid()) { _HeaderHost->SetContent(SNullWidget::NullWidget); }
+    if (_Body.IsValid()) { _Body->ClearChildren(); }
+    if (_FooterHost.IsValid()) { _FooterHost->SetContent(SNullWidget::NullWidget); }
+}
+
+auto SCkGoapDebugger_WorldStateRail::ClearAuthoredNativePort() -> void
+{
+    if (_WorldBodyPort.IsValid())
+    {
+        _WorldBodyPort->SetContent(SNullWidget::NullWidget);
+    }
+    _IsNativeBodyMounted = false;
+}
+
+auto SCkGoapDebugger_WorldStateRail::ActivateNativeFallback() -> void
+{
+    if (_ContentHost.IsValid() && _NativeContent.IsValid())
+    {
+        _ContentHost->SetContent(_NativeContent.ToSharedRef());
+    }
+}
+
+auto SCkGoapDebugger_WorldStateRail::TryActivateAuthoredView() -> void
+{
+    using namespace ck_goap_debugger_wsrail_internal;
+
+    if (_AuthoredView.IsValid() || !_ContentHost.IsValid() || !_NativeContent.IsValid())
+    {
+        return;
+    }
+
+    TSharedPtr<const FCkUiWidgetRegistrySnapshot> Registry;
+    const FCkUiLoadResult RegistryResult = FCkDebug_UiRegistry::TryCreate(Registry);
+    if (!RegistryResult.Succeeded)
+    {
+        _AuthoredLoadFailure = FString::Join(RegistryResult.Errors, TEXT("\n"));
+        ActivateNativeFallback();
+        return;
+    }
+
+    const TSharedPtr<IPlugin> Plugin = IPluginManager::Get().FindPlugin(TEXT("CkDebugger"));
+    if (!Plugin.IsValid())
+    {
+        _AuthoredLoadFailure = TEXT("CkDebugger plugin is unavailable.");
+        ActivateNativeFallback();
+        return;
+    }
+
+    // Keep the live fallback mounted until the candidate shell has passed admission.
+    _WorldBodyPort = SNew(SBox)
+    [
+        SNullWidget::NullWidget
+    ];
+
+    FCkUiView::FNativeBindings NativeBindings;
+    NativeBindings.Add(TEXT("goap-world-body"), _WorldBodyPort);
+
+    const TWeakPtr<SCkGoapDebugger_WorldStateRail> WeakRail{SharedThis(this)};
+    const uint64 Generation = ++_AuthoredGeneration;
+    const auto GetActionSet = [WeakRail, Generation]() -> const FCkGoapDebugger_ActionSetInfo*
+    {
+        const TSharedPtr<SCkGoapDebugger_WorldStateRail> Rail = WeakRail.Pin();
+        return Rail.IsValid() && Rail->_AuthoredGeneration == Generation && Rail->_ViewModel.IsValid()
+            ? Rail->_ViewModel->GetSelectedActionSetInfo()
+            : nullptr;
+    };
+
+    FCkUiView::FDataBindings Data;
+    Data.SlateUserIndex = 0;
+    Data.CanDispatchEvents = TAttribute<bool>::CreateLambda([WeakRail, Generation]()
+    {
+        const TSharedPtr<SCkGoapDebugger_WorldStateRail> Rail = WeakRail.Pin();
+        return Rail.IsValid() && Rail->_AuthoredGeneration == Generation && Rail->_AuthoredView.IsValid();
+    });
+    Data.Visibility.Add(TEXT("goap-world-empty-visible"), TAttribute<bool>::CreateLambda([GetActionSet]()
+    {
+        return GetActionSet() == nullptr;
+    }));
+    Data.Visibility.Add(TEXT("goap-world-selected-visible"), TAttribute<bool>::CreateLambda([GetActionSet]()
+    {
+        return GetActionSet() != nullptr;
+    }));
+    Data.Text.Add(TEXT("goap-world-title"), TAttribute<FText>::CreateLambda([WeakRail, GetActionSet]()
+    {
+        const FCkGoapDebugger_ActionSetInfo* ActionSet = GetActionSet();
+        if (ActionSet == nullptr) { return FText::GetEmpty(); }
+        const TSharedPtr<SCkGoapDebugger_WorldStateRail> Rail = WeakRail.Pin();
+        const FCkGoapDebugger_ActionInfo* Action = Rail.IsValid() && Rail->_ViewModel.IsValid()
+            ? Rail->_ViewModel->GetSelectedActionInfo() : nullptr;
+        const FString& Label = Action != nullptr && !Action->WorldStateSourceLabel.IsEmpty()
+            ? Action->WorldStateSourceLabel : ActionSet->WorldStateSourceLabel;
+        return FText::FromString(Label.IsEmpty() ? TEXT("World State") : Label);
+    }));
+    Data.Text.Add(TEXT("goap-world-count"), TAttribute<FText>::CreateLambda([GetActionSet]()
+    {
+        const FCkGoapDebugger_ActionSetInfo* ActionSet = GetActionSet();
+        return ActionSet != nullptr
+            ? FText::FromString(FString::Printf(TEXT("%d keys"), ActionSet->WorldState.Num()))
+            : FText::GetEmpty();
+    }));
+
+    const TSharedRef<FCkUiView> Candidate = FCkUiView::Create(MoveTemp(NativeBindings), FCkUiView::FActions{}, Tokens(),
+        CkStyle::RegularFont(CkStyle::FontSizeBody()), MoveTemp(Data), Registry);
+    const TSharedRef<SWidget> Main = Candidate->GetRegion(TEXT("main"));
+    const FString Directory = FPaths::Combine(Plugin->GetBaseDir(), TEXT("Resources/UI"));
+    Candidate->SetFiles(FPaths::Combine(Directory, TEXT("GoapDebuggerWorldState.ui.html")),
+        FPaths::Combine(Directory, TEXT("GoapDebuggerWorldState.ui.css")));
+    Candidate->PollFiles();
+    if (!Candidate->GetLastResult().Succeeded)
+    {
+        _AuthoredLoadFailure = FString::Join(Candidate->GetLastResult().Errors, TEXT("\n"));
+        ClearAuthoredNativePort();
+        ActivateNativeFallback();
+        return;
+    }
+
+    _AuthoredLoadFailure.Reset();
+    _WorldBodyPort->SetContent(_NativeContent.ToSharedRef());
+    _IsNativeBodyMounted = true;
+    _AuthoredView = Candidate;
+    _ContentHost->SetContent(Main);
+}
 
 // ====================================================================================================================
 // REFRESH
@@ -182,6 +338,24 @@ auto
     RefreshFromViewModel()
     -> void
 {
+    if (_AuthoredView.IsValid())
+    {
+        _AuthoredView->PollFiles(ck_goap_debugger_wsrail_internal::Tokens());
+        if (!_AuthoredView->GetLastResult().Succeeded)
+        {
+            // Rejected live reloads leave the accepted shell and its native rail mounted.
+            _AuthoredLoadFailure = FString::Join(_AuthoredView->GetLastResult().Errors, TEXT("\n"));
+        }
+        else
+        {
+            _AuthoredLoadFailure.Reset();
+        }
+    }
+    else
+    {
+        TryActivateAuthoredView();
+    }
+
     if (NOT _ViewModel.IsValid()) { return; }
 
     const TArray<FCkGoapDebugger_WorldStateEntry>* Entries = nullptr;
@@ -196,6 +370,22 @@ auto
     {
         if (const auto* AsInfo = _ViewModel->GetSelectedActionSetInfo())
         { _CurrentWorldState = AsInfo->WorldStateHandle; }
+    }
+
+    // The authored shell outlives selection changes. Only its port is cleared
+    // while no action set is selected; a later selection restores the same
+    // complete native rail without rebuilding its fixed search chrome.
+    if (_AuthoredView.IsValid() && _WorldBodyPort.IsValid())
+    {
+        if (HasSelection && !_IsNativeBodyMounted && _NativeContent.IsValid())
+        {
+            _WorldBodyPort->SetContent(_NativeContent.ToSharedRef());
+            _IsNativeBodyMounted = true;
+        }
+        else if (!HasSelection)
+        {
+            ClearAuthoredNativePort();
+        }
     }
 
     // ----------------------------------------------------------------------

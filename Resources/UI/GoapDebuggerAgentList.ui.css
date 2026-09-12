@@ -1,0 +1,14 @@
+.goap-agent-list-root { min-width: 0; min-height: 0; gap: var(--space-s); padding: var(--space-s); }
+.goap-agent-list-heading { font-family: sans-serif; font-size: var(--goap-agent-list-row-font-size); font-weight: bold; color: var(--goap-agent-list-text-mute); text-wrap: nowrap; }
+.goap-agent-list-search { min-width: 0; gap: var(--space-s); flex-wrap: wrap; }
+.goap-agent-list-overlay { min-width: 0; min-height: 0; flex-grow: 1; }
+.goap-agent-list-scroll { min-width: 0; min-height: 0; flex-grow: 1; }
+.goap-agent-list-table { min-width: 360px; flex-grow: 1; flex-shrink: 1; }
+.goap-agent-entity-column { min-width: 96px; flex-grow: 0.22; }
+.goap-agent-name-column { min-width: 160px; flex-grow: 0.62; }
+.goap-agent-planners-column { width: 78px; }
+.goap-agent-list-cell { min-width: 0; padding: 0 var(--space-s); vertical-align: center; }
+.goap-agent-name-cell { min-width: 0; font-family: sans-serif; font-size: var(--goap-agent-list-row-font-size); color: var(--goap-agent-list-text); text-wrap: nowrap; text-overflow: ellipsis; }
+.goap-agent-planners-cell { font-family: sans-serif; font-size: var(--goap-agent-list-micro-font-size); color: var(--goap-agent-list-text-mute); text-wrap: nowrap; horizontal-align: right; }
+.goap-agent-list-empty { horizontal-align: center; vertical-align: center; padding: var(--space-l); }
+.goap-agent-list-empty-text { min-width: 0; font-family: monospace; font-size: var(--goap-agent-list-row-font-size); color: var(--goap-agent-list-text-mute); text-wrap: wrap; overflow-wrap: anywhere; }

@@ -1,0 +1,16 @@
+<ui version="1">
+  <region name="main">
+    <column id="goap-decision-root" class="goap-decision-root">
+      <column id="goap-decision-empty" visible="decision-empty-visible" class="goap-decision-empty">
+        <text id="goap-decision-empty-text" bind="decision-empty" />
+      </column>
+      <column id="goap-decision-selected" visible="decision-selected-visible" class="goap-decision-selected">
+        <row id="goap-decision-header" class="goap-decision-header">
+          <text id="goap-decision-title" bind="decision-title" class="goap-decision-title" />
+          <debug-status id="goap-decision-status" label-bind="decision-status" foreground-bind="decision-status-foreground" background-bind="decision-status-background" show-dot="true" />
+        </row>
+        <native id="decision-body" bind="decision-body" />
+      </column>
+    </column>
+  </region>
+</ui>

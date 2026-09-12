@@ -9,6 +9,7 @@
 
 class SVerticalBox;
 class SBox;
+class FCkUiCollection;
 class FCkUiView;
 class UWorld;
 
@@ -63,8 +64,11 @@ private:
     auto Resolve_World() const -> UWorld*;
     auto Build_AuthoredView() -> void;
     auto Poll_AuthoredFiles() -> void;
-    auto Clear_Sections() -> void;
-    auto Mount_Section(const TSharedPtr<SBox>& InHost, const TSharedRef<SWidget>& InContent) -> void;
+    auto Activate_NativeFallback(const FString& InError) -> void;
+    auto Present_Snapshot(const FCkGoapDebugger_EntitySnapshot* InSnapshot) -> void;
+    auto Publish_AuthoredSnapshot(const FCkGoapDebugger_EntitySnapshot* InSnapshot) -> bool;
+    auto Clear_AuthoredProjection() -> void;
+    auto Rebuild_Native(const FCkGoapDebugger_EntitySnapshot* InSnapshot) -> void;
 
     // Rebuild the inner Slate tree from the latest snapshot.
     auto Rebuild() -> void;
@@ -90,14 +94,26 @@ private:
     FCk_Handle                    _Entity;
     TSharedPtr<SBox>              _RootHost;
     TSharedPtr<SVerticalBox>      _ContentBox;
-    TSharedPtr<SBox>              _HeaderHost;
-    TSharedPtr<SBox>              _ActionSetsHost;
-    TSharedPtr<SBox>              _ActiveChainHost;
-    TSharedPtr<SBox>              _LeafActionHost;
-    TSharedPtr<SBox>              _PlanPreviewHost;
-    TSharedPtr<SBox>              _EmptyHost;
     TSharedPtr<FCkUiView>         _AuthoredView;
+    TSharedPtr<FCkUiCollection>   _AuthoredPlannerRecords;
+    TSharedPtr<FCkUiCollection>   _AuthoredChainRecords;
+    TSharedPtr<FCkUiCollection>   _AuthoredPreviewRecords;
     FString                       _AuthoredLoadError;
+    FString                       _AuthoredPlannerCount;
+    FString                       _AuthoredChainHeading;
+    FString                       _AuthoredChainTags;
+    FString                       _AuthoredLeafHeading;
+    FString                       _AuthoredLeafStatus;
+    FString                       _AuthoredLeafCost;
+    FString                       _AuthoredLeafLength;
+    FString                       _AuthoredPreviewHeading;
+    FString                       _AuthoredPreviewOverflow;
+    FLinearColor                  _AuthoredLeafStatusForeground = FLinearColor::White;
+    FLinearColor                  _AuthoredLeafStatusBackground = FLinearColor::Transparent;
+    bool                          _AuthoredHasContent = false;
+    bool                          _AuthoredHasPlanner = false;
+    bool                          _AuthoredHasLeaf = false;
+    bool                          _AuthoredPreviewOverflowVisible = false;
     bool                          _AuthoredMounted = false;
 
     // Coarse hash of the last rendered snapshot — keeps Tick from rebuilding

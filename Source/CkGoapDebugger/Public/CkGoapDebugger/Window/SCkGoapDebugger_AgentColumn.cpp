@@ -7,6 +7,7 @@
 #include "CkCore/Validation/CkIsValid.h"
 
 #include "CkDebuggerCommon/Styles/CkDebuggerCommonStyle.h"
+#include "CkDebuggerCommon/UI/CkDebug_UiRegistry.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_Card.h"
 #include "CkGoapDebugger/CkGoapDebugger_Axes.h"
 
@@ -21,7 +22,11 @@
 #include "CkEditorTools/Style/CkStyle.h"
 
 #include "CkGoap/Planner/CkGoap_Planner_Utils.h"
+#include "CkSlateLayout/CkUiCollection.h"
+#include "CkSlateLayout/SCkUiSurface.h"
 
+#include "Interfaces/IPluginManager.h"
+#include "Misc/Paths.h"
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Input/SComboBox.h"
 #include "Widgets/Images/SImage.h"
@@ -31,6 +36,7 @@
 #include "Widgets/Layout/SScrollBox.h"
 #include "Widgets/Layout/SWrapBox.h"
 #include "Widgets/SBoxPanel.h"
+#include "Widgets/SNullWidget.h"
 #include "Widgets/Text/STextBlock.h"
 
 // ====================================================================================================================
@@ -43,6 +49,56 @@ namespace ck_goap_debugger_agent_column
     // file-local editor used before SCkDebug_NumericEditor was promoted, so the rows keep their
     // established column instead of adopting the widget's narrower shared default.
     constexpr float SettingsNumericWidth = 90.0f;
+
+    auto Tokens() -> FCkUiView::FTokens
+    {
+        return {{TEXT("--space-s"), FString::SanitizeFloat(CkStyle::SpaceS)},
+                {TEXT("--space-m"), FString::SanitizeFloat(CkStyle::SpaceM)},
+                {TEXT("--space-l"), FString::SanitizeFloat(CkStyle::SpaceL)},
+                {TEXT("--goap-agent-list-text"), TEXT("#") + CkStyle::Text().ToFColorSRGB().ToHex()},
+                {TEXT("--goap-agent-list-text-mute"), TEXT("#") + CkStyle::TextMute().ToFColorSRGB().ToHex()}};
+    }
+
+    auto PolicyKey(const ECk_Goap_ReplanPolicy InPolicy) -> FString
+    {
+        switch (InPolicy)
+        {
+            case ECk_Goap_ReplanPolicy::OnWorldStateDirty: return TEXT("world-state");
+            case ECk_Goap_ReplanPolicy::OnCostDirty: return TEXT("cost");
+            case ECk_Goap_ReplanPolicy::OnEitherDirty: return TEXT("either");
+            default: return TEXT("explicit");
+        }
+    }
+
+    auto TextField(const FString& InValue) -> FCkUiFieldValue
+    {
+        return {.Kind = ECkUiFieldKind::Text, .Text = FText::FromString(InValue)};
+    }
+
+    auto MakePolicyOptions() -> TSharedPtr<FCkUiCollection>
+    {
+        TSharedPtr<FCkUiCollection> Options;
+        const FCkUiLoadResult SchemaResult = FCkUiCollection::TryCreate(
+            {{TEXT("label"), ECkUiFieldKind::Text}}, Options);
+        if (!SchemaResult.Succeeded || !Options.IsValid())
+        {
+            return nullptr;
+        }
+
+        const auto Add = [](const TCHAR* InKey, const TCHAR* InLabel)
+        {
+            FCkUiRecordData Record;
+            Record.Key = InKey;
+            Record.Fields.Add(TEXT("label"), TextField(InLabel));
+            return Record;
+        };
+        const FCkUiLoadResult RecordsResult = Options->TrySetRecords(
+            {Add(TEXT("world-state"), TEXT("On world-state change")),
+             Add(TEXT("cost"), TEXT("On cost change")),
+             Add(TEXT("either"), TEXT("On either")),
+             Add(TEXT("explicit"), TEXT("Only when asked (Explicit)"))});
+        return RecordsResult.Succeeded ? Options : nullptr;
+    }
 
     auto InitialsOf(const FString& InName) -> FString
     {
@@ -181,21 +237,29 @@ auto
 {
     _ViewModel = InArgs._ViewModel;
 
+    _NativeContent = SNew(SBorder)
+        .BorderImage(CkStyle::GetFilledBrush())
+        .BorderBackgroundColor(FSlateColor(CkStyle::Bg1()))
+        .Padding(FMargin(CkStyle::SpaceM))
+        [
+            SNew(SScrollBox)
+                .Orientation(Orient_Vertical)
+                + SScrollBox::Slot()
+                [
+                    SAssignNew(_Body, SVerticalBox)
+                ]
+        ];
+
     ChildSlot
     [
-        SNew(SBorder)
-            .BorderImage(CkStyle::GetFilledBrush())
-            .BorderBackgroundColor(FSlateColor(CkStyle::Bg1()))
-            .Padding(FMargin(CkStyle::SpaceM))
-            [
-                SNew(SScrollBox)
-                    .Orientation(Orient_Vertical)
-                    + SScrollBox::Slot()
-                    [
-                        SAssignNew(_Body, SVerticalBox)
-                    ]
-            ]
+        SAssignNew(_ContentHost, SBox)
+        [
+            _NativeContent.ToSharedRef()
+        ]
     ];
+
+    _PolicyOptions = ck_goap_debugger_agent_column::MakePolicyOptions();
+    TryActivateAuthoredView();
 
     RefreshFromViewModel();
 }
@@ -206,7 +270,14 @@ auto
     -> void
 {
     _LastHash = 0;
-    if (_Body.IsValid()) { _Body->ClearChildren(); }
+    ++_AuthoredGeneration;
+    ClearAuthoredNativePorts();
+    _AuthoredView.Reset();
+    ActivateNativeFallback();
+    if (_Body.IsValid())
+    {
+        _Body->ClearChildren();
+    }
 }
 
 auto
@@ -214,7 +285,28 @@ auto
     RefreshFromViewModel()
     -> void
 {
-    if (NOT _ViewModel.IsValid() || NOT _Body.IsValid()) { return; }
+    if (NOT _ViewModel.IsValid() || NOT _Body.IsValid())
+    {
+        return;
+    }
+
+    if (_AuthoredView.IsValid())
+    {
+        _AuthoredView->PollFiles(ck_goap_debugger_agent_column::Tokens());
+        if (!_AuthoredView->GetLastResult().Succeeded)
+        {
+            // The currently accepted tree stays mounted after a rejected live reload.
+            _AuthoredLoadFailure = FString::Join(_AuthoredView->GetLastResult().Errors, TEXT("\n"));
+        }
+        else
+        {
+            _AuthoredLoadFailure.Reset();
+        }
+    }
+    else
+    {
+        TryActivateAuthoredView();
+    }
 
     const auto* Planner = _ViewModel->GetSelectedPlannerInfo();
     const auto* Snapshot = _ViewModel->GetCurrentEntitySnapshot();
@@ -224,18 +316,22 @@ auto
         if (_LastHash != 1)
         {
             _LastHash = 1;
-            _Body->ClearChildren();
-            _Body->AddSlot()
-                .AutoHeight()
-                .Padding(CkStyle::SpaceL)
-                [
-                    SNew(STextBlock)
-                        .Text(FText::FromString(TEXT("Select an agent in the Squad tab (or a planner in the tree) to inspect it.")))
-                        .Font_Lambda([]() -> FSlateFontInfo
-                        { return ck::debug_axes::ScaledFont("Regular", CkStyle::FontSizeBody()); })
-                        .ColorAndOpacity(FSlateColor(CkStyle::TextDim()))
-                        .AutoWrapText(true)
-                ];
+            ClearAuthoredNativePorts();
+            if (!_AuthoredView.IsValid())
+            {
+                _Body->ClearChildren();
+                _Body->AddSlot()
+                    .AutoHeight()
+                    .Padding(CkStyle::SpaceL)
+                    [
+                        SNew(STextBlock)
+                            .Text(FText::FromString(TEXT("Select an agent in the Squad tab (or a planner in the tree) to inspect it.")))
+                            .Font_Lambda([]() -> FSlateFontInfo
+                            { return ck::debug_axes::ScaledFont("Regular", CkStyle::FontSizeBody()); })
+                            .ColorAndOpacity(FSlateColor(CkStyle::TextDim()))
+                            .AutoWrapText(true)
+                    ];
+            }
         }
         return;
     }
@@ -256,7 +352,10 @@ auto
     // Chain-crumb + plan-step names run through the shared name-depth tuner.
     Hash = HashCombine(Hash, GetTypeHash(_ViewModel->Get_NameDepth()));
 
-    if (Hash == _LastHash) { return; }
+    if (Hash == _LastHash)
+    {
+        return;
+    }
     _LastHash = Hash;
 
     DoRebuild(*Planner, Snapshot != nullptr ? Snapshot->DebugName : FString{});
@@ -269,6 +368,27 @@ auto
     DoRebuild(const FCkGoapDebugger_PlannerInfo& InPlanner, const FString& InAgentName)
     -> void
 {
+    if (_AuthoredView.IsValid())
+    {
+        if (_BreadcrumbPort.IsValid())
+        {
+            _BreadcrumbPort->SetContent(DoBuildChainCrumb(InPlanner));
+        }
+        if (_GoalPort.IsValid())
+        {
+            _GoalPort->SetContent(DoBuildGoalPanel(InPlanner));
+        }
+        if (_PlanPort.IsValid())
+        {
+            _PlanPort->SetContent(DoBuildPlanPanel(InPlanner));
+        }
+        if (_SearchBudgetPort.IsValid())
+        {
+            _SearchBudgetPort->SetContent(DoBuildSearchBudgetEditor(InPlanner));
+        }
+        return;
+    }
+
     _Body->ClearChildren();
 
     const auto AddSection = [this](TSharedRef<SWidget> InWidget)
@@ -286,6 +406,281 @@ auto
     AddSection(DoBuildGoalPanel(InPlanner));
     AddSection(DoBuildPlanPanel(InPlanner));
     AddSection(DoBuildSettingsDrawer(InPlanner));
+}
+
+// ====================================================================================================================
+
+auto SCkGoapDebugger_AgentColumn::ClearAuthoredNativePorts() -> void
+{
+    const auto Clear = [](const TSharedPtr<SBox>& InPort)
+    {
+        if (InPort.IsValid())
+        {
+            InPort->SetContent(SNullWidget::NullWidget);
+        }
+    };
+
+    Clear(_BreadcrumbPort);
+    Clear(_GoalPort);
+    Clear(_PlanPort);
+    Clear(_SearchBudgetPort);
+}
+
+auto SCkGoapDebugger_AgentColumn::ActivateNativeFallback() -> void
+{
+    if (_ContentHost.IsValid() && _NativeContent.IsValid())
+    {
+        _ContentHost->SetContent(_NativeContent.ToSharedRef());
+    }
+}
+
+auto SCkGoapDebugger_AgentColumn::TryActivateAuthoredView() -> void
+{
+    using namespace ck_goap_debugger_agent_column;
+
+    if (_AuthoredView.IsValid() || !_ContentHost.IsValid() || !_PolicyOptions.IsValid())
+    {
+        return;
+    }
+
+    TSharedPtr<const FCkUiWidgetRegistrySnapshot> Registry;
+    const FCkUiLoadResult RegistryResult = FCkDebug_UiRegistry::TryCreate(Registry);
+    if (!RegistryResult.Succeeded)
+    {
+        _AuthoredLoadFailure = FString::Join(RegistryResult.Errors, TEXT("\n"));
+        ActivateNativeFallback();
+        return;
+    }
+
+    const TSharedPtr<IPlugin> Plugin = IPluginManager::Get().FindPlugin(TEXT("CkDebugger"));
+    if (!Plugin.IsValid())
+    {
+        _AuthoredLoadFailure = TEXT("CkDebugger plugin is unavailable.");
+        ActivateNativeFallback();
+        return;
+    }
+
+    _BreadcrumbPort = SNew(SBox);
+    _GoalPort = SNew(SBox);
+    _PlanPort = SNew(SBox);
+    _SearchBudgetPort = SNew(SBox);
+
+    FCkUiView::FNativeBindings NativeBindings;
+    NativeBindings.Add(TEXT("goap-agent-breadcrumb-body"), _BreadcrumbPort);
+    NativeBindings.Add(TEXT("goap-agent-goal-body"), _GoalPort);
+    NativeBindings.Add(TEXT("goap-agent-plan-body"), _PlanPort);
+    NativeBindings.Add(TEXT("goap-agent-budget-body"), _SearchBudgetPort);
+
+    const TWeakPtr<SCkGoapDebugger_AgentColumn> WeakPanel{SharedThis(this)};
+    const uint64 Generation = ++_AuthoredGeneration;
+    const auto GetPlanner = [WeakPanel, Generation]() -> const FCkGoapDebugger_PlannerInfo*
+    {
+        const TSharedPtr<SCkGoapDebugger_AgentColumn> Panel = WeakPanel.Pin();
+        return Panel.IsValid() && Panel->_AuthoredGeneration == Generation && Panel->_ViewModel.IsValid()
+            ? Panel->_ViewModel->GetSelectedPlannerInfo()
+            : nullptr;
+    };
+
+    FCkUiView::FDataBindings Data;
+    Data.SlateUserIndex = 0;
+    Data.CanDispatchEvents = TAttribute<bool>::CreateLambda([WeakPanel, Generation]()
+    {
+        const TSharedPtr<SCkGoapDebugger_AgentColumn> Panel = WeakPanel.Pin();
+        return Panel.IsValid() && Panel->_AuthoredGeneration == Generation && Panel->_AuthoredView.IsValid();
+    });
+    Data.Visibility.Add(TEXT("goap-agent-empty-visible"), TAttribute<bool>::CreateLambda([GetPlanner]()
+    {
+        return GetPlanner() == nullptr;
+    }));
+    Data.Visibility.Add(TEXT("goap-agent-card-visible"), TAttribute<bool>::CreateLambda([GetPlanner]()
+    {
+        return GetPlanner() != nullptr;
+    }));
+    Data.Visibility.Add(TEXT("goap-agent-enabled"), TAttribute<bool>::CreateLambda([GetPlanner]()
+    {
+        const FCkGoapDebugger_PlannerInfo* Planner = GetPlanner();
+        return Planner != nullptr && Planner->EnableToggle == ECk_EnableDisable::Enable;
+    }));
+    // The underlying request is admitted but intentionally ignored by the GOAP processor. Keep the
+    // authored select live as a construction-time fact, while preventing misleading runtime input.
+    Data.Visibility.Add(TEXT("goap-agent-policy-read-only"), TAttribute<bool>::CreateLambda([]()
+    {
+        return true;
+    }));
+    Data.Text.Add(TEXT("goap-agent-empty"), TAttribute<FText>::CreateLambda([]()
+    {
+        return FText::FromString(TEXT("Select an agent in the Squad tab (or a planner in the tree) to inspect it."));
+    }));
+    Data.Text.Add(TEXT("goap-agent-name"), TAttribute<FText>::CreateLambda([WeakPanel, GetPlanner]()
+    {
+        const TSharedPtr<SCkGoapDebugger_AgentColumn> Panel = WeakPanel.Pin();
+        const FCkGoapDebugger_EntitySnapshot* Snapshot = Panel.IsValid() && Panel->_ViewModel.IsValid()
+            ? Panel->_ViewModel->GetCurrentEntitySnapshot()
+            : nullptr;
+        const FCkGoapDebugger_PlannerInfo* Planner = GetPlanner();
+        return FText::FromString(Snapshot != nullptr && !Snapshot->DebugName.IsEmpty()
+            ? Snapshot->DebugName
+            : (Planner != nullptr ? Planner->DisplayName : FString{}));
+    }));
+    Data.Text.Add(TEXT("goap-agent-status"), TAttribute<FText>::CreateLambda([GetPlanner]()
+    {
+        const FCkGoapDebugger_PlannerInfo* Planner = GetPlanner();
+        return Planner != nullptr ? StatusText(Planner->PlanStatus) : FText::GetEmpty();
+    }));
+    Data.Color.Add(TEXT("goap-agent-status-foreground"), TAttribute<FLinearColor>::CreateLambda([GetPlanner]()
+    {
+        const FCkGoapDebugger_PlannerInfo* Planner = GetPlanner();
+        if (Planner == nullptr)
+        {
+            return CkStyle::TextMute();
+        }
+        switch (StatusTone(Planner->PlanStatus))
+        {
+            case ECk_Tone::Ok: return CkStyle::Ok();
+            case ECk_Tone::Err: return CkStyle::Err();
+            case ECk_Tone::Warn: return CkStyle::Warn();
+            case ECk_Tone::Accent: return CkStyle::Accent();
+            default: return CkStyle::TextMute();
+        }
+    }));
+    Data.Color.Add(TEXT("goap-agent-status-background"), TAttribute<FLinearColor>::CreateLambda([GetPlanner]()
+    {
+        const FCkGoapDebugger_PlannerInfo* Planner = GetPlanner();
+        return Planner != nullptr ? CkStyle::OverlayOf(Planner->PlanStatus == ECk_GoapPlanStatus::PlanFailed
+            ? CkStyle::Err()
+            : CkStyle::Accent(), 0.12f) : FLinearColor::Transparent;
+    }));
+
+    const auto AddPlannerText = [&Data, GetPlanner](const TCHAR* InName, TFunction<FString(const FCkGoapDebugger_PlannerInfo&)> InText)
+    {
+        Data.Text.Add(InName, TAttribute<FText>::CreateLambda([GetPlanner, Text = MoveTemp(InText)]()
+        {
+            const FCkGoapDebugger_PlannerInfo* Planner = GetPlanner();
+            return Planner != nullptr ? FText::FromString(Text(*Planner)) : FText::GetEmpty();
+        }));
+    };
+    AddPlannerText(TEXT("goap-agent-planner-tag"), [](const FCkGoapDebugger_PlannerInfo& Planner) { return Planner.PlannerTag.ToString(); });
+    AddPlannerText(TEXT("goap-agent-world-state"), [](const FCkGoapDebugger_PlannerInfo& Planner)
+    {
+        return Planner.WorldStateSourceLabel.IsEmpty() ? TEXT("(inherited)") : Planner.WorldStateSourceLabel;
+    });
+    AddPlannerText(TEXT("goap-agent-plan-on-start"), [](const FCkGoapDebugger_PlannerInfo& Planner)
+    {
+        return Planner.PlanOnStart ? TEXT("true") : TEXT("false");
+    });
+    AddPlannerText(TEXT("goap-agent-defaults"), [](const FCkGoapDebugger_PlannerInfo& Planner)
+    {
+        return Planner.AllowPlanFailed ? TEXT("plan failure allowed")
+            : (Planner.HasUnconditionalFallback ? TEXT("fallback present") : TEXT("fallback missing"));
+    });
+    AddPlannerText(TEXT("goap-agent-last-result"), [](const FCkGoapDebugger_PlannerInfo& Planner)
+    {
+        return StatusText(Planner.PlanStatus).ToString();
+    });
+
+    Data.String.Add(TEXT("goap-agent-policy"), TAttribute<FString>::CreateLambda([GetPlanner]()
+    {
+        const FCkGoapDebugger_PlannerInfo* Planner = GetPlanner();
+        return Planner != nullptr ? PolicyKey(Planner->ReplanPolicy) : FString{};
+    }));
+    Data.Collections.Add(TEXT("goap-agent-policy-options"), _PolicyOptions);
+    // FCkUiSelect requires a changed callback even when read-only. This deliberate no-op is not a
+    // request path: the policy is construction-time until the GOAP processor supports runtime tuning.
+    Data.StringChanged.Add(TEXT("goap-agent-policy-changed"), FCkUiOnStringChanged::CreateLambda([](const FString&)
+    {
+    }));
+    Data.BoolChanged.Add(TEXT("goap-agent-enabled-changed"), FCkUiOnBoolChanged::CreateLambda([GetPlanner](const bool InEnabled)
+    {
+        const FCkGoapDebugger_PlannerInfo* Planner = GetPlanner();
+        if (Planner == nullptr)
+        {
+            return;
+        }
+        auto Mutable = Planner->PlannerHandle;
+        if (ck::Is_NOT_Valid(Mutable))
+        {
+            return;
+        }
+        UCk_Utils_Goap_Planner_UE::Request_SetEnableToggle(Mutable,
+            InEnabled ? ECk_EnableDisable::Enable : ECk_EnableDisable::Disable, {});
+    }));
+    Data.Number.Add(TEXT("goap-agent-min-interval"), TAttribute<float>::CreateLambda([GetPlanner]()
+    {
+        const FCkGoapDebugger_PlannerInfo* Planner = GetPlanner();
+        return Planner != nullptr ? Planner->MinReplanIntervalSeconds : 0.0f;
+    }));
+    Data.NumberCommitted.Add(TEXT("goap-agent-min-interval-committed"), FCkUiOnNumberCommitted::CreateLambda([GetPlanner](const float InValue, ETextCommit::Type)
+    {
+        const FCkGoapDebugger_PlannerInfo* Planner = GetPlanner();
+        if (Planner == nullptr)
+        {
+            return;
+        }
+        auto Mutable = Planner->PlannerHandle;
+        if (ck::Is_NOT_Valid(Mutable))
+        {
+            return;
+        }
+        UCk_Utils_Goap_Planner_UE::Request_SetReplanInterval(Mutable, FMath::Max(0.0f, InValue), {});
+    }));
+    Data.Number.Add(TEXT("goap-agent-threshold"), TAttribute<float>::CreateLambda([GetPlanner]()
+    {
+        const FCkGoapDebugger_PlannerInfo* Planner = GetPlanner();
+        return Planner != nullptr ? Planner->CostThreshold : 0.0f;
+    }));
+    Data.NumberCommitted.Add(TEXT("goap-agent-threshold-committed"), FCkUiOnNumberCommitted::CreateLambda([GetPlanner](const float InValue, ETextCommit::Type)
+    {
+        const FCkGoapDebugger_PlannerInfo* Planner = GetPlanner();
+        if (Planner == nullptr)
+        {
+            return;
+        }
+        auto Mutable = Planner->PlannerHandle;
+        if (ck::Is_NOT_Valid(Mutable))
+        {
+            return;
+        }
+        UCk_Utils_Goap_Planner_UE::Request_SetCostThreshold(Mutable, FMath::Max(0.0f, InValue), {});
+    }));
+    FCkUiView::FActions Actions;
+    const auto AddRequestAction = [&Actions, GetPlanner](const TCHAR* InName, TFunction<void(FCk_Handle_Goap_Planner&)> InRequest)
+    {
+        Actions.Add(InName, FSimpleDelegate::CreateLambda([GetPlanner, Request = MoveTemp(InRequest)]()
+        {
+            const FCkGoapDebugger_PlannerInfo* Planner = GetPlanner();
+            if (Planner == nullptr)
+            {
+                return;
+            }
+            auto Mutable = Planner->PlannerHandle;
+            if (ck::Is_NOT_Valid(Mutable))
+            {
+                return;
+            }
+            Request(Mutable);
+        }));
+    };
+    AddRequestAction(TEXT("goap-agent-replan"), [](FCk_Handle_Goap_Planner& Mutable) { UCk_Utils_Goap_Planner_UE::Request_Plan(Mutable, {}); });
+    AddRequestAction(TEXT("goap-agent-cancel"), [](FCk_Handle_Goap_Planner& Mutable) { UCk_Utils_Goap_Planner_UE::Request_CancelPlan(Mutable, {}); });
+    AddRequestAction(TEXT("goap-agent-reset"), [](FCk_Handle_Goap_Planner& Mutable) { UCk_Utils_Goap_Planner_UE::Request_ResetActiveChain(Mutable, {}); });
+
+    const TSharedRef<FCkUiView> Candidate = FCkUiView::Create(MoveTemp(NativeBindings), MoveTemp(Actions), Tokens(),
+        CkStyle::RegularFont(CkStyle::FontSizeBody()), MoveTemp(Data), Registry);
+    const TSharedRef<SWidget> Main = Candidate->GetRegion(TEXT("main"));
+    const FString Directory = FPaths::Combine(Plugin->GetBaseDir(), TEXT("Resources/UI"));
+    Candidate->SetFiles(FPaths::Combine(Directory, TEXT("GoapDebuggerAgentColumn.ui.html")),
+        FPaths::Combine(Directory, TEXT("GoapDebuggerAgentColumn.ui.css")));
+    Candidate->PollFiles();
+    if (!Candidate->GetLastResult().Succeeded)
+    {
+        _AuthoredLoadFailure = FString::Join(Candidate->GetLastResult().Errors, TEXT("\n"));
+        ActivateNativeFallback();
+        return;
+    }
+
+    _AuthoredLoadFailure.Reset();
+    _AuthoredView = Candidate;
+    _ContentHost->SetContent(Main);
 }
 
 // ====================================================================================================================
@@ -899,6 +1294,32 @@ auto
 
 // ====================================================================================================================
 
+auto SCkGoapDebugger_AgentColumn::DoBuildSearchBudgetEditor(const FCkGoapDebugger_PlannerInfo& InPlanner)
+    -> TSharedRef<SWidget>
+{
+    const FCk_Handle_Goap_Planner PlannerHandle = InPlanner.PlannerHandle;
+    return SNew(SCkDebug_NumericEditor)
+        .Value_Lambda([PlannerHandle, Snapshot = InPlanner.SearchBudgetMicroseconds]() -> double
+        {
+            return ck::IsValid(PlannerHandle)
+                ? static_cast<double>(UCk_Utils_Goap_Planner_UE::Get_SearchBudgetMicroseconds(PlannerHandle))
+                : static_cast<double>(Snapshot);
+        })
+        .Kind(ECkDebug_NumericKind::Integer)
+        .MinValue(0.0)
+        .Width(ck_goap_debugger_agent_column::SettingsNumericWidth)
+        .OnValueCommitted_Lambda([PlannerHandle](const double InValue)
+        {
+            auto Mutable = PlannerHandle;
+            if (ck::Is_NOT_Valid(Mutable)) { return; }
+
+            UCk_Utils_Goap_Planner_UE::Request_SetSearchBudget(Mutable,
+                static_cast<int64>(FMath::Max(0.0, InValue)), {});
+        });
+}
+
+// ====================================================================================================================
+
 auto
     SCkGoapDebugger_AgentColumn::
     DoBuildSettingsDrawer(const FCkGoapDebugger_PlannerInfo& InPlanner)
@@ -967,17 +1388,6 @@ auto
             default:                                       return 3;
         }
     };
-    const auto IndexToPolicy = [](int32 InIndex) -> ECk_Goap_ReplanPolicy
-    {
-        switch (InIndex)
-        {
-            case 0:  return ECk_Goap_ReplanPolicy::OnWorldStateDirty;
-            case 1:  return ECk_Goap_ReplanPolicy::OnCostDirty;
-            case 2:  return ECk_Goap_ReplanPolicy::OnEitherDirty;
-            default: return ECk_Goap_ReplanPolicy::Explicit;
-        }
-    };
-
     auto Rows = SNew(SVerticalBox);
 
     const auto AddRow = [&Rows](TSharedRef<SWidget> InRow)
@@ -1039,26 +1449,17 @@ auto
             ]));
 
     AddRow(MakeRow(TEXT("Replan policy"),
-        TEXT("When the planner replans on its own. Dirty events inside the min-interval window coalesce into one replan. Request_SetReplanPolicy."),
+        TEXT("Construction-time policy. Runtime tuning is not supported by the GOAP processor."),
         SNew(SComboBox<TSharedPtr<FString>>)
             .OptionsSource(&PolicyOptions)
             .InitiallySelectedItem(PolicyOptions[PolicyToIndex(InPlanner.ReplanPolicy)])
+            .IsEnabled(false)
             .OnGenerateWidget_Lambda([](TSharedPtr<FString> InOption)
             {
                 return SNew(STextBlock)
                     .Text(FText::FromString(InOption.IsValid() ? *InOption : FString{}))
                     .Font_Lambda([]() -> FSlateFontInfo
                     { return ck::debug_axes::ScaledFont("Regular", CkStyle::FontSizeSmall()); });
-            })
-            .OnSelectionChanged_Lambda([PlannerHandle, IndexToPolicy](TSharedPtr<FString> InOption, ESelectInfo::Type InSelectInfo)
-            {
-                if (InSelectInfo == ESelectInfo::Direct) { return; }
-                const auto Index = PolicyOptions.IndexOfByKey(InOption);
-                if (Index == INDEX_NONE) { return; }
-
-                auto Mutable = PlannerHandle;
-                if (ck::Is_NOT_Valid(Mutable)) { return; }
-                UCk_Utils_Goap_Planner_UE::Request_SetReplanPolicy(Mutable, IndexToPolicy(Index), {});
             })
             [
                 SNew(STextBlock)

@@ -8,6 +8,7 @@
 // ====================================================================================================================
 
 class FCkGoapDebugger_ViewModel;
+class FCkUiView;
 class SBox;
 class STextBlock;
 class SCkDebug_SelectableLabel;
@@ -50,6 +51,10 @@ class CKGOAPDEBUGGER_API SCkGoapDebugger_GraphPane : public SCompoundWidget
     // Drops all graph nodes so handles release while the ECS registry is live.
     auto Reset_ForWorldChange() -> void;
 
+    // Rebind after the ViewModel has published its teardown reset. The next
+    // ordinary ViewModel change can then mount the next world's authored shell.
+    auto Resume_AfterWorldChange() -> void;
+
     // Exposes the runtime graph's max-name-depth so the main window's
     // toolbar +/- buttons can clamp their cycle to the longest class-name
     // segment count actually present in the current snapshot.
@@ -59,6 +64,10 @@ class CKGOAPDEBUGGER_API SCkGoapDebugger_GraphPane : public SCompoundWidget
     // the graph model, selection, viewport transform, and cached card widgets.
     auto Refresh_ForStyleChange() -> void;
 
+    /** Test-only inspection of the retained production authored shell. */
+    auto Get_AuthoredView() const -> TSharedPtr<FCkUiView> { return _AuthoredView; }
+    auto Get_AuthoredLoadFailure() const -> const FString& { return _AuthoredLoadFailure; }
+
   private:
     auto BuildHeader() -> TSharedRef<SWidget>;
     auto OnGraphSelectionChanged(const TSet<uint64>& InSelection) -> void;
@@ -66,6 +75,10 @@ class CKGOAPDEBUGGER_API SCkGoapDebugger_GraphPane : public SCompoundWidget
     auto RebuildCanvasScene() -> void;
     auto ResetManualNodePositions() -> void;
     auto Request_SetHideDimmed(bool InHideDimmed) -> void;
+    auto ResetGraphState() -> void;
+    auto TryActivateAuthoredView() -> void;
+    auto ActivateNativeFallback() -> void;
+    auto ClearAuthoredNativePort() -> void;
 
   private:
     TSharedPtr<FCkGoapDebugger_ViewModel> _ViewModel;
@@ -73,6 +86,12 @@ class CKGOAPDEBUGGER_API SCkGoapDebugger_GraphPane : public SCompoundWidget
     TSharedPtr<FCkGoapRuntimeGraphModel> _Graph;
     TSharedPtr<SCkDebug_GraphCanvas> _GraphCanvas;
     TSharedPtr<SCkDebug_SelectableLabel> _HeaderText;
+    TSharedPtr<SBox> _ContentHost;
+    TSharedPtr<SWidget> _NativeContent;
+    TSharedPtr<SBox> _GraphBodyPort;
+    TSharedPtr<FCkUiView> _AuthoredView;
+    FString _AuthoredLoadFailure;
+    uint64 _AuthoredGeneration = 0;
     TMap<uint64, TSharedPtr<SWidget>> _CardWidgets;
     TMap<uint64, FVector2D> _NodePositionOverrides;
     uint64 _ManualPositionScopeId = 0;

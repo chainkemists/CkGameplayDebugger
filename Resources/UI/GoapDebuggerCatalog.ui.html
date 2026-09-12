@@ -1,0 +1,13 @@
+<ui version="1">
+  <region name="main">
+    <column id="goap-catalog-root" class="goap-catalog-root">
+      <column id="goap-catalog-empty" visible="catalog-empty-visible" class="goap-catalog-empty">
+        <text id="goap-catalog-empty-text">Select a planner to inspect its catalog.</text>
+      </column>
+      <column id="goap-catalog-selected" visible="catalog-selected-visible" class="goap-catalog-selected">
+        <row id="goap-catalog-header" class="goap-catalog-header"><text id="goap-catalog-title" bind="catalog-title" class="goap-catalog-title" /><text id="goap-catalog-status" bind="catalog-status" class="goap-catalog-status" /></row>
+        <scroll id="goap-catalog-body-scroll" direction="horizontal" class="goap-catalog-body-scroll"><column id="goap-catalog-body-wrap" class="goap-catalog-body-wrap"><native id="catalog-body" bind="catalog-body" /></column></scroll>
+      </column>
+    </column>
+  </region>
+</ui>

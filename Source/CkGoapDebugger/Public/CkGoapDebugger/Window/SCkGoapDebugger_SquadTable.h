@@ -16,13 +16,15 @@
 // Sparkline samples derive client-side from the entity's history ring
 // (replan-kind events bucketed into 5s bins) — no collector support needed.
 //
-// Rows are informational; the ONLY interactive element is the Inspect button
-// (list SelectionMode = None, so no click-trap concerns). Inspect reports
-// through OnInspect — the window sets ViewModel selection and flips to the
-// Agent Inspector tab.
+// Rows expose authored EntityRef navigation plus Inspect. The native fallback keeps the same
+// entity navigation and inspect behavior when the authored resource cannot be loaded.
 // ====================================================================================================================
 
 class FCkGoapDebugger_ViewModel;
+class FCkUiCollection;
+class FCkUiFloatSeries;
+class FCkUiView;
+class SBox;
 
 DECLARE_DELEGATE_TwoParams(FOnCkGoapDebug_SquadInspect, FCk_Handle /* Entity */, FCk_Handle_Goap_Planner /* Planner */);
 
@@ -45,15 +47,17 @@ public:
      * structural axis change needs the re-emit. Flipping the hash rather than zeroing it keeps a
      * genuine zero hash from swallowing the invalidation.
      */
-    auto Invalidate_StyleCache() -> void
-    {
-        _LastHash = ~_LastHash;
-        RefreshFromViewModel();
-    }
+    auto Invalidate_StyleCache() -> void;
 
 
     // Rows hold FCk_Handle copies — drop them while the registry is alive.
     auto Reset_ForWorldChange() -> void;
+
+    /** Retained authored projection, when the resource and registry loaded successfully. */
+    auto Get_AuthoredView() const -> TSharedPtr<FCkUiView> { return _AuthoredView; }
+    auto Get_AuthoredCollection() const -> TSharedPtr<const FCkUiCollection> { return _AuthoredCollection; }
+    /** Last authored activation rejection; retained when native fallback replaces the candidate. */
+    auto Get_AuthoredLoadFailure() const -> const FString& { return _AuthoredLoadFailure; }
 
 private:
     struct FSquadRow
@@ -83,6 +87,11 @@ private:
     using ItemPtr = TSharedPtr<FSquadRow>;
 
     auto OnGenerateRow(ItemPtr InItem, const TSharedRef<STableViewBase>& InTable) -> TSharedRef<ITableRow>;
+    auto Publish_AuthoredRows() -> void;
+    auto TryActivate_AuthoredView() -> void;
+    auto Activate_NativeFallback() -> void;
+    auto On_AuthoredInspect(const FString& InKey) -> void;
+    auto On_AuthoredEntityNavigate(const FString& InKey) -> void;
 
 private:
     TSharedPtr<FCkGoapDebugger_ViewModel> _ViewModel;
@@ -90,6 +99,20 @@ private:
 
     TSharedPtr<SListView<ItemPtr>> _ListView;
     TSharedPtr<class SCkDebug_DualSearchBar> _SearchBar;
+    TSharedPtr<SBox> _ContentHost;
+    TSharedPtr<SWidget> _NativeContent;
+
+    // The authored projection uses planner-derived keys and this separate full-handle map. UI
+    // collection fields remain presentation-only, so never reduce the inspector transport to an
+    // entity number or display string.
+    struct FAuthoredHandles { FCk_Handle Entity; FCk_Handle_Goap_Planner Planner; };
+    TSharedPtr<FCkUiCollection> _AuthoredCollection;
+    TSharedPtr<FCkUiView> _AuthoredView;
+    FString _AuthoredLoadFailure;
+    bool _AuthoredProjectionReady = false;
+    TMap<FString, FAuthoredHandles> _AuthoredHandles;
+    /** Planner-keyed owner of the series; collection records expose only weak handles. */
+    TMap<FString, TSharedPtr<FCkUiFloatSeries>> _SparkSeriesByPlanner;
 
     // Stable row identity by planner handle (list-row contract).
     TMap<FCk_Handle_Goap_Planner, ItemPtr> _RowsByPlanner;

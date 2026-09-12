@@ -1,0 +1,7 @@
+.goap-timeline-empty { min-width: 0; padding: var(--space-l); horizontal-align: center; vertical-align: center; }
+.goap-timeline-empty-text { font-family: sans-serif; color: var(--timeline-text-mute); text-wrap: wrap; }
+.goap-timeline-selected { flex-grow: 1; min-width: 0; min-height: 0; gap: var(--space-s); }
+.goap-timeline-header { min-width: 0; padding: var(--space-m) var(--space-l) 0 var(--space-l); gap: var(--space-s); vertical-align: center; }
+.goap-timeline-title { flex-grow: 1; font-family: sans-serif; font-weight: bold; color: var(--timeline-text); text-wrap: nowrap; text-overflow: ellipsis; }
+.goap-timeline-status { font-family: sans-serif; color: var(--timeline-text-mute); text-wrap: nowrap; }
+.goap-timeline-body { flex-grow: 1; min-width: 0; min-height: 0; }

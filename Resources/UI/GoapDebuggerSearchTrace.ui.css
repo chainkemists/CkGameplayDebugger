@@ -1,0 +1,15 @@
+.goap-search-trace-root { min-width: 0; min-height: 0; gap: var(--space-s); padding: var(--space-l); background-color: #161C25; }
+.goap-search-trace-empty-wrap { min-width: 0; padding: var(--space-l); }
+.goap-search-trace-empty { min-width: 0; font-family: sans-serif; font-size: var(--goap-search-trace-body-font-size); color: var(--goap-search-trace-text-dim); text-wrap: wrap; overflow-wrap: anywhere; horizontal-align: center; }
+.goap-search-trace-content { min-width: 0; min-height: 0; gap: var(--space-s); flex-grow: 1; }
+.goap-search-trace-explainer { min-width: 0; font-family: sans-serif; font-size: var(--goap-search-trace-small-font-size); color: var(--goap-search-trace-text-dim); text-wrap: wrap; overflow-wrap: anywhere; }
+.goap-search-trace-stats { min-width: 0; font-family: monospace; font-size: var(--goap-search-trace-micro-font-size); color: var(--goap-search-trace-text-mute); text-wrap: wrap; overflow-wrap: anywhere; }
+.goap-search-trace-scroll { min-width: 0; min-height: 0; flex-grow: 1; }
+.goap-search-trace-records { min-width: 680px; gap: 2px; padding: 0 0 var(--space-s); }
+.goap-search-trace-row { min-width: 0; min-height: 32px; gap: var(--space-m); padding: var(--space-s) var(--space-m); background-color: #1E2530; border-color: #354153; border-width: 1px; border-radius: 6px; vertical-align: center; }
+.goap-search-trace-index { width: 24px; font-family: monospace; font-size: var(--goap-search-trace-micro-font-size); color: var(--goap-search-trace-text-mute); text-wrap: nowrap; }
+.goap-search-trace-satisfaction { min-width: 82px; }
+.goap-search-trace-conditions { min-width: 250px; flex-grow: 1; font-family: sans-serif; font-size: var(--goap-search-trace-body-font-size); text-wrap: wrap; overflow-wrap: anywhere; }
+.goap-search-trace-via { min-width: 140px; flex-grow: 0.22; font-family: sans-serif; font-size: var(--goap-search-trace-micro-font-size); color: var(--goap-search-trace-text-dim); text-wrap: nowrap; text-overflow: ellipsis; }
+.goap-search-trace-heuristic { width: 42px; font-family: monospace; font-size: var(--goap-search-trace-micro-font-size); text-wrap: nowrap; horizontal-align: right; }
+.goap-search-trace-footer { min-width: 0; font-family: sans-serif; font-size: var(--goap-search-trace-micro-font-size); color: var(--goap-search-trace-text-mute); text-wrap: wrap; overflow-wrap: anywhere; }

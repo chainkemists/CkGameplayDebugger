@@ -111,9 +111,10 @@ auto FCkDebug_UiRegistry_Runtime::RunTest(const FString&) -> bool
 
     TSharedPtr<const FCkUiWidgetRegistrySnapshot> Registry;
     if (!TestTrue(TEXT("Debug widget registry creates atomically"), FCkDebug_UiRegistry::TryCreate(Registry).Succeeded) || !Registry.IsValid()) { return false; }
-    if (!TestTrue(TEXT("Debug registry has meter, sparkline, status, and icon definitions"), Registry->Find(TEXT("debug-meter")) != nullptr
+    if (!TestTrue(TEXT("Debug registry has meter, sparkline, status, icon, and inspector-action definitions"), Registry->Find(TEXT("debug-meter")) != nullptr
         && Registry->Find(TEXT("debug-sparkline")) != nullptr
-        && Registry->Find(TEXT("debug-status")) != nullptr && Registry->Find(TEXT("debug-icon")) != nullptr)) { return false; }
+        && Registry->Find(TEXT("debug-status")) != nullptr && Registry->Find(TEXT("debug-icon")) != nullptr
+        && Registry->Find(TEXT("debug-inspector-action")) != nullptr)) { return false; }
 
     FText Label = FText::FromString(TEXT("Loading"));
     FLinearColor Fill = FLinearColor::Blue;

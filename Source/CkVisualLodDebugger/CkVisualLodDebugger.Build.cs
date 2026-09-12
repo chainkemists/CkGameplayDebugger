@@ -37,6 +37,8 @@ public class CkVisualLodDebugger : CkModuleRules
         RuntimeDependencies.Add(Path.Combine(PluginDirectory, "Resources", "UI", "VisualLodArbiterTuners.ui.css"), StagedFileType.NonUFS);
         RuntimeDependencies.Add(Path.Combine(PluginDirectory, "Resources", "UI", "VisualLodCrowdTuners.ui.html"), StagedFileType.NonUFS);
         RuntimeDependencies.Add(Path.Combine(PluginDirectory, "Resources", "UI", "VisualLodCrowdTuners.ui.css"), StagedFileType.NonUFS);
+        RuntimeDependencies.Add(Path.Combine(PluginDirectory, "Resources", "UI", "VisualLodDebuggerShell.ui.html"), StagedFileType.NonUFS);
+        RuntimeDependencies.Add(Path.Combine(PluginDirectory, "Resources", "UI", "VisualLodDebuggerShell.ui.css"), StagedFileType.NonUFS);
 
         if (Target.bBuildEditor)
         {

@@ -1,0 +1,16 @@
+.vl-shell-root { min-width: 920px; min-height: 650px; flex-grow: 1; flex-shrink: 1; }
+.vl-shell-header { padding: 8px 12px 4px 12px; }
+.vl-shell-stats { padding: 0px 12px 8px 12px; }
+.vl-shell-main-split { min-width: 0; min-height: 0; flex-grow: 1; flex-shrink: 1; }
+.vl-shell-overview { min-width: 0; min-height: 190px; flex-grow: 0.30; flex-shrink: 1; }
+.vl-shell-lower { min-width: 0; min-height: 280px; flex-grow: 0.70; flex-shrink: 1; }
+.vl-shell-tuners-header { padding: 0px 12px 4px 12px; }
+.vl-shell-lower-split { min-width: 0; min-height: 0; flex-grow: 1; flex-shrink: 1; }
+.vl-shell-tuners-split { min-width: 0; min-height: 170px; flex-grow: 0.42; flex-shrink: 1; }
+.vl-shell-arbiter-tuners { min-width: 280px; min-height: 0; flex-grow: 1.0; flex-shrink: 1; }
+.vl-shell-crowd-tuners { min-width: 300px; min-height: 0; flex-grow: 1.25; flex-shrink: 1; }
+.vl-shell-investigation-split { min-width: 0; min-height: 250px; flex-grow: 0.58; flex-shrink: 1; }
+.vl-shell-roster { min-width: 360px; min-height: 0; flex-grow: 0.72; flex-shrink: 1; }
+.vl-shell-detail-split { min-width: 260px; min-height: 0; flex-grow: 0.28; flex-shrink: 1; }
+.vl-shell-detail { min-width: 0; min-height: 180px; flex-grow: 0.62; flex-shrink: 1; }
+.vl-shell-events { min-width: 0; min-height: 130px; flex-grow: 0.38; flex-shrink: 1; }

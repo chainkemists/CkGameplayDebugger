@@ -1,0 +1,31 @@
+<ui version="1">
+  <region name="main">
+    <scroll id="vl-shell-scroll" direction="horizontal">
+      <column id="vl-shell-root" class="vl-shell-root">
+        <native id="vl-shell-alert-region" bind="vl-shell-alert" />
+        <native id="vl-shell-tabs-region" bind="vl-shell-tabs" />
+        <column id="vl-shell-header-region" class="vl-shell-header"><native id="vl-shell-header-port" bind="vl-shell-header" /></column>
+        <column id="vl-shell-stats-region" class="vl-shell-stats"><native id="vl-shell-stats-port" bind="vl-shell-stats" /></column>
+        <splitter id="vl-shell-main-split" direction="vertical" class="vl-shell-main-split">
+          <native id="vl-shell-overview-region" bind="vl-shell-overview" class="vl-shell-overview" />
+          <column id="vl-shell-lower" class="vl-shell-lower">
+            <column id="vl-shell-tuners-header-region" class="vl-shell-tuners-header"><native id="vl-shell-tuners-header-port" bind="vl-shell-tuners-header" /></column>
+            <splitter id="vl-shell-lower-split" direction="vertical" class="vl-shell-lower-split">
+              <splitter id="vl-shell-tuners-split" direction="horizontal" visible="vl-tuners-expanded" class="vl-shell-tuners-split">
+                <native id="vl-shell-arbiter-tuners-region" bind="vl-shell-arbiter-tuners" class="vl-shell-arbiter-tuners" />
+                <native id="vl-shell-crowd-tuners-region" bind="vl-shell-crowd-tuners" class="vl-shell-crowd-tuners" />
+              </splitter>
+              <splitter id="vl-shell-investigation-split" direction="horizontal" class="vl-shell-investigation-split">
+                <native id="vl-shell-roster-region" bind="vl-shell-roster" class="vl-shell-roster" />
+                <splitter id="vl-shell-detail-split" direction="vertical" class="vl-shell-detail-split">
+                  <native id="vl-shell-detail-region" bind="vl-shell-detail" class="vl-shell-detail" />
+                  <native id="vl-shell-events-region" bind="vl-shell-events" class="vl-shell-events" />
+                </splitter>
+              </splitter>
+            </splitter>
+          </column>
+        </splitter>
+      </column>
+    </scroll>
+  </region>
+</ui>

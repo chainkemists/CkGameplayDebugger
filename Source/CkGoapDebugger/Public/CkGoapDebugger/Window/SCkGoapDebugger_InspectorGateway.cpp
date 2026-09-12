@@ -8,7 +8,9 @@
 #include "CkCore/Validation/CkIsValid.h"
 
 #include "CkDebuggerCommon/Widgets/SCkDebug_SelectableLabel.h"
+#include "CkDebuggerCommon/UI/CkDebug_UiRegistry.h"
 #include "CkDebuggerCommon/Window/CkDebuggerRefreshGate.h"
+#include "CkSlateLayout/SCkUiSurface.h"
 
 #include "CkGoapDebugger/CkGoapDebugger_Axes.h"
 
@@ -26,6 +28,9 @@
 
 #include "Engine/Engine.h"
 #include "Engine/World.h"
+#include "Interfaces/IPluginManager.h"
+#include "Misc/Paths.h"
+#include "Widgets/SNullWidget.h"
 
 #if WITH_EDITOR
 #include "Editor.h"
@@ -35,6 +40,11 @@
 
 namespace ck_goap_debugger_gateway_internal
 {
+    static auto AuthoredTokens() -> FCkUiView::FTokens
+    {
+        return {{TEXT("--goap-gateway-surface"), TEXT("#") + CkStyle::Bg3().ToFColorSRGB().ToHex()}};
+    }
+
     // Mirrors the standalone window's status-color lookup so the gateway dots
     // read the same way at-a-glance.
     static auto
@@ -168,10 +178,19 @@ auto
 
     ChildSlot
     [
-        SAssignNew(_ContentBox, SVerticalBox)
+        SAssignNew(_RootHost, SBox)
     ];
 
+    Build_AuthoredView();
     Rebuild();
+}
+
+SCkGoapDebugger_InspectorGateway::~SCkGoapDebugger_InspectorGateway()
+{
+    _Entity = {};
+    Clear_Sections();
+    _AuthoredView.Reset();
+    if (_RootHost.IsValid()) { _RootHost->SetContent(SNullWidget::NullWidget); }
 }
 
 // ====================================================================================================================
@@ -204,6 +223,7 @@ auto
     -> void
 {
     SCompoundWidget::Tick(InAllottedGeometry, InCurrentTime, InDeltaTime);
+    Poll_AuthoredFiles();
 
     using namespace ck_goap_debugger_gateway_internal;
 
@@ -241,22 +261,119 @@ auto
 
 auto
     SCkGoapDebugger_InspectorGateway::
+    Build_AuthoredView()
+    -> void
+{
+    SAssignNew(_HeaderHost, SBox);
+    SAssignNew(_ActionSetsHost, SBox);
+    SAssignNew(_ActiveChainHost, SBox);
+    SAssignNew(_LeafActionHost, SBox);
+    SAssignNew(_PlanPreviewHost, SBox);
+    SAssignNew(_EmptyHost, SBox);
+
+    TSharedPtr<const FCkUiWidgetRegistrySnapshot> Registry;
+    const FCkUiLoadResult RegistryResult = FCkDebug_UiRegistry::TryCreate(Registry);
+    const TSharedPtr<IPlugin> Plugin = IPluginManager::Get().FindPlugin(TEXT("CkDebugger"));
+    if (NOT RegistryResult.Succeeded || NOT Registry.IsValid() || NOT Plugin.IsValid())
+    {
+        _AuthoredLoadError = RegistryResult.Succeeded
+            ? TEXT("CkDebugger plugin is unavailable.")
+            : FString::Join(RegistryResult.Errors, TEXT("\n"));
+        SAssignNew(_ContentBox, SVerticalBox);
+        _RootHost->SetContent(_ContentBox.ToSharedRef());
+        return;
+    }
+
+    FCkUiView::FNativeBindings NativeBindings;
+    NativeBindings.Add(TEXT("goap-gateway-header"), _HeaderHost.ToSharedRef());
+    NativeBindings.Add(TEXT("goap-gateway-action-sets"), _ActionSetsHost.ToSharedRef());
+    NativeBindings.Add(TEXT("goap-gateway-active-chain"), _ActiveChainHost.ToSharedRef());
+    NativeBindings.Add(TEXT("goap-gateway-leaf-action"), _LeafActionHost.ToSharedRef());
+    NativeBindings.Add(TEXT("goap-gateway-plan-preview"), _PlanPreviewHost.ToSharedRef());
+    NativeBindings.Add(TEXT("goap-gateway-empty"), _EmptyHost.ToSharedRef());
+
+    auto Data = FCkUiView::FDataBindings{};
+    const TWeakPtr<SCkGoapDebugger_InspectorGateway> WeakGateway{SharedThis(this)};
+    Data.SlateUserIndex = 0;
+    Data.CanDispatchEvents = TAttribute<bool>::CreateLambda([WeakGateway]() { return WeakGateway.IsValid(); });
+
+    const TSharedRef<FCkUiView> Candidate = FCkUiView::Create(
+        MoveTemp(NativeBindings), {}, ck_goap_debugger_gateway_internal::AuthoredTokens(),
+        CkStyle::RegularFont(CkStyle::FontSizeBody()), MoveTemp(Data), Registry);
+    const TSharedRef<SWidget> Main = Candidate->GetRegion(TEXT("main"));
+    const FString ResourceRoot = FPaths::Combine(Plugin->GetBaseDir(), TEXT("Resources/UI"));
+    Candidate->SetFiles(
+        FPaths::Combine(ResourceRoot, TEXT("GoapInspectorGateway.ui.html")),
+        FPaths::Combine(ResourceRoot, TEXT("GoapInspectorGateway.ui.css")));
+    Candidate->PollFiles();
+    if (NOT Candidate->GetLastResult().Succeeded)
+    {
+        _AuthoredLoadError = FString::Join(Candidate->GetLastResult().Errors, TEXT("\n"));
+        SAssignNew(_ContentBox, SVerticalBox);
+        _RootHost->SetContent(_ContentBox.ToSharedRef());
+        return;
+    }
+
+    _AuthoredView = Candidate;
+    _AuthoredMounted = true;
+    _AuthoredLoadError.Reset();
+    _RootHost->SetContent(Main);
+}
+
+auto
+    SCkGoapDebugger_InspectorGateway::
+    Poll_AuthoredFiles()
+    -> void
+{
+    if (NOT _AuthoredView.IsValid()) { return; }
+    _AuthoredView->PollFiles(ck_goap_debugger_gateway_internal::AuthoredTokens());
+    if (NOT _AuthoredView->GetLastResult().Succeeded)
+    { _AuthoredLoadError = FString::Join(_AuthoredView->GetLastResult().Errors, TEXT("\n")); }
+    else { _AuthoredLoadError.Reset(); }
+}
+
+auto
+    SCkGoapDebugger_InspectorGateway::
+    Clear_Sections()
+    -> void
+{
+    if (_ContentBox.IsValid()) { _ContentBox->ClearChildren(); }
+    for (const TSharedPtr<SBox>& Host : {
+        _HeaderHost, _ActionSetsHost, _ActiveChainHost, _LeafActionHost, _PlanPreviewHost, _EmptyHost})
+    {
+        if (Host.IsValid()) { Host->SetContent(SNullWidget::NullWidget); }
+    }
+}
+
+auto
+    SCkGoapDebugger_InspectorGateway::
+    Mount_Section(
+        const TSharedPtr<SBox>& InHost,
+        const TSharedRef<SWidget>& InContent)
+    -> void
+{
+    if (_AuthoredMounted && InHost.IsValid()) { InHost->SetContent(InContent); }
+    else if (_ContentBox.IsValid()) { _ContentBox->AddSlot().AutoHeight()[InContent]; }
+}
+
+auto
+    SCkGoapDebugger_InspectorGateway::
     Rebuild()
     -> void
 {
-    if (NOT _ContentBox.IsValid()) { return; }
-    _ContentBox->ClearChildren();
+    if (NOT _AuthoredMounted && NOT _ContentBox.IsValid()) { return; }
+    Clear_Sections();
 
     if (ck::Is_NOT_Valid(_Entity))
     {
-        _ContentBox->AddSlot().AutoHeight() [ Build_EmptyStub() ];
+        Mount_Section(_EmptyHost, Build_EmptyStub());
         return;
     }
 
     auto* World = Resolve_World();
     if (World == nullptr)
     {
-        _ContentBox->AddSlot().AutoHeight() [ Build_EmptyStub() ];
+        Mount_Section(_EmptyHost, Build_EmptyStub());
         return;
     }
 
@@ -267,34 +384,22 @@ auto
     {
         // Selected entity has no Goap root — render a collapsed stub so the
         // inspector slot has known height.
-        _ContentBox->AddSlot().AutoHeight() [ Build_EmptyStub() ];
+        Mount_Section(_EmptyHost, Build_EmptyStub());
         return;
     }
 
-    _ContentBox->AddSlot()
-        .AutoHeight()
-        [ Build_Header(*MySnapshot) ];
-
-    _ContentBox->AddSlot()
-        .AutoHeight()
-        [ Build_ActionSetList(*MySnapshot) ];
+    Mount_Section(_HeaderHost, Build_Header(*MySnapshot));
+    Mount_Section(_ActionSetsHost, Build_ActionSetList(*MySnapshot));
 
     if (const auto* DisplayAs = Pick_DisplayActionSet(*MySnapshot))
     {
-        _ContentBox->AddSlot()
-            .AutoHeight()
-            [ Build_ActiveChain(*DisplayAs) ];
+        Mount_Section(_ActiveChainHost, Build_ActiveChain(*DisplayAs));
 
         using namespace ck_goap_debugger_gateway_internal;
         if (const auto* Leaf = LeafActionInfo(*DisplayAs))
         {
-            _ContentBox->AddSlot()
-                .AutoHeight()
-                [ Build_LeafAction(*Leaf) ];
-
-            _ContentBox->AddSlot()
-                .AutoHeight()
-                [ Build_PlanPreview(*Leaf) ];
+            Mount_Section(_LeafActionHost, Build_LeafAction(*Leaf));
+            Mount_Section(_PlanPreviewHost, Build_PlanPreview(*Leaf));
         }
     }
 }

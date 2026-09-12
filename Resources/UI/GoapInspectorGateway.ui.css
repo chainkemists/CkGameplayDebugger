@@ -1,0 +1,2 @@
+.goap-gateway-root { min-width: 260px; min-height: 0; flex-grow: 1; flex-shrink: 1; background-color: var(--goap-gateway-surface); }
+.goap-gateway-section { min-width: 0; min-height: 0; flex-grow: 0; flex-shrink: 0; }

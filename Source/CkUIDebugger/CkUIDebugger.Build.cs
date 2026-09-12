@@ -45,5 +45,7 @@ public class CkUIDebugger : CkModuleRules
         RuntimeDependencies.Add(Path.Combine(PluginDirectory, "Resources", "UI", "UiDebuggerSummary.ui.css"), StagedFileType.NonUFS);
         RuntimeDependencies.Add(Path.Combine(PluginDirectory, "Resources", "UI", "UiDebuggerCommands.ui.html"), StagedFileType.NonUFS);
         RuntimeDependencies.Add(Path.Combine(PluginDirectory, "Resources", "UI", "UiDebuggerCommands.ui.css"), StagedFileType.NonUFS);
+        RuntimeDependencies.Add(Path.Combine(PluginDirectory, "Resources", "UI", "UiDebuggerShell.ui.html"), StagedFileType.NonUFS);
+        RuntimeDependencies.Add(Path.Combine(PluginDirectory, "Resources", "UI", "UiDebuggerShell.ui.css"), StagedFileType.NonUFS);
     }
 }

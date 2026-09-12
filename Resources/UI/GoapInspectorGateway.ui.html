@@ -1,14 +1,73 @@
 <ui version="1">
   <region name="main">
-    <scroll id="goap-gateway-scroll" direction="vertical">
-      <column id="goap-gateway-root" class="goap-gateway-root">
-        <native id="goap-gateway-header-region" bind="goap-gateway-header" class="goap-gateway-section" />
-        <native id="goap-gateway-action-sets-region" bind="goap-gateway-action-sets" class="goap-gateway-section" />
-        <native id="goap-gateway-active-chain-region" bind="goap-gateway-active-chain" class="goap-gateway-section" />
-        <native id="goap-gateway-leaf-action-region" bind="goap-gateway-leaf-action" class="goap-gateway-section" />
-        <native id="goap-gateway-plan-preview-region" bind="goap-gateway-plan-preview" class="goap-gateway-section" />
-        <native id="goap-gateway-empty-region" bind="goap-gateway-empty" class="goap-gateway-section" />
-      </column>
+    <scroll id="goap-gateway-scroll" direction="vertical" class="goap-gateway-scroll">
+      <overlay id="goap-gateway-overlay" class="goap-gateway-overlay">
+        <column id="goap-gateway-content" visible="goap-gateway-has-content" class="goap-gateway-content">
+          <row id="goap-gateway-header" class="goap-gateway-card goap-gateway-header">
+            <text id="goap-gateway-title" class="goap-gateway-title">GOAP</text>
+            <row id="goap-gateway-root-status-pill" class="goap-gateway-root-status-pill">
+              <text id="goap-gateway-root-status" class="goap-gateway-root-status">root</text>
+            </row>
+            <button id="goap-gateway-open" action="goap-gateway-open" class="goap-gateway-open">Open in Goap Debugger ›</button>
+          </row>
+
+          <column id="goap-gateway-planners" class="goap-gateway-card">
+            <text id="goap-gateway-planner-count" bind="goap-gateway-planner-count" class="goap-gateway-section-title" />
+            <repeat id="goap-gateway-planner-records" bind="goap-gateway-planners" direction="vertical" class="goap-gateway-planner-records">
+              <row id="goap-gateway-planner-row" class="goap-gateway-planner-row">
+                <text id="goap-gateway-planner-name" bind-field="name" color-field="name-foreground" class="goap-gateway-planner-name" />
+                <text id="goap-gateway-planner-tag" bind-field="tag" class="goap-gateway-planner-tag" />
+                <debug-status id="goap-gateway-planner-status" label-field="status" foreground-field="status-foreground" background-field="status-background" show-dot="true" class="goap-gateway-planner-status" />
+              </row>
+            </repeat>
+          </column>
+
+          <column id="goap-gateway-chain" visible="goap-gateway-has-planner" class="goap-gateway-card">
+            <text id="goap-gateway-chain-heading" bind="goap-gateway-chain-heading" class="goap-gateway-section-title" />
+            <row id="goap-gateway-chain-surface" class="goap-gateway-chain-surface">
+              <repeat id="goap-gateway-chain-records" bind="goap-gateway-chain" direction="horizontal" class="goap-gateway-chain-records">
+                <row id="goap-gateway-chain-item" class="goap-gateway-chain-item">
+                  <text id="goap-gateway-chain-separator" visible-field="separator-visible" class="goap-gateway-chain-separator">›</text>
+                  <text id="goap-gateway-chain-name" bind-field="name" color-field="foreground" class="goap-gateway-chain-name" />
+                </row>
+              </repeat>
+            </row>
+            <text id="goap-gateway-chain-tags" bind="goap-gateway-chain-tags" class="goap-gateway-chain-tags" />
+          </column>
+
+          <column id="goap-gateway-leaf" visible="goap-gateway-has-leaf" class="goap-gateway-card">
+            <text id="goap-gateway-leaf-heading" bind="goap-gateway-leaf-heading" class="goap-gateway-section-title" />
+            <row id="goap-gateway-leaf-status-row" class="goap-gateway-key-value-row">
+              <text id="goap-gateway-leaf-status-label" class="goap-gateway-key">Status</text>
+              <debug-status id="goap-gateway-leaf-status" label-bind="goap-gateway-leaf-status" foreground-bind="goap-gateway-leaf-status-foreground" background-bind="goap-gateway-leaf-status-background" show-dot="true" />
+            </row>
+            <row id="goap-gateway-leaf-cost-row" class="goap-gateway-key-value-row">
+              <text id="goap-gateway-leaf-cost-label" class="goap-gateway-key">Cost</text>
+              <text id="goap-gateway-leaf-cost" bind="goap-gateway-leaf-cost" class="goap-gateway-value goap-gateway-cost" />
+            </row>
+            <row id="goap-gateway-leaf-length-row" class="goap-gateway-key-value-row">
+              <text id="goap-gateway-leaf-length-label" class="goap-gateway-key">Plan length</text>
+              <text id="goap-gateway-leaf-length" bind="goap-gateway-leaf-length" class="goap-gateway-value" />
+            </row>
+          </column>
+
+          <column id="goap-gateway-preview" visible="goap-gateway-has-leaf" class="goap-gateway-card">
+            <text id="goap-gateway-preview-heading" bind="goap-gateway-preview-heading" class="goap-gateway-section-title" />
+            <repeat id="goap-gateway-preview-records" bind="goap-gateway-preview" direction="vertical" class="goap-gateway-preview-records">
+              <row id="goap-gateway-preview-row" class="goap-gateway-preview-row">
+                <text id="goap-gateway-preview-ordinal" bind-field="ordinal" class="goap-gateway-preview-ordinal" />
+                <text id="goap-gateway-preview-name" bind-field="name" class="goap-gateway-preview-name" />
+                <text id="goap-gateway-preview-hint" bind-field="hint" class="goap-gateway-preview-hint" />
+              </row>
+            </repeat>
+            <text id="goap-gateway-preview-overflow" visible="goap-gateway-preview-overflow-visible" bind="goap-gateway-preview-overflow" class="goap-gateway-preview-overflow" />
+          </column>
+        </column>
+
+        <column id="goap-gateway-empty" visible="goap-gateway-empty-visible" class="goap-gateway-card goap-gateway-empty">
+          <text id="goap-gateway-empty-copy" class="goap-gateway-empty-copy">(no Goap root on selected entity)</text>
+        </column>
+      </overlay>
     </scroll>
   </region>
 </ui>

@@ -1,2 +1,33 @@
-.goap-gateway-root { min-width: 260px; min-height: 0; flex-grow: 1; flex-shrink: 1; background-color: var(--goap-gateway-surface); }
-.goap-gateway-section { min-width: 0; min-height: 0; flex-grow: 0; flex-shrink: 0; }
+.goap-gateway-scroll { min-width: 0; min-height: 0; }
+.goap-gateway-overlay { min-width: 0; min-height: 0; }
+.goap-gateway-content { min-width: 260px; min-height: 0; gap: var(--space-s); background-color: var(--goap-gateway-surface); }
+.goap-gateway-card { min-width: 0; gap: var(--space-xs); padding: var(--space-s) var(--space-m); background-color: #1E2530; border-color: #354153; border-width: 1px; border-radius: 4px; }
+.goap-gateway-header { gap: var(--space-s); vertical-align: center; }
+.goap-gateway-title { font-family: sans-serif; font-size: var(--goap-gateway-heading-font-size); font-weight: bold; color: #E8EDF5; text-wrap: nowrap; }
+.goap-gateway-root-status-pill { padding: 2px 6px; background-color: #173728; border-radius: 3px; }
+.goap-gateway-root-status { font-family: sans-serif; font-size: var(--goap-gateway-micro-font-size); font-weight: bold; color: #5BC98A; text-wrap: nowrap; }
+.goap-gateway-open { flex-grow: 1; horizontal-align: right; -ck-button-padding-x: 8px; -ck-button-padding-y: 4px; font-family: sans-serif; font-size: var(--goap-gateway-small-font-size); color: #66B8FF; text-wrap: nowrap; }
+.goap-gateway-section-title { font-family: sans-serif; font-size: var(--goap-gateway-micro-font-size); font-weight: bold; color: #8290A3; text-wrap: nowrap; text-overflow: ellipsis; }
+.goap-gateway-planner-records { min-width: 0; gap: var(--space-xs); }
+.goap-gateway-planner-row { min-width: 0; gap: var(--space-s); vertical-align: center; }
+.goap-gateway-planner-name { min-width: 72px; flex-grow: 0.34; font-family: sans-serif; font-size: var(--goap-gateway-body-font-size); text-wrap: nowrap; text-overflow: ellipsis; }
+.goap-gateway-planner-tag { min-width: 72px; flex-grow: 0.40; font-family: monospace; font-size: var(--goap-gateway-micro-font-size); color: #69778A; text-wrap: nowrap; text-overflow: ellipsis; }
+.goap-gateway-planner-status { min-width: 92px; }
+.goap-gateway-chain-surface { min-width: 0; padding: var(--space-s) var(--space-m); background-color: #121821; border-radius: 3px; }
+.goap-gateway-chain-records { min-width: 0; gap: var(--space-xs); flex-wrap: wrap; vertical-align: center; }
+.goap-gateway-chain-item { gap: var(--space-xs); vertical-align: center; }
+.goap-gateway-chain-separator { font-family: monospace; font-size: var(--goap-gateway-heading-font-size); color: #596779; text-wrap: nowrap; }
+.goap-gateway-chain-name { font-family: sans-serif; font-size: var(--goap-gateway-heading-font-size); text-wrap: nowrap; }
+.goap-gateway-chain-tags { font-family: monospace; font-size: var(--goap-gateway-micro-font-size); color: #69778A; text-wrap: wrap; overflow-wrap: anywhere; }
+.goap-gateway-key-value-row { min-width: 0; gap: var(--space-s); vertical-align: center; }
+.goap-gateway-key { flex-grow: 1; font-family: sans-serif; font-size: var(--goap-gateway-body-font-size); color: #AAB7C8; }
+.goap-gateway-value { font-family: sans-serif; font-size: var(--goap-gateway-body-font-size); font-weight: bold; color: #E8EDF5; text-wrap: nowrap; }
+.goap-gateway-cost { color: #F5B85C; }
+.goap-gateway-preview-records { min-width: 0; gap: var(--space-xs); }
+.goap-gateway-preview-row { min-width: 0; gap: var(--space-s); vertical-align: center; }
+.goap-gateway-preview-ordinal { width: 24px; font-family: sans-serif; font-size: var(--goap-gateway-body-font-size); font-weight: bold; color: #66B8FF; text-wrap: nowrap; }
+.goap-gateway-preview-name { min-width: 0; flex-grow: 1; font-family: monospace; font-size: var(--goap-gateway-body-font-size); color: #AAB7C8; text-wrap: nowrap; text-overflow: ellipsis; }
+.goap-gateway-preview-hint { font-family: sans-serif; font-size: var(--goap-gateway-micro-font-size); color: #69778A; text-wrap: nowrap; }
+.goap-gateway-preview-overflow { font-family: sans-serif; font-size: var(--goap-gateway-micro-font-size); color: #69778A; text-wrap: wrap; }
+.goap-gateway-empty { min-width: 260px; }
+.goap-gateway-empty-copy { font-family: sans-serif; font-size: var(--goap-gateway-body-font-size); color: #69778A; text-wrap: wrap; }

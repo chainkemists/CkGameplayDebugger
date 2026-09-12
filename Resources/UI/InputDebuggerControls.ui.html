@@ -1,0 +1,15 @@
+<ui version="1">
+  <region name="controls">
+    <column id="input-controls-root" class="input-controls-root">
+      <row id="input-controls-row" class="input-controls-row">
+        <button id="input-active-actions" bind="input-active-actions" color-bind="input-active-actions-color" action="input-toggle-active-actions" tooltip="Show only resolved actions that are active or ongoing." class="input-control-button input-control-toggle"/>
+        <button id="input-overlay" bind="input-overlay" color-bind="input-overlay-color" action="input-toggle-overlay" enabled-bind="input-overlay-available" tooltip="Toggle the on-screen QA input overlay (ck.InputOverlay)." class="input-control-button input-control-toggle"/>
+        <search id="input-filter" bind="input-filter" placeholder="Filter actions / keys / contexts..." class="input-control-search"/>
+        <search id="input-highlight" bind="input-highlight" placeholder="Highlight..." class="input-control-search"/>
+        <button id="input-bindings-all" color-bind="input-bindings-all-color" action="input-bindings-all" tooltip="Show all player binding rows." class="input-control-button">All</button>
+        <button id="input-bindings-rebound" color-bind="input-bindings-rebound-color" action="input-bindings-rebound" tooltip="Show only rebound player binding rows." class="input-control-button">Rebound</button>
+        <button id="input-bindings-default" color-bind="input-bindings-default-color" action="input-bindings-default" tooltip="Show only default player binding rows." class="input-control-button">Default</button>
+      </row>
+    </column>
+  </region>
+</ui>

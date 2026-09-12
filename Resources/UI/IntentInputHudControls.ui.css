@@ -1,0 +1,10 @@
+.intent-hud-scroll { max-width: 480px; max-height: 560px; min-width: 0; }
+.intent-hud-controls-root { min-width: 0; gap: 12px; padding: 12px; }
+.intent-hud-section { min-width: 0; gap: 6px; }
+.intent-hud-heading { color: #79c7ff; }
+.intent-hud-row { min-width: 0; gap: 8px; flex-wrap: wrap; vertical-align: center; }
+.intent-hud-label { min-width: 0; max-width: 156px; flex-grow: 1; flex-shrink: 1; color: #a8b3bd; text-wrap: wrap; }
+.intent-hud-action { flex-shrink: 0; }
+.intent-hud-value { min-width: 76px; flex-grow: 1; flex-shrink: 1; horizontal-align: center; text-wrap: wrap; }
+.intent-hud-number { min-width: 88px; max-width: 132px; flex-grow: 1; flex-shrink: 1; }
+.intent-hud-reset { flex-shrink: 0; }

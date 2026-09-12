@@ -31,6 +31,7 @@
 #include "CkDebuggerCommon/Widgets/SCkDebug_PaneHost.h"
 
 #include "CkEditorTools/Style/CkStyle.h"
+#include "CkSlateLayout/SCkUiSurface.h"
 
 #include "Framework/Docking/TabManager.h"
 #include "HAL/IConsoleManager.h"
@@ -115,6 +116,11 @@ auto
     _ViewModelChangedHandle = _ViewModel->OnChanged.AddSP(
         this, &SCkIntentDebuggerWindow::HandleViewModelChanged);
 
+    const TSharedRef<bool> IsInputHudMenuOpen = MakeShared<bool>(false);
+    const TSharedRef<SCkIntentDebugger_InputHudControls> InputHudControls =
+        SNew(SCkIntentDebugger_InputHudControls)
+            .CanDispatchEvents_Lambda([IsInputHudMenuOpen] { return *IsInputHudMenuOpen; });
+
     const auto InputHudCommandGroup = SNew(SHorizontalBox)
 
         + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
@@ -147,6 +153,12 @@ auto
         + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(CkStyle::SpaceS, 0.0f)
         [
             SNew(SComboButton)
+                .OnMenuOpenChanged_Lambda([IsInputHudMenuOpen](const bool bIsOpen)
+                {
+                    // The menu anchor dismisses its popup and handles focus when it closes. The retained view's
+                    // dispatch gate makes every held control inert until the next open event.
+                    *IsInputHudMenuOpen = bIsOpen;
+                })
                 .ToolTipText(FText::FromString(TEXT("Input HUD readout, session and project behavior controls.")))
                 .ButtonContent()
                 [
@@ -156,7 +168,7 @@ auto
                 ]
                 .MenuContent()
                 [
-                    SNew(SCkIntentDebugger_InputHudControls)
+                    InputHudControls
                 ]
         ];
 

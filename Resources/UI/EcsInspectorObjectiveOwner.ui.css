@@ -1,0 +1,10 @@
+.objective-owner-inspector { min-width: 0; gap: 3px; }
+.objective-owner-row { min-width: 0; gap: 8px; vertical-align: center; }
+.objective-owner-label { min-width: 110px; color: #A8B4C4; }
+.objective-owner-progress-value { min-width: 0; flex-grow: 1; gap: 6px; vertical-align: center; }
+.objective-owner-progress-text { color: #E8EDF5; }
+.objective-owner-objective-records { min-width: 0; gap: 3px; }
+.objective-owner-objective-record { min-width: 0; gap: 3px; }
+.objective-owner-objective-row { min-width: 0; }
+.objective-owner-status { min-width: 0; flex-grow: 1; }
+.objective-owner-action { min-width: 58px; }

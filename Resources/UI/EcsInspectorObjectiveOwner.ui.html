@@ -1,0 +1,26 @@
+<ui version="1">
+  <region name="main">
+    <column id="objective-owner-inspector" class="objective-owner-inspector">
+      <row id="objective-owner-progress-row" visible="objective-owner-progress-visible" class="objective-owner-row">
+        <text id="objective-owner-progress-label" color-bind="objective-owner-progress-diff-color" class="objective-owner-label">Progress:</text>
+        <row id="objective-owner-progress-value" class="objective-owner-progress-value">
+          <debug-meter id="objective-owner-progress-meter" fraction-bind="objective-owner-progress-fraction" fill-bind="objective-owner-progress-fill" width="72" height="6" />
+          <text id="objective-owner-progress-text" bind="objective-owner-progress" class="objective-owner-progress-text" />
+        </row>
+      </row>
+      <repeat id="objective-owner-objective-records" bind="objective-owner-objectives" direction="vertical" visible="objective-owner-available" class="objective-owner-objective-records">
+        <column id="objective-owner-objective-record" class="objective-owner-objective-record">
+          <row id="objective-owner-objective-status-row" visible-field="status-visible" class="objective-owner-row objective-owner-objective-row">
+            <text id="objective-owner-name" bind-field="name" color-field="objective-diff-color" class="objective-owner-label" />
+            <debug-status id="objective-owner-status" label-field="status" foreground-field="status-foreground" background-field="status-background" show-dot="true" class="objective-owner-status" />
+            <debug-inspector-action id="objective-owner-select" label-field="select-label" item-action="objective-owner-select" enabled-bind="objective-owner-available" tooltip-field="select-tooltip" class="objective-owner-action" />
+          </row>
+          <row id="objective-owner-objective-remove-row" visible-field="remove-visible" class="objective-owner-row objective-owner-objective-row">
+            <text id="objective-owner-remove-name" bind-field="name" color-field="objective-diff-color" class="objective-owner-label" />
+            <debug-inspector-action id="objective-owner-remove" label-field="remove-label" item-action="objective-owner-remove" enabled-bind="objective-owner-available" tooltip-field="remove-tooltip" disabled-reason-bind="objective-owner-disabled-reason" class="objective-owner-action" />
+          </row>
+        </column>
+      </repeat>
+    </column>
+  </region>
+</ui>

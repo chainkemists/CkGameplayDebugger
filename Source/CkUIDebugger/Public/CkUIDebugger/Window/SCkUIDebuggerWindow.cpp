@@ -31,6 +31,7 @@
 
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/Layout/SBox.h"
+#include "Widgets/SNullWidget.h"
 #include "Widgets/Text/STextBlock.h"
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -83,6 +84,10 @@ namespace ck_ui_debugger
             {TEXT("--ui-command-danger-text"), Color(CkStyle::Err())},
             {TEXT("--ui-command-group-surface"), Color(CkStyle::Bg2())},
         };
+    }
+    static auto ShellStyleTokens() -> FCkUiView::FTokens
+    {
+        return {{TEXT("--ui-shell-surface"), TEXT("#") + CkStyle::BgRoot().ToFColorSRGB().ToHex()}};
     }
     static auto LayerSchema() -> TArray<FCkUiFieldSchema>
     {
@@ -193,10 +198,15 @@ namespace ck_ui_debugger
 SCkUIDebuggerWindow::~SCkUIDebuggerWindow()
 {
     DoUnbindLayoutEvents();
+    if (_AuthoredShellHost.IsValid())
+    { _AuthoredShellHost->SetContent(SNullWidget::NullWidget); }
+    _AuthoredShellView.Reset();
     _CommandView.Reset();
     _SummaryView.Reset();
     _LayerView.Reset();
     _HistoryView.Reset();
+    _Separator.Reset();
+    _AuthoredShellHost.Reset();
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -217,6 +227,8 @@ auto
     _HistoryHost = SNew(SBox);
     _SummaryHost = SNew(SBox);
     _CommandHost = SNew(SBox);
+    _AuthoredShellHost = SNew(SBox);
+    _Separator = ck::debug_axes::Make_AxisSeparator();
     const FCkUiLoadResult HistoryCollectionResult = FCkUiCollection::TryCreate(
         ck_ui_debugger::HistorySchema(), _HistoryCollection);
     if (NOT HistoryCollectionResult.Succeeded)
@@ -245,30 +257,14 @@ auto
         .Content()
         [
             SNew(SCkDebug_PaneHost)
-        [
-            SNew(SVerticalBox)
-
-            + SVerticalBox::Slot().AutoHeight().Padding(CkStyle::SpaceM, CkStyle::SpaceS, CkStyle::SpaceM, 0.0f)
-                [ _CommandHost.ToSharedRef() ]
-
-            + SVerticalBox::Slot().AutoHeight().Padding(CkStyle::SpaceM, CkStyle::SpaceS)
-                [ _SummaryHost.ToSharedRef() ]
-
-            + SVerticalBox::Slot().AutoHeight().Padding(CkStyle::SpaceM, 0.0f)
-                [ ck::debug_axes::Make_AxisSeparator() ]
-
-            + SVerticalBox::Slot().FillHeight(1.0f).Padding(CkStyle::SpaceS)
-                [ _LayerHost.ToSharedRef() ]
-
-            + SVerticalBox::Slot().AutoHeight()
-                [ _HistoryHost.ToSharedRef() ]
-        ]
+            [_AuthoredShellHost.ToSharedRef()]
         ]
     ];
     DoBuildCommandView();
     DoBuildLayerView();
     DoBuildSummaryView();
     DoBuildHistoryView();
+    DoBuildAuthoredShell();
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -288,6 +284,7 @@ auto
     DoPollLayerFiles(InCurrentTime);
     DoPollSummaryFiles(InCurrentTime);
     DoPollHistoryFiles(InCurrentTime);
+    DoPollAuthoredShellFiles(InCurrentTime);
 
     if (NOT FCkDebuggerRefreshGate::Should_RefreshNow(WindowId))
     { return; }
@@ -356,6 +353,7 @@ auto
     if (_CommandView.IsValid()) { _CommandView->PollFiles(ck_ui_debugger::CommandStyleTokens()); }
     if (_LayerView.IsValid()) { _LayerView->PollFiles(ck_ui_debugger::LayerStyleTokens()); }
     if (_SummaryView.IsValid()) { _SummaryView->PollFiles(ck_ui_debugger::SummaryStyleTokens()); }
+    if (_AuthoredShellView.IsValid()) { _AuthoredShellView->PollFiles(ck_ui_debugger::ShellStyleTokens()); }
     _StructureDirty = true;
 }
 
@@ -602,6 +600,60 @@ auto SCkUIDebuggerWindow::DoPollCommandFiles(const double InCurrentTime) -> void
     _NextCommandPollSeconds = InCurrentTime + PollIntervalSeconds;
     if (_CommandView.IsValid()) { _CommandView->PollFiles(ck_ui_debugger::CommandStyleTokens()); }
     else { DoBuildCommandView(); }
+}
+
+auto SCkUIDebuggerWindow::DoBuildNativeShellFallback() -> TSharedRef<SWidget>
+{
+    return SNew(SVerticalBox)
+        + SVerticalBox::Slot().AutoHeight().Padding(CkStyle::SpaceM, CkStyle::SpaceS, CkStyle::SpaceM, 0.0f)
+            [_CommandHost.ToSharedRef()]
+        + SVerticalBox::Slot().AutoHeight().Padding(CkStyle::SpaceM, CkStyle::SpaceS)
+            [_SummaryHost.ToSharedRef()]
+        + SVerticalBox::Slot().AutoHeight().Padding(CkStyle::SpaceM, 0.0f)
+            [_Separator.ToSharedRef()]
+        + SVerticalBox::Slot().FillHeight(1.0f).Padding(CkStyle::SpaceS)
+            [_LayerHost.ToSharedRef()]
+        + SVerticalBox::Slot().AutoHeight()
+            [_HistoryHost.ToSharedRef()];
+}
+
+auto SCkUIDebuggerWindow::DoBuildAuthoredShell() -> void
+{
+    TSharedPtr<const FCkUiWidgetRegistrySnapshot> Registry;
+    const FCkUiLoadResult RegistryResult = FCkDebug_UiRegistry::TryCreate(Registry);
+    const TSharedPtr<IPlugin> Plugin = IPluginManager::Get().FindPlugin(TEXT("CkDebugger"));
+    if (NOT RegistryResult.Succeeded || NOT Registry.IsValid() || NOT Plugin.IsValid())
+    {
+        _AuthoredShellHost->SetContent(DoBuildNativeShellFallback());
+        return;
+    }
+
+    FCkUiView::FNativeBindings NativeBindings;
+    NativeBindings.Add(TEXT("ui-shell-command"), _CommandHost.ToSharedRef());
+    NativeBindings.Add(TEXT("ui-shell-summary"), _SummaryHost.ToSharedRef());
+    NativeBindings.Add(TEXT("ui-shell-separator"), _Separator.ToSharedRef());
+    NativeBindings.Add(TEXT("ui-shell-layer"), _LayerHost.ToSharedRef());
+    NativeBindings.Add(TEXT("ui-shell-history"), _HistoryHost.ToSharedRef());
+    const TSharedRef<FCkUiView> View = FCkUiView::Create(MoveTemp(NativeBindings), {},
+        ck_ui_debugger::ShellStyleTokens(), CkStyle::RegularFont(CkStyle::FontSizeBody()), {}, Registry);
+    const TSharedRef<SWidget> Main = View->GetRegion(TEXT("main"));
+    const FString Directory = FPaths::Combine(Plugin->GetBaseDir(), TEXT("Resources/UI"));
+    View->SetFiles(FPaths::Combine(Directory, TEXT("UiDebuggerShell.ui.html")),
+        FPaths::Combine(Directory, TEXT("UiDebuggerShell.ui.css")));
+    _AuthoredShellView = View;
+    View->PollFiles();
+    _AuthoredShellHost->SetContent(View->GetLastResult().Succeeded ? Main : DoBuildNativeShellFallback());
+}
+
+auto SCkUIDebuggerWindow::DoPollAuthoredShellFiles(const double InCurrentTime) -> void
+{
+    constexpr double PollIntervalSeconds = 0.5;
+    if (InCurrentTime < _NextAuthoredShellPollSeconds || NOT _AuthoredShellView.IsValid()) { return; }
+    _NextAuthoredShellPollSeconds = InCurrentTime + PollIntervalSeconds;
+    const bool WasAccepted = _AuthoredShellView->GetLastResult().Succeeded;
+    _AuthoredShellView->PollFiles(ck_ui_debugger::ShellStyleTokens());
+    if (!WasAccepted && _AuthoredShellView->GetLastResult().Succeeded)
+    { _AuthoredShellHost->SetContent(_AuthoredShellView->GetRegion(TEXT("main"))); }
 }
 
 // --------------------------------------------------------------------------------------------------------------------

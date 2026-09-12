@@ -54,6 +54,7 @@ public:
     auto Get_LayerCollection() const -> TSharedPtr<const FCkUiTreeCollection> { return _LayerCollection; }
     auto Get_SummaryView() const -> TSharedPtr<FCkUiView> { return _SummaryView; }
     auto Get_CommandView() const -> TSharedPtr<FCkUiView> { return _CommandView; }
+    auto Get_AuthoredShellView() const -> TSharedPtr<FCkUiView> { return _AuthoredShellView; }
     auto Get_ForcedLayerRefreshGeneration() const -> uint64 { return _ForcedLayerRefreshGeneration; }
 
 protected:
@@ -86,6 +87,9 @@ private:
     auto DoAppendHistoryEvent(FString InDescription) -> void;
     auto DoBuildCommandView() -> void;
     auto DoPollCommandFiles(double InCurrentTime) -> void;
+    auto DoBuildAuthoredShell() -> void;
+    auto DoBuildNativeShellFallback() -> TSharedRef<SWidget>;
+    auto DoPollAuthoredShellFiles(double InCurrentTime) -> void;
 
     auto DoUpdateAllSlots() -> void;
 
@@ -111,6 +115,8 @@ private:
     TSharedPtr<SBox> _HistoryHost;
     TSharedPtr<SBox> _SummaryHost;
     TSharedPtr<SBox> _CommandHost;
+    TSharedPtr<SBox> _AuthoredShellHost;
+    TSharedPtr<SWidget> _Separator;
 
     static constexpr int32 MaxWidgetsPerLayer = 16;
 
@@ -124,6 +130,7 @@ private:
     TSharedPtr<FCkUiView> _HistoryView;
     TSharedPtr<FCkUiView> _SummaryView;
     TSharedPtr<FCkUiView> _CommandView;
+    TSharedPtr<FCkUiView> _AuthoredShellView;
     FString _SearchFilter;
     bool _IsDirty = true;
     bool _IsPostLayerTransitionRefreshPending = false;
@@ -136,6 +143,7 @@ private:
     double _NextHistoryPollSeconds = 0.0;
     double _NextSummaryPollSeconds = 0.0;
     double _NextCommandPollSeconds = 0.0;
+    double _NextAuthoredShellPollSeconds = 0.0;
 
     // Updated only through the existing refresh-gated DoUpdateAllSlots path.
     bool _HasActiveLayout = false;

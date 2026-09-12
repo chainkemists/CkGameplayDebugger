@@ -1,8 +1,10 @@
 #include "CkStyleLabDebugger/Widgets/SCkStyleLab_ControlsPane.h"
 
 #include "CkStyleLabDebugger/Styles/CkStyleLab_AxisMetadata.h"
-#include "CkStyleLabDebugger/Widgets/SCkStyleLab_InputHudControls.h"
 #include "CkStyleLabDebugger/Widgets/SCkStyleLab_SamplePane.h"
+
+#include "CkInputHudOverlay/Settings/CkInputHud_Settings.h"
+#include "CkInputHudOverlay/Settings/CkInputHud_UserSettings.h"
 
 #include "CkCore/Format/CkFormat.h"
 #include "CkCore/Macros/CkMacros.h"
@@ -10,7 +12,6 @@
 #include "CkDebuggerCommon/Settings/CkDebuggerStyleSettings.h"
 #include "CkDebuggerCommon/Styles/CkDebuggerAxes.h"
 #include "CkDebuggerCommon/UI/CkDebug_UiRegistry.h"
-#include "CkDebuggerCommon/Widgets/SCkDebug_InspectorPanel.h"
 
 #include "CkEditorTools/Style/CkStyle.h"
 
@@ -21,10 +22,6 @@
 #include "Misc/Paths.h"
 #include "UObject/UnrealType.h"
 
-#include "Widgets/Input/SButton.h"
-#include "Widgets/Layout/SBorder.h"
-#include "Widgets/Layout/SBox.h"
-#include "Widgets/Layout/SSeparator.h"
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/Text/STextBlock.h"
 
@@ -34,8 +31,94 @@
 
 namespace ck_style_lab_controls
 {
-    constexpr auto ValueLabelWidth = 128.0f;
-    constexpr auto AxisNameWidth   = 116.0f;
+    template <typename TEnum>
+    auto Cycle(TEnum InValue, const int32 InDirection, const int32 InCount) -> TEnum
+    {
+        const int32 Current = static_cast<int32>(InValue);
+        return static_cast<TEnum>(((Current + InDirection) % InCount + InCount) % InCount);
+    }
+
+    auto GetPaletteLabel(const ECk_InputHud_Palette InValue) -> FText
+    {
+        switch (InValue)
+        {
+            case ECk_InputHud_Palette::ArcticSignal:  return FText::FromString(TEXT("Arctic Signal"));
+            case ECk_InputHud_Palette::EmberTerminal: return FText::FromString(TEXT("Ember Terminal"));
+            case ECk_InputHud_Palette::OrchidSynth:   return FText::FromString(TEXT("Orchid Synth"));
+            case ECk_InputHud_Palette::TacticalMint:  return FText::FromString(TEXT("Tactical Mint"));
+            default:                                  return FText::FromString(TEXT("Arctic Signal"));
+        }
+    }
+
+    auto GetDensityLabel(const ECk_InputHud_Density InValue) -> FText
+    {
+        switch (InValue)
+        {
+            case ECk_InputHud_Density::Compact:  return FText::FromString(TEXT("Compact"));
+            case ECk_InputHud_Density::Standard: return FText::FromString(TEXT("Standard"));
+            case ECk_InputHud_Density::Readable: return FText::FromString(TEXT("Readable"));
+            default:                             return FText::FromString(TEXT("Compact"));
+        }
+    }
+
+    auto GetCornerLabel(const ECk_InputHud_CornerStyle InValue) -> FText
+    {
+        switch (InValue)
+        {
+            case ECk_InputHud_CornerStyle::Sharp:   return FText::FromString(TEXT("Sharp"));
+            case ECk_InputHud_CornerStyle::Soft:    return FText::FromString(TEXT("Soft"));
+            case ECk_InputHud_CornerStyle::Rounded: return FText::FromString(TEXT("Rounded"));
+            default:                                return FText::FromString(TEXT("Rounded"));
+        }
+    }
+
+    auto GetAnchorLabel(const ECk_InputHud_AnchorCorner InValue) -> FText
+    {
+        switch (InValue)
+        {
+            case ECk_InputHud_AnchorCorner::TopLeft:     return FText::FromString(TEXT("Top left"));
+            case ECk_InputHud_AnchorCorner::BottomLeft:  return FText::FromString(TEXT("Bottom left"));
+            case ECk_InputHud_AnchorCorner::BottomRight: return FText::FromString(TEXT("Bottom right"));
+            case ECk_InputHud_AnchorCorner::TopRight:
+            default:                                     return FText::FromString(TEXT("Top right"));
+        }
+    }
+
+    auto GetMetadataLabel(const ECk_InputHud_MetadataMode InValue) -> FText
+    {
+        switch (InValue)
+        {
+            case ECk_InputHud_MetadataMode::Keys:    return FText::FromString(TEXT("Keys"));
+            case ECk_InputHud_MetadataMode::Compact: return FText::FromString(TEXT("Compact"));
+            case ECk_InputHud_MetadataMode::Full:    return FText::FromString(TEXT("Full"));
+            default:                                 return FText::FromString(TEXT("Compact"));
+        }
+    }
+
+    auto GetFrameLabel(const ECk_InputHud_FrameNotation InValue) -> FText
+    {
+        switch (InValue)
+        {
+            case ECk_InputHud_FrameNotation::Press: return FText::FromString(TEXT("Press"));
+            case ECk_InputHud_FrameNotation::Delta: return FText::FromString(TEXT("Delta"));
+            case ECk_InputHud_FrameNotation::Range: return FText::FromString(TEXT("Range"));
+            default:                                return FText::FromString(TEXT("Press"));
+        }
+    }
+
+    auto GetInputHudColor(const ECk_InputHud_ColorRole InRole) -> FLinearColor
+    {
+        const FCk_InputHud_PaletteSnapshot Palette = UCk_InputHud_UserSettings::Get_PaletteSnapshot();
+        switch (InRole)
+        {
+            case ECk_InputHud_ColorRole::ContainerOutline: return Palette.ContainerOutline;
+            case ECk_InputHud_ColorRole::KeyBorder:        return Palette.KeyBorder;
+            case ECk_InputHud_ColorRole::Active:           return Palette.Active;
+            case ECk_InputHud_ColorRole::Resolved:         return Palette.Resolved;
+            case ECk_InputHud_ColorRole::Unrouted:         return Palette.Unrouted;
+        }
+        return FLinearColor::Transparent;
+    }
 
     auto ProfileUiSchema() -> TArray<FCkUiFieldSchema>
     {
@@ -44,6 +127,30 @@ namespace ck_style_lab_controls
             {TEXT("blurb"), ECkUiFieldKind::Text},
             {TEXT("active-color"), ECkUiFieldKind::Color},
         };
+    }
+
+    auto AxisUiSchema() -> TArray<FCkUiFieldSchema>
+    {
+        return {
+            {TEXT("label"), ECkUiFieldKind::Text},
+            {TEXT("tooltip"), ECkUiFieldKind::Text},
+            {TEXT("value"), ECkUiFieldKind::Text},
+        };
+    }
+
+    auto GroupKey(const ECkStyleLab_Group InGroup) -> FString
+    {
+        switch (InGroup)
+        {
+            case ECkStyleLab_Group::WorkbenchSurfaces: return TEXT("workbench-surfaces");
+            case ECkStyleLab_Group::TokensLegend: return TEXT("tokens-legend");
+            case ECkStyleLab_Group::EntityValues: return TEXT("entity-values");
+            case ECkStyleLab_Group::HierarchyEditing: return TEXT("hierarchy-editing");
+            case ECkStyleLab_Group::Icons: return TEXT("icons");
+            case ECkStyleLab_Group::GraphTelemetry: return TEXT("graph-telemetry");
+            case ECkStyleLab_Group::InputHud: return TEXT("input-hud");
+        }
+        return TEXT("unknown");
     }
 
     auto Get_AxisEnum(const FProperty* InProperty) -> const UEnum*
@@ -165,6 +272,7 @@ auto
         if (Axis->Options.IsEmpty())
         { continue; }
 
+        _AxesByProperty.Add(Axis->Property->GetName(), Axis);
         _Axes.Add(MoveTemp(Axis));
     }
 
@@ -191,171 +299,228 @@ auto
     Build_GroupedAxes()
     -> TSharedRef<SWidget>
 {
-    auto Groups = SNew(SVerticalBox);
-
-    for (const auto& Group : ck::style_lab::Get_GroupMetadata())
+    TSharedPtr<const FCkUiWidgetRegistrySnapshot> Registry;
+    const FCkUiLoadResult RegistryResult = FCkDebug_UiRegistry::TryCreate(Registry);
+    if (NOT RegistryResult.Succeeded)
     {
-        Groups->AddSlot()
-            .AutoHeight()
-            .Padding(0.0f, 0.0f, 0.0f, CkStyle::SpaceM)
-            [
-                Group.Group == ECkStyleLab_Group::InputHud
-                    ? Build_InputHudGroup(Group)
-                    : Build_AxisGroup(Group)
-            ];
+        _ControlsPublicationError = FString::Join(RegistryResult.Errors, TEXT("\n"));
+        return SNew(STextBlock).Text(Get_ControlsLayoutError());
     }
 
-    return Groups;
-}
-
-// --------------------------------------------------------------------------------------------------------------------
-
-auto
-    SCkStyleLab_ControlsPane::
-    Build_AxisGroup(
-        const FCkStyleLab_GroupMetadata& InGroup)
-    -> TSharedRef<SWidget>
-{
-    auto Rows = SNew(SVerticalBox);
-    auto AxisCount = 0;
-
-    for (const auto& Axis : _Axes)
+    auto Collections = TMap<ECkStyleLab_Group, TSharedPtr<FCkUiCollection>>{};
+    for (const FCkStyleLab_GroupMetadata& Group : ck::style_lab::Get_GroupMetadata())
     {
-        if (NOT Axis.IsValid() || Axis->Group != InGroup.Group)
-        { continue; }
-
-        ++AxisCount;
-        Rows->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, CkStyle::SpaceXS)
-            [Build_AxisRow(Axis)];
+        if (Group.Group == ECkStyleLab_Group::InputHud) { continue; }
+        TSharedPtr<FCkUiCollection> Collection;
+        const FCkUiLoadResult Result = FCkUiCollection::TryCreate(ck_style_lab_controls::AxisUiSchema(), Collection);
+        if (NOT Result.Succeeded)
+        {
+            _ControlsPublicationError = FString::Join(Result.Errors, TEXT("\n"));
+            return SNew(STextBlock).Text(Get_ControlsLayoutError());
+        }
+        Collections.Add(Group.Group, MoveTemp(Collection));
     }
 
-    TSharedPtr<SCkStyleLab_SamplePane> Preview;
+    const TWeakPtr<SCkStyleLab_ControlsPane> WeakPane{SharedThis(this)};
+    auto Bindings = FCkUiView::FNativeBindings{};
+    auto Previews = TArray<TSharedPtr<SCkStyleLab_SamplePane>>{};
+    for (const FCkStyleLab_GroupMetadata& Group : ck::style_lab::Get_GroupMetadata())
+    {
+        const TSharedPtr<SCkStyleLab_SamplePane> Preview = SNew(SCkStyleLab_SamplePane).Group(Group.Group);
+        Previews.Add(Preview);
+        Bindings.Add(TEXT("preview-") + ck_style_lab_controls::GroupKey(Group.Group), Preview);
+    }
+    auto Tokens = FCkUiView::FTokens{};
+    Tokens.Add(TEXT("--space-s"), FString::SanitizeFloat(CkStyle::SpaceS));
+    Tokens.Add(TEXT("--space-m"), FString::SanitizeFloat(CkStyle::SpaceM));
+    Tokens.Add(TEXT("--text-dim"), TEXT("#") + CkStyle::TextDim().ToFColorSRGB().ToHex());
+    Tokens.Add(TEXT("--text"), TEXT("#") + CkStyle::Text().ToFColorSRGB().ToHex());
+    Tokens.Add(TEXT("--err"), TEXT("#") + CkStyle::Err().ToFColorSRGB().ToHex());
+    auto Data = FCkUiView::FDataBindings{};
+    Data.Text.Add(TEXT("controls-layout-error"), TAttribute<FText>::CreateLambda([WeakPane]()
+    {
+        const TSharedPtr<SCkStyleLab_ControlsPane> Pane = WeakPane.Pin();
+        return Pane.IsValid() ? Pane->Get_ControlsLayoutError() : FText::GetEmpty();
+    }));
+    Data.Visibility.Add(TEXT("controls-layout-error-visible"), TAttribute<bool>::CreateLambda([WeakPane]()
+    {
+        const TSharedPtr<SCkStyleLab_ControlsPane> Pane = WeakPane.Pin();
+        return Pane.IsValid() && !Pane->Get_ControlsLayoutError().IsEmpty();
+    }));
+    Data.CanDispatchEvents = TAttribute<bool>::CreateLambda([WeakPane]()
+    {
+        const TSharedPtr<SCkStyleLab_ControlsPane> Pane = WeakPane.Pin();
+        return Pane.IsValid() && Pane->_ControlsPublicationError.IsEmpty();
+    });
+    Data.SlateUserIndex = 0;
+    for (const FCkStyleLab_GroupMetadata& Group : ck::style_lab::Get_GroupMetadata())
+    {
+        const FString Key = ck_style_lab_controls::GroupKey(Group.Group);
+        Data.Text.Add(TEXT("group-") + Key + TEXT("-title"), Group.DisplayName);
+        Data.Text.Add(TEXT("group-") + Key + TEXT("-description"), Group.Description);
+        if (const TSharedPtr<FCkUiCollection>* Collection = Collections.Find(Group.Group))
+        { Data.Collections.Add(TEXT("axes-") + Key, *Collection); }
+    }
+    Data.ItemActions.Add(TEXT("cycle-axis-previous"), FCkUiOnItemAction::CreateLambda([WeakPane](const FString& PropertyName)
+    {
+        if (const TSharedPtr<SCkStyleLab_ControlsPane> Pane = WeakPane.Pin())
+        { Pane->OnCycleAxis(Pane->_AxesByProperty.FindRef(PropertyName), -1); }
+    }));
+    Data.ItemActions.Add(TEXT("cycle-axis-next"), FCkUiOnItemAction::CreateLambda([WeakPane](const FString& PropertyName)
+    {
+        if (const TSharedPtr<SCkStyleLab_ControlsPane> Pane = WeakPane.Pin())
+        { Pane->OnCycleAxis(Pane->_AxesByProperty.FindRef(PropertyName), 1); }
+    }));
 
-    auto Body = SNew(SVerticalBox)
-        + SVerticalBox::Slot().AutoHeight().Padding(CkStyle::SpaceM, CkStyle::SpaceS)
-            [
-                SNew(STextBlock)
-                    .Text(InGroup.Description)
-                    .AutoWrapText(true)
-                    .Font(CkStyle::RegularFont(CkStyle::FontSizeSmall()))
-                    .ColorAndOpacity(FSlateColor{CkStyle::TextDim()})
-            ]
-        + SVerticalBox::Slot().AutoHeight().Padding(CkStyle::SpaceM, 0.0f, CkStyle::SpaceM, CkStyle::SpaceS)
-            [Rows]
-        + SVerticalBox::Slot().AutoHeight()
-            [SNew(SSeparator)]
-        + SVerticalBox::Slot().AutoHeight().Padding(CkStyle::SpaceM)
-            [
-                SAssignNew(Preview, SCkStyleLab_SamplePane)
-                    .Group(InGroup.Group)
-            ];
+    auto Actions = FCkUiView::FActions{};
+    Configure_InputHudBindings(Data, Actions, WeakPane);
+    const TSharedPtr<IPlugin> Plugin = IPluginManager::Get().FindPlugin(TEXT("CkDebugger"));
+    if (NOT Plugin.IsValid())
+    {
+        _ControlsPublicationError = TEXT("CkDebugger plugin is unavailable; Style Lab controls cannot load their authored layout.");
+        return SNew(STextBlock).Text(Get_ControlsLayoutError());
+    }
 
-    _GroupPreviews.Add(Preview);
+    const TSharedRef<FCkUiView> View = FCkUiView::Create(MoveTemp(Bindings), MoveTemp(Actions), MoveTemp(Tokens),
+        CkStyle::RegularFont(CkStyle::FontSizeBody()), MoveTemp(Data), Registry);
+    const TSharedRef<SWidget> Region = View->GetRegion(TEXT("main"));
+    const FString UiDirectory = FPaths::Combine(Plugin->GetBaseDir(), TEXT("Resources/UI"));
+    View->SetFiles(FPaths::Combine(UiDirectory, TEXT("StyleLabControls.ui.html")),
+        FPaths::Combine(UiDirectory, TEXT("StyleLabControls.ui.css")));
 
-    return SNew(SCkDebug_InspectorPanel)
-        .Title(InGroup.DisplayName)
-        .CountText(FText::AsNumber(AxisCount))
-        .StartExpanded(InGroup.bStartExpanded)
-        .Body()
-        [Body];
+    _AxisCollections = Collections;
+    Publish_AxisRecords();
+    if (NOT _ControlsPublicationError.IsEmpty())
+    {
+        _AxisCollections.Reset();
+        return SNew(STextBlock).Text(Get_ControlsLayoutError());
+    }
+    View->PollFiles();
+    if (NOT View->GetLastResult().Succeeded)
+    {
+        _ControlsPublicationError = FString::Join(View->GetLastResult().Errors, TEXT("\n"));
+        _AxisCollections.Reset();
+        return SNew(STextBlock).Text(Get_ControlsLayoutError());
+    }
+
+    _ControlsView = View;
+    _GroupPreviews.Append(MoveTemp(Previews));
+    _ControlsPublicationError.Reset();
+    return Region;
 }
 
 // --------------------------------------------------------------------------------------------------------------------
 
 auto
     SCkStyleLab_ControlsPane::
-    Build_InputHudGroup(
-        const FCkStyleLab_GroupMetadata& InGroup)
-    -> TSharedRef<SWidget>
+    Configure_InputHudBindings(
+        FCkUiView::FDataBindings& InOutData,
+        FCkUiView::FActions& InOutActions,
+        TWeakPtr<SCkStyleLab_ControlsPane> InWeakPane) -> void
 {
-    TSharedPtr<SCkStyleLab_SamplePane> Preview;
+    const auto AddCycle = [&InOutData, &InOutActions, InWeakPane](
+        const TCHAR* InName,
+        TFunction<FText()> InLabel,
+        TFunction<void(int32)> InCycle)
+    {
+        const FString Name{InName};
+        InOutData.Text.Add(Name + TEXT("-value"), TAttribute<FText>::CreateLambda([InWeakPane, Label = MoveTemp(InLabel)]()
+        {
+            return InWeakPane.IsValid() ? Label() : FText::GetEmpty();
+        }));
+        InOutActions.Add(Name + TEXT("-previous"), FSimpleDelegate::CreateLambda([InWeakPane, Cycle = InCycle]()
+        {
+            if (InWeakPane.IsValid()) { Cycle(-1); }
+        }));
+        InOutActions.Add(Name + TEXT("-next"), FSimpleDelegate::CreateLambda([InWeakPane, Cycle = MoveTemp(InCycle)]()
+        {
+            if (InWeakPane.IsValid()) { Cycle(1); }
+        }));
+    };
+    AddCycle(TEXT("input-hud-palette"), [] { return ck_style_lab_controls::GetPaletteLabel(UCk_InputHud_UserSettings::Get()->Palette); },
+        [InWeakPane](const int32 Direction) { auto* Settings = UCk_InputHud_UserSettings::Get_Mutable(); Settings->Set_Palette(ck_style_lab_controls::Cycle(Settings->Palette, Direction, 4)); if (const auto Pane = InWeakPane.Pin()) { Pane->Notify_SelectionChanged(); } });
+    AddCycle(TEXT("input-hud-density"), [] { return ck_style_lab_controls::GetDensityLabel(UCk_InputHud_UserSettings::Get_Density()); },
+        [InWeakPane](const int32 Direction) { auto* Settings = UCk_InputHud_UserSettings::Get_Mutable(); Settings->Set_Density(ck_style_lab_controls::Cycle(Settings->Density, Direction, 3)); if (const auto Pane = InWeakPane.Pin()) { Pane->Notify_SelectionChanged(); } });
+    AddCycle(TEXT("input-hud-corners"), [] { return ck_style_lab_controls::GetCornerLabel(UCk_InputHud_UserSettings::Get_CornerStyle()); },
+        [InWeakPane](const int32 Direction) { auto* Settings = UCk_InputHud_UserSettings::Get_Mutable(); Settings->Set_CornerStyle(ck_style_lab_controls::Cycle(Settings->CornerStyle, Direction, 3)); if (const auto Pane = InWeakPane.Pin()) { Pane->Notify_SelectionChanged(); } });
+    AddCycle(TEXT("input-hud-anchor"), [] { return ck_style_lab_controls::GetAnchorLabel(UCk_InputHud_UserSettings::Get_AnchorCorner()); },
+        [InWeakPane](const int32 Direction) { UCk_InputHud_UserSettings::Get_Mutable()->Set_AnchorCorner(ck_style_lab_controls::Cycle(UCk_InputHud_UserSettings::Get_AnchorCorner(), Direction, 4)); if (const auto Pane = InWeakPane.Pin()) { Pane->Notify_SelectionChanged(); } });
+    AddCycle(TEXT("input-hud-metadata"), [] { return ck_style_lab_controls::GetMetadataLabel(UCk_InputHud_UserSettings::Get_MetadataMode()); },
+        [InWeakPane](const int32 Direction) { auto* Settings = UCk_InputHud_UserSettings::Get_Mutable(); Settings->Set_MetadataMode(ck_style_lab_controls::Cycle(Settings->MetadataMode, Direction, 3)); if (const auto Pane = InWeakPane.Pin()) { Pane->Notify_SelectionChanged(); } });
+    AddCycle(TEXT("input-hud-frame"), [] { return ck_style_lab_controls::GetFrameLabel(UCk_InputHud_UserSettings::Get_FrameNotation()); },
+        [InWeakPane](const int32 Direction) { auto* Settings = UCk_InputHud_UserSettings::Get_Mutable(); Settings->Set_FrameNotation(ck_style_lab_controls::Cycle(Settings->FrameNotation, Direction, 3)); if (const auto Pane = InWeakPane.Pin()) { Pane->Notify_SelectionChanged(); } });
 
-    auto Body = SNew(SVerticalBox)
-        + SVerticalBox::Slot().AutoHeight().Padding(CkStyle::SpaceM, CkStyle::SpaceS)
-            [
-                SNew(STextBlock)
-                    .Text(InGroup.Description)
-                    .AutoWrapText(true)
-                    .Font(CkStyle::RegularFont(CkStyle::FontSizeSmall()))
-                    .ColorAndOpacity(FSlateColor{CkStyle::TextDim()})
-            ]
-        + SVerticalBox::Slot().AutoHeight().Padding(CkStyle::SpaceM, 0.0f, CkStyle::SpaceM, CkStyle::SpaceS)
-            [
-                SNew(SCkStyleLab_InputHudControls)
-                    .OnChanged(FOnCkStyleLab_InputHudChanged::CreateSP(
-                        this, &SCkStyleLab_ControlsPane::Notify_SelectionChanged))
-            ]
-        + SVerticalBox::Slot().AutoHeight()
-            [SNew(SSeparator)]
-        + SVerticalBox::Slot().AutoHeight().Padding(CkStyle::SpaceM)
-            [
-                SAssignNew(Preview, SCkStyleLab_SamplePane)
-                    .Group(ECkStyleLab_Group::InputHud)
-            ];
+    const auto AddNumber = [&InOutData, InWeakPane](const TCHAR* InName, TFunction<float()> InGetter, TFunction<void(float)> InSetter)
+    {
+        InOutData.Number.Add(InName, TAttribute<float>::CreateLambda([Getter = InGetter] { return Getter(); }));
+        InOutData.NumberCommitted.Add(InName, FCkUiOnNumberCommitted::CreateLambda([InWeakPane, Getter = InGetter, Setter = MoveTemp(InSetter)](const float Value, ETextCommit::Type)
+        {
+            if (const TSharedPtr<SCkStyleLab_ControlsPane> Pane = InWeakPane.Pin())
+            {
+                const uint32 Before = UCk_InputHud_UserSettings::Get_Revision();
+                if (!FMath::IsNearlyEqual(Getter(), Value)) { Setter(Value); }
+                if (UCk_InputHud_UserSettings::Get_Revision() != Before) { Pane->Notify_SelectionChanged(); }
+            }
+        }));
+    };
+    AddNumber(TEXT("input-hud-padding-x"), [] { return UCk_InputHud_UserSettings::Get_KeyPaddingX(); }, [](const float Value) { UCk_InputHud_UserSettings::Get_Mutable()->Set_KeyPaddingX(Value); });
+    AddNumber(TEXT("input-hud-padding-y"), [] { return UCk_InputHud_UserSettings::Get_KeyPaddingY(); }, [](const float Value) { UCk_InputHud_UserSettings::Get_Mutable()->Set_KeyPaddingY(Value); });
+    AddNumber(TEXT("input-hud-corner-radius"), [] { return UCk_InputHud_UserSettings::Get_KeyCornerRadius(); }, [](const float Value) { UCk_InputHud_UserSettings::Get_Mutable()->Set_KeyCornerRadius(Value); });
+    AddNumber(TEXT("input-hud-overall-opacity"), [] { return UCk_InputHud_UserSettings::Get_OverallOpacity(); }, [](const float Value) { UCk_InputHud_UserSettings::Get_Mutable()->Set_OverallOpacity(Value); });
+    AddNumber(TEXT("input-hud-anchor-x"), [] { return UCk_InputHud_UserSettings::Get_AnchorOffsetX(); }, [](const float Value) { UCk_InputHud_UserSettings::Get_Mutable()->Set_AnchorOffsetX(Value); });
+    AddNumber(TEXT("input-hud-anchor-y"), [] { return UCk_InputHud_UserSettings::Get_AnchorOffsetY(); }, [](const float Value) { UCk_InputHud_UserSettings::Get_Mutable()->Set_AnchorOffsetY(Value); });
+    AddNumber(TEXT("input-hud-border-width"), [] { return UCk_InputHud_UserSettings::Get_KeyBorderWidth(); }, [](const float Value) { UCk_InputHud_UserSettings::Get_Mutable()->Set_KeyBorderWidth(Value); });
+    AddNumber(TEXT("input-hud-border-opacity"), [] { return UCk_InputHud_UserSettings::Get_KeyBorderOpacity(); }, [](const float Value) { UCk_InputHud_UserSettings::Get_Mutable()->Set_KeyBorderOpacity(Value); });
+    AddNumber(TEXT("input-hud-active-fill-opacity"), [] { return UCk_InputHud_UserSettings::Get_ActiveFillOpacity(); }, [](const float Value) { UCk_InputHud_UserSettings::Get_Mutable()->Set_ActiveFillOpacity(Value); });
+    AddNumber(TEXT("input-hud-active-glow-opacity"), [] { return UCk_InputHud_UserSettings::Get_ActiveGlowOpacity(); }, [](const float Value) { UCk_InputHud_UserSettings::Get_Mutable()->Set_ActiveGlowOpacity(Value); });
+    AddNumber(TEXT("input-hud-panel-opacity"), [] { return UCk_InputHud_UserSettings::Get_PanelOpacity(); }, [](const float Value) { UCk_InputHud_UserSettings::Get_Mutable()->Set_PanelOpacity(Value); });
+    AddNumber(TEXT("input-hud-pulse-scale"), [] { return UCk_InputHud_UserSettings::Get_PulseScale(); }, [](const float Value) { UCk_InputHud_UserSettings::Get_Mutable()->Set_PulseScale(Value); });
+    AddNumber(TEXT("input-hud-history-brightness"), [] { return UCk_InputHud_UserSettings::Get_HistoryBrightness(); }, [](const float Value) { UCk_InputHud_UserSettings::Get_Mutable()->Set_HistoryBrightness(Value); });
+    AddNumber(TEXT("input-hud-press-pop-scale"), [] { return UCk_InputHud_UserSettings::Get_PressPopScale(); }, [](const float Value) { UCk_InputHud_UserSettings::Get_Mutable()->Set_PressPopScale(Value); });
+    AddNumber(TEXT("input-hud-press-pop-ms"), [] { return UCk_InputHud_UserSettings::Get_PressPopDurationMs(); }, [](const float Value) { UCk_InputHud_UserSettings::Get_Mutable()->Set_PressPopDurationMs(Value); });
+    AddNumber(TEXT("input-hud-release-ease-ms"), [] { return UCk_InputHud_UserSettings::Get_ReleaseEaseMs(); }, [](const float Value) { UCk_InputHud_UserSettings::Get_Mutable()->Set_ReleaseEaseMs(Value); });
+    InOutData.Number.Add(TEXT("input-hud-hold-bar-max"), TAttribute<float>::CreateLambda([] { return UCk_InputHud_Settings::Get_HoldBarMaxPx(); }));
+    InOutData.NumberCommitted.Add(TEXT("input-hud-hold-bar-max"), FCkUiOnNumberCommitted::CreateLambda([InWeakPane](const float Value, ETextCommit::Type)
+    {
+        const float Sanitized = FMath::Clamp(Value, 8.0f, 64.0f);
+        if (const auto Pane = InWeakPane.Pin(); Pane.IsValid() && !FMath::IsNearlyEqual(UCk_InputHud_Settings::Get_HoldBarMaxPx(), Sanitized))
+        {
+            auto* Settings = GetMutableDefault<UCk_InputHud_Settings>();
+            Settings->HoldBarMaxPx = Sanitized;
+            Settings->SaveConfig();
+            UCk_InputHud_UserSettings::Get_Mutable()->NotifyChanged();
+            Pane->Notify_SelectionChanged();
+        }
+    }));
+    const auto AddColor = [&InOutData, InWeakPane](const TCHAR* InName, const ECk_InputHud_ColorRole Role)
+    {
+        InOutData.Color.Add(InName, TAttribute<FLinearColor>::CreateLambda([InWeakPane, Role]
+        { return InWeakPane.IsValid() ? ck_style_lab_controls::GetInputHudColor(Role) : FLinearColor::Transparent; }));
+        InOutData.ColorCommitted.Add(FString(InName) + TEXT("-committed"), FCkUiOnColorCommitted::CreateLambda([InWeakPane, Role](const FLinearColor Value)
+        {
+            if (const auto Pane = InWeakPane.Pin())
+            {
+                auto* Settings = UCk_InputHud_UserSettings::Get_Mutable();
+                if (!Settings->UseCustomColors || !ck_style_lab_controls::GetInputHudColor(Role).Equals(Value.GetClamped()))
+                { Settings->Set_CustomColor(Role, Value.GetClamped()); Pane->Notify_SelectionChanged(); }
+            }
+        }));
+    };
+    AddColor(TEXT("input-hud-container-outline-color"), ECk_InputHud_ColorRole::ContainerOutline);
+    AddColor(TEXT("input-hud-key-outline-color"), ECk_InputHud_ColorRole::KeyBorder);
+    AddColor(TEXT("input-hud-active-color"), ECk_InputHud_ColorRole::Active);
+    AddColor(TEXT("input-hud-resolved-color"), ECk_InputHud_ColorRole::Resolved);
+    AddColor(TEXT("input-hud-unrouted-color"), ECk_InputHud_ColorRole::Unrouted);
+    InOutActions.Add(TEXT("input-hud-reset-visuals"), FSimpleDelegate::CreateLambda([InWeakPane]
+    {
+        if (const auto Pane = InWeakPane.Pin())
+        {
+            const uint32 Before = UCk_InputHud_UserSettings::Get_Revision();
+            UCk_InputHud_UserSettings::Get_Mutable()->Reset_VisualTuning();
+            if (UCk_InputHud_UserSettings::Get_Revision() != Before) { Pane->Notify_SelectionChanged(); }
+        }
+    }));
 
-    _GroupPreviews.Add(Preview);
-
-    return SNew(SCkDebug_InspectorPanel)
-        .Title(InGroup.DisplayName)
-        .StartExpanded(InGroup.bStartExpanded)
-        .Body()
-        [Body];
-}
-
-// --------------------------------------------------------------------------------------------------------------------
-
-auto
-    SCkStyleLab_ControlsPane::
-    Build_AxisRow(
-        const TSharedPtr<FCkStyleLab_AxisRow>& InAxis)
-    -> TSharedRef<SWidget>
-{
-    return SNew(SHorizontalBox)
-        .ToolTipText(InAxis->ToolTip)
-
-        + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-            [
-                SNew(SBox)
-                    .WidthOverride(ck_style_lab_controls::AxisNameWidth)
-                    [
-                        SNew(STextBlock)
-                            .Text(InAxis->DisplayName)
-                            .Font(CkStyle::RegularFont(CkStyle::FontSizeSmall()))
-                            .ColorAndOpacity(FSlateColor{CkStyle::TextDim()})
-                    ]
-            ]
-
-        + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-            [
-                SNew(SButton)
-                    .Text(FText::FromString(TEXT("\x25C0")))   // U+25C0
-                    .ToolTipText(FText::FromString(TEXT("Previous option")))
-                    .OnClicked(FOnClicked::CreateSP(
-                        this, &SCkStyleLab_ControlsPane::OnCycleAxis, InAxis, -1))
-            ]
-
-        + SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)
-            [
-                SNew(SBox)
-                    .MinDesiredWidth(ck_style_lab_controls::ValueLabelWidth)
-                    [
-                        SNew(STextBlock)
-                            .Text(TAttribute<FText>::CreateSP(
-                                this, &SCkStyleLab_ControlsPane::Get_AxisValueLabel, InAxis))
-                            .Font(CkStyle::BoldFont(CkStyle::FontSizeSmall()))
-                            .Justification(ETextJustify::Center)
-                            .ColorAndOpacity(FSlateColor{CkStyle::Text()})
-                    ]
-            ]
-
-        + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-            [
-                SNew(SButton)
-                    .Text(FText::FromString(TEXT("\x25B6")))   // U+25B6
-                    .ToolTipText(FText::FromString(TEXT("Next option")))
-                    .OnClicked(FOnClicked::CreateSP(
-                        this, &SCkStyleLab_ControlsPane::OnCycleAxis, InAxis, 1))
-            ];
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -472,6 +637,41 @@ auto SCkStyleLab_ControlsPane::Publish_ProfileRecords() -> void
 
 // --------------------------------------------------------------------------------------------------------------------
 
+auto SCkStyleLab_ControlsPane::Publish_AxisRecords() -> void
+{
+    if (_AxisCollections.IsEmpty()) { return; }
+
+    auto RecordsByGroup = TMap<ECkStyleLab_Group, TArray<FCkUiRecordData>>{};
+    for (const TSharedPtr<FCkStyleLab_AxisRow>& Axis : _Axes)
+    {
+        if (NOT Axis.IsValid()) { continue; }
+        auto& Records = RecordsByGroup.FindOrAdd(Axis->Group);
+        auto Record = FCkUiRecordData{};
+        Record.Key = Axis->Property->GetName();
+        Record.Fields.Add(TEXT("label"), FCkUiFieldValue{.Kind = ECkUiFieldKind::Text, .Text = Axis->DisplayName});
+        Record.Fields.Add(TEXT("tooltip"), FCkUiFieldValue{.Kind = ECkUiFieldKind::Text, .Text = Axis->ToolTip});
+        Record.Fields.Add(TEXT("value"), FCkUiFieldValue{.Kind = ECkUiFieldKind::Text, .Text = Get_AxisValueLabel(Axis)});
+        Records.Add(MoveTemp(Record));
+    }
+
+    auto Updates = TArray<FCkUiCollectionUpdate>{};
+    Updates.Reserve(_AxisCollections.Num());
+    for (const auto& Pair : _AxisCollections)
+    {
+        Updates.Add({.Collection = Pair.Value, .Records = MoveTemp(RecordsByGroup.FindOrAdd(Pair.Key))});
+    }
+
+    const FCkUiLoadResult Result = FCkUiCollection::TrySetRecordsBatch(MoveTemp(Updates));
+    if (NOT Result.Succeeded)
+    {
+        _ControlsPublicationError = FString::Join(Result.Errors, TEXT("\n"));
+        return;
+    }
+    _ControlsPublicationError.Reset();
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
 auto SCkStyleLab_ControlsPane::Apply_ProfileByName(const FString& InProfileName) -> void
 {
     const TArray<FCkDebuggerStyleProfile>& Profiles = ck::debug_axes::Get_StyleProfiles();
@@ -503,10 +703,22 @@ auto SCkStyleLab_ControlsPane::Get_ProfileLayoutError() const -> FText
 
 // --------------------------------------------------------------------------------------------------------------------
 
+auto SCkStyleLab_ControlsPane::Get_ControlsLayoutError() const -> FText
+{
+    if (NOT _ControlsPublicationError.IsEmpty()) { return FText::FromString(_ControlsPublicationError); }
+    return NOT _ControlsView.IsValid() || _ControlsView->GetLastResult().Succeeded
+        ? FText::GetEmpty()
+        : FText::FromString(FString::Join(_ControlsView->GetLastResult().Errors, TEXT("\n")));
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
 auto SCkStyleLab_ControlsPane::Tick_ProfileFiles(double, float) -> EActiveTimerReturnType
 {
     if (_ProfileView.IsValid()) { _ProfileView->PollFiles(); }
+    if (_ControlsView.IsValid()) { _ControlsView->PollFiles(); }
     Publish_ProfileRecords();
+    Publish_AxisRecords();
     return EActiveTimerReturnType::Continue;
 }
 
@@ -599,6 +811,7 @@ auto
     -> void
 {
     Publish_ProfileRecords();
+    Publish_AxisRecords();
     RequestPreviewRebuilds();
 
     if (_OnSelectionChanged.IsBound())

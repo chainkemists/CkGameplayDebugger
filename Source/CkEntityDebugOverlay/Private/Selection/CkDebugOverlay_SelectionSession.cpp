@@ -348,7 +348,8 @@ namespace ck_debugoverlay::selection_session
         if (CurrentIndex == INDEX_NONE)
         { return InDirection < 0 ? ValidOrder.Last() : ValidOrder[0]; }
         const auto Step = InDirection < 0 ? -1 : 1;
-        return ValidOrder[(CurrentIndex + Step + ValidOrder.Num()) % ValidOrder.Num()];
+        const auto TargetIndex = CurrentIndex + Step;
+        return ValidOrder.IsValidIndex(TargetIndex) ? ValidOrder[TargetIndex] : InvalidEntityId;
     }
 
     auto ReconcileOrder(const TArray<uint32>& InPreviousIds, const TArray<uint32>& InCurrentIds,
@@ -388,6 +389,90 @@ namespace ck_debugoverlay::selection_session
         return Result;
     }
 
+    auto BuildSpatialOrder(const TArray<FCandidateSelection>& InCandidates, const uint32 InSelectedId,
+        const uint32 InSelectedRootId) -> TArray<uint32>
+    {
+        const auto IsFiniteScreenPosition = [](const FCandidateSelection& InCandidate) -> bool
+        {
+            return FMath::IsFinite(InCandidate.ScreenPos.X) && FMath::IsFinite(InCandidate.ScreenPos.Y);
+        };
+        auto Candidates = TArray<FCandidateSelection>{};
+        auto Seen = TSet<uint32>{};
+        for (const auto& Candidate : InCandidates)
+        {
+            if (Candidate.Id != InvalidEntityId && Candidate.IsOnScreen &&
+                IsFiniteScreenPosition(Candidate) && NOT Seen.Contains(Candidate.Id))
+            {
+                Candidates.Add(Candidate);
+                Seen.Add(Candidate.Id);
+            }
+        }
+
+        const auto FindCandidate = [&Candidates](const uint32 InId) -> const FCandidateSelection*
+        {
+            return Candidates.FindByPredicate([InId](const auto& InCandidate)
+                { return InCandidate.Id == InId; });
+        };
+        const auto* Anchor = FindCandidate(InSelectedId);
+        if (Anchor == nullptr)
+        { Anchor = FindCandidate(InSelectedRootId); }
+
+        const auto ScreenPositionLess = [](
+            const FCandidateSelection& InLeft, const FCandidateSelection& InRight) -> bool
+        {
+            if (InLeft.ScreenPos.X != InRight.ScreenPos.X)
+            { return InLeft.ScreenPos.X < InRight.ScreenPos.X; }
+            if (InLeft.ScreenPos.Y != InRight.ScreenPos.Y)
+            { return InLeft.ScreenPos.Y < InRight.ScreenPos.Y; }
+            return InLeft.Id < InRight.Id;
+        };
+
+        if (Anchor == nullptr)
+        {
+            Candidates.Sort(ScreenPositionLess);
+            auto Result = TArray<uint32>{};
+            for (const auto& Candidate : Candidates)
+            { Result.Add(Candidate.Id); }
+            return Result;
+        }
+
+        const auto AnchorValue = *Anchor;
+        auto Before = TArray<FCandidateSelection>{};
+        auto After = TArray<FCandidateSelection>{};
+        for (const auto& Candidate : Candidates)
+        {
+            if (Candidate.Id == AnchorValue.Id)
+            { continue; }
+            if (ScreenPositionLess(Candidate, AnchorValue))
+            { Before.Add(Candidate); }
+            else
+            { After.Add(Candidate); }
+        }
+
+        const auto DistanceSquared = [&AnchorValue](const FCandidateSelection& InCandidate) -> double
+        { return FVector2D::DistSquared(InCandidate.ScreenPos, AnchorValue.ScreenPos); };
+        Before.Sort([&DistanceSquared](const auto& InLeft, const auto& InRight)
+        {
+            const auto LeftDistance = DistanceSquared(InLeft);
+            const auto RightDistance = DistanceSquared(InRight);
+            return LeftDistance != RightDistance ? LeftDistance > RightDistance : InLeft.Id < InRight.Id;
+        });
+        After.Sort([&DistanceSquared](const auto& InLeft, const auto& InRight)
+        {
+            const auto LeftDistance = DistanceSquared(InLeft);
+            const auto RightDistance = DistanceSquared(InRight);
+            return LeftDistance != RightDistance ? LeftDistance < RightDistance : InLeft.Id < InRight.Id;
+        });
+        auto Result = TArray<uint32>{};
+        Result.Reserve(Candidates.Num());
+        for (const auto& Candidate : Before)
+        { Result.Add(Candidate.Id); }
+        Result.Add(AnchorValue.Id);
+        for (const auto& Candidate : After)
+        { Result.Add(Candidate.Id); }
+        return Result;
+    }
+
     auto BuildRelativeLabels(const TArray<uint32>& InOrderedIds, const uint32 InSelectedId,
         const uint32 InSelectedRootId) -> TMap<uint32, FString>
     {
@@ -398,17 +483,15 @@ namespace ck_debugoverlay::selection_session
         { Anchor = Order.IndexOfByKey(InSelectedRootId); }
         for (auto Index = 0; Index < Order.Num(); ++Index)
         {
-            const auto Forward = Anchor == INDEX_NONE ? Index + 1 : (Index - Anchor + Order.Num()) % Order.Num();
-            const auto Backward = Anchor == INDEX_NONE ? Order.Num() - Index : (Anchor - Index + Order.Num()) % Order.Num();
             auto Label = FString{};
-            if (Forward == 0)
+            if (Anchor == INDEX_NONE)
+            { Label = FString::Printf(TEXT("+%d"), Index + 1); }
+            else if (Index == Anchor)
             { Label = TEXT("0"); }
-            else if (Forward == Backward)
-            { Label = FString::Printf(TEXT("±%d"), Forward); }
-            else if (Forward < Backward)
-            { Label = FString::Printf(TEXT("+%d"), Forward); }
+            else if (Index < Anchor)
+            { Label = FString::Printf(TEXT("-%d"), Anchor - Index); }
             else
-            { Label = FString::Printf(TEXT("-%d"), Backward); }
+            { Label = FString::Printf(TEXT("+%d"), Index - Anchor); }
             Result.Add(Order[Index], MoveTemp(Label));
         }
         return Result;

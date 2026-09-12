@@ -78,12 +78,18 @@ auto UCk_DebugOverlay_Subsystem::Reset_SelectionSession() -> void
 
 auto UCk_DebugOverlay_Subsystem::CanHandle_SelectionInput() const -> bool
 {
-    if (NOT _RootWidget.IsValid() || _SelectionPanel.IsValid() ||
-        NOT FSlateApplication::IsInitialized() || ck::diagnostic_visibility::Is_HiddenForStreamerMode())
+    if (NOT _RootWidget.IsValid() || _SelectionPanel.IsValid())
+    { return false; }
+    return CanHandle_GlobalInput();
+}
+
+auto UCk_DebugOverlay_Subsystem::CanHandle_GlobalInput() const -> bool
+{
+    if (NOT FSlateApplication::IsInitialized() || ck::diagnostic_visibility::Is_HiddenForStreamerMode())
     { return false; }
     const auto& App = FSlateApplication::Get();
     const auto Window = App.GetActiveTopLevelWindow();
-    if (NOT Window.IsValid() || NOT Window->IsActive())
+    if (NOT App.IsActive() || NOT Window.IsValid() || NOT Window->IsActive())
     { return false; }
     auto* World = Resolve_ActiveWorld();
     if (ck::Is_NOT_Valid(World))
@@ -91,7 +97,7 @@ auto UCk_DebugOverlay_Subsystem::CanHandle_SelectionInput() const -> bool
     auto* Viewport = World->GetGameViewport();
     if (ck::Is_NOT_Valid(Viewport))
     { return false; }
-    if (Viewport->ViewportConsole && Viewport->ViewportConsole->ConsoleState != NAME_None)
+    if (Viewport->ViewportConsole && Viewport->ViewportConsole->ConsoleActive())
     { return false; }
     // Only a focused viewport may own shortcuts. Editable text, console, chat, tool windows,
     // and the settings drawer never satisfy this; ejected SViewport is handled identically.
@@ -308,15 +314,25 @@ auto UCk_DebugOverlay_Subsystem::Refresh_SelectionSnapshot(bool InSelectBest) ->
     _FocusLocked = ck::IsValid(_SelectionLockedEntity);
 }
 
+auto UCk_DebugOverlay_Subsystem::Build_SelectionNavigationOrder() const -> TArray<uint32>
+{
+    const auto& Entries = _FamilyVisible ? _FamilySelection : _WorldSelection;
+    auto Candidates = TArray<ck_debugoverlay::selection_session::FCandidateSelection>{};
+    Candidates.Reserve(Entries.Num());
+    for (const auto& Entry : Entries)
+    { Candidates.Add(Entry.Candidate); }
+    return ck_debugoverlay::selection_session::BuildSpatialOrder(
+        Candidates, SelectionId(_FocusedEntity), SelectionId(_SelectionRoot));
+}
+
 auto UCk_DebugOverlay_Subsystem::Cycle_Selection(int32 InDirection) -> void
 {
     using namespace ck_debugoverlay::selection_session;
     const auto& Entries = _FamilyVisible ? _FamilySelection : _WorldSelection;
-    auto Ids = TArray<uint32>{};
+    const auto Ids = Build_SelectionNavigationOrder();
     auto Live = TSet<uint32>{};
     for (const auto& Entry : Entries)
     {
-        Ids.Add(Entry.Candidate.Id);
         if (ck::IsValid(Entry.Entity))
         { Live.Add(Entry.Candidate.Id); }
     }
@@ -362,11 +378,10 @@ auto UCk_DebugOverlay_Subsystem::Get_SelectionStatus(bool InCompact) const -> FT
 {
     using namespace ck_debugoverlay::selection_session;
     const auto& Entries = _FamilyVisible ? _FamilySelection : _WorldSelection;
-    auto Ids = TArray<uint32>{};
+    const auto Ids = Build_SelectionNavigationOrder();
     auto Live = TSet<uint32>{};
     for (const auto& Entry : Entries)
     {
-        Ids.Add(Entry.Candidate.Id);
         if (ck::IsValid(Entry.Entity))
         { Live.Add(Entry.Candidate.Id); }
     }
@@ -398,7 +413,7 @@ auto UCk_DebugOverlay_Subsystem::Get_SelectionStatus(bool InCompact) const -> FT
             *Keys->NextKey.GetDisplayName().ToString(), *DescribeNumber(Next),
             *Keys->SelectKey.GetDisplayName().ToString(), _FocusLocked ? TEXT("unlock") : TEXT("lock"),
             *Keys->FamilyKey.GetDisplayName().ToString(),
-            Keys->SettingsRequireControl ? TEXT("Ctrl+") : TEXT(""), *Keys->SettingsKey.GetDisplayName().ToString()));
+            Keys->SettingsRequireShift ? TEXT("Shift+") : TEXT(""), *Keys->SettingsKey.GetDisplayName().ToString()));
     }
     const auto SelectedPath = ck::IsValid(_SelectionRoot) && NOT (_SelectionRoot == _FocusedEntity)
         ? SelectionName(_SelectionRoot) + TEXT(" / ") + SelectionName(_FocusedEntity) : SelectionName(_FocusedEntity);
@@ -409,7 +424,7 @@ auto UCk_DebugOverlay_Subsystem::Get_SelectionStatus(bool InCompact) const -> FT
         *Keys->PreviousKey.GetDisplayName().ToString(), *Describe(Previous),
         *Keys->NextKey.GetDisplayName().ToString(), *Describe(Next),
         *Keys->SelectKey.GetDisplayName().ToString(), *Keys->FamilyKey.GetDisplayName().ToString(),
-        Keys->SettingsRequireControl ? TEXT("Ctrl+") : TEXT(""), *Keys->SettingsKey.GetDisplayName().ToString());
+        Keys->SettingsRequireShift ? TEXT("Shift+") : TEXT(""), *Keys->SettingsKey.GetDisplayName().ToString());
     if (Config.Labels == ECk_DebugOverlay_SelectionLabels::Shortlist)
     {
         for (auto Index = 0; Index < FMath::Min(Entries.Num(), 8); ++Index)
@@ -442,9 +457,7 @@ auto UCk_DebugOverlay_Subsystem::Update_SelectionHud() -> void
     const auto& Entries = _FamilyVisible ? _FamilySelection : _WorldSelection;
     auto Markers = TArray<SCkDebugOverlay_SelectionHud::FMarker>{};
     auto ConePoints = TArray<FVector2D>{};
-    auto OrderedIds = TArray<uint32>{};
-    for (const auto& Entry : Entries)
-    { OrderedIds.Add(Entry.Candidate.Id); }
+    const auto OrderedIds = Build_SelectionNavigationOrder();
     const auto RelativeLabels = ck_debugoverlay::selection_session::BuildRelativeLabels(
         OrderedIds, SelectionId(_FocusedEntity), SelectionId(_SelectionRoot));
     const auto LocalSize = _SelectionHud->GetCachedGeometry().GetLocalSize();
@@ -511,7 +524,7 @@ auto UCk_DebugOverlay_Subsystem::DoCmd_Settings() -> void
         .OnFamily([WeakSubsystem]() { if (auto* Self = WeakSubsystem.Get()) { Self->DoCmd_Family(); } })
         .StatusText_Lambda([WeakSubsystem]() { const auto* Self = WeakSubsystem.Get();
             return Self != nullptr ? Self->Get_SelectionStatus() : FText::GetEmpty(); })
-        .ExplanationText(FText::FromString(TEXT("Runtime preferences persist in GameUserSettings. Discovery updates continuously within range; cone and view scope govern aim selection. Badges show signed steps relative to selection (0); ± means equally far either way. Tap Select for best aim; hold it to lock/unlock selection. Double-Shift independently pins a data card. Roots skip Transient/ActorRelay. Shipping debugger is disabled.")));
+        .ExplanationText(FText::FromString(TEXT("Runtime preferences persist in GameUserSettings. Discovery updates continuously within range; cone and view scope govern aim selection. Badges rank the nearest screen-left (-) and screen-right (+) entities relative to selection (0). Tap a separately bound Select key for best aim; hold it to lock/unlock selection. Double-Shift independently pins a data card. Roots skip Transient/ActorRelay. Shipping debugger is disabled.")));
     _SelectionPanelHost = SNew(SBox).HAlign(HAlign_Right).VAlign(VAlign_Fill)
         [ SNew(SBox).WidthOverride(480.0f)[_SelectionPanel.ToSharedRef()] ];
     Viewport->AddViewportWidgetContent(_SelectionPanelHost.ToSharedRef(), 120);

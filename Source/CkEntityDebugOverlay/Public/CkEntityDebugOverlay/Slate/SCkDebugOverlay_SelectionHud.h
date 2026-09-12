@@ -13,7 +13,7 @@ public:
     struct FMarker
     {
         FVector2D Position = FVector2D::ZeroVector;
-        /** Relative selection ordinal, supplied by the selection model (for example "0", "+1", "-1", "±2"). Entity names belong to focus cards. */
+        /** Relative screen-space selection ordinal (for example "0", "+1", "-1"). Entity names belong to focus cards. */
         FString RelativeLabel;
         bool Selected = false;
         bool Locked = false;

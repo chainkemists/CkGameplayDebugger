@@ -35,21 +35,56 @@ bool FCkDebugOverlay_SelectionInput_Test::RunTest(const FString&)
 
     TestFalse(TEXT("uncaptured repeat is never consumed"),
         Input.RouteSelectionKeyDown(EKeys::Comma, true, false, false, false, false, true, 2.0));
-    TestFalse(TEXT("modified select is not consumed"),
+    TestTrue(TEXT("Shift+comma settings chord is consumed"),
         Input.RouteSelectionKeyDown(EKeys::Comma, false, false, false, true, false, true, 2.0));
     TestFalse(TEXT("focus gate blocks new selection press"),
         Input.RouteSelectionKeyDown(EKeys::Comma, false, false, false, false, false, false, 2.0));
-    TestTrue(TEXT("exact Ctrl settings chord is consumed"),
+    TestFalse(TEXT("Ctrl settings chord is rejected"),
         Input.RouteSelectionKeyDown(EKeys::Comma, false, true, false, false, false, true, 2.0));
-    TestFalse(TEXT("Ctrl Alt settings chord is rejected"),
-        Input.RouteSelectionKeyDown(EKeys::Comma, false, true, true, false, false, true, 2.0));
+    TestFalse(TEXT("Shift Alt settings chord is rejected"),
+        Input.RouteSelectionKeyDown(EKeys::Comma, false, false, true, true, false, true, 2.0));
     TestFalse(TEXT("semicolon is not a default selection binding"),
         Input.RouteSelectionKeyDown(EKeys::Semicolon, false, false, false, false, false, true, 2.0));
     const auto SettingsActions = Input.ConsumeSelectionActions();
-    TestEqual(TEXT("only exact settings chord was queued"), SettingsActions.Num(), 1);
+    TestEqual(TEXT("only exact Shift settings chord was queued"), SettingsActions.Num(), 1);
     if (SettingsActions.Num() == 1)
     { TestEqual(TEXT("settings action is correct"), SettingsActions[0], ECkDebugOverlaySelectionInputAction::Settings); }
     TestTrue(TEXT("settings key-up remains paired and consumed"), Input.RouteSelectionKeyUp(EKeys::Comma, 2.1));
+
+    auto GlobalInput = FCkDebugOverlay_InputProcessor{};
+    TestTrue(TEXT("plain comma activates a hidden overlay"),
+        GlobalInput.RouteGlobalKeyDown(EKeys::Comma, false, false, false, false, false, false, true));
+    auto GlobalActions = GlobalInput.ConsumeGlobalActions();
+    TestEqual(TEXT("hidden-overlay comma queues one global action"), GlobalActions.Num(), 1);
+    if (GlobalActions.Num() == 1)
+    { TestEqual(TEXT("hidden-overlay comma action activates"), GlobalActions[0], ECkDebugOverlayGlobalInputAction::Activate); }
+    TestTrue(TEXT("activation key-up remains paired and consumed"), GlobalInput.RouteSelectionKeyUp(EKeys::Comma, 2.2));
+    TestTrue(TEXT("plain comma deactivates an active overlay"),
+        GlobalInput.RouteGlobalKeyDown(EKeys::Comma, false, false, false, false, false, true, true));
+    GlobalActions = GlobalInput.ConsumeGlobalActions();
+    TestEqual(TEXT("active-overlay comma queues one global action"), GlobalActions.Num(), 1);
+    if (GlobalActions.Num() == 1)
+    { TestEqual(TEXT("active-overlay comma action deactivates"), GlobalActions[0], ECkDebugOverlayGlobalInputAction::Deactivate); }
+    TestTrue(TEXT("deactivation key-up remains paired and consumed"), GlobalInput.RouteSelectionKeyUp(EKeys::Comma, 2.25));
+    auto CollidingBindings = FCkDebugOverlaySelectionInputBindings{};
+    CollidingBindings.SettingsRequireShift = false;
+    GlobalInput.SetSelectionBindings(CollidingBindings);
+    TestTrue(TEXT("overlay toggle wins an unmodified settings collision"),
+        GlobalInput.RouteGlobalKeyDown(EKeys::Comma, false, false, false, false, false, true, true));
+    GlobalActions = GlobalInput.ConsumeGlobalActions();
+    TestEqual(TEXT("settings collision still queues one global action"), GlobalActions.Num(), 1);
+    if (GlobalActions.Num() == 1)
+    { TestEqual(TEXT("settings collision preserves deactivation"), GlobalActions[0], ECkDebugOverlayGlobalInputAction::Deactivate); }
+    TestTrue(TEXT("colliding key-up remains paired and consumed"), GlobalInput.RouteSelectionKeyUp(EKeys::Comma, 2.27));
+    CollidingBindings.SettingsRequireShift = true;
+    GlobalInput.SetSelectionBindings(CollidingBindings);
+    TestTrue(TEXT("Shift+P opens the shared settings surface"),
+        GlobalInput.RouteGlobalKeyDown(EKeys::P, false, false, false, true, false, true, true));
+    GlobalActions = GlobalInput.ConsumeGlobalActions();
+    TestEqual(TEXT("Shift+P queues one global action"), GlobalActions.Num(), 1);
+    if (GlobalActions.Num() == 1)
+    { TestEqual(TEXT("Shift+P action opens settings"), GlobalActions[0], ECkDebugOverlayGlobalInputAction::Settings); }
+    TestTrue(TEXT("global settings key-up remains paired and consumed"), GlobalInput.RouteSelectionKeyUp(EKeys::P, 2.3));
 
     TestTrue(TEXT("select can be pending before focus loss"),
         Input.RouteSelectionKeyDown(EKeys::Comma, false, false, false, false, false, true, 3.0));

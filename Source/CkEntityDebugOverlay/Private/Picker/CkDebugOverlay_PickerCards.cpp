@@ -150,10 +150,12 @@ auto
         Candidates.Add(Cand);
     }
 
+    const auto RetainedWorldTagKeys = _OverlayRoot->Get_AdmittedWorldTagKeys();
     const auto WorldTags = ck_debugoverlay::Build_WorldTags(
-        Handles, Candidates, _OverlayProviders, *Layout, InPC, InIsEjected);
+        Handles, Candidates, _OverlayProviders, *Layout, InPC, InIsEjected,
+        1.0f, FCk_Handle{}, &RetainedWorldTagKeys);
 
-    _OverlayRoot->Update_WorldTags(WorldTags);
+    _OverlayRoot->Update_WorldTags(WorldTags, Now);
 }
 
 // =====================================================================================================================

@@ -391,7 +391,9 @@ auto
 
 auto
     SCkDebugOverlay_Root::
-    Update_WorldTags(const TArray<FCk_DebugOverlay_WorldTagInfo>& InTags)
+    Update_WorldTags(
+        const TArray<FCk_DebugOverlay_WorldTagInfo>& InTags,
+        double                                      InNow)
     -> void
 {
     if (NOT _TagCanvas.IsValid())
@@ -400,30 +402,90 @@ auto
     }
 
     _TagCanvas->ClearChildren();
+    auto SeenEntityKeys = TSet<uint32>{};
+    SeenEntityKeys.Reserve(InTags.Num());
+    auto UniqueTags = TArray<const FCk_DebugOverlay_WorldTagInfo*>{};
+    UniqueTags.Reserve(InTags.Num());
 
     for (const auto& TagInfo : InTags)
     {
+        if (TagInfo.EntityKey == MAX_uint32)
+        { continue; }
+
+        if (SeenEntityKeys.Contains(TagInfo.EntityKey))
+        { continue; }
+
+        SeenEntityKeys.Add(TagInfo.EntityKey);
+        UniqueTags.Add(&TagInfo);
+        auto& FadeState = _WorldTagFadeStates.FindOrAdd(TagInfo.EntityKey);
+        if (NOT FadeState.bAdmitted)
+        { continue; }
+
+        const auto Opacity = ck_debugoverlay::Advance_WorldTagVisibilityFade(
+            FadeState, TagInfo.bInRange, InNow);
+        if (NOT TagInfo.bInRange && FMath::IsNearlyZero(Opacity))
+        { FadeState.bAdmitted = false; }
+    }
+
+    for (auto It = _WorldTagFadeStates.CreateIterator(); It; ++It)
+    {
+        if (NOT SeenEntityKeys.Contains(It.Key()))
+        { It.RemoveCurrent(); }
+    }
+
+    auto AdmittedCount = int32{ 0 };
+    for (const auto& Pair : _WorldTagFadeStates)
+    {
+        if (Pair.Value.bAdmitted)
+        { ++AdmittedCount; }
+    }
+
+    for (const auto* TagInfo : UniqueTags)
+    {
+        if (NOT TagInfo->bInRange)
+        { continue; }
+
+        auto* FadeState = _WorldTagFadeStates.Find(TagInfo->EntityKey);
+        if (FadeState == nullptr || FadeState->bAdmitted ||
+            AdmittedCount >= ck_debugoverlay::WorldTagPresentationBudget)
+        { continue; }
+
+        FadeState->bAdmitted = true;
+        ck_debugoverlay::Advance_WorldTagVisibilityFade(*FadeState, true, InNow);
+        ++AdmittedCount;
+    }
+
+    for (const auto* TagInfo : UniqueTags)
+    {
+        const auto* FadeState = _WorldTagFadeStates.Find(TagInfo->EntityKey);
+        if (FadeState == nullptr || NOT FadeState->bAdmitted)
+        { continue; }
+
+        const auto Opacity = FadeState->CurrentOpacity;
+
         // SConstraintCanvas with a POINT anchor (0,0): Offset is (PosX, PosY, W, H) and,
         // with AutoSize, the child uses its own desired size (the pill hugs its text) —
         // Offset W/H are ignored. Alignment is the pivot ON the widget that lands at the
         // anchor+offset position: (0.5, 1.0) = bottom-centre, so the pill sits centred
         // directly above the entity's projected screen point.
-        const auto PosX = static_cast<float>(TagInfo.ScreenPos.X);
-        const auto PosY = static_cast<float>(TagInfo.ScreenPos.Y);
+        const auto PosX = static_cast<float>(TagInfo->ScreenPos.X);
+        const auto PosY = static_cast<float>(TagInfo->ScreenPos.Y);
 
         auto Content = TSharedPtr<SWidget>{};
-        if (TagInfo.bIsPlate)
+        if (TagInfo->bIsPlate)
         {
-            Content = DoBuild_NearPlate(TagInfo);
+            Content = DoBuild_NearPlate(*TagInfo);
         }
         else
         {
             TSharedPtr<SCkDebugOverlay_WorldTag> WorldTag;
             SAssignNew(WorldTag, SCkDebugOverlay_WorldTag)
-                .Text(TagInfo.Text);
-            WorldTag->Set_Style(TagInfo.Scale, TagInfo.Opacity);
+                .Text(TagInfo->Text);
+            WorldTag->Set_Scale(TagInfo->Scale);
             Content = WorldTag;
         }
+
+        Content->SetRenderOpacity(Opacity);
 
         _TagCanvas->AddSlot()
             .Anchors(FAnchors{ 0.0f, 0.0f })
@@ -434,6 +496,24 @@ auto
                 Content.ToSharedRef()
             ];
     }
+}
+
+// ====================================================================================================================
+
+auto
+    SCkDebugOverlay_Root::
+    Get_AdmittedWorldTagKeys() const
+    -> TSet<uint32>
+{
+    auto Result = TSet<uint32>{};
+    Result.Reserve(_WorldTagFadeStates.Num());
+    for (const auto& Pair : _WorldTagFadeStates)
+    {
+        if (Pair.Value.bAdmitted)
+        { Result.Add(Pair.Key); }
+    }
+
+    return Result;
 }
 
 // ====================================================================================================================
@@ -504,11 +584,10 @@ auto
                 ]
         ];
 
-    // World plates use the same distance scale/fade as single-line tags. Without this the near
-    // branch stayed full-size and opaque while the far branch correctly attenuated.
+    // World plates use the same distance scale as single-line tags. The root applies the shared
+    // range-transition opacity after constructing either presentation.
     Plate->SetRenderTransform(FSlateRenderTransform(FScale2D(InInfo.Scale)));
     Plate->SetRenderTransformPivot(FVector2D{ 0.5f, 0.5f });
-    Plate->SetRenderOpacity(InInfo.Opacity);
     return Plate;
 }
 

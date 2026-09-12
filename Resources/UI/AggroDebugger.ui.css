@@ -1,0 +1,26 @@
+.aggro-overview { min-width: 0; gap: 4px; flex-wrap: wrap; vertical-align: center; }
+.aggro-count { font-family: monospace; font-size: var(--aggro-row-font-size); color: var(--aggro-text-dim); }
+.aggro-search { min-width: 0; gap: 6px; }
+.aggro-status { min-width: 0; font-family: monospace; font-size: var(--aggro-row-font-size); color: var(--aggro-text-dim); text-wrap: wrap; }
+.aggro-search-fields { min-width: 0; gap: 6px; }
+.aggro-overlay { min-width: 0; flex-grow: 1; }
+.aggro-scroll { min-width: 0; max-width: 1180px; max-height: 720px; }
+.aggro-content { min-width: 0; gap: 6px; padding: 8px 0; }
+.aggro-records { min-width: 0; gap: 4px; }
+.aggro-record { min-width: 0; gap: 4px; }
+.aggro-owner { min-width: 0; gap: 3px; padding: 4px 0; }
+.aggro-owner-header { min-width: 0; gap: 8px; flex-wrap: wrap; vertical-align: center; }
+.aggro-owner-name { min-width: 160px; flex-grow: 1; font-family: sans-serif; font-weight: bold; font-size: var(--aggro-row-font-size); color: var(--aggro-text-strong); text-wrap: wrap; }
+.aggro-owner-active { min-width: 0; font-family: monospace; font-size: var(--aggro-row-font-size); text-wrap: wrap; }
+.aggro-owner-meta-wrap { min-width: 0; padding: var(--aggro-owner-meta-padding); }
+.aggro-owner-meta { min-width: 0; font-family: monospace; font-size: var(--aggro-meta-font-size); color: var(--aggro-text-dim); text-wrap: wrap; }
+.aggro-idle-wrap { min-width: 0; padding: var(--aggro-idle-padding); }
+.aggro-idle { min-width: 0; font-family: monospace; font-size: var(--aggro-row-font-size); color: var(--aggro-text-mute); text-wrap: wrap; }
+.aggro-target { min-width: 0; gap: 10px; flex-wrap: wrap; vertical-align: center; padding: var(--aggro-target-padding); }
+.aggro-target-name { min-width: 150px; max-width: 280px; flex-grow: 1; font-family: monospace; font-size: var(--aggro-row-font-size); text-wrap: wrap; }
+.aggro-meter { min-width: 110px; max-width: 180px; flex-grow: 1; gap: 3px; }
+.aggro-meter-text { min-width: 0; font-family: monospace; font-size: var(--aggro-row-font-size); text-wrap: wrap; }
+.aggro-state { min-width: 100px; max-width: 210px; flex-grow: 1; font-family: monospace; font-size: var(--aggro-row-font-size); text-wrap: wrap; }
+.aggro-detail { min-width: 180px; flex-grow: 2; font-family: monospace; font-size: var(--aggro-row-font-size); color: var(--aggro-text-dim); text-wrap: wrap; }
+.aggro-empty-wrap { min-width: 0; padding: var(--aggro-empty-padding); }
+.aggro-empty { min-width: 0; font-family: monospace; font-size: var(--aggro-row-font-size); color: var(--aggro-text-mute); text-wrap: wrap; }

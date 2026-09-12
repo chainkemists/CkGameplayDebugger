@@ -1,3 +1,4 @@
+using System.IO;
 using UnrealBuildTool;
 
 public class CkAggroDebugger : CkModuleRules
@@ -23,8 +24,11 @@ public class CkAggroDebugger : CkModuleRules
             "CkAggro",
 
             "CkDebuggerCommon",
-            "CkEditorTools",  // shared CkStyle:: tokens used directly by the window
+            "CkEditorTools",
+            "CkSlateLayout",
         });
+
+        PrivateDependencyModuleNames.Add("Projects");
 
         if (Target.bBuildEditor)
         {
@@ -34,5 +38,8 @@ public class CkAggroDebugger : CkModuleRules
                 "WorkspaceMenuStructure"
             });
         }
+
+        RuntimeDependencies.Add(Path.Combine(PluginDirectory, "Resources", "UI", "AggroDebugger.ui.html"), StagedFileType.NonUFS);
+        RuntimeDependencies.Add(Path.Combine(PluginDirectory, "Resources", "UI", "AggroDebugger.ui.css"), StagedFileType.NonUFS);
     }
 }

@@ -103,6 +103,9 @@ public:
     /** Retained authored surface and stable-key model for dynamic crowd/render-band tuners. */
     auto Get_CrowdTunersView() const -> TSharedPtr<FCkUiView> { return _CrowdTunersView; }
     auto Get_CrowdTunersCollection() const -> TSharedPtr<const FCkUiCollection> { return _CrowdTunersCollection; }
+    /** Retained authored surface that owns the complete stable window-pane topology. */
+    auto Get_AuthoredShellView() const -> TSharedPtr<FCkUiView> { return _AuthoredShellView; }
+    auto Get_AuthoredShellLoadFailure() const -> const FString& { return _AuthoredShellLoadFailure; }
 
     // F frames the selected member in the ejected editor viewport (the context menu carries the discoverable twin).
     virtual auto OnKeyDown(const FGeometry& InGeometry, const FKeyEvent& InKeyEvent) -> FReply override;
@@ -119,6 +122,7 @@ private:
 
     auto DoBuild_CommandGroups() -> TArray<FCkDebug_CommandGroup>;
     auto DoBuild_Body() -> TSharedRef<SWidget>;
+    auto DoPoll_AuthoredShellFiles(double InCurrentTime) -> void;
     auto DoBuild_ArbiterHeader() -> TSharedRef<SWidget>;
     auto DoBuild_StatStrip() -> TSharedRef<SWidget>;
     auto DoBuild_OverviewGrid() -> TSharedRef<SWidget>;
@@ -126,7 +130,6 @@ private:
     auto DoBuild_ViewPane() -> TSharedRef<SWidget>;
     auto DoBuild_ActivityPane() -> TSharedRef<SWidget>;
     auto DoBuild_TunersRow() -> TSharedRef<SWidget>;
-    auto DoBuild_TunersWorkspace() -> TSharedRef<SWidget>;
     auto DoBuild_ArbiterTuners() -> TSharedRef<SWidget>;
     auto DoBuild_CrowdTuners() -> TSharedRef<SWidget>;
     auto DoPublish_CrowdTunerRecords() -> void;
@@ -241,6 +244,10 @@ private:
     FCkVisualLodDebugger_ArbiterInfo _Live;
     bool _HasLiveArbiter = false;
     bool _TunersExpanded = false;
+    double _NextAuthoredShellPollSeconds = 0.0;
+    TSharedPtr<FCkUiView> _AuthoredShellView;
+    TSharedPtr<SBox> _AuthoredShellHost;
+    FString _AuthoredShellLoadFailure;
     int64 _ArbiterTunersGeneration = 0;
     double _NextArbiterTunersPollSeconds = 0.0;
     TSharedPtr<FCkUiView> _ArbiterTunersView;

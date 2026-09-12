@@ -974,6 +974,10 @@ SCkVisualLodDebuggerWindow::~SCkVisualLodDebuggerWindow()
 
     // FCk_Handle is deliberately released while the ECS registries still exist.
     DoReset_WorldState();
+
+    if (_AuthoredShellHost.IsValid())
+    { _AuthoredShellHost->SetContent(SNullWidget::NullWidget); }
+    _AuthoredShellView.Reset();
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -995,6 +999,7 @@ auto
     if (_ViewportPicker.IsValid())
     { _ViewportPicker->Tick(InDeltaTime); }
 
+    DoPoll_AuthoredShellFiles(InCurrentTime);
     DoPoll_ArbiterTunersFiles(InCurrentTime);
 
     if (NOT FCkDebuggerRefreshGate::Should_RefreshNow(WindowId))
@@ -1764,129 +1769,151 @@ auto
     -> TSharedRef<SWidget>
 {
     const auto WeakPanel = TWeakPtr<SCkVisualLodDebuggerWindow>(SharedThis(this));
-    const auto TunerSlotSizeRule = TAttribute<SSplitter::ESizeRule>::CreateLambda([WeakPanel]()
-    {
-        const auto Panel = WeakPanel.Pin();
-        return Panel.IsValid() && Panel->_TunersExpanded
-            ? SSplitter::FractionOfParent
-            : SSplitter::SizeToContent;
-    });
-    const auto TunerSlotValue = TAttribute<float>::CreateLambda([WeakPanel]()
-    {
-        const auto Panel = WeakPanel.Pin();
-        return Panel.IsValid() && Panel->_TunersExpanded ? 0.42f : 0.0f;
-    });
-    const auto TunerSlotMinSize = TAttribute<float>::CreateLambda([WeakPanel]()
-    {
-        const auto Panel = WeakPanel.Pin();
-        return Panel.IsValid() && Panel->_TunersExpanded ? 170.0f : 0.0f;
-    });
+    const TSharedRef<SWidget> Alert = SAssignNew(_AlertBox, SVerticalBox);
+    const TSharedRef<SWidget> Tabs = SAssignNew(_DomainTabsHost, SBox);
+    const TSharedRef<SWidget> Header = DoBuild_ArbiterHeader();
+    const TSharedRef<SWidget> Stats = DoBuild_StatStrip();
+    const TSharedRef<SWidget> Overview = DoBuild_OverviewGrid();
+    const TSharedRef<SWidget> TunersHeader = DoBuild_TunersRow();
+    const TSharedRef<SWidget> ArbiterTuners = DoBuild_ArbiterTuners();
+    const TSharedRef<SWidget> CrowdTuners = SNew(SScrollBox) + SScrollBox::Slot()[DoBuild_CrowdTuners()];
+    const TSharedRef<SWidget> Roster = SAssignNew(_RosterPaneBox, SVerticalBox)
+        + SVerticalBox::Slot().FillHeight(1.0f)[DoBuild_RosterPane()];
+    const TSharedRef<SWidget> Detail = SAssignNew(_DetailRailBox, SVerticalBox)
+        + SVerticalBox::Slot().FillHeight(1.0f)
+        [SNew(SScrollBox) + SScrollBox::Slot()[DoBuild_DetailRail()]];
+    const TSharedRef<SWidget> Events = DoBuild_EventLog();
 
-    return SNew(SVerticalBox)
-        + SVerticalBox::Slot()
-        .AutoHeight()
-        [
-            SAssignNew(_AlertBox, SVerticalBox)
-        ]
-        + SVerticalBox::Slot()
-        .AutoHeight()
-        [
-            SAssignNew(_DomainTabsHost, SBox)
-        ]
-        + SVerticalBox::Slot()
-        .AutoHeight()
-        .Padding(CkStyle::SpaceL, CkStyle::SpaceM, CkStyle::SpaceL, CkStyle::SpaceS)
-        [
-            DoBuild_ArbiterHeader()
-        ]
-        + SVerticalBox::Slot()
-        .AutoHeight()
-        .Padding(CkStyle::SpaceL, 0.0f, CkStyle::SpaceL, CkStyle::SpaceM)
-        [
-            DoBuild_StatStrip()
-        ]
-        + SVerticalBox::Slot()
-        .FillHeight(1.0f)
-        [
-            SNew(SSplitter)
-            .Orientation(Orient_Vertical)
-            .PhysicalSplitterHandleSize(5.0f)
-            + SSplitter::Slot()
-            .Value(0.30f)
-            .MinSize(190.0f)
+    const auto BuildNativeFallback = [WeakPanel, Alert, Tabs, Header, Stats, Overview, TunersHeader,
+        ArbiterTuners, CrowdTuners, Roster, Detail, Events]() -> TSharedRef<SWidget>
+    {
+        const auto TunerSlotSizeRule = TAttribute<SSplitter::ESizeRule>::CreateLambda([WeakPanel]()
+        {
+            const auto Panel = WeakPanel.Pin();
+            return Panel.IsValid() && Panel->_TunersExpanded
+                ? SSplitter::FractionOfParent
+                : SSplitter::SizeToContent;
+        });
+        const auto TunerSlotValue = TAttribute<float>::CreateLambda([WeakPanel]()
+        {
+            const auto Panel = WeakPanel.Pin();
+            return Panel.IsValid() && Panel->_TunersExpanded ? 0.42f : 0.0f;
+        });
+        const auto TunerSlotMinSize = TAttribute<float>::CreateLambda([WeakPanel]()
+        {
+            const auto Panel = WeakPanel.Pin();
+            return Panel.IsValid() && Panel->_TunersExpanded ? 170.0f : 0.0f;
+        });
+        const auto TunerVisibility = TAttribute<EVisibility>::CreateLambda([WeakPanel]()
+        {
+            const auto Panel = WeakPanel.Pin();
+            return Panel.IsValid() && Panel->_TunersExpanded ? EVisibility::Visible : EVisibility::Collapsed;
+        });
+        return SNew(SVerticalBox)
+            + SVerticalBox::Slot().AutoHeight()[Alert]
+            + SVerticalBox::Slot().AutoHeight()[Tabs]
+            + SVerticalBox::Slot().AutoHeight().Padding(CkStyle::SpaceL, CkStyle::SpaceM, CkStyle::SpaceL, CkStyle::SpaceS)[Header]
+            + SVerticalBox::Slot().AutoHeight().Padding(CkStyle::SpaceL, 0.0f, CkStyle::SpaceL, CkStyle::SpaceM)[Stats]
+            + SVerticalBox::Slot().FillHeight(1.0f)
             [
-                DoBuild_OverviewGrid()
-            ]
-            + SSplitter::Slot()
-            .Value(0.70f)
-            .MinSize(280.0f)
-            [
-                // The disclosure owns only the header. Its workspace below joins the investigation
-                // row in a retained splitter, so collapse removes both its body and drag handle.
-                SNew(SVerticalBox)
-                + SVerticalBox::Slot()
-                .AutoHeight()
-                .Padding(CkStyle::SpaceL, 0.0f, CkStyle::SpaceL, CkStyle::SpaceS)
+                SNew(SSplitter).Orientation(Orient_Vertical).PhysicalSplitterHandleSize(5.0f)
+                + SSplitter::Slot().Value(0.30f).MinSize(190.0f)[Overview]
+                + SSplitter::Slot().Value(0.70f).MinSize(280.0f)
                 [
-                    DoBuild_TunersRow()
-                ]
-                + SVerticalBox::Slot()
-                .FillHeight(1.0f)
-                [
-                    SNew(SSplitter)
-                    .Orientation(Orient_Vertical)
-                    .PhysicalSplitterHandleSize(5.0f)
-                    + SSplitter::Slot()
-                    .SizeRule(TunerSlotSizeRule)
-                    .Value(TunerSlotValue)
-                    .MinSize(TunerSlotMinSize)
+                    SNew(SVerticalBox)
+                    + SVerticalBox::Slot().AutoHeight().Padding(CkStyle::SpaceL, 0.0f, CkStyle::SpaceL, CkStyle::SpaceS)[TunersHeader]
+                    + SVerticalBox::Slot().FillHeight(1.0f)
                     [
-                        SNew(SBox)
-                        .Clipping(EWidgetClipping::ClipToBounds)
-                        .Visibility_Lambda([WeakPanel]()
-                        {
-                            const auto Panel = WeakPanel.Pin();
-                            return Panel.IsValid() && Panel->_TunersExpanded
-                                ? EVisibility::Visible
-                                : EVisibility::Collapsed;
-                        })
-                        [ DoBuild_TunersWorkspace() ]
-                    ]
-                    + SSplitter::Slot()
-                    .Value(0.58f)
-                    .MinSize(250.0f)
-                    [
-                        SNew(SSplitter)
-                        .Orientation(Orient_Horizontal)
-                        .PhysicalSplitterHandleSize(5.0f)
-                        + SSplitter::Slot()
-                        .Value(0.72f)
-                        .MinSize(360.0f)
+                        SNew(SSplitter).Orientation(Orient_Vertical).PhysicalSplitterHandleSize(5.0f)
+                        + SSplitter::Slot().SizeRule(TunerSlotSizeRule).Value(TunerSlotValue).MinSize(TunerSlotMinSize)
                         [
-                            SAssignNew(_RosterPaneBox, SVerticalBox)
-                            + SVerticalBox::Slot().FillHeight(1.0f)
-                            [ DoBuild_RosterPane() ]
+                            SNew(SSplitter).Orientation(Orient_Horizontal).PhysicalSplitterHandleSize(5.0f)
+                            .Visibility(TunerVisibility)
+                            + SSplitter::Slot().Value(1.0f).MinSize(280.0f)[ArbiterTuners]
+                            + SSplitter::Slot().Value(1.25f).MinSize(300.0f)[CrowdTuners]
                         ]
-                        + SSplitter::Slot()
-                        .Value(0.28f)
-                        .MinSize(260.0f)
+                        + SSplitter::Slot().Value(0.58f).MinSize(250.0f)
                         [
-                            SAssignNew(_DetailRailBox, SVerticalBox)
-                            + SVerticalBox::Slot().FillHeight(1.0f)
+                            SNew(SSplitter).Orientation(Orient_Horizontal).PhysicalSplitterHandleSize(5.0f)
+                            + SSplitter::Slot().Value(0.72f).MinSize(360.0f)[Roster]
+                            + SSplitter::Slot().Value(0.28f).MinSize(260.0f)
                             [
-                                SNew(SSplitter)
-                                .Orientation(Orient_Vertical)
-                                .PhysicalSplitterHandleSize(5.0f)
-                                + SSplitter::Slot().Value(0.62f).MinSize(180.0f)
-                                [ SNew(SScrollBox) + SScrollBox::Slot()[ DoBuild_DetailRail() ] ]
-                                + SSplitter::Slot().Value(0.38f).MinSize(130.0f)
-                                [ DoBuild_EventLog() ]
+                                SNew(SSplitter).Orientation(Orient_Vertical).PhysicalSplitterHandleSize(5.0f)
+                                + SSplitter::Slot().Value(0.62f).MinSize(180.0f)[Detail]
+                                + SSplitter::Slot().Value(0.38f).MinSize(130.0f)[Events]
                             ]
                         ]
                     ]
                 ]
-            ]
-        ];
+            ];
+    };
+
+    SAssignNew(_AuthoredShellHost, SBox);
+
+    TSharedPtr<const FCkUiWidgetRegistrySnapshot> Registry;
+    const FCkUiLoadResult RegistryResult = FCkDebug_UiRegistry::TryCreate(Registry);
+    const TSharedPtr<IPlugin> Plugin = IPluginManager::Get().FindPlugin(TEXT("CkDebugger"));
+    if (NOT RegistryResult.Succeeded || NOT Registry.IsValid() || NOT Plugin.IsValid())
+    {
+        _AuthoredShellLoadFailure = RegistryResult.Succeeded
+            ? TEXT("CkDebugger resources are unavailable.")
+            : FString::Join(RegistryResult.Errors, TEXT("\n"));
+        _AuthoredShellHost->SetContent(BuildNativeFallback());
+        return _AuthoredShellHost.ToSharedRef();
+    }
+
+    FCkUiView::FNativeBindings NativeBindings;
+    NativeBindings.Add(TEXT("vl-shell-alert"), Alert);
+    NativeBindings.Add(TEXT("vl-shell-tabs"), Tabs);
+    NativeBindings.Add(TEXT("vl-shell-header"), Header);
+    NativeBindings.Add(TEXT("vl-shell-stats"), Stats);
+    NativeBindings.Add(TEXT("vl-shell-overview"), Overview);
+    NativeBindings.Add(TEXT("vl-shell-tuners-header"), TunersHeader);
+    NativeBindings.Add(TEXT("vl-shell-arbiter-tuners"), ArbiterTuners);
+    NativeBindings.Add(TEXT("vl-shell-crowd-tuners"), CrowdTuners);
+    NativeBindings.Add(TEXT("vl-shell-roster"), Roster);
+    NativeBindings.Add(TEXT("vl-shell-detail"), Detail);
+    NativeBindings.Add(TEXT("vl-shell-events"), Events);
+
+    auto Data = FCkUiView::FDataBindings{};
+    Data.Visibility.Add(TEXT("vl-tuners-expanded"), TAttribute<bool>::CreateLambda([WeakPanel]()
+    {
+        const auto Panel = WeakPanel.Pin();
+        return Panel.IsValid() && Panel->_TunersExpanded;
+    }));
+    Data.CanDispatchEvents = TAttribute<bool>::CreateLambda([WeakPanel]() { return WeakPanel.IsValid(); });
+    const TSharedRef<FCkUiView> Candidate = FCkUiView::Create(MoveTemp(NativeBindings), {}, {},
+        CkStyle::RegularFont(CkStyle::FontSizeBody()), MoveTemp(Data), Registry);
+    const TSharedRef<SWidget> Main = Candidate->GetRegion(TEXT("main"));
+    const FString Directory = FPaths::Combine(Plugin->GetBaseDir(), TEXT("Resources/UI"));
+    Candidate->SetFiles(FPaths::Combine(Directory, TEXT("VisualLodDebuggerShell.ui.html")),
+        FPaths::Combine(Directory, TEXT("VisualLodDebuggerShell.ui.css")));
+    Candidate->PollFiles();
+    if (NOT Candidate->GetLastResult().Succeeded)
+    {
+        _AuthoredShellLoadFailure = FString::Join(Candidate->GetLastResult().Errors, TEXT("\n"));
+        _AuthoredShellHost->SetContent(BuildNativeFallback());
+        return _AuthoredShellHost.ToSharedRef();
+    }
+
+    _AuthoredShellView = Candidate;
+    _AuthoredShellLoadFailure.Reset();
+    _AuthoredShellHost->SetContent(Main);
+    return _AuthoredShellHost.ToSharedRef();
+}
+
+auto SCkVisualLodDebuggerWindow::DoPoll_AuthoredShellFiles(const double InCurrentTime) -> void
+{
+    constexpr double PollIntervalSeconds = 0.5;
+    if (InCurrentTime < _NextAuthoredShellPollSeconds || NOT _AuthoredShellView.IsValid()) { return; }
+    _NextAuthoredShellPollSeconds = InCurrentTime + PollIntervalSeconds;
+    _AuthoredShellView->PollFiles();
+    if (NOT _AuthoredShellView->GetLastResult().Succeeded)
+    {
+        _AuthoredShellLoadFailure = FString::Join(_AuthoredShellView->GetLastResult().Errors, TEXT("\n"));
+        return;
+    }
+    _AuthoredShellLoadFailure.Reset();
 }
 
 auto
@@ -1908,29 +1935,6 @@ auto
         .Body()
         [
             SNullWidget::NullWidget
-        ];
-}
-
-auto
-    SCkVisualLodDebuggerWindow::
-    DoBuild_TunersWorkspace()
-    -> TSharedRef<SWidget>
-{
-    return SNew(SSplitter)
-        .Orientation(Orient_Horizontal)
-        .PhysicalSplitterHandleSize(5.0f)
-        .Clipping(EWidgetClipping::ClipToBounds)
-        + SSplitter::Slot().Value(1.0f).MinSize(280.0f)
-        [
-            SNew(SBox)
-            .Clipping(EWidgetClipping::ClipToBounds)
-            [ DoBuild_ArbiterTuners() ]
-        ]
-        + SSplitter::Slot().Value(1.25f).MinSize(300.0f)
-        [
-            SNew(SScrollBox)
-            + SScrollBox::Slot()
-            [ DoBuild_CrowdTuners() ]
         ];
 }
 

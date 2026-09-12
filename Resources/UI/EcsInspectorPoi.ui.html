@@ -1,0 +1,16 @@
+<ui version="1">
+  <region name="main">
+    <column id="poi-inspector" class="poi-inspector">
+      <row id="poi-category-tags-row" class="poi-row poi-category-tags-row">
+        <text id="poi-category-tags-label" color-bind="poi-category-tags-diff-color" class="poi-label">Category Tags:</text>
+        <repeat id="poi-category-tags" bind="poi-category-tags" direction="horizontal" visible="poi-category-tags-present" class="poi-chips"><row id="poi-category-tag-chip" class="poi-chip"><text id="poi-category-tag-text" bind-field="tag" class="poi-chip-text" /></row></repeat>
+        <text id="poi-category-tags-empty" visible="poi-category-tags-empty" class="poi-empty">(none)</text>
+        <text id="poi-category-tags-unavailable" visible="poi-category-tags-unavailable" class="poi-empty">--</text>
+      </row>
+      <row id="poi-label-row" class="poi-row"><text id="poi-label-label" color-bind="poi-label-diff-color" class="poi-label">Label:</text><text id="poi-label-value" bind="poi-label" class="poi-value poi-label-value" /></row>
+      <row id="poi-state-row" class="poi-row"><text id="poi-state-label" color-bind="poi-state-diff-color" class="poi-label">State:</text><debug-status id="poi-state-value" label-bind="poi-state" foreground-bind="poi-state-foreground" background-bind="poi-state-background" show-dot="true" class="poi-status" /></row>
+      <row id="poi-disabled-row" class="poi-row"><text id="poi-disabled-label" color-bind="poi-disabled-diff-color" class="poi-label">Disabled:</text><debug-switch id="poi-disabled-switch" checked-bind="poi-disabled" changed="poi-disabled-changed" enabled-bind="poi-available" class="poi-switch" /></row>
+      <row id="poi-world-position-row" class="poi-row"><text id="poi-world-position-label" color-bind="poi-world-position-diff-color" class="poi-label">World Pos:</text><row id="poi-world-position-value" class="poi-position"><text id="poi-world-x" bind="poi-world-x" class="poi-value" /><text id="poi-world-y" bind="poi-world-y" class="poi-value" /><text id="poi-world-z" bind="poi-world-z" class="poi-value" /></row></row>
+    </column>
+  </region>
+</ui>

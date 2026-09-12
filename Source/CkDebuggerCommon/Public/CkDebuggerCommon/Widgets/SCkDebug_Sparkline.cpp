@@ -1,6 +1,7 @@
 #include "SCkDebug_Sparkline.h"
 
 #include "CkCore/Macros/CkMacros.h"
+#include "CkSlateLayout/CkUiFloatSeries.h"
 
 #include "Framework/Application/SlateApplication.h"
 #include "Rendering/DrawElements.h"
@@ -67,6 +68,7 @@ auto
     -> void
 {
     _Samples = InArgs._Samples;
+    _FloatSeries = InArgs._FloatSeries;
     _BandSamples = InArgs._BandSamples;
     _Color = InArgs._Color;
     _BandColor = InArgs._BandColor;
@@ -104,10 +106,12 @@ auto
     const
     -> int32
 {
-    if (NOT _Samples.IsValid() || _Samples->Num() < 2)
+    const TSharedPtr<const FCkUiFloatSeries> FloatSeries = _FloatSeries.Pin();
+    const TArray<float>* Samples = FloatSeries.IsValid() ? &FloatSeries->GetSamples() : _Samples.Get();
+    if (Samples == nullptr || Samples->Num() < 2)
     { return InLayerId; }
 
-    const auto& Values = *_Samples;
+    const TArray<float>& Values = *Samples;
     const auto Size = InAllottedGeometry.GetLocalSize();
     const auto Marker = _MarkerValue.Get(TOptional<float>{});
     const auto HasBand = _BandSamples.IsValid() && _BandSamples->Num() == Values.Num();

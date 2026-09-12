@@ -50,16 +50,22 @@ public:
         {}
         SLATE_ATTRIBUTE(FCk_Handle, Entity)
         SLATE_ATTRIBUTE(FSlateFontInfo, Font)
-        SLATE_ARGUMENT(bool, ShowName)
+        SLATE_ATTRIBUTE(bool, ShowName)
         SLATE_ARGUMENT(FText, Tooltip)
 
         // STYLE LAB ONLY. The Lab renders with no world loaded, and an invalid handle collapses
         // every treatment onto the same muted "None" — which would make the preview lie about all
         // four of them. Supplying an id string substitutes the two composition inputs (and seeds the
         // hash hue from that string) so the treatments render for real. Never set these from a
-        // debugger surface: a preview never navigates, whatever the navigator says.
-        SLATE_ARGUMENT(FString, PreviewName)
-        SLATE_ARGUMENT(FString, PreviewIdText)
+        // debugger surface: a preview has no navigation delegate, whatever the navigator says.
+        SLATE_ATTRIBUTE(FString, PreviewName)
+        SLATE_ATTRIBUTE(FString, PreviewIdText)
+
+        // Optional author-owned navigation. This lets an authored surface route a stable entity
+        // key without manufacturing an FCk_Handle. With no delegate, the existing handle-based
+        // ECS debugger navigation remains the sole left-click behavior.
+        SLATE_EVENT(FSimpleDelegate, OnNavigate)
+        SLATE_ATTRIBUTE(bool, CanNavigate)
     SLATE_END_ARGS()
 
     auto Construct(const FArguments& InArgs) -> void;
@@ -89,10 +95,12 @@ private:
 
     TAttribute<FCk_Handle> _Entity;
     TAttribute<FSlateFontInfo> _Font;
-    bool _ShowName = false;
+    TAttribute<bool> _ShowName;
     FText _CustomTooltip;
-    FString _PreviewName;
-    FString _PreviewIdText;
+    TAttribute<FString> _PreviewName;
+    TAttribute<FString> _PreviewIdText;
+    FSimpleDelegate _OnNavigate;
+    TAttribute<bool> _CanNavigate;
 };
 
 // ====================================================================================================================

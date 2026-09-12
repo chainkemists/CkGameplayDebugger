@@ -4,6 +4,8 @@
 
 #include <CoreMinimal.h>
 
+class FCkUiFloatSeries;
+
 // ====================================================================================================================
 // Shared sparkline: paints a sample ring as a polyline with an optional vertical-gradient area fill,
 // an optional second "band" series (filled between the primary line and the band line — e.g. in-use
@@ -32,6 +34,9 @@ public:
         , _DesiredSize(FVector2D(120.0f, 26.0f))
     {}
         SLATE_ARGUMENT(TSharedPtr<TArray<float>>, Samples)
+
+        // The owner mutates and retains this series; paint pins it only while reading samples.
+        SLATE_ARGUMENT(TWeakPtr<const FCkUiFloatSeries>, FloatSeries)
 
         // Optional second series (same sample cadence/length as Samples). The area between the
         // primary line and this line is filled with BandColor at BandFillOpacity.
@@ -69,8 +74,11 @@ public:
 
     auto ComputeDesiredSize(float InLayoutScaleMultiplier) const -> FVector2D override;
 
+    auto Get_FloatSeries() const -> TWeakPtr<const FCkUiFloatSeries> { return _FloatSeries; }
+
 private:
     TSharedPtr<TArray<float>> _Samples;
+    TWeakPtr<const FCkUiFloatSeries> _FloatSeries;
     TSharedPtr<TArray<float>> _BandSamples;
 
     TAttribute<FLinearColor> _Color = FLinearColor::White;

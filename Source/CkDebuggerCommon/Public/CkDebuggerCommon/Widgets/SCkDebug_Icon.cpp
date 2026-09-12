@@ -33,9 +33,13 @@ auto
     Construct(const FArguments& InArgs)
     -> void
 {
+    _Brush = InArgs._Brush;
+    _Meaning = InArgs._Meaning;
+    _ColorAndOpacity = InArgs._ColorAndOpacity;
+
     // Tooltip lives on the compound widget so the whole glyph footprint is the
     // hover target — the wrapped SImage stays passive.
-    SetToolTipText(InArgs._Meaning);
+    SetToolTipText(_Meaning);
 
     const auto BaseSize = InArgs._Size.Get(FVector2D{ck_debug_icon::BaselineSize, ck_debug_icon::BaselineSize});
     const auto Accent   = InArgs._Accent;
@@ -64,8 +68,8 @@ auto
                     })
                     [
                         SNew(SImage)
-                            .Image(InArgs._Brush)
-                            .ColorAndOpacity(InArgs._ColorAndOpacity)
+                            .Image(_Brush)
+                            .ColorAndOpacity(_ColorAndOpacity)
                     ]
             ]
     ];

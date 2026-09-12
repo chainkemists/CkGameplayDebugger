@@ -56,6 +56,8 @@ auto
     _CustomTooltip  = InArgs._Tooltip;
     _PreviewName    = InArgs._PreviewName;
     _PreviewIdText  = InArgs._PreviewIdText;
+    _OnNavigate     = InArgs._OnNavigate;
+    _CanNavigate    = InArgs._CanNavigate;
 
     // The chip frame exists unconditionally and every one of its visuals — brush included — is an
     // attribute, so both axes apply live without ever rebuilding this widget. Flat and Monochrome
@@ -99,7 +101,10 @@ auto
 
     if (InMouseEvent.GetEffectingButton() == EKeys::LeftMouseButton && Is_Clickable())
     {
-        ck::DebugNav::Goto_Entity(Entity);
+        if (_OnNavigate.IsBound())
+        { _OnNavigate.Execute(); }
+        else
+        { ck::DebugNav::Goto_Entity(Entity); }
         return FReply::Handled();
     }
 
@@ -135,9 +140,9 @@ auto
 
     if (Is_Preview())
     {
-        CleanName = _PreviewName;
+        CleanName = _PreviewName.Get(FString{});
     }
-    else if (_ShowName)
+    else if (_ShowName.Get(false))
     {
         const auto Name = UCk_Utils_Handle_UE::Get_DebugName(_Entity.Get());
         if (NOT Name.IsNone())
@@ -226,7 +231,7 @@ auto
     { return CkStyle::EntityId(); }
 
     return ck_debug_entityref::Get_HashTint(Is_Preview()
-        ? GetTypeHash(_PreviewIdText)
+        ? GetTypeHash(_PreviewIdText.Get(FString{}))
         : static_cast<uint32>(_Entity.Get().Get_Entity().Get_ID()));
 }
 
@@ -236,7 +241,7 @@ auto
     -> FString
 {
     if (Is_Preview())
-    { return _PreviewIdText; }
+    { return _PreviewIdText.Get(FString{}); }
 
     if (ck::Is_NOT_Valid(_Entity.Get()))
     { return FString{}; }
@@ -249,7 +254,7 @@ auto
     Is_Preview() const
     -> bool
 {
-    return NOT _PreviewIdText.IsEmpty();
+    return NOT _PreviewIdText.Get(FString{}).IsEmpty();
 }
 
 auto
@@ -292,9 +297,15 @@ auto
     if (NOT Has_Subject())
     { return FText::FromString(TEXT("Invalid entity")); }
 
-    const auto Base = ck::DebugNav::Has_EntityNavigator()
-        ? FString{TEXT("Click to open in CK ECS Debugger — right-click to copy")}
-        : FString{TEXT("Entity ID — right-click to copy")};
+    // An authored reference may navigate somewhere other than the ECS Debugger. Keep that route's
+    // affordance deliberately neutral; the legacy handle path retains its exact established copy.
+    const auto Base = _OnNavigate.IsBound()
+        ? Is_Clickable()
+            ? FString{TEXT("Click to follow entity reference — right-click to copy")}
+            : FString{TEXT("Entity ID — right-click to copy")}
+        : ck::DebugNav::Has_EntityNavigator()
+            ? FString{TEXT("Click to open in CK ECS Debugger — right-click to copy")}
+            : FString{TEXT("Entity ID — right-click to copy")};
 
     const auto IdPrefix = Get_TooltipIdPrefix();
 
@@ -309,6 +320,9 @@ auto
     Is_Clickable() const
     -> bool
 {
+    if (_OnNavigate.IsBound())
+    { return Has_Subject() && _CanNavigate.Get(false); }
+
     return ck::IsValid(_Entity.Get()) && ck::DebugNav::Has_EntityNavigator();
 }
 

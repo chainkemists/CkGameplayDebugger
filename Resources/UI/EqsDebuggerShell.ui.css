@@ -1,0 +1,4 @@
+.eqs-shell-split { min-width: 0; min-height: 0; flex-grow: 1; flex-shrink: 1; background-color: var(--eqs-shell-surface); }
+.eqs-query-pane { min-width: 180px; min-height: 0; flex-grow: 0.30; flex-shrink: 1; }
+.eqs-candidate-pane { min-width: 220px; min-height: 0; flex-grow: 0.35; flex-shrink: 1; }
+.eqs-test-pane { min-width: 220px; min-height: 0; flex-grow: 0.35; flex-shrink: 1; }

@@ -1,0 +1,22 @@
+.style-lab-controls-root { gap: var(--space-m); }
+.style-lab-controls-error { color: var(--err); text-wrap: wrap; }
+.style-lab-group-body { gap: var(--space-s); padding: var(--space-m); }
+.style-lab-group-description { color: var(--text-dim); text-wrap: wrap; }
+.style-lab-axis-list { gap: var(--space-s); }
+.style-lab-axis-row { flex-wrap: wrap; gap: var(--space-s); vertical-align: center; }
+.style-lab-axis-label { max-width: 116px; min-width: 0; flex-grow: 1; flex-shrink: 1; color: var(--text-dim); text-wrap: wrap; }
+.style-lab-axis-action { flex-shrink: 0; }
+.style-lab-axis-value { max-width: 128px; min-width: 0; flex-grow: 1; flex-shrink: 1; color: var(--text); horizontal-align: center; text-wrap: wrap; }
+.style-lab-preview { padding: var(--space-s) 0 0 0; }
+.style-lab-input-hud-controls { padding: 0 0 var(--space-s) 0; }
+.input-hud-authored-controls { gap: var(--space-m); }
+.input-hud-heading { color: var(--text); }
+.input-hud-section { gap: var(--space-s); }
+.input-hud-section-heading { color: var(--text-dim); }
+.input-hud-row { gap: var(--space-s); flex-wrap: wrap; vertical-align: center; }
+.input-hud-label { min-width: 0; max-width: 160px; flex-grow: 1; flex-shrink: 1; color: var(--text-dim); text-wrap: wrap; }
+.input-hud-action { flex-shrink: 0; }
+.input-hud-cycle-value { min-width: 88px; flex-grow: 1; flex-shrink: 1; horizontal-align: center; color: var(--text); text-wrap: wrap; }
+.input-hud-number { min-width: 88px; max-width: 128px; flex-grow: 1; flex-shrink: 1; }
+.input-hud-color { min-width: 88px; max-width: 128px; flex-grow: 1; flex-shrink: 1; }
+.input-hud-reset { flex-shrink: 0; }

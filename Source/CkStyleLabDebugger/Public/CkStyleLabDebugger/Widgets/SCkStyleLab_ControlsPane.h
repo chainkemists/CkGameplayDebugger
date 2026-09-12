@@ -2,12 +2,13 @@
 
 #include "CkStyleLabDebugger/Styles/CkStyleLab_AxisMetadata.h"
 
+#include "CkSlateLayout/SCkUiSurface.h"
+
 #include "CoreMinimal.h"
 #include "Widgets/SCompoundWidget.h"
 
 class SCkStyleLab_SamplePane;
 class FCkUiCollection;
-class FCkUiView;
 
 // ====================================================================================================================
 
@@ -58,17 +59,22 @@ public:
     auto Get_AxisCount() const -> int32 { return _Axes.Num(); }
     auto Get_GroupPreviewCount() const -> int32 { return _GroupPreviews.Num(); }
     auto Get_ProfileView() const -> TSharedPtr<FCkUiView> { return _ProfileView; }
+    /** The retained authored surface for every generic axis group and Input HUD native mount. */
+    auto Get_ControlsView() const -> TSharedPtr<FCkUiView> { return _ControlsView; }
 
 private:
     auto Build_GroupedAxes() -> TSharedRef<SWidget>;
-    auto Build_AxisGroup(const FCkStyleLab_GroupMetadata& InGroup) -> TSharedRef<SWidget>;
-    auto Build_InputHudGroup(const FCkStyleLab_GroupMetadata& InGroup) -> TSharedRef<SWidget>;
-    auto Build_AxisRow(const TSharedPtr<FCkStyleLab_AxisRow>& InAxis) -> TSharedRef<SWidget>;
+    auto Configure_InputHudBindings(
+        FCkUiView::FDataBindings& InOutData,
+        FCkUiView::FActions& InOutActions,
+        TWeakPtr<SCkStyleLab_ControlsPane> InWeakPane) -> void;
     auto Build_ProfileControls() -> TSharedRef<SWidget>;
     auto Publish_ProfileRecords() -> void;
+    auto Publish_AxisRecords() -> void;
     auto Apply_ProfileByName(const FString& InProfileName) -> void;
     auto Get_ProfileLabel() const -> FText;
     auto Get_ProfileLayoutError() const -> FText;
+    auto Get_ControlsLayoutError() const -> FText;
     auto Tick_ProfileFiles(double InCurrentTime, float InDeltaTime) -> EActiveTimerReturnType;
 
     auto Get_AxisValueLabel(TSharedPtr<FCkStyleLab_AxisRow> InAxis) const -> FText;
@@ -78,10 +84,14 @@ private:
     auto Notify_SelectionChanged() -> void;
 
     TArray<TSharedPtr<FCkStyleLab_AxisRow>> _Axes;
+    TMap<FString, TSharedPtr<FCkStyleLab_AxisRow>> _AxesByProperty;
+    TMap<ECkStyleLab_Group, TSharedPtr<FCkUiCollection>> _AxisCollections;
     TArray<TSharedPtr<SCkStyleLab_SamplePane>> _GroupPreviews;
     TSharedPtr<FCkUiView> _ProfileView;
+    TSharedPtr<FCkUiView> _ControlsView;
     TSharedPtr<FCkUiCollection> _ProfileCollection;
     FString _ProfilePublicationError;
+    FString _ControlsPublicationError;
     FString _PublishedProfileName;
     FLinearColor _PublishedProfileAccent = FLinearColor::Transparent;
     FLinearColor _PublishedProfileText = FLinearColor::Transparent;

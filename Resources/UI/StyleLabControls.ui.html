@@ -1,0 +1,168 @@
+<ui version="1">
+  <region name="main">
+    <column id="style-lab-controls-root" class="style-lab-controls-root">
+      <text id="style-lab-controls-error" bind="controls-layout-error" visible="controls-layout-error-visible" class="style-lab-controls-error" />
+      <debug-inspector id="style-lab-workbench-surfaces" title-bind="group-workbench-surfaces-title" count="6" start-expanded="true">
+        <slot name="body">
+          <column id="style-lab-workbench-surfaces-body" class="style-lab-group-body">
+            <text id="style-lab-workbench-surfaces-description" bind="group-workbench-surfaces-description" class="style-lab-group-description" />
+            <repeat id="axes-workbench-surfaces" bind="axes-workbench-surfaces" direction="vertical" class="style-lab-axis-list">
+              <row id="workbench-axis-row" class="style-lab-axis-row">
+                <text id="workbench-axis-label" bind-field="label" tooltip-field="tooltip" class="style-lab-axis-label" />
+                <button id="workbench-axis-previous" tooltip="Previous option" item-action="cycle-axis-previous" class="style-lab-axis-action">◀</button>
+                <text id="workbench-axis-value" bind-field="value" class="style-lab-axis-value" />
+                <button id="workbench-axis-next" tooltip="Next option" item-action="cycle-axis-next" class="style-lab-axis-action">▶</button>
+              </row>
+            </repeat>
+            <column id="preview-workbench-surfaces-container" class="style-lab-preview">
+              <native id="preview-workbench-surfaces" bind="preview-workbench-surfaces" />
+            </column>
+          </column>
+        </slot>
+      </debug-inspector>
+      <debug-inspector id="style-lab-tokens-legend" title-bind="group-tokens-legend-title" count="6" start-expanded="true">
+        <slot name="body">
+          <column id="style-lab-tokens-legend-body" class="style-lab-group-body">
+            <text id="style-lab-tokens-legend-description" bind="group-tokens-legend-description" class="style-lab-group-description" />
+            <repeat id="axes-tokens-legend" bind="axes-tokens-legend" direction="vertical" class="style-lab-axis-list">
+              <row id="tokens-axis-row" class="style-lab-axis-row">
+                <text id="tokens-axis-label" bind-field="label" tooltip-field="tooltip" class="style-lab-axis-label" />
+                <button id="tokens-axis-previous" tooltip="Previous option" item-action="cycle-axis-previous" class="style-lab-axis-action">◀</button>
+                <text id="tokens-axis-value" bind-field="value" class="style-lab-axis-value" />
+                <button id="tokens-axis-next" tooltip="Next option" item-action="cycle-axis-next" class="style-lab-axis-action">▶</button>
+              </row>
+            </repeat>
+            <column id="preview-tokens-legend-container" class="style-lab-preview">
+              <native id="preview-tokens-legend" bind="preview-tokens-legend" />
+            </column>
+          </column>
+        </slot>
+      </debug-inspector>
+      <debug-inspector id="style-lab-entity-values" title-bind="group-entity-values-title" count="3" start-expanded="true">
+        <slot name="body">
+          <column id="style-lab-entity-values-body" class="style-lab-group-body">
+            <text id="style-lab-entity-values-description" bind="group-entity-values-description" class="style-lab-group-description" />
+            <repeat id="axes-entity-values" bind="axes-entity-values" direction="vertical" class="style-lab-axis-list">
+              <row id="entity-axis-row" class="style-lab-axis-row">
+                <text id="entity-axis-label" bind-field="label" tooltip-field="tooltip" class="style-lab-axis-label" />
+                <button id="entity-axis-previous" tooltip="Previous option" item-action="cycle-axis-previous" class="style-lab-axis-action">◀</button>
+                <text id="entity-axis-value" bind-field="value" class="style-lab-axis-value" />
+                <button id="entity-axis-next" tooltip="Next option" item-action="cycle-axis-next" class="style-lab-axis-action">▶</button>
+              </row>
+            </repeat>
+            <column id="preview-entity-values-container" class="style-lab-preview">
+              <native id="preview-entity-values" bind="preview-entity-values" />
+            </column>
+          </column>
+        </slot>
+      </debug-inspector>
+      <debug-inspector id="style-lab-hierarchy-editing" title-bind="group-hierarchy-editing-title" count="4" start-expanded="true">
+        <slot name="body">
+          <column id="style-lab-hierarchy-editing-body" class="style-lab-group-body">
+            <text id="style-lab-hierarchy-editing-description" bind="group-hierarchy-editing-description" class="style-lab-group-description" />
+            <repeat id="axes-hierarchy-editing" bind="axes-hierarchy-editing" direction="vertical" class="style-lab-axis-list">
+              <row id="hierarchy-axis-row" class="style-lab-axis-row">
+                <text id="hierarchy-axis-label" bind-field="label" tooltip-field="tooltip" class="style-lab-axis-label" />
+                <button id="hierarchy-axis-previous" tooltip="Previous option" item-action="cycle-axis-previous" class="style-lab-axis-action">◀</button>
+                <text id="hierarchy-axis-value" bind-field="value" class="style-lab-axis-value" />
+                <button id="hierarchy-axis-next" tooltip="Next option" item-action="cycle-axis-next" class="style-lab-axis-action">▶</button>
+              </row>
+            </repeat>
+            <column id="preview-hierarchy-editing-container" class="style-lab-preview">
+              <native id="preview-hierarchy-editing" bind="preview-hierarchy-editing" />
+            </column>
+          </column>
+        </slot>
+      </debug-inspector>
+      <debug-inspector id="style-lab-icons" title-bind="group-icons-title" count="2" start-expanded="true">
+        <slot name="body">
+          <column id="style-lab-icons-body" class="style-lab-group-body">
+            <text id="style-lab-icons-description" bind="group-icons-description" class="style-lab-group-description" />
+            <repeat id="axes-icons" bind="axes-icons" direction="vertical" class="style-lab-axis-list">
+              <row id="icons-axis-row" class="style-lab-axis-row">
+                <text id="icons-axis-label" bind-field="label" tooltip-field="tooltip" class="style-lab-axis-label" />
+                <button id="icons-axis-previous" tooltip="Previous option" item-action="cycle-axis-previous" class="style-lab-axis-action">◀</button>
+                <text id="icons-axis-value" bind-field="value" class="style-lab-axis-value" />
+                <button id="icons-axis-next" tooltip="Next option" item-action="cycle-axis-next" class="style-lab-axis-action">▶</button>
+              </row>
+            </repeat>
+            <column id="preview-icons-container" class="style-lab-preview">
+              <native id="preview-icons" bind="preview-icons" />
+            </column>
+          </column>
+        </slot>
+      </debug-inspector>
+      <debug-inspector id="style-lab-graph-telemetry" title-bind="group-graph-telemetry-title" count="3" start-expanded="true">
+        <slot name="body">
+          <column id="style-lab-graph-telemetry-body" class="style-lab-group-body">
+            <text id="style-lab-graph-telemetry-description" bind="group-graph-telemetry-description" class="style-lab-group-description" />
+            <repeat id="axes-graph-telemetry" bind="axes-graph-telemetry" direction="vertical" class="style-lab-axis-list">
+              <row id="graph-axis-row" class="style-lab-axis-row">
+                <text id="graph-axis-label" bind-field="label" tooltip-field="tooltip" class="style-lab-axis-label" />
+                <button id="graph-axis-previous" tooltip="Previous option" item-action="cycle-axis-previous" class="style-lab-axis-action">◀</button>
+                <text id="graph-axis-value" bind-field="value" class="style-lab-axis-value" />
+                <button id="graph-axis-next" tooltip="Next option" item-action="cycle-axis-next" class="style-lab-axis-action">▶</button>
+              </row>
+            </repeat>
+            <column id="preview-graph-telemetry-container" class="style-lab-preview">
+              <native id="preview-graph-telemetry" bind="preview-graph-telemetry" />
+            </column>
+          </column>
+        </slot>
+      </debug-inspector>
+      <debug-inspector id="style-lab-input-hud" title-bind="group-input-hud-title" start-expanded="false">
+        <slot name="body">
+          <column id="style-lab-input-hud-body" class="style-lab-group-body">
+            <text id="style-lab-input-hud-description" bind="group-input-hud-description" class="style-lab-group-description" />
+            <column id="input-hud-controls-container" class="style-lab-input-hud-controls">
+              <column id="input-hud-authored-controls" class="input-hud-authored-controls">
+                <text id="input-hud-heading" class="input-hud-heading">Input HUD - Signal Strip</text>
+                <column id="input-hud-cycles-section" class="input-hud-section">
+                  <text id="input-hud-cycles-heading" class="input-hud-section-heading">Presentation</text>
+                  <row id="input-hud-palette-row" class="input-hud-row"><text id="input-hud-palette-label" tooltip="Selects the Signal Strip surface and semantic color family; choosing a palette clears custom colors." class="input-hud-label">Palette</text><button id="input-hud-palette-previous" action="input-hud-palette-previous" tooltip="Previous option" class="input-hud-action">◀</button><text id="input-hud-palette-value" bind="input-hud-palette-value" class="input-hud-cycle-value"/><button id="input-hud-palette-next" action="input-hud-palette-next" tooltip="Next option" class="input-hud-action">▶</button></row>
+                  <row id="input-hud-density-row" class="input-hud-row"><text id="input-hud-density-label" tooltip="Changes key geometry independently of the runtime scale multiplier." class="input-hud-label">Density</text><button id="input-hud-density-previous" action="input-hud-density-previous" tooltip="Previous option" class="input-hud-action">◀</button><text id="input-hud-density-value" bind="input-hud-density-value" class="input-hud-cycle-value"/><button id="input-hud-density-next" action="input-hud-density-next" tooltip="Next option" class="input-hud-action">▶</button></row>
+                  <row id="input-hud-corners-row" class="input-hud-row"><text id="input-hud-corners-label" tooltip="Preset shape for Signal Strip key cells." class="input-hud-label">Key corners</text><button id="input-hud-corners-previous" action="input-hud-corners-previous" tooltip="Previous option" class="input-hud-action">◀</button><text id="input-hud-corners-value" bind="input-hud-corners-value" class="input-hud-cycle-value"/><button id="input-hud-corners-next" action="input-hud-corners-next" tooltip="Next option" class="input-hud-action">▶</button></row>
+                  <row id="input-hud-anchor-row" class="input-hud-row"><text id="input-hud-anchor-label" tooltip="Viewport corner where the overlay is pinned." class="input-hud-label">Screen anchor</text><button id="input-hud-anchor-previous" action="input-hud-anchor-previous" tooltip="Previous option" class="input-hud-action">◀</button><text id="input-hud-anchor-value" bind="input-hud-anchor-value" class="input-hud-cycle-value"/><button id="input-hud-anchor-next" action="input-hud-anchor-next" tooltip="Next option" class="input-hud-action">▶</button></row>
+                  <row id="input-hud-metadata-row" class="input-hud-row"><text id="input-hud-metadata-label" tooltip="Keys shows state; Compact adds duration and route; Full adds frames and routing detail." class="input-hud-label">Metadata</text><button id="input-hud-metadata-previous" action="input-hud-metadata-previous" tooltip="Previous option" class="input-hud-action">◀</button><text id="input-hud-metadata-value" bind="input-hud-metadata-value" class="input-hud-cycle-value"/><button id="input-hud-metadata-next" action="input-hud-metadata-next" tooltip="Next option" class="input-hud-action">▶</button></row>
+                  <row id="input-hud-frame-row" class="input-hud-row"><text id="input-hud-frame-label" tooltip="Press frame, compact start plus delta, or start to end range." class="input-hud-label">Frame notation</text><button id="input-hud-frame-previous" action="input-hud-frame-previous" tooltip="Previous option" class="input-hud-action">◀</button><text id="input-hud-frame-value" bind="input-hud-frame-value" class="input-hud-cycle-value"/><button id="input-hud-frame-next" action="input-hud-frame-next" tooltip="Next option" class="input-hud-action">▶</button></row>
+                </column>
+                <column id="input-hud-numbers-section" class="input-hud-section">
+                  <text id="input-hud-numbers-heading" class="input-hud-section-heading">Geometry and effects</text>
+                  <row id="input-hud-padding-x-row" class="input-hud-row"><text id="input-hud-padding-x-label" tooltip="Independent left and right key-cell padding." class="input-hud-label">Horizontal padding</text><number-input id="input-hud-padding-x-input" value-bind="input-hud-padding-x" committed="input-hud-padding-x" kind="float" min="0" max="12" fractional-digits="1" class="input-hud-number"/></row>
+                  <row id="input-hud-padding-y-row" class="input-hud-row"><text id="input-hud-padding-y-label" tooltip="Independent top and bottom key-cell padding." class="input-hud-label">Vertical padding</text><number-input id="input-hud-padding-y-input" value-bind="input-hud-padding-y" committed="input-hud-padding-y" kind="float" min="0" max="6" fractional-digits="1" class="input-hud-number"/></row>
+                  <row id="input-hud-corner-radius-row" class="input-hud-row"><text id="input-hud-corner-radius-label" tooltip="Numeric key-cell radius; Key corners presets write zero, three, or six." class="input-hud-label">Corner radius</text><number-input id="input-hud-corner-radius-input" value-bind="input-hud-corner-radius" committed="input-hud-corner-radius" kind="float" min="0" max="12" fractional-digits="1" class="input-hud-number"/></row>
+                  <row id="input-hud-overall-opacity-row" class="input-hud-row"><text id="input-hud-overall-opacity-label" tooltip="Fades the complete Signal Strip, including panel, keys, and readouts." class="input-hud-label">Overall opacity</text><number-input id="input-hud-overall-opacity-input" value-bind="input-hud-overall-opacity" committed="input-hud-overall-opacity" kind="float" min="0" max="1" fractional-digits="2" class="input-hud-number"/></row>
+                  <row id="input-hud-anchor-x-row" class="input-hud-row"><text id="input-hud-anchor-x-label" tooltip="Positive inward distance from the selected horizontal anchor." class="input-hud-label">Anchor offset X</text><number-input id="input-hud-anchor-x-input" value-bind="input-hud-anchor-x" committed="input-hud-anchor-x" kind="float" min="0" max="512" fractional-digits="0" class="input-hud-number"/></row>
+                  <row id="input-hud-anchor-y-row" class="input-hud-row"><text id="input-hud-anchor-y-label" tooltip="Positive inward distance from the selected vertical anchor." class="input-hud-label">Anchor offset Y</text><number-input id="input-hud-anchor-y-input" value-bind="input-hud-anchor-y" committed="input-hud-anchor-y" kind="float" min="0" max="512" fractional-digits="0" class="input-hud-number"/></row>
+                  <row id="input-hud-border-width-row" class="input-hud-row"><text id="input-hud-border-width-label" tooltip="Width of every key outline." class="input-hud-label">Key border px</text><number-input id="input-hud-border-width-input" value-bind="input-hud-border-width" committed="input-hud-border-width" kind="float" min="0" max="2" fractional-digits="1" class="input-hud-number"/></row>
+                  <row id="input-hud-border-opacity-row" class="input-hud-row"><text id="input-hud-border-opacity-label" tooltip="Opacity multiplier for container and key outlines." class="input-hud-label">Border opacity</text><number-input id="input-hud-border-opacity-input" value-bind="input-hud-border-opacity" committed="input-hud-border-opacity" kind="float" min="0" max="1" fractional-digits="2" class="input-hud-number"/></row>
+                  <row id="input-hud-active-fill-opacity-row" class="input-hud-row"><text id="input-hud-active-fill-opacity-label" tooltip="Opacity of the fill on physically held keys." class="input-hud-label">Active fill</text><number-input id="input-hud-active-fill-opacity-input" value-bind="input-hud-active-fill-opacity" committed="input-hud-active-fill-opacity" kind="float" min="0" max="1" fractional-digits="2" class="input-hud-number"/></row>
+                  <row id="input-hud-active-glow-opacity-row" class="input-hud-row"><text id="input-hud-active-glow-opacity-label" tooltip="Opacity of the retained active-key halo." class="input-hud-label">Active glow</text><number-input id="input-hud-active-glow-opacity-input" value-bind="input-hud-active-glow-opacity" committed="input-hud-active-glow-opacity" kind="float" min="0" max="1" fractional-digits="2" class="input-hud-number"/></row>
+                  <row id="input-hud-panel-opacity-row" class="input-hud-row"><text id="input-hud-panel-opacity-label" tooltip="Background opacity independent of whole-overlay opacity." class="input-hud-label">Panel opacity</text><number-input id="input-hud-panel-opacity-input" value-bind="input-hud-panel-opacity" committed="input-hud-panel-opacity" kind="float" min="0.15" max="1" fractional-digits="2" class="input-hud-number"/></row>
+                  <row id="input-hud-pulse-scale-row" class="input-hud-row"><text id="input-hud-pulse-scale-label" tooltip="Scales tap and hold pulses without changing key-cell geometry." class="input-hud-label">Pulse scale</text><number-input id="input-hud-pulse-scale-input" value-bind="input-hud-pulse-scale" committed="input-hud-pulse-scale" kind="float" min="0" fractional-digits="2" class="input-hud-number"/></row>
+                  <row id="input-hud-history-brightness-row" class="input-hud-row"><text id="input-hud-history-brightness-label" tooltip="Brightness multiplier for released input history." class="input-hud-label">History brightness</text><number-input id="input-hud-history-brightness-input" value-bind="input-hud-history-brightness" committed="input-hud-history-brightness" kind="float" min="0.15" max="1" fractional-digits="2" class="input-hud-number"/></row>
+                  <row id="input-hud-press-pop-scale-row" class="input-hud-row"><text id="input-hud-press-pop-scale-label" tooltip="Peak scale for a newly pressed key cell." class="input-hud-label">Press pop scale</text><number-input id="input-hud-press-pop-scale-input" value-bind="input-hud-press-pop-scale" committed="input-hud-press-pop-scale" kind="float" min="0" fractional-digits="2" class="input-hud-number"/></row>
+                  <row id="input-hud-press-pop-ms-row" class="input-hud-row"><text id="input-hud-press-pop-ms-label" tooltip="New-key pop duration; zero disables the animation." class="input-hud-label">Press pop ms</text><number-input id="input-hud-press-pop-ms-input" value-bind="input-hud-press-pop-ms" committed="input-hud-press-pop-ms" kind="float" min="0" max="500" fractional-digits="0" class="input-hud-number"/></row>
+                  <row id="input-hud-release-ease-ms-row" class="input-hud-row"><text id="input-hud-release-ease-ms-label" tooltip="Additional easing window for released history." class="input-hud-label">Release ease ms</text><number-input id="input-hud-release-ease-ms-input" value-bind="input-hud-release-ease-ms" committed="input-hud-release-ease-ms" kind="float" min="0" max="1000" fractional-digits="0" class="input-hud-number"/></row>
+                  <row id="input-hud-hold-bar-max-row" class="input-hud-row"><text id="input-hud-hold-bar-max-label" tooltip="Shared project width cap for the growing hold pulse." class="input-hud-label">Hold bar max px</text><number-input id="input-hud-hold-bar-max-input" value-bind="input-hud-hold-bar-max" committed="input-hud-hold-bar-max" kind="float" min="8" max="64" fractional-digits="1" class="input-hud-number"/></row>
+                </column>
+                <column id="input-hud-colors-section" class="input-hud-section">
+                  <text id="input-hud-colors-heading" class="input-hud-section-heading">Semantic colors</text>
+                  <row id="input-hud-container-outline-row" class="input-hud-row"><text id="input-hud-container-outline-label" tooltip="Clicking a swatch creates a custom semantic color override; a palette clears overrides." class="input-hud-label">Container outline</text><color-picker id="input-hud-container-outline-color" value-bind="input-hud-container-outline-color" committed="input-hud-container-outline-color-committed" alpha="false" class="input-hud-color"/></row>
+                  <row id="input-hud-key-outline-row" class="input-hud-row"><text id="input-hud-key-outline-label" tooltip="Clicking a swatch creates a custom semantic color override; a palette clears overrides." class="input-hud-label">Key outline</text><color-picker id="input-hud-key-outline-color" value-bind="input-hud-key-outline-color" committed="input-hud-key-outline-color-committed" alpha="false" class="input-hud-color"/></row>
+                  <row id="input-hud-active-row" class="input-hud-row"><text id="input-hud-active-label" tooltip="Clicking a swatch creates a custom semantic color override; a palette clears overrides." class="input-hud-label">Active fill</text><color-picker id="input-hud-active-color" value-bind="input-hud-active-color" committed="input-hud-active-color-committed" alpha="false" class="input-hud-color"/></row>
+                  <row id="input-hud-resolved-row" class="input-hud-row"><text id="input-hud-resolved-label" tooltip="Clicking a swatch creates a custom semantic color override; a palette clears overrides." class="input-hud-label">Bound signal</text><color-picker id="input-hud-resolved-color" value-bind="input-hud-resolved-color" committed="input-hud-resolved-color-committed" alpha="false" class="input-hud-color"/></row>
+                  <row id="input-hud-unrouted-row" class="input-hud-row"><text id="input-hud-unrouted-label" tooltip="Clicking a swatch creates a custom semantic color override; a palette clears overrides." class="input-hud-label">Unbound signal</text><color-picker id="input-hud-unrouted-color" value-bind="input-hud-unrouted-color" committed="input-hud-unrouted-color-committed" alpha="false" class="input-hud-color"/></row>
+                </column>
+                <button id="input-hud-reset-visuals" action="input-hud-reset-visuals" tooltip="Restore visual and geometry tuning without changing metadata, frame notation, or the project hold-bar maximum." class="input-hud-reset">Reset Input HUD visuals</button>
+              </column>
+            </column>
+            <column id="preview-input-hud-container" class="style-lab-preview">
+              <native id="preview-input-hud" bind="preview-input-hud" />
+            </column>
+          </column>
+        </slot>
+      </debug-inspector>
+    </column>
+  </region>
+</ui>

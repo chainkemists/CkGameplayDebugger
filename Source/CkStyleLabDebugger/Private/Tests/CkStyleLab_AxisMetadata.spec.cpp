@@ -5,7 +5,7 @@
 #include "CkDebuggerCommon/Styles/CkDebuggerStyleSelection.h"
 #include "CkStyleLabDebugger/Styles/CkStyleLab_AxisMetadata.h"
 #include "CkStyleLabDebugger/Widgets/SCkStyleLab_ControlsPane.h"
-#include "CkStyleLabDebugger/Widgets/SCkStyleLab_InputHudControls.h"
+#include "CkSlateLayout/SCkUiSurface.h"
 #include "CkStyleLabDebugger/Widgets/SCkStyleLab_SamplePane.h"
 
 #include "UObject/UnrealType.h"
@@ -149,11 +149,12 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 auto FCkStyleLab_InputHudControlsConstruction::RunTest(const FString&) -> bool
 {
-    const auto Controls = SNew(SCkStyleLab_InputHudControls);
+    const auto Controls = SNew(SCkStyleLab_ControlsPane);
     Controls->SlatePrepass();
 
-    TestTrue(TEXT("Style Lab composes the feature-local Input HUD tuner panel"),
-        Controls->GetDesiredSize().Y > 0.0f);
+    TestTrue(TEXT("Style Lab loads its authored controls document including Input HUD tuners"),
+        Controls->Get_ControlsView().IsValid() && Controls->Get_ControlsView()->GetLastResult().Succeeded
+        && Controls->GetDesiredSize().Y > 0.0f);
     return true;
 }
 

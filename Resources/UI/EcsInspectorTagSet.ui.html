@@ -1,0 +1,23 @@
+<ui version="1">
+  <region name="main">
+    <column id="tag-set-inspector" class="tag-set-inspector">
+      <row id="tag-set-count-row" visible="tag-set-count-visible" class="tag-set-row">
+        <text id="tag-set-count-label" color-bind="tag-set-count-diff-color" class="tag-set-label">Count:</text>
+        <debug-status id="tag-set-count-value" label-bind="tag-set-count" foreground-bind="tag-set-count-foreground" background-bind="tag-set-count-background" show-dot="false" class="tag-set-count" />
+      </row>
+      <row id="tag-set-tags-row" visible="tag-set-tags-visible" class="tag-set-row tag-set-tags-row">
+        <text id="tag-set-tags-label" color-bind="tag-set-tags-diff-color" class="tag-set-label">Tags:</text>
+        <repeat id="tag-set-chips" bind="tag-set-tags" direction="horizontal" class="tag-set-chips">
+          <row id="tag-set-chip" class="tag-set-chip"><text id="tag-set-chip-text" bind-field="tag" class="tag-set-chip-text" /></row>
+        </repeat>
+      </row>
+      <native id="tag-set-add-tag-native" bind="tag-set-add-tag-port" visible="tag-set-available" class="tag-set-native-row" />
+      <repeat id="tag-set-remove-records" bind="tag-set-tags" direction="vertical" visible="tag-set-available" class="tag-set-remove-records">
+        <row id="tag-set-remove-row" visible-field="remove-visible" class="tag-set-row">
+          <text id="tag-set-remove-label" bind-field="tag" color-field="tag-color" class="tag-set-label" />
+          <debug-inspector-action id="tag-set-remove" label-field="remove-label" item-action="tag-set-remove" enabled-bind="tag-set-authority-enabled" tooltip-field="remove-tooltip" disabled-reason-bind="tag-set-request-disabled-reason" class="tag-set-remove" />
+        </row>
+      </repeat>
+    </column>
+  </region>
+</ui>

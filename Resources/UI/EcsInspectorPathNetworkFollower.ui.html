@@ -1,0 +1,38 @@
+<ui version="1">
+  <region name="main">
+    <column id="path-network-follower-inspector" class="path-network-follower-inspector">
+      <row id="path-network-follower-route-status-row" class="path-network-follower-row">
+        <text id="path-network-follower-route-status-label" color-bind="path-network-follower-route-status-diff-color" class="path-network-follower-label">Route Status:</text>
+        <debug-status id="path-network-follower-route-status-value" label-bind="path-network-follower-route-status" foreground-bind="path-network-follower-route-status-foreground" background-bind="path-network-follower-route-status-background" show-dot="true" class="path-network-follower-status" />
+      </row>
+      <row id="path-network-follower-fail-reason-row" class="path-network-follower-row">
+        <text id="path-network-follower-fail-reason-label" color-bind="path-network-follower-fail-reason-diff-color" class="path-network-follower-label">Fail Reason:</text>
+        <debug-status id="path-network-follower-fail-reason-value" label-bind="path-network-follower-fail-reason" foreground-bind="path-network-follower-fail-reason-foreground" background-bind="path-network-follower-fail-reason-background" show-dot="true" class="path-network-follower-status" />
+      </row>
+      <row id="path-network-follower-goal-row" class="path-network-follower-row">
+        <text id="path-network-follower-goal-label" color-bind="path-network-follower-goal-diff-color" class="path-network-follower-label">Goal:</text>
+        <row id="path-network-follower-goal-value" class="path-network-follower-goal">
+          <text id="path-network-follower-goal-x-value" bind="path-network-follower-goal-x" class="path-network-follower-axis-x" />
+          <text id="path-network-follower-goal-y-value" bind="path-network-follower-goal-y" class="path-network-follower-axis-y" />
+          <text id="path-network-follower-goal-z-value" bind="path-network-follower-goal-z" class="path-network-follower-axis-z" />
+        </row>
+      </row>
+      <row id="path-network-follower-legs-row" class="path-network-follower-row">
+        <text id="path-network-follower-legs-label" color-bind="path-network-follower-legs-diff-color" class="path-network-follower-label">Legs:</text>
+        <text id="path-network-follower-legs-value" bind="path-network-follower-legs" class="path-network-follower-value" />
+      </row>
+      <row id="path-network-follower-waypoints-row" class="path-network-follower-row">
+        <text id="path-network-follower-waypoints-label" color-bind="path-network-follower-waypoints-diff-color" class="path-network-follower-label">Waypoints:</text>
+        <text id="path-network-follower-waypoints-value" bind="path-network-follower-waypoints" class="path-network-follower-value" />
+      </row>
+      <row id="path-network-follower-total-cost-row" class="path-network-follower-row">
+        <text id="path-network-follower-total-cost-label" color-bind="path-network-follower-total-cost-diff-color" class="path-network-follower-label">Total Cost:</text>
+        <text id="path-network-follower-total-cost-value" bind="path-network-follower-total-cost" class="path-network-follower-value" />
+      </row>
+      <row id="path-network-follower-feature-row" class="path-network-follower-row">
+        <text id="path-network-follower-feature-label" color-bind="path-network-follower-feature-diff-color" class="path-network-follower-label">Feature:</text>
+        <debug-inspector-action id="path-network-follower-remove" label-bind="path-network-follower-remove-label" action="path-network-follower-remove" enabled-bind="path-network-follower-available" tooltip-bind="path-network-follower-remove-tooltip" disabled-reason-bind="path-network-follower-disabled-reason" class="path-network-follower-action" />
+      </row>
+    </column>
+  </region>
+</ui>

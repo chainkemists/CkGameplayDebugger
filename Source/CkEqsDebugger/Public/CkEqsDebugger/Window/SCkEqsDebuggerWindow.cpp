@@ -1,4 +1,4 @@
-﻿#include "CkEqsDebugger/Window/SCkEqsDebuggerWindow.h"
+#include "CkEqsDebugger/Window/SCkEqsDebuggerWindow.h"
 
 #include "CkEqsDebugger/Settings/CkEqsDebuggerSettings.h"
 #include "CkEqsDebugger/ViewModel/CkEqsDebugger_ViewModel.h"
@@ -14,6 +14,9 @@
 #include "CkDebuggerCommon/Widgets/SCkDebug_IconToggle.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_SelectableLabel.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_WorldSelector.h"
+#include "CkDebuggerCommon/UI/CkDebug_UiRegistry.h"
+
+#include "CkSlateLayout/SCkUiSurface.h"
 
 #include "CkCore/Format/CkFormat.h"
 #include "CkCore/Macros/CkMacros.h"
@@ -22,6 +25,8 @@
 
 #include "Engine/World.h"
 #include "Engine/Engine.h"
+#include "Interfaces/IPluginManager.h"
+#include "Misc/Paths.h"
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/Layout/SSeparator.h"
@@ -74,6 +79,11 @@ namespace
 
 namespace ck_eqs_debugger_window
 {
+    auto ShellTokens() -> FCkUiView::FTokens
+    {
+        return {{TEXT("--eqs-shell-surface"), TEXT("#") + CkStyle::Bg2().ToFColorSRGB().ToHex()}};
+    }
+
     auto Get_TitleFont() -> FSlateFontInfo
     {
         return ck::debug_axes::ScaledFont("Bold", CkStyle::FontSizeH3());
@@ -132,46 +142,13 @@ auto
             FCkDebug_CommandGroup::Context(TEXT("WorldAndStatus"), FText::FromString(TEXT("World and query status")), BuildToolbar())
         })
         .ShowRefreshControls(true)
-        .Content()
-        [
-        SNew(SVerticalBox)
-        + SVerticalBox::Slot().FillHeight(1.0f)
-        [
-            SNew(SSplitter)
-            .Orientation(Orient_Horizontal)
-            + SSplitter::Slot().Value(0.30f)
-            [
-                SNew(SCkDebug_PaneHost)
-                [
-                    SNew(SBox).Padding(FMargin{4.0f})
-                    [
-                        SAssignNew(_QueryList, SCkEqsDebugger_QueryList).ViewModel(_ViewModel)
-                    ]
-                ]
-            ]
-            + SSplitter::Slot().Value(0.35f)
-            [
-                SNew(SCkDebug_PaneHost)
-                [
-                    SNew(SBox).Padding(FMargin{4.0f})
-                    [
-                        SAssignNew(_CandidatePanel, SCkEqsDebugger_CandidatePanel).ViewModel(_ViewModel)
-                    ]
-                ]
-            ]
-            + SSplitter::Slot().Value(0.35f)
-            [
-                SNew(SCkDebug_PaneHost)
-                [
-                    SNew(SBox).Padding(FMargin{4.0f})
-                    [
-                        SAssignNew(_TestBreakdownPanel, SCkEqsDebugger_TestBreakdownPanel).ViewModel(_ViewModel)
-                    ]
-                ]
-            ]
-        ]
-        ]
+        .Content()[SAssignNew(_AuthoredShellHost, SBox)]
     ];
+
+    SAssignNew(_QueryList, SCkEqsDebugger_QueryList).ViewModel(_ViewModel);
+    SAssignNew(_CandidatePanel, SCkEqsDebugger_CandidatePanel).ViewModel(_ViewModel);
+    SAssignNew(_TestBreakdownPanel, SCkEqsDebugger_TestBreakdownPanel).ViewModel(_ViewModel);
+    BuildAuthoredShell();
 
     Register_WithGate();
 }
@@ -183,11 +160,76 @@ SCkEqsDebuggerWindow::~SCkEqsDebuggerWindow()
     // Tear down the in-world overlay BEFORE the registry tears down. ck::IsValid on the overlay-parent handle
     // guards against firing into a half-dead world.
     _OverlayManager.Reset();
+    _AuthoredShellView.Reset();
+    _AuthoredShellHost.Reset();
 
 #if WITH_EDITOR
     if (_EndPIEHandle.IsValid())   { FEditorDelegates::EndPIE.Remove(_EndPIEHandle); }
     if (_BeginPIEHandle.IsValid()) { FEditorDelegates::BeginPIE.Remove(_BeginPIEHandle); }
 #endif
+}
+
+auto SCkEqsDebuggerWindow::BuildNativeShellFallback() -> TSharedRef<SWidget>
+{
+    return SNew(SSplitter)
+        .Orientation(Orient_Horizontal)
+        + SSplitter::Slot().Value(0.30f)
+        [SNew(SCkDebug_PaneHost)[SNew(SBox).Padding(FMargin{4.0f})[_QueryList.ToSharedRef()]]]
+        + SSplitter::Slot().Value(0.35f)
+        [SNew(SCkDebug_PaneHost)[SNew(SBox).Padding(FMargin{4.0f})[_CandidatePanel.ToSharedRef()]]]
+        + SSplitter::Slot().Value(0.35f)
+        [SNew(SCkDebug_PaneHost)[SNew(SBox).Padding(FMargin{4.0f})[_TestBreakdownPanel.ToSharedRef()]]];
+}
+
+auto SCkEqsDebuggerWindow::BuildAuthoredShell() -> void
+{
+    TSharedPtr<const FCkUiWidgetRegistrySnapshot> Registry;
+    const FCkUiLoadResult RegistryResult = FCkDebug_UiRegistry::TryCreate(Registry);
+    const TSharedPtr<IPlugin> Plugin = IPluginManager::Get().FindPlugin(TEXT("CkDebugger"));
+    if (NOT RegistryResult.Succeeded || NOT Registry.IsValid() || NOT Plugin.IsValid())
+    {
+        _AuthoredShellLoadFailure = RegistryResult.Succeeded
+            ? TEXT("CkDebugger plugin is unavailable.")
+            : FString::Join(RegistryResult.Errors, TEXT("\n"));
+        _AuthoredShellHost->SetContent(BuildNativeShellFallback());
+        return;
+    }
+
+    FCkUiView::FNativeBindings NativeBindings;
+    NativeBindings.Add(TEXT("eqs-query-list"), SNew(SCkDebug_PaneHost)[SNew(SBox).Padding(FMargin{4.0f})[_QueryList.ToSharedRef()]]);
+    NativeBindings.Add(TEXT("eqs-candidate-panel"), SNew(SCkDebug_PaneHost)[SNew(SBox).Padding(FMargin{4.0f})[_CandidatePanel.ToSharedRef()]]);
+    NativeBindings.Add(TEXT("eqs-test-breakdown-panel"), SNew(SCkDebug_PaneHost)[SNew(SBox).Padding(FMargin{4.0f})[_TestBreakdownPanel.ToSharedRef()]]);
+
+    const TSharedRef<FCkUiView> Candidate = FCkUiView::Create(
+        MoveTemp(NativeBindings), {}, ck_eqs_debugger_window::ShellTokens(),
+        CkStyle::RegularFont(CkStyle::FontSizeBody()), {}, Registry);
+    const TSharedRef<SWidget> Main = Candidate->GetRegion(TEXT("main"));
+    const FString ResourceRoot = FPaths::Combine(Plugin->GetBaseDir(), TEXT("Resources/UI"));
+    Candidate->SetFiles(
+        FPaths::Combine(ResourceRoot, TEXT("EqsDebuggerShell.ui.html")),
+        FPaths::Combine(ResourceRoot, TEXT("EqsDebuggerShell.ui.css")));
+    Candidate->PollFiles();
+    if (NOT Candidate->GetLastResult().Succeeded)
+    {
+        _AuthoredShellLoadFailure = FString::Join(Candidate->GetLastResult().Errors, TEXT("\n"));
+        _AuthoredShellHost->SetContent(BuildNativeShellFallback());
+        return;
+    }
+
+    _AuthoredShellView = Candidate;
+    _AuthoredShellLoadFailure.Reset();
+    _AuthoredShellHost->SetContent(Main);
+}
+
+auto SCkEqsDebuggerWindow::PollAuthoredShell() -> void
+{
+    if (NOT _AuthoredShellView.IsValid()) { return; }
+
+    _AuthoredShellView->PollFiles(ck_eqs_debugger_window::ShellTokens());
+    if (_AuthoredShellView->GetLastResult().Succeeded)
+    { _AuthoredShellLoadFailure.Reset(); }
+    else
+    { _AuthoredShellLoadFailure = FString::Join(_AuthoredShellView->GetLastResult().Errors, TEXT("\n")); }
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -272,6 +314,7 @@ auto
     // MUST be the WindowBase super, not SCompoundWidget — the base's Tick is what drives the gated
     // style-revision watch that routes into OnStyleRevisionChanged below.
     SCkDebugger_WindowBase::Tick(InAllottedGeometry, InCurrentTime, InDeltaTime);
+    PollAuthoredShell();
 
     if (NOT FCkDebuggerRefreshGate::Should_RefreshNow(WindowId))
     { return; }

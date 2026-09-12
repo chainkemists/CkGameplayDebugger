@@ -26,7 +26,16 @@ public class CkEqsDebugger : CkModuleRules
 
             "CkDebuggerCommon",
             "CkEditorTools",
+            "CkSlateLayout",
         });
+
+        PrivateDependencyModuleNames.AddRange(new string[]
+        {
+            "Projects",
+        });
+
+        RuntimeDependencies.Add(Path.Combine(PluginDirectory, "Resources", "UI", "EqsDebuggerShell.ui.html"), StagedFileType.NonUFS);
+        RuntimeDependencies.Add(Path.Combine(PluginDirectory, "Resources", "UI", "EqsDebuggerShell.ui.css"), StagedFileType.NonUFS);
 
         if (Target.bBuildEditor)
         {

@@ -1,0 +1,4 @@
+.network-inspector { min-width: 0; gap: 3px; }
+.network-row { min-width: 0; gap: 8px; vertical-align: center; }
+.network-label { min-width: 110px; color: #A8B4C4; }
+.network-status { min-width: 0; flex-grow: 1; }

@@ -1,0 +1,15 @@
+.pool-row { min-width: 0; gap: 6px; flex-wrap: wrap; vertical-align: center; }
+.pool-search { min-width: 150px; flex-grow: 1; }
+.pool-button { font-size: var(--pool-font-size); color: var(--pool-text); -ck-button-background: var(--pool-surface); -ck-button-border-color: var(--pool-border); -ck-button-color: var(--pool-text); -ck-button-radius: 4px; -ck-button-outline-width: 1px; -ck-button-padding-x: 7px; -ck-button-padding-y: 3px; }
+.pool-overview { padding: 6px 8px; background-color: var(--pool-surface-alt); border-color: var(--pool-border); border-width: 1px; }
+.pool-overview-hero { min-width: 240px; flex-grow: 1; flex-shrink: 1; gap: 2px; padding: 8px 12px; background-color: var(--pool-surface); }
+.pool-overview-hero-header { min-width: 0; vertical-align: center; }
+.pool-overview-hero-title { flex-grow: 1; font-family: monospace; font-size: var(--pool-micro-font-size); color: var(--pool-text-dim); }
+.pool-overview-hero-current { font-family: monospace; font-size: var(--pool-font-size); color: var(--pool-info); }
+.pool-overview-hero-chart { min-width: 240px; }
+.pool-value { font-family: monospace; font-size: var(--pool-font-size); color: var(--pool-info); }
+.pool-status { font-family: monospace; font-size: var(--pool-micro-font-size); color: var(--pool-text-dim); text-wrap: wrap; }
+.pool-pill { padding: 2px 6px; background-color: var(--pool-surface); border-color: var(--pool-ok); border-width: 1px; border-radius: 999px; }
+.pool-pill-text { font-family: monospace; font-size: var(--pool-micro-font-size); color: var(--pool-ok); }
+.pool-status-warn { border-color: var(--pool-warn); }
+.pool-status-warn-text { color: var(--pool-warn); }

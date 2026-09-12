@@ -15,9 +15,9 @@ class ITableRow;
 class STableViewBase;
 class FCkDebuggerModel_WorldSelector;
 class SCkDebug_StatPair;
-class SCkDebug_StatusPill;
 class SCkDebug_Sparkline;
-class SCkDebug_DualSearchBar;
+class FCkUiFloatSeries;
+class FCkUiView;
 
 // ====================================================================================================================
 // CK Object Pooling Debugger window.
@@ -48,6 +48,12 @@ public:
 
     virtual auto Get_WindowId() const -> FName override { return WindowId; }
     virtual auto Get_WindowDisplayName() const -> FText override { return FText::FromString(TEXT("Object Pooling")); }
+
+    auto Get_AuthoredView() const -> TSharedPtr<FCkUiView> { return _AuthoredView; }
+    auto Get_TotalInUseSeries() const -> TSharedPtr<FCkUiFloatSeries> { return _TotalInUseSeries; }
+    auto Get_FilterString() const -> const FString& { return _FilterText; }
+    auto Get_HighlightString() const -> const FString& { return _HighlightText; }
+    auto Get_ShowInUseOnly() const -> bool { return _ShowInUseOnly; }
 
 private:
     // sortable table columns
@@ -95,6 +101,7 @@ private:
     auto DoRefresh_VisibleItems() -> void;
     auto DoRefresh_OverviewStats(const FCkObjectPoolingDebugger_Snapshot& InSnapshot) -> void;
     auto DoRebuild_InspectorGraph() -> void;
+    auto DoBuild_AuthoredSurface() -> void;
 
     auto Get_HistoryFor(const FString& InPoolKey) -> FPoolHistory&;
     auto Get_SelectedHistory() const -> const FPoolHistory*;
@@ -103,21 +110,25 @@ private:
 
     TSharedPtr<FCkDebuggerModel_WorldSelector> _WorldModel;
 
-    // toolbar
-    TSharedPtr<SCkDebug_StatusPill>  _PillSubsystemLive;
-    TSharedPtr<SCkDebug_StatusPill>  _PillNoSubsystem;
-    TSharedPtr<STextBlock>           _PinnedUniqueText;
-    TSharedPtr<SCkDebug_DualSearchBar> _SearchBar;
+    // One retained authored view owns ordinary commands, filter/highlight and overview.
+    TSharedPtr<FCkUiView> _AuthoredView;
+    TSharedPtr<SBox> _ControlsHost;
+    TSharedPtr<SBox> _ContextHost;
+    TSharedPtr<SBox> _SearchHost;
+    TSharedPtr<SBox> _OverviewHost;
 
-    // overview strip
-    TSharedPtr<SCkDebug_StatPair> _StatPools;
-    TSharedPtr<SCkDebug_StatPair> _StatLive;
-    TSharedPtr<SCkDebug_StatPair> _StatInUse;
-    TSharedPtr<SCkDebug_StatPair> _StatParked;
-    TSharedPtr<SCkDebug_StatPair> _StatMisses;
-    TSharedPtr<SCkDebug_StatPair> _StatHitRate;
-    TSharedPtr<STextBlock>        _HeroNowText;
-    TSharedPtr<TArray<float>>     _TotalInUseSamples;
+    FString _OverviewPools = TEXT("0");
+    FString _OverviewLive = TEXT("0");
+    FString _OverviewInUse = TEXT("0");
+    FString _OverviewParked = TEXT("0");
+    FString _OverviewMisses = TEXT("0");
+    FString _OverviewHitRate = TEXT("—");
+    FString _PinnedUnique = TEXT("0 pinned-unique");
+    TSharedPtr<STextBlock> _GatherMsText;
+    TSharedPtr<STextBlock> _SortDescText;
+
+    // The authored overview sparkline observes this retained host-owned model through a weak binding.
+    TSharedPtr<FCkUiFloatSeries> _TotalInUseSeries;
 
     // table
     TSharedPtr<SListView<ItemPtr>> _ListView;
@@ -132,10 +143,6 @@ private:
     TSharedPtr<SCkDebug_StatPair> _RateAcquires;
     TSharedPtr<SCkDebug_StatPair> _RateReleases;
     TSharedPtr<SCkDebug_StatPair> _RateHitRate;
-
-    // status bar
-    TSharedPtr<STextBlock> _GatherMsText;
-    TSharedPtr<STextBlock> _SortDescText;
 
     TMap<FString, FPoolHistory> _Histories;
 

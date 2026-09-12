@@ -5,7 +5,7 @@
 #include "CkCore/Format/CkFormat.h"
 
 #include "CkDebuggerCommon/Models/CkDebuggerModel_WorldSelector.h"
-#include "CkDebuggerCommon/Search/SCkDebug_DualSearchBar.h"
+#include "CkDebuggerCommon/UI/CkDebug_UiRegistry.h"
 #include "CkDebuggerCommon/Settings/CkDebuggerStyleSettings.h"
 #include "CkDebuggerCommon/Styles/CkDebuggerAxes.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_InspectorPanel.h"
@@ -19,6 +19,8 @@
 #include "CkDebuggerCommon/Widgets/SCkDebug_WorldSelector.h"
 #include "CkDebuggerCommon/Window/CkDebuggerRefreshGate.h"
 #include "CkDebuggerCommon/Window/SCkDebug_WindowChrome.h"
+#include "CkSlateLayout/CkUiFloatSeries.h"
+#include "CkSlateLayout/SCkUiSurface.h"
 
 #include "CkEditorTools/Style/CkStyle.h"
 
@@ -29,6 +31,7 @@
 #include "Misc/DateTime.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
+#include "Interfaces/IPluginManager.h"
 
 #include "Framework/Notifications/NotificationManager.h"
 #include "Widgets/Notifications/SNotificationList.h"
@@ -108,16 +111,35 @@ namespace ck_object_pooling_debugger_window
             || InRow.ArchetypeName.Contains(InQuery);
     }
 
-    static auto Push_Sample(const TSharedPtr<TArray<float>>& InRing, float InValue) -> void
+    static auto Push_Sample(TArray<float>& InRing, float InValue) -> void
     {
-        if (InRing->Num() >= HistoryCapacity)
-        { InRing->RemoveAt(0, 1, EAllowShrinking::No); }
-        InRing->Add(InValue);
+        if (InRing.Num() >= HistoryCapacity)
+        { InRing.RemoveAt(0, 1, EAllowShrinking::No); }
+        InRing.Add(InValue);
     }
 
     static auto Get_SeparatorThickness() -> float
     {
         return ck::debug_axes::Get_SeparatorThickness(UCkDebuggerStyleSettings::Get_Selection());
+    }
+
+    static auto AuthoredStyleTokens() -> FCkUiView::FTokens
+    {
+        const auto Color = [](const FLinearColor& InColor) { return TEXT("#") + InColor.ToFColorSRGB().ToHex(); };
+        return {
+            {TEXT("--pool-text"), Color(CkStyle::Text())},
+            {TEXT("--pool-text-dim"), Color(CkStyle::TextDim())},
+            {TEXT("--pool-text-mute"), Color(CkStyle::TextMute())},
+            {TEXT("--pool-surface"), Color(CkStyle::Bg2())},
+            {TEXT("--pool-surface-alt"), Color(CkStyle::Bg1())},
+            {TEXT("--pool-border"), Color(CkStyle::Border())},
+            {TEXT("--pool-accent"), Color(CkStyle::Accent())},
+            {TEXT("--pool-ok"), Color(CkStyle::Ok())},
+            {TEXT("--pool-warn"), Color(CkStyle::Warn())},
+            {TEXT("--pool-info"), Color(CkStyle::Info())},
+            {TEXT("--pool-font-size"), FString::FromInt(ck::debug_axes::Get_ScaledFontSize(CkStyle::FontSizeSmall()))},
+            {TEXT("--pool-micro-font-size"), FString::FromInt(ck::debug_axes::Get_ScaledFontSize(CkStyle::FontSizeMicro()))},
+        };
     }
 
     // ================================================================================================================
@@ -189,7 +211,18 @@ auto
     Register_WithGate();
 
     _WorldModel = MakeShared<FCkDebuggerModel_WorldSelector>();
-    _TotalInUseSamples = MakeShared<TArray<float>>();
+    const FCkUiLoadResult TotalInUseSeriesResult = FCkUiFloatSeries::TryCreate({}, _TotalInUseSeries);
+    if (NOT TotalInUseSeriesResult.Succeeded || NOT _TotalInUseSeries.IsValid())
+    {
+        const FString Error = TotalInUseSeriesResult.Errors.IsEmpty()
+            ? TEXT("Object-pooling total-in-use float series could not be created.")
+            : FString::Join(TotalInUseSeriesResult.Errors, TEXT("\n"));
+        ChildSlot
+        [
+            SNew(STextBlock).Text(FText::FromString(Error))
+        ];
+        return;
+    }
     _SharedMaxLive = MakeShared<float>(1.0f);
 
     ChildSlot
@@ -268,8 +301,120 @@ auto
         ]
     ];
 
-    // start in the "no subsystem" state; DoRefresh_OverviewStats flips the pills on state change
-    _PillSubsystemLive->SetVisibility(EVisibility::Collapsed);
+    DoBuild_AuthoredSurface();
+}
+
+auto SCkObjectPoolingDebuggerWindow::DoBuild_AuthoredSurface() -> void
+{
+    if (!_ControlsHost.IsValid() || !_ContextHost.IsValid() || !_SearchHost.IsValid() || !_OverviewHost.IsValid())
+    { return; }
+    TSharedPtr<const FCkUiWidgetRegistrySnapshot> Registry;
+    const FCkUiLoadResult RegistryResult = FCkDebug_UiRegistry::TryCreate(Registry);
+    if (!RegistryResult.Succeeded)
+    {
+        _ControlsHost->SetContent(SNew(STextBlock).Text(FText::FromString(
+            FString::Join(RegistryResult.Errors, TEXT("\n")))));
+        return;
+    }
+    const auto Plugin = IPluginManager::Get().FindPlugin(TEXT("CkDebugger"));
+    if (!Plugin.IsValid())
+    {
+        _ControlsHost->SetContent(SNew(STextBlock).Text(FText::FromString(
+            TEXT("CkDebugger plugin is unavailable; authored object-pooling controls cannot load."))));
+        return;
+    }
+    const TWeakPtr<SCkObjectPoolingDebuggerWindow> WeakWindow{SharedThis(this)};
+    auto Data = FCkUiView::FDataBindings{};
+    Data.SlateUserIndex = 0;
+    Data.CanDispatchEvents = TAttribute<bool>::CreateLambda([WeakWindow]()
+    {
+        return WeakWindow.IsValid();
+    });
+    const auto Text = [&WeakWindow](const FString SCkObjectPoolingDebuggerWindow::* Member)
+    {
+        return TAttribute<FText>::CreateLambda([WeakWindow, Member]()
+        {
+            const auto Window = WeakWindow.Pin();
+            return Window.IsValid()
+                ? FText::FromString(Window.Get()->*Member)
+                : FText::GetEmpty();
+        });
+    };
+    Data.Text.Add(TEXT("pool-filter"), Text(&SCkObjectPoolingDebuggerWindow::_FilterText));
+    Data.Text.Add(TEXT("pool-highlight"), Text(&SCkObjectPoolingDebuggerWindow::_HighlightText));
+    Data.Text.Add(TEXT("pool-pinned"), Text(&SCkObjectPoolingDebuggerWindow::_PinnedUnique));
+    Data.Text.Add(TEXT("pool-pools"), Text(&SCkObjectPoolingDebuggerWindow::_OverviewPools));
+    Data.Text.Add(TEXT("pool-live"), Text(&SCkObjectPoolingDebuggerWindow::_OverviewLive));
+    Data.Text.Add(TEXT("pool-in-use"), Text(&SCkObjectPoolingDebuggerWindow::_OverviewInUse));
+    Data.Text.Add(TEXT("pool-parked"), Text(&SCkObjectPoolingDebuggerWindow::_OverviewParked));
+    Data.Text.Add(TEXT("pool-misses"), Text(&SCkObjectPoolingDebuggerWindow::_OverviewMisses));
+    Data.Text.Add(TEXT("pool-hit-rate"), Text(&SCkObjectPoolingDebuggerWindow::_OverviewHitRate));
+    Data.FloatSeries.Add(TEXT("pool-total-in-use"), _TotalInUseSeries);
+    Data.Visibility.Add(TEXT("pool-status-live"), TAttribute<bool>::CreateLambda([WeakWindow]()
+    {
+        const auto Window = WeakWindow.Pin();
+        return Window.IsValid() && Window->_HasSubsystem;
+    }));
+    Data.Visibility.Add(TEXT("pool-status-missing"), TAttribute<bool>::CreateLambda([WeakWindow]()
+    {
+        const auto Window = WeakWindow.Pin();
+        return Window.IsValid() && !Window->_HasSubsystem;
+    }));
+    Data.Visibility.Add(TEXT("pool-in-use-only"), TAttribute<bool>::CreateLambda([WeakWindow]()
+    {
+        const auto Window = WeakWindow.Pin();
+        return Window.IsValid() && Window->_ShowInUseOnly;
+    }));
+    Data.TextChanged.Add(TEXT("pool-filter"), FOnTextChanged::CreateLambda([WeakWindow](const FText& Value)
+    {
+        if (const auto Window = WeakWindow.Pin(); Window.IsValid())
+        {
+            Window->_FilterText = Value.ToString();
+            Window->DoRefresh_VisibleItems();
+        }
+    }));
+    Data.TextChanged.Add(TEXT("pool-highlight"), FOnTextChanged::CreateLambda([WeakWindow](const FText& Value)
+    {
+        if (const auto Window = WeakWindow.Pin(); Window.IsValid())
+        { Window->_HighlightText = Value.ToString(); }
+    }));
+    Data.BoolChanged.Add(TEXT("pool-in-use-only"), FCkUiOnBoolChanged::CreateLambda([WeakWindow](bool Value)
+    {
+        if (const auto Window = WeakWindow.Pin(); Window.IsValid())
+        {
+            Window->_ShowInUseOnly = Value;
+            Window->DoRefresh_VisibleItems();
+        }
+    }));
+    auto Actions = FCkUiView::FActions{};
+    Actions.Add(TEXT("pool-export-json"), FSimpleDelegate::CreateLambda([WeakWindow]()
+    {
+        if (const auto Window = WeakWindow.Pin(); Window.IsValid())
+        { Window->DoExport_JsonReport(); }
+    }));
+    const TSharedRef<FCkUiView> View = FCkUiView::Create({}, MoveTemp(Actions),
+        ck_object_pooling_debugger_window::AuthoredStyleTokens(), CkStyle::RegularFont(CkStyle::FontSizeBody()),
+        MoveTemp(Data), Registry);
+    const TSharedRef<SWidget> Controls = View->GetRegion(TEXT("controls"));
+    const TSharedRef<SWidget> Context = View->GetRegion(TEXT("context"));
+    const TSharedRef<SWidget> Search = View->GetRegion(TEXT("search"));
+    const TSharedRef<SWidget> Overview = View->GetRegion(TEXT("overview"));
+    const FString Directory = FPaths::Combine(Plugin->GetBaseDir(), TEXT("Resources/UI"));
+    View->SetFiles(FPaths::Combine(Directory, TEXT("ObjectPoolingDebugger.ui.html")),
+        FPaths::Combine(Directory, TEXT("ObjectPoolingDebugger.ui.css")));
+    // Retain an initially rejected view so file polling can recover these same mounts.
+    _AuthoredView = View;
+    View->PollFiles();
+    if (!View->GetLastResult().Succeeded)
+    {
+        _ControlsHost->SetContent(SNew(STextBlock).Text(FText::FromString(
+            FString::Join(View->GetLastResult().Errors, TEXT("\n")))));
+        return;
+    }
+    _ControlsHost->SetContent(Controls);
+    _ContextHost->SetContent(Context);
+    _SearchHost->SetContent(Search);
+    _OverviewHost->SetContent(Overview);
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -279,77 +424,24 @@ auto
     BuildCommandGroups()
     -> TArray<FCkDebug_CommandGroup>
 {
-    const auto PoolContext = SNew(SHorizontalBox)
-
-            + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-                [ SNew(SCkDebug_WorldSelector, _WorldModel).ShowHeaderLabel(false) ]
-
-            + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(CkStyle::SpaceM, 0.0f, 0.0f, 0.0f)
-                [
-                    SAssignNew(_PillSubsystemLive, SCkDebug_StatusPill)
-                        .Text(FText::FromString(TEXT("Subsystem Live")))
-                        .Tone(ECk_Tone::Ok)
-                ]
-
-            + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(CkStyle::SpaceM, 0.0f, 0.0f, 0.0f)
-                [
-                    SAssignNew(_PillNoSubsystem, SCkDebug_StatusPill)
-                        .Text(FText::FromString(TEXT("No Subsystem — start PIE")))
-                        .Tone(ECk_Tone::Warn)
-                ]
-
-            + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(CkStyle::SpaceM, 0.0f, 0.0f, 0.0f)
-                [
-                    SAssignNew(_PinnedUniqueText, STextBlock)
-                        .Font_Static(&ck_object_pooling_debugger_window::Font_MonoSmall)
-                        .ColorAndOpacity(CkStyle::TextDim())
-                ]
-
-            ;
-    const auto PoolSearch = SAssignNew(_SearchBar, SCkDebug_DualSearchBar)
-                        .FilterHintText(FText::FromString(TEXT("Filter pools…")))
-                        .OnFilterTextChanged_Lambda([this](const FString& InText)
-                        {
-                            _FilterText = InText;
-                            DoRefresh_VisibleItems();
-                        })
-                        .OnHighlightTextChanged_Lambda([this](const FString& InText)
-                        {
-                            _HighlightText = InText;
-                        })
-                ;
-    const auto PoolExport = SNew(SButton)
-                        .ButtonStyle(FAppStyle::Get(), "SimpleButton")
-                        .ContentPadding(FMargin(CkStyle::SpaceS, 2.0f))
-                        .ToolTipText(FText::FromString(TEXT("Write a JSON report of every pool (counters + params) "
-                            "to Saved/CkReports/ — for offline tuning of undersized-prewarm or over-allocated pools.")))
-                        .OnClicked(this, &SCkObjectPoolingDebuggerWindow::DoExport_JsonReport)
-                        [
-                            SNew(STextBlock)
-                                .Text(FText::FromString(TEXT("Export JSON")))
-                                .Font_Static(&ck_object_pooling_debugger_window::Font_BoldMicro)
-                                .ColorAndOpacity(CkStyle::Accent())
-                        ]
-                ;
     return {
         FCkDebug_CommandGroup::Primary(
-            TEXT("PoolsInUseOnly"),
-            FText::FromString(TEXT("Object pooling visibility")),
-            SNew(SCkDebug_IconToolbar).Actions({
-                FCkDebug_IconToggleAction{
-                    TEXT("PoolsInUseOnly"),
-                    ECk_Icon::Waiting,
-                    FText::FromString(TEXT("In Use Only")),
-                    FText::FromString(TEXT("Show only pools with one or more borrowed instances.")),
-                    TAttribute<bool>::CreateLambda([this]() { return _ShowInUseOnly; }),
-                    FOnCkDebug_IconToggleChanged::CreateLambda([this](const bool InIsEnabled)
-                    {
-                        _ShowInUseOnly = InIsEnabled;
-                        DoRefresh_VisibleItems();
-                    })}})),
-        FCkDebug_CommandGroup::Context(TEXT("PoolContext"), FText::FromString(TEXT("Pool context and subsystem health")), PoolContext),
-        FCkDebug_CommandGroup::Context(TEXT("PoolSearch"), FText::FromString(TEXT("Pool filter and highlight search")), PoolSearch),
-        FCkDebug_CommandGroup::Context(TEXT("PoolExport"), FText::FromString(TEXT("Pool report export")), PoolExport)};
+            TEXT("PoolControls"),
+            FText::FromString(TEXT("Object pooling visibility and export")),
+            SAssignNew(_ControlsHost, SBox)),
+        FCkDebug_CommandGroup::Context(
+            TEXT("PoolWorld"),
+            FText::FromString(TEXT("Pool world")),
+            SNew(SCkDebug_WorldSelector, _WorldModel).ShowHeaderLabel(false)),
+        FCkDebug_CommandGroup::Context(
+            TEXT("PoolContext"),
+            FText::FromString(TEXT("Pool subsystem health")),
+            SAssignNew(_ContextHost, SBox)),
+        FCkDebug_CommandGroup::Context(
+            TEXT("PoolSearch"),
+            FText::FromString(TEXT("Pool filter and highlight search")),
+            SAssignNew(_SearchHost, SBox))
+    };
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -359,91 +451,8 @@ auto
     BuildOverviewStrip()
     -> TSharedRef<SWidget>
 {
-    const auto MakeTile = [](TSharedPtr<SCkDebug_StatPair>& OutStat, const FString& InLabel, const FLinearColor& InColor, const FString& InTooltip = {}) -> TSharedRef<SWidget>
-    {
-        return SNew(SBorder)
-            .BorderImage(FAppStyle::GetBrush("WhiteBrush"))
-            .BorderBackgroundColor(CkStyle::Bg2())
-            .Padding(FMargin(CkStyle::SpaceM, CkStyle::SpaceS))
-            .ToolTipText(FText::FromString(InTooltip))
-            [
-                SAssignNew(OutStat, SCkDebug_StatPair)
-                    .Layout(ECkDebug_StatPairLayout::Stacked_ValueOnTop)
-                    .Value(FText::FromString(TEXT("0")))
-                    .Label(FText::FromString(InLabel))
-                    .ValueColor(InColor)
-            ];
-    };
-
-    return SNew(SBorder)
-        .BorderImage(FAppStyle::GetBrush("WhiteBrush"))
-        .BorderBackgroundColor(CkStyle::Bg1())
-        .Padding(FMargin(CkStyle::SpaceM, CkStyle::SpaceS))
-        [
-            SNew(SHorizontalBox)
-
-            + SHorizontalBox::Slot().AutoWidth().Padding(0.0f, 0.0f, CkStyle::SpaceS, 0.0f)
-                [ MakeTile(_StatPools,   TEXT("POOLS"),          CkStyle::TextStrong()) ]
-            + SHorizontalBox::Slot().AutoWidth().Padding(0.0f, 0.0f, CkStyle::SpaceS, 0.0f)
-                [ MakeTile(_StatLive,    TEXT("LIVE INSTANCES"), CkStyle::TextStrong()) ]
-            + SHorizontalBox::Slot().AutoWidth().Padding(0.0f, 0.0f, CkStyle::SpaceS, 0.0f)
-                [ MakeTile(_StatInUse,   TEXT("IN USE"),         CkStyle::Info()) ]
-            + SHorizontalBox::Slot().AutoWidth().Padding(0.0f, 0.0f, CkStyle::SpaceS, 0.0f)
-                [ MakeTile(_StatParked,  TEXT("PARKED"),         CkStyle::Ok()) ]
-            + SHorizontalBox::Slot().AutoWidth().Padding(0.0f, 0.0f, CkStyle::SpaceS, 0.0f)
-                [ MakeTile(_StatMisses,  TEXT("MISSES"),         CkStyle::Warn(),
-                    TEXT("An Acquire found the pool's free list empty (or only stale GC'd slots) and had to "
-                         "spawn a brand-new instance instead of recycling one — under Grow policy — or "
-                         "returned null under Fail policy. Frequent misses on a pool mean its PrewarmCount / "
-                         "GrowBatchCount is undersized for its real peak demand.")) ]
-            + SHorizontalBox::Slot().AutoWidth().Padding(0.0f, 0.0f, CkStyle::SpaceS, 0.0f)
-                [ MakeTile(_StatHitRate, TEXT("HIT RATE"),       CkStyle::Accent(),
-                    TEXT("Hits / (Hits + Misses). A Hit is an Acquire satisfied by popping an existing "
-                         "recycled instance off the free list — no new UObject allocation.")) ]
-
-            + SHorizontalBox::Slot().FillWidth(1.0f)
-                [
-                    SNew(SBorder)
-                    .BorderImage(FAppStyle::GetBrush("WhiteBrush"))
-                    .BorderBackgroundColor(CkStyle::Bg2())
-                    .Padding(FMargin(CkStyle::SpaceM, CkStyle::SpaceS))
-                    [
-                        SNew(SVerticalBox)
-
-                        + SVerticalBox::Slot().AutoHeight()
-                            [
-                                SNew(SHorizontalBox)
-
-                                + SHorizontalBox::Slot().FillWidth(1.0f)
-                                    [
-                                        ck::debug_axes::Make_SectionHeader(
-                                            UCkDebuggerStyleSettings::Get_Selection(),
-                                            FText::FromString(TEXT("In use — all pools")),
-                                            ECk_Tone::Neutral)
-                                    ]
-
-                                + SHorizontalBox::Slot().AutoWidth()
-                                    [
-                                        SAssignNew(_HeroNowText, STextBlock)
-                                            .Font_Static(&ck_object_pooling_debugger_window::Font_MonoBody)
-                                            .ColorAndOpacity(CkStyle::Info())
-                                    ]
-                            ]
-
-                        + SVerticalBox::Slot().FillHeight(1.0f).Padding(0.0f, 2.0f, 0.0f, 0.0f)
-                            [
-                                SNew(SCkDebug_Sparkline)
-                                    .Samples(_TotalInUseSamples)
-                                    .Color(CkStyle::Info())
-                                    .FillOpacity(0.25f)
-                                    .DesiredSize(FVector2D(240.0f, 30.0f))
-                            ]
-                    ]
-                ]
-        ];
+    return SAssignNew(_OverviewHost, SBox);
 }
-
-// --------------------------------------------------------------------------------------------------------------------
 
 auto
     SCkObjectPoolingDebuggerWindow::
@@ -1150,10 +1159,25 @@ auto
     {
         TotalInUse += Pool.NumInUse;
         MaxLive = FMath::Max(MaxLive, static_cast<float>(FMath::Max(Pool.NumLiveInstances, Pool.HighWaterMark)));
+    }
 
+    const bool HasTotalInUseSeries = _TotalInUseSeries.IsValid();
+    CK_ENSURE_IF_NOT(HasTotalInUseSeries, TEXT("Object-pooling total-in-use float series is unavailable."))
+    if (NOT HasTotalInUseSeries) { return; }
+
+    auto TotalInUseSamples = _TotalInUseSeries->GetSamples();
+    Push_Sample(TotalInUseSamples, static_cast<float>(TotalInUse));
+    const FCkUiLoadResult PublishResult = _TotalInUseSeries->TrySetSamples(MoveTemp(TotalInUseSamples));
+    const bool PublishedTotalInUse = PublishResult.Succeeded;
+    CK_ENSURE_IF_NOT(PublishedTotalInUse, TEXT("Failed to publish object-pooling total-in-use samples: {}"),
+        FString::Join(PublishResult.Errors, TEXT("\n")))
+    if (NOT PublishedTotalInUse) { return; }
+
+    for (const auto& Pool : InSnapshot.Pools)
+    {
         auto& History = Get_HistoryFor(Pool.Get_PoolKeyString());
-        Push_Sample(History.InUseSamples, Pool.NumInUse);
-        Push_Sample(History.LiveSamples, Pool.NumLiveInstances);
+        Push_Sample(*History.InUseSamples, Pool.NumInUse);
+        Push_Sample(*History.LiveSamples, Pool.NumLiveInstances);
 
         const auto DeltaTime = InCurrentTime - History.LastSampleTime;
         if (History.LastSampleTime > 0.0 && DeltaTime > KINDA_SMALL_NUMBER)
@@ -1169,9 +1193,6 @@ auto
     }
 
     *_SharedMaxLive = MaxLive;
-
-    Push_Sample(_TotalInUseSamples, TotalInUse);
-    _HeroNowText->SetText(FText::AsNumber(TotalInUse));
 }
 
 auto
@@ -1196,26 +1217,20 @@ auto
         TotalMisses += Pool.NumMisses;
     }
 
-    _StatPools->SetValue(FText::AsNumber(InSnapshot.Pools.Num()));
-    _StatLive->SetValue(FText::AsNumber(TotalLive));
-    _StatInUse->SetValue(FText::AsNumber(TotalInUse));
-    _StatParked->SetValue(FText::AsNumber(TotalFree));
-    _StatMisses->SetValue(FText::AsNumber(TotalMisses));
+    _OverviewPools = FString::FromInt(InSnapshot.Pools.Num());
+    _OverviewLive = FString::FromInt(TotalLive);
+    _OverviewInUse = FString::FromInt(TotalInUse);
+    _OverviewParked = FString::FromInt(TotalFree);
+    _OverviewMisses = FString::FromInt(TotalMisses);
 
     const auto TotalAcquires = TotalHits + TotalMisses;
-    _StatHitRate->SetValue(TotalAcquires > 0
-        ? FText::FromString(ck::Format_UE(TEXT("{:.1f}%"), 100.0f * TotalHits / TotalAcquires))
-        : FText::FromString(TEXT("—")));
+    _OverviewHitRate = TotalAcquires > 0
+        ? ck::Format_UE(TEXT("{:.1f}%"), 100.0f * TotalHits / TotalAcquires)
+        : TEXT("—");
 
-    _PinnedUniqueText->SetText(FText::FromString(
-        ck::Format_UE(TEXT("{} pinned-unique"), InSnapshot.NumPinnedUnique)));
+    _PinnedUnique = ck::Format_UE(TEXT("{} pinned-unique"), InSnapshot.NumPinnedUnique);
 
-    if (_HasSubsystem != InSnapshot.HasSubsystem)
-    {
-        _HasSubsystem = InSnapshot.HasSubsystem;
-        _PillSubsystemLive->SetVisibility(_HasSubsystem ? EVisibility::Visible : EVisibility::Collapsed);
-        _PillNoSubsystem->SetVisibility(_HasSubsystem ? EVisibility::Collapsed : EVisibility::Visible);
-    }
+    _HasSubsystem = InSnapshot.HasSubsystem;
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -1252,6 +1267,19 @@ auto
     using namespace ck_object_pooling_debugger_window;
 
     SCkDebugger_WindowBase::Tick(InAllottedGeometry, InCurrentTime, InDeltaTime);
+
+    if (_AuthoredView.IsValid())
+    {
+        const bool WasAccepted = _AuthoredView->GetLastResult().Succeeded;
+        _AuthoredView->PollFiles(ck_object_pooling_debugger_window::AuthoredStyleTokens());
+        if (!WasAccepted && _AuthoredView->GetLastResult().Succeeded)
+        {
+            _ControlsHost->SetContent(_AuthoredView->GetRegion(TEXT("controls")));
+            _ContextHost->SetContent(_AuthoredView->GetRegion(TEXT("context")));
+            _SearchHost->SetContent(_AuthoredView->GetRegion(TEXT("search")));
+            _OverviewHost->SetContent(_AuthoredView->GetRegion(TEXT("overview")));
+        }
+    }
 
     if (NOT FCkDebuggerRefreshGate::Should_RefreshNow(WindowId))
     { return; }

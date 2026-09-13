@@ -1,0 +1,12 @@
+.anim-plans-inspector { min-width: 0; gap: 4px; }
+.anim-plans-records { min-width: 0; gap: 6px; }
+.anim-plan-record { min-width: 0; gap: 3px; padding: 4px 0px; border-color: #364152; border-width: 1px; }
+.anim-plan-row { min-width: 0; gap: 8px; vertical-align: center; }
+.anim-plan-goal-row { padding: 0px 0px 2px 0px; }
+.anim-plan-label { min-width: 118px; color: #A8B4C4; }
+.anim-plan-goal { min-width: 118px; -ck-button-padding-x: 7px; -ck-button-padding-y: 2px; -ck-button-background: #26303D; -ck-button-border-color: #465367; -ck-button-outline-width: 1px; -ck-button-radius: 5px; }
+.anim-plan-summary { min-width: 0; flex-grow: 1; color: #E8EDF5; }
+.anim-plan-input { min-width: 0; flex-grow: 1; }
+.anim-plan-value { min-width: 0; flex-grow: 1; color: #E8EDF5; }
+.anim-plan-apply-row { padding: 1px 0px 0px 0px; }
+.anim-plan-apply { min-width: 104px; }

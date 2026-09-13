@@ -1,0 +1,14 @@
+.jolt-inspector { min-width: 0; gap: 8px; }
+.jolt-section { min-width: 0; gap: 4px; padding: 4px 0px; border-color: #4B3928; border-width: 1px; }
+.jolt-header { color: #E0B37A; }
+.jolt-row { min-width: 0; gap: 8px; vertical-align: center; }
+.jolt-label { min-width: 132px; color: #C9B9A8; }
+.jolt-value { min-width: 0; flex-grow: 1; color: #F0E4D5; }
+.jolt-number { color: #DCE8F7; }
+.jolt-status { min-width: 0; flex-grow: 1; }
+.jolt-count { min-width: 52px; }
+.jolt-axis-values { min-width: 0; flex-grow: 1; gap: 8px; }
+.jolt-axis-x { min-width: 48px; color: #E57373; }
+.jolt-axis-y { min-width: 48px; color: #81C784; }
+.jolt-axis-z { min-width: 48px; color: #64B5F6; }
+.jolt-sparkline-value { min-width: 0; flex-grow: 1; gap: 8px; vertical-align: center; }

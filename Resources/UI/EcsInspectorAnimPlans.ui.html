@@ -1,0 +1,33 @@
+<ui version="1">
+  <region name="main">
+    <column id="anim-plans-inspector" visible="anim-plans-visible" class="anim-plans-inspector">
+      <repeat id="anim-plans-records" bind="anim-plans" direction="vertical" class="anim-plans-records">
+        <column id="anim-plan-record" class="anim-plan-record">
+          <row id="anim-plan-goal-row" visible-field="goal-visible" class="anim-plan-row anim-plan-goal-row">
+            <button id="anim-plan-goal" bind-field="goal" color-field="goal-color" tooltip-field="summary" item-action="anim-plan-navigate" class="anim-plan-goal" />
+            <text id="anim-plan-summary" bind-field="summary" class="anim-plan-summary" />
+          </row>
+          <row id="anim-plan-cluster-row" visible-field="cluster-visible" class="anim-plan-row">
+            <text id="anim-plan-cluster-label" color-field="cluster-color" class="anim-plan-label">Cluster:</text>
+            <text-input id="anim-plan-cluster-input" value-field="cluster" item-changed="anim-plan-cluster-changed" item-committed="anim-plan-cluster-committed" enabled-bind="anim-plans-edit-enabled" visible-field="edit-visible" class="anim-plan-input" />
+            <text id="anim-plan-cluster-read" bind-field="cluster" color-field="cluster-color" visible-field="read-visible" class="anim-plan-value" />
+          </row>
+          <row id="anim-plan-pending-cluster-row" visible-field="pending-cluster-visible" class="anim-plan-row">
+            <text id="anim-plan-pending-cluster-label" color-field="pending-cluster-color" class="anim-plan-label">State cluster:</text>
+            <text-input id="anim-plan-pending-cluster-input" value-field="pending-cluster" item-changed="anim-plan-pending-cluster-changed" item-committed="anim-plan-pending-cluster-committed" enabled-bind="anim-plans-edit-enabled" visible-field="edit-visible" class="anim-plan-input" />
+            <text id="anim-plan-pending-cluster-read" bind-field="pending-cluster" color-field="pending-cluster-color" visible-field="read-visible" class="anim-plan-value" />
+          </row>
+          <row id="anim-plan-pending-state-row" visible-field="pending-state-visible" class="anim-plan-row">
+            <text id="anim-plan-pending-state-label" color-field="pending-state-color" class="anim-plan-label">State:</text>
+            <text-input id="anim-plan-pending-state-input" value-field="pending-state" item-changed="anim-plan-pending-state-changed" item-committed="anim-plan-pending-state-committed" enabled-bind="anim-plans-edit-enabled" visible-field="edit-visible" class="anim-plan-input" />
+            <text id="anim-plan-pending-state-read" bind-field="pending-state" color-field="pending-state-color" visible-field="read-visible" class="anim-plan-value" />
+          </row>
+          <row id="anim-plan-apply-row" visible-field="apply-visible" class="anim-plan-row anim-plan-apply-row">
+            <text id="anim-plan-apply-spacer" class="anim-plan-label" />
+            <debug-inspector-action id="anim-plan-apply" label-field="apply-label" item-action="anim-plan-apply-state" enabled-bind="anim-plans-edit-enabled" tooltip-field="apply-tooltip" disabled-reason-bind="anim-plans-disabled-reason" class="anim-plan-apply" />
+          </row>
+        </column>
+      </repeat>
+    </column>
+  </region>
+</ui>

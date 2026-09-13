@@ -1,0 +1,15 @@
+<ui version="1">
+  <region name="main">
+    <column id="minimap-inspector" class="minimap-inspector">
+      <row id="minimap-projection-row" class="minimap-row"><text id="minimap-projection-label" color-bind="minimap-projection-diff-color" class="minimap-label">Projection:</text><text id="minimap-projection-value" bind="minimap-projection" class="minimap-value minimap-enum" /></row>
+      <row id="minimap-rotation-row" class="minimap-row"><text id="minimap-rotation-label" color-bind="minimap-rotation-diff-color" class="minimap-label">Rotation:</text><native id="minimap-rotation-native" bind="minimap-rotation-port" class="minimap-value minimap-input" /></row>
+      <row id="minimap-frame-row" class="minimap-row"><text id="minimap-frame-label" color-bind="minimap-frame-diff-color" class="minimap-label">Frame:</text><text id="minimap-frame-value" bind="minimap-frame" class="minimap-value minimap-enum" /></row>
+      <row id="minimap-view-extent-row" class="minimap-row"><text id="minimap-view-extent-label" color-bind="minimap-view-extent-diff-color" class="minimap-label">View Extent:</text><native id="minimap-view-extent-native" bind="minimap-view-extent-port" class="minimap-value minimap-input" /></row>
+      <row id="minimap-view-origin-row" class="minimap-row"><text id="minimap-view-origin-label" color-bind="minimap-view-origin-diff-color" class="minimap-label">View Origin:</text><text id="minimap-view-origin-value" bind="minimap-origin" class="minimap-value minimap-number" /></row>
+      <row id="minimap-view-yaw-row" class="minimap-row"><text id="minimap-view-yaw-label" color-bind="minimap-view-yaw-diff-color" class="minimap-label">View Yaw:</text><text id="minimap-view-yaw-value" bind="minimap-yaw" class="minimap-value minimap-number" /></row>
+      <row id="minimap-observer-row" class="minimap-row"><text id="minimap-observer-label" color-bind="minimap-observer-diff-color" class="minimap-label">Observer:</text><native id="minimap-observer-native" bind="minimap-observer-port" class="minimap-value" /></row>
+      <row id="minimap-entries-row" class="minimap-row"><text id="minimap-entries-label" color-bind="minimap-entries-diff-color" class="minimap-label">Entries:</text><row id="minimap-entries-value" class="minimap-meter"><debug-meter id="minimap-entries-meter" fraction-bind="minimap-entries-fraction" fill-bind="minimap-entries-fill" width="72" height="6" /><text id="minimap-entries-text" bind="minimap-entries" class="minimap-value minimap-number" /></row></row>
+      <row id="minimap-fixed-bounds-row" class="minimap-row"><text id="minimap-fixed-bounds-label" color-bind="minimap-fixed-bounds-diff-color" class="minimap-label">Fixed Bounds:</text><text id="minimap-fixed-bounds-value" bind="minimap-bounds" class="minimap-value minimap-number" /></row>
+    </column>
+  </region>
+</ui>

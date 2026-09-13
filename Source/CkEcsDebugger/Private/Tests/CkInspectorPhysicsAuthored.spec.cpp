@@ -211,12 +211,14 @@ auto FCkInspectorPhysicsAuthored::RunTest(const FString&) -> bool
 
     auto World = ck::FEcsWorld{};
     auto Owner = UCk_Utils_EntityLifetime_UE::Get_TransientEntity(World.Get_Registry());
+    auto WorldWithoutWorld = ck::FEcsWorld{};
+    auto OwnerWithoutWorld = UCk_Utils_EntityLifetime_UE::Get_TransientEntity(WorldWithoutWorld.Get_Registry());
     if (NOT TestTrue(TEXT("fixture has transient ownership and an automation world"),
-        ck::IsValid(Owner) && GWorld != nullptr)) { return false; }
+        ck::IsValid(Owner) && ck::IsValid(OwnerWithoutWorld) && GWorld != nullptr)) { return false; }
     AddAuthorityAndWorld(Owner);
     auto EntityA = CreateAllPhysics(Owner);
     auto EntityB = CreateVelocityOnly(Owner);
-    auto EntityWithoutWorld = CreatePhysicsWithoutWorld(Owner);
+    auto EntityWithoutWorld = CreatePhysicsWithoutWorld(OwnerWithoutWorld);
     if (NOT TestTrue(TEXT("fixture composes all four optional sections and a velocity-only sibling"),
         ck::IsValid(EntityA) && ck::IsValid(EntityB) && ck::IsValid(EntityWithoutWorld)
             && EntityA.Has<ck::FFragment_Velocity_Current>()

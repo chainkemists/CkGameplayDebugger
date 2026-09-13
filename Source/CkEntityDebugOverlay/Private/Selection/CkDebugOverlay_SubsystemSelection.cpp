@@ -19,6 +19,8 @@
 #include "CkEcsExt/Transform/CkTransform_Fragment.h"
 #include "CkLabel/CkLabel_Utils.h"
 #include "CkPmg/CkPmg_Fragment.h"
+#include "CkUsf/Outline/CkUsf_Outline_ProjectSettings.h"
+#include "CkUsf/Outline/CkUsf_Outline_Utils.h"
 #include "Engine/Console.h"
 #include "Engine/GameViewportClient.h"
 #include "Engine/LocalPlayer.h"
@@ -54,6 +56,7 @@ namespace
 
 auto UCk_DebugOverlay_Subsystem::Reset_SelectionSession() -> void
 {
+    Release_SelectionOutline();
     _SelectionNodes.Reset();
     _SelectionHandles.Reset();
     _WorldSelection.Reset();
@@ -125,7 +128,10 @@ auto UCk_DebugOverlay_Subsystem::Update_Selection(UWorld* InWorld,
     _SelectionHandles.Reset();
     auto Transient = UCk_Utils_EcsWorld_Subsystem_UE::Get_TransientEntity(InWorld);
     if (ck::Is_NOT_Valid(Transient))
-    { return; }
+    {
+        Reconcile_SelectionOutline({});
+        return;
+    }
     const auto* Preferences = UCk_DebugOverlay_SelectionSettings::Get();
     const auto& Config = Preferences->Get_Config();
     const auto AddNode = [&](const FCk_Handle& InHandle)
@@ -245,6 +251,45 @@ auto UCk_DebugOverlay_Subsystem::Update_Selection(UWorld* InWorld,
     }
     _LastFrameCandidates = OutHandles;
     _FocusLocked = ck::IsValid(_SelectionLockedEntity);
+    Reconcile_SelectionOutline(Transient);
+}
+
+auto UCk_DebugOverlay_Subsystem::Release_SelectionOutline() -> void
+{
+    if (ck::IsValid(_SelectionOutlineTarget) && ck::IsValid(_SelectionOutlineSource))
+    {
+        const auto OutlineTag = UCk_Utils_Usf_Outline_Settings_UE::Get_SelectionOutlineTag();
+        if (UCk_Utils_Usf_Outline_UE::Has_OutlineClaim(
+            _SelectionOutlineTarget, _SelectionOutlineSource, OutlineTag))
+        {
+            UCk_Utils_Usf_Outline_UE::Clear_OutlineClaim(
+                _SelectionOutlineTarget, _SelectionOutlineSource, OutlineTag, {});
+        }
+    }
+    _SelectionOutlineTarget = {};
+    _SelectionOutlineSource = {};
+}
+
+auto UCk_DebugOverlay_Subsystem::Reconcile_SelectionOutline(const FCk_Handle& InSource) -> void
+{
+    const auto& Config = UCk_DebugOverlay_SelectionSettings::Get()->Get_Config();
+    const auto ShouldClaim = Config.OutlineSelected && ck::IsValid(_FocusedEntity) && ck::IsValid(InSource);
+    const auto ClaimMatches = ShouldClaim && _SelectionOutlineTarget == _FocusedEntity &&
+                              _SelectionOutlineSource == InSource;
+    if (ClaimMatches) { return; }
+
+    Release_SelectionOutline();
+    if (NOT ShouldClaim) { return; }
+
+    const auto OutlineTag = UCk_Utils_Usf_Outline_Settings_UE::Get_SelectionOutlineTag();
+    auto Target = _FocusedEntity;
+    UCk_Utils_Usf_Outline_UE::Set_OutlineClaim(
+        Target, InSource, OutlineTag, ECk_Usf_OutlineScope::EntityAndDependents, {});
+    if (UCk_Utils_Usf_Outline_UE::Has_OutlineClaim(Target, InSource, OutlineTag))
+    {
+        _SelectionOutlineTarget = Target;
+        _SelectionOutlineSource = InSource;
+    }
 }
 
 auto UCk_DebugOverlay_Subsystem::Refresh_SelectionSnapshot(bool InSelectBest) -> void

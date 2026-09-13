@@ -11,6 +11,7 @@
 #include "CkInventory/Inventory/CkInventory_Utils.h"
 #include "CkInventory/Item/CkItem_Fragment.h"
 #include "CkInventory/Item/CkItem_Utils.h"
+#include "CkSlateLayout/CkUiCollection.h"
 
 #include "Widgets/SBoxPanel.h"
 
@@ -84,7 +85,16 @@ bool FCkEcsDebuggerInventoryInspector_DirectInventoryIsInspectable::RunTest(cons
 
     auto Inspector = FCkInspector_Inventories{};
     const auto RenderedInspector = Inspector.Build_Inspector(Owner);
-    TestEqual(TEXT("rendered inventory starts with header and item rows"), RenderedInspector->GetChildren()->Num(), 2);
+    if (NOT TestEqual(TEXT("inventory inspector mounts authored composition"),
+        RenderedInspector->GetTypeAsString(), FString{TEXT("SCkInspector_InventoriesAuthored")}))
+    {
+        AddError(Inspector.Get_LastAuthoredLoadError());
+        return false;
+    }
+    const auto Authored = StaticCastSharedRef<SCkInspector_InventoriesAuthored>(RenderedInspector);
+    const auto Records = Authored->Get_RecordsCollection();
+    TestTrue(TEXT("authored inventory starts with header, meter/control, item, pending and detached records"),
+        Records.IsValid() && Records->GetRecords().Num() == 5);
 
     UCk_Utils_Inventory_UE::RecordOfInventories_Utils::Request_Disconnect(Owner, Inventory);
     TestFalse(TEXT("owner no longer has an intrinsically inspectable inventory"), Registry.Test(InspectorID, Owner));
@@ -92,13 +102,16 @@ bool FCkEcsDebuggerInventoryInspector_DirectInventoryIsInspectable::RunTest(cons
         TEXT("rendered inventory opts into a cleanup tick after its last inventory is removed"),
         Inspector.Wants_TickWhenNotInspectable(Owner));
 
-    Inspector.Tick(Owner, 0.0f);
-    TestEqual(TEXT("cleanup tick replaces stale inventory rows with an empty-state row"), RenderedInspector->GetChildren()->Num(), 1);
+    Authored->Tick(FGeometry{}, 0.0, 0.0f);
+    TestTrue(TEXT("cleanup tick removes stale authored inventory records"),
+        Records.IsValid() && Records->GetRecords().IsEmpty() && NOT Authored->Get_IsAvailable());
 
     Inspector.OnDeactivated();
     TestFalse(
         TEXT("deactivated inventory inspector does not request inapplicable ticks"),
         Inspector.Wants_TickWhenNotInspectable(Owner));
+    TestTrue(TEXT("deactivation releases the authored inventory view"),
+        Authored->Is_Inert() && NOT Authored->Get_View().IsValid());
 
     return true;
 }

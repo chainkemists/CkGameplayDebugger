@@ -1,0 +1,12 @@
+.actor-relay-inspector { min-width: 0; padding: 4px; gap: 3px; }
+.actor-relay-live { min-width: 0; gap: 3px; }
+.actor-relay-heading { color: #f0f3f7; }
+.actor-relay-row { min-width: 0; gap: 8px; vertical-align: center; }
+.actor-relay-label { min-width: 154px; color: #a8b4c4; }
+.actor-relay-value { min-width: 0; color: #f0f3f7; }
+.actor-relay-object-value { min-width: 0; color: #7fd6ff; }
+.actor-relay-tag-value { min-width: 0; color: #8fd7a7; }
+.actor-relay-enum-value { min-width: 0; color: #d7a6ff; }
+.actor-relay-number-value { min-width: 0; color: #f1c76b; }
+.actor-relay-meter-value { min-width: 0; gap: 8px; vertical-align: center; }
+.actor-relay-unavailable { color: #8f99a8; }

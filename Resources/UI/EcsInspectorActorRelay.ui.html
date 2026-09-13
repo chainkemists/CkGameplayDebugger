@@ -1,0 +1,22 @@
+<ui version="1">
+  <region name="main">
+    <column id="actor-relay-inspector" class="actor-relay-inspector">
+      <column id="actor-relay-live" visible="actor-relay-available" class="actor-relay-live">
+        <text id="actor-relay-identity-heading" class="actor-relay-heading">Identity</text>
+        <row id="actor-relay-class-row" class="actor-relay-row"><text id="actor-relay-class-label" color-bind="actor-relay-class-diff-color" class="actor-relay-label">Class:</text><text id="actor-relay-class-value" bind="actor-relay-class" class="actor-relay-object-value" /></row>
+        <row id="actor-relay-actor-row" class="actor-relay-row"><text id="actor-relay-actor-label" color-bind="actor-relay-actor-diff-color" class="actor-relay-label">Actor:</text><text id="actor-relay-actor-value" bind="actor-relay-actor" class="actor-relay-value" /></row>
+        <text id="actor-relay-group-heading" class="actor-relay-heading">Group</text>
+        <row id="actor-relay-group-tag-row" class="actor-relay-row"><text id="actor-relay-group-tag-label" color-bind="actor-relay-group-tag-diff-color" class="actor-relay-label">Group Tag:</text><text id="actor-relay-group-tag-value" bind="actor-relay-group-tag" class="actor-relay-tag-value" /></row>
+        <row id="actor-relay-ownership-row" class="actor-relay-row"><text id="actor-relay-ownership-label" color-bind="actor-relay-ownership-diff-color" class="actor-relay-label">Ownership:</text><text id="actor-relay-ownership-value" bind="actor-relay-ownership" class="actor-relay-enum-value" /></row>
+        <row id="actor-relay-selection-row" class="actor-relay-row"><text id="actor-relay-selection-label" color-bind="actor-relay-selection-diff-color" class="actor-relay-label">Selection:</text><text id="actor-relay-selection-value" bind="actor-relay-selection" class="actor-relay-enum-value" /></row>
+        <row id="actor-relay-disconnect-row" class="actor-relay-row"><text id="actor-relay-disconnect-label" color-bind="actor-relay-disconnect-diff-color" class="actor-relay-label">Disconnect:</text><text id="actor-relay-disconnect-value" bind="actor-relay-disconnect" class="actor-relay-enum-value" /></row>
+        <text id="actor-relay-capacity-heading" class="actor-relay-heading">Capacity</text>
+        <row id="actor-relay-channels-row" class="actor-relay-row"><text id="actor-relay-channels-label" color-bind="actor-relay-channels-diff-color" class="actor-relay-label">Channels:</text><row id="actor-relay-channels-value" class="actor-relay-meter-value"><debug-meter id="actor-relay-channels-meter" fraction-bind="actor-relay-channels-fraction" fill-bind="actor-relay-meter-fill" width="72" height="6" /><text id="actor-relay-channels-text" bind="actor-relay-channels" class="actor-relay-number-value" /></row></row>
+        <row id="actor-relay-max-entities-row" class="actor-relay-row"><text id="actor-relay-max-entities-label" color-bind="actor-relay-max-entities-diff-color" class="actor-relay-label">Max Entities/Ch:</text><text id="actor-relay-max-entities-value" bind="actor-relay-max-entities" class="actor-relay-number-value" /></row>
+        <row id="actor-relay-entities-meter-row" visible="actor-relay-has-channel-capacity" class="actor-relay-row"><text id="actor-relay-entities-meter-label" color-bind="actor-relay-entities-diff-color" class="actor-relay-label">Entities On Channel:</text><row id="actor-relay-entities-meter-value" class="actor-relay-meter-value"><debug-meter id="actor-relay-entities-meter" fraction-bind="actor-relay-entities-fraction" fill-bind="actor-relay-meter-fill" width="72" height="6" /><text id="actor-relay-entities-meter-text" bind="actor-relay-entities" class="actor-relay-number-value" /></row></row>
+        <row id="actor-relay-entities-count-row" visible="actor-relay-has-no-channel-capacity" class="actor-relay-row"><text id="actor-relay-entities-count-label" color-bind="actor-relay-entities-diff-color" class="actor-relay-label">Entities On Channel:</text><text id="actor-relay-entities-count-value" bind="actor-relay-entities" class="actor-relay-number-value" /></row>
+      </column>
+      <text id="actor-relay-unavailable" visible="actor-relay-unavailable" class="actor-relay-unavailable">Actor Relay unavailable.</text>
+    </column>
+  </region>
+</ui>

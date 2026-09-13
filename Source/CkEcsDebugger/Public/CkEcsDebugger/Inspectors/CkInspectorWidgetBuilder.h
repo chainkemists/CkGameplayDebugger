@@ -94,7 +94,7 @@ struct FCkInspector_FlashState
  * Duplicate labels within one pass collapse (last wins), consistently for every entity.
  * Scopes nest (innermost wins) and are main-thread only, like every other Slate compose path.
  */
-class FCkInspector_RowCaptureScope
+class CKECSDEBUGGER_API FCkInspector_RowCaptureScope
 {
 public:
     FCkInspector_RowCaptureScope();
@@ -123,7 +123,7 @@ private:
  * the REAL Build_Inspector call. A null set is an inactive scope, so the non-diff path costs nothing
  * and composes the same tree it always did.
  */
-class FCkInspector_DiffMarkScope
+class CKECSDEBUGGER_API FCkInspector_DiffMarkScope
 {
 public:
     explicit FCkInspector_DiffMarkScope(const TSet<FString>* InDifferingLabels);
@@ -144,7 +144,7 @@ private:
 
 // --------------------------------------------------------------------------------------------------------------------
 
-class FCkInspectorWidgetBuilder
+class CKECSDEBUGGER_API FCkInspectorWidgetBuilder
 {
 public:
     using FValueGetter = TFunction<FText(const FCk_Handle&)>;

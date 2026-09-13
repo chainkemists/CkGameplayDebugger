@@ -407,6 +407,7 @@ namespace ck_debug_ui_registry
     {
         TAttribute<bool> Checked;
         TAttribute<bool> Enabled;
+        TAttribute<FText> Tooltip;
         TAttribute<bool> CanDispatchEvents;
         FCkUiOnBoolChanged Changed;
         FString CheckedBindingName;
@@ -439,6 +440,11 @@ namespace ck_debug_ui_registry
                 {
                     if (const TSharedPtr<FSwitchComponent> Switch = WeakSwitch.Pin()) { Switch->OnStateChanged(InChecked); }
                 });
+            Widget->SetToolTipText(TAttribute<FText>::CreateLambda([WeakSwitch]()
+            {
+                const TSharedPtr<FSwitchComponent> Switch = WeakSwitch.Pin();
+                return Switch.IsValid() ? Switch->Configuration.Tooltip.Get(FText::GetEmpty()) : FText::GetEmpty();
+            }));
         }
 
         virtual ~FSwitchComponent() override { Active = false; }
@@ -488,6 +494,7 @@ namespace ck_debug_ui_registry
         }
         OutConfiguration.Checked = *Checked;
         OutConfiguration.Enabled = InArguments.BoolBindings.FindRef(TEXT("enabled"));
+        OutConfiguration.Tooltip = InArguments.TextBindings.FindRef(TEXT("tooltip"));
         OutConfiguration.CanDispatchEvents = InArguments.CanDispatchEvents;
         OutConfiguration.Changed = *Changed;
         OutConfiguration.CheckedBindingName = *CheckedBindingName;
@@ -514,6 +521,7 @@ namespace ck_debug_ui_registry
             {TEXT("checked"), ECkUiCustomPropertyKind::BoolBinding},
             {TEXT("changed"), ECkUiCustomPropertyKind::BoolChanged},
             {TEXT("enabled"), ECkUiCustomPropertyKind::BoolBinding, false},
+            {TEXT("tooltip"), ECkUiCustomPropertyKind::TextBinding, false},
         };
         Registration.RetainedFactory = [](const FCkUiCustomWidgetArguments& Arguments, FString& OutFailure) -> TSharedPtr<ICkUiRetainedWidget>
         {

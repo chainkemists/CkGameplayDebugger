@@ -1,0 +1,14 @@
+<ui version="1">
+  <region name="main">
+    <column id="compass-inspector" class="compass-inspector">
+      <row id="compass-heading-row" class="compass-row"><text id="compass-heading-label" color-bind="compass-heading-diff-color" class="compass-label">Heading:</text><text id="compass-heading-value" bind="compass-heading" class="compass-value compass-number" /></row>
+      <row id="compass-manual-heading-row" class="compass-row"><text id="compass-manual-heading-label" color-bind="compass-manual-heading-diff-color" class="compass-label">Manual Heading:</text><native id="compass-manual-heading-native" bind="compass-manual-heading-port" class="compass-value compass-input" /></row>
+      <row id="compass-source-row" class="compass-row"><text id="compass-source-label" color-bind="compass-source-diff-color" class="compass-label">Source:</text><text id="compass-source-value" bind="compass-source" class="compass-value compass-enum" /></row>
+      <row id="compass-observer-row" class="compass-row"><text id="compass-observer-label" color-bind="compass-observer-diff-color" class="compass-label">Observer:</text><native id="compass-observer-native" bind="compass-observer-port" class="compass-value" /></row>
+      <row id="compass-arc-row" class="compass-row"><text id="compass-arc-label" color-bind="compass-arc-diff-color" class="compass-label">Arc:</text><text id="compass-arc-value" bind="compass-arc" class="compass-value compass-number" /></row>
+      <row id="compass-entries-row" class="compass-row"><text id="compass-entries-label" color-bind="compass-entries-diff-color" class="compass-label">Entries:</text><row id="compass-entries-value" class="compass-meter-value"><debug-meter id="compass-entries-meter" fraction-bind="compass-entries-fraction" fill-bind="compass-entries-fill" width="72" height="6" /><text id="compass-entries-text" bind="compass-entries" class="compass-value compass-number" /></row></row>
+      <row id="compass-filter-row" class="compass-row"><text id="compass-filter-label" color-bind="compass-filter-diff-color" class="compass-label">Filter:</text><text id="compass-filter-value" bind="compass-filter" class="compass-value compass-tag" /></row>
+      <row id="compass-interval-row" class="compass-row"><text id="compass-interval-label" color-bind="compass-interval-diff-color" class="compass-label">Interval:</text><text id="compass-interval-value" bind="compass-interval" class="compass-value compass-number" /></row>
+    </column>
+  </region>
+</ui>

@@ -1,0 +1,17 @@
+.variables-inspector { min-width: 0; padding: 4px; gap: 3px; }
+.variables-records { min-width: 0; gap: 3px; }
+.variable-record { min-width: 0; gap: 2px; }
+.variable-type { min-width: 0; color: #9FB4CF; font-weight: bold; }
+.variable-row { min-width: 0; gap: 8px; vertical-align: center; }
+.variable-name { min-width: 150px; color: #A8B4C4; }
+.variable-control { min-width: 0; flex-grow: 1; }
+.variable-value { min-width: 0; flex-grow: 1; color: #E3E8EF; }
+.variable-vector { min-width: 0; gap: 4px; flex-grow: 1; vertical-align: center; }
+.variable-axis-wrap { min-width: 0; gap: 4px; vertical-align: center; }
+.variable-axis-label { min-width: 12px; }
+.variable-axis-x { color: #E06C75; }
+.variable-axis-y { color: #98C379; }
+.variable-axis-z { color: #61AFEF; }
+.variable-axis { min-width: 72px; flex-grow: 1; }
+.variable-entity { min-width: 0; flex-grow: 1; }
+.variables-unavailable { color: #8F99A8; }

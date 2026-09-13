@@ -1,0 +1,31 @@
+<ui version="1">
+  <region name="main">
+    <column id="variables-inspector" class="variables-inspector">
+      <repeat id="variables-records" bind="variables-records" direction="vertical" visible="variables-available" class="variables-records">
+        <column id="variable-record" class="variable-record">
+          <text id="variable-type" bind-field="type" visible-field="header-visible" class="variable-type" />
+          <row id="variable-row" class="variable-row">
+            <text id="variable-name" bind-field="name" color-field="diff-color" class="variable-name" />
+            <debug-switch id="variable-bool" checked-field="bool-value" item-changed="variable-bool-changed" enabled-bind="variables-can-edit" tooltip-field="name" visible-field="bool-visible" class="variable-control" />
+            <int32-input id="variable-integer" value-field="integer-value" item-committed="variable-integer-committed" enabled-bind="variables-can-edit" visible-field="integer-visible" class="variable-control" />
+            <number-input id="variable-number" value-field="number-value" item-committed="variable-number-committed" kind="float" fractional-digits="3" enabled-bind="variables-can-edit" visible-field="number-visible" class="variable-control" />
+            <text-input id="variable-text-input" value-field="value-text" item-committed="variable-text-committed" enabled-bind="variables-can-edit" visible-field="text-input-visible" class="variable-control" />
+            <text id="variable-read" bind-field="value-text" tooltip-field="value-text" visible-field="read-visible" class="variable-value" />
+            <row id="variable-vector" visible-field="vector-visible" class="variable-vector">
+              <text id="variable-axis-0-label" bind-field="axis-0-label" class="variable-axis-label variable-axis-x" />
+              <number-input id="variable-axis-0" value-field="axis-0" item-committed="variable-axis-0-committed" kind="float" fractional-digits="3" enabled-bind="variables-can-edit" class="variable-axis" />
+              <text id="variable-axis-1-label" bind-field="axis-1-label" class="variable-axis-label variable-axis-y" />
+              <number-input id="variable-axis-1" value-field="axis-1" item-committed="variable-axis-1-committed" kind="float" fractional-digits="3" enabled-bind="variables-can-edit" class="variable-axis" />
+              <row id="variable-axis-2-wrap" visible-field="axis-2-visible" class="variable-axis-wrap">
+                <text id="variable-axis-2-label" bind-field="axis-2-label" class="variable-axis-label variable-axis-z" />
+                <number-input id="variable-axis-2" value-field="axis-2" item-committed="variable-axis-2-committed" kind="float" fractional-digits="3" enabled-bind="variables-can-edit" class="variable-axis" />
+              </row>
+            </row>
+            <debug-entity-ref id="variable-entity" entity-id-field="entity-id" name-field="entity-name" item-action="variable-entity-navigate" show-name="true" visible-field="entity-visible" class="variable-entity" />
+          </row>
+        </column>
+      </repeat>
+      <text id="variables-unavailable" visible="variables-unavailable" class="variables-unavailable">Variables unavailable.</text>
+    </column>
+  </region>
+</ui>

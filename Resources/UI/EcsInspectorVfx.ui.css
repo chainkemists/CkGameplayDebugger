@@ -1,0 +1,12 @@
+.vfx-inspector { min-width: 0; padding: 4px; gap: 3px; }
+.vfx-live { min-width: 0; gap: 3px; }
+.vfx-heading { color: #f0f3f7; }
+.vfx-row { min-width: 0; gap: 8px; vertical-align: center; }
+.vfx-label { min-width: 148px; color: #a8b4c4; }
+.vfx-value { min-width: 0; color: #f0f3f7; }
+.vfx-number-value { min-width: 0; color: #f1c76b; }
+.vfx-meter-value { min-width: 0; gap: 8px; vertical-align: center; }
+.vfx-state { min-width: 0; }
+.vfx-actions { min-width: 0; gap: 6px; }
+.vfx-action { min-width: 0; }
+.vfx-unavailable { color: #8f99a8; }

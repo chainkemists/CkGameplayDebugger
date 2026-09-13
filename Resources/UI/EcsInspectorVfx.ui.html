@@ -1,0 +1,16 @@
+<ui version="1">
+  <region name="main">
+    <column id="vfx-inspector" class="vfx-inspector">
+      <column id="vfx-live" visible="vfx-available" class="vfx-live">
+        <text id="vfx-heading" class="vfx-heading">VFX Cue</text>
+        <row id="vfx-component-row" class="vfx-row"><text id="vfx-component-label" color-bind="vfx-component-diff-color" class="vfx-label">Component:</text><text id="vfx-component-value" bind="vfx-component" color-bind="vfx-component-color" class="vfx-value" /></row>
+        <row id="vfx-start-time-row" class="vfx-row"><text id="vfx-start-time-label" color-bind="vfx-start-time-diff-color" class="vfx-label">Start Time:</text><text id="vfx-start-time-value" bind="vfx-start-time" class="vfx-number-value" /></row>
+        <row id="vfx-elapsed-duration-row" visible="vfx-finite-duration" class="vfx-row"><text id="vfx-elapsed-duration-label" color-bind="vfx-elapsed-duration-diff-color" class="vfx-label">Elapsed / Duration:</text><row id="vfx-elapsed-duration-value" class="vfx-meter-value"><debug-meter id="vfx-elapsed-duration-meter" fraction-bind="vfx-elapsed-fraction" fill-bind="vfx-meter-fill" width="72" height="6" /><text id="vfx-elapsed-duration-text" bind="vfx-elapsed-duration" class="vfx-number-value" /></row></row>
+        <row id="vfx-duration-row" visible="vfx-nonfinite-duration" class="vfx-row"><text id="vfx-duration-label" color-bind="vfx-duration-diff-color" class="vfx-label">Duration:</text><text id="vfx-duration-value" bind="vfx-duration" class="vfx-number-value" /></row>
+        <row id="vfx-state-row" class="vfx-row"><text id="vfx-state-label" color-bind="vfx-state-diff-color" class="vfx-label">State:</text><debug-status id="vfx-state-value" label-bind="vfx-state" foreground-bind="vfx-state-foreground" background-bind="vfx-state-background" show-dot="true" class="vfx-state" /></row>
+        <row id="vfx-playback-row" class="vfx-row"><text id="vfx-playback-label" color-bind="vfx-playback-diff-color" class="vfx-label">Playback:</text><row id="vfx-playback-actions" class="vfx-actions"><debug-inspector-action id="vfx-play" label-bind="vfx-play-label" action="vfx-play" enabled-bind="vfx-can-request" tooltip-bind="vfx-play-tooltip" disabled-reason-bind="vfx-disabled-reason" class="vfx-action" /><debug-inspector-action id="vfx-stop" label-bind="vfx-stop-label" action="vfx-stop" enabled-bind="vfx-can-request" tooltip-bind="vfx-stop-tooltip" disabled-reason-bind="vfx-disabled-reason" class="vfx-action" /></row></row>
+      </column>
+      <text id="vfx-unavailable" visible="vfx-unavailable" class="vfx-unavailable">VFX Cue unavailable.</text>
+    </column>
+  </region>
+</ui>

@@ -1,0 +1,26 @@
+<ui version="1">
+  <region name="main">
+    <column id="shapes-inspector" class="shapes-inspector">
+      <column id="shapes-sphere-section" visible="shapes-sphere-visible" class="shapes-section">
+        <text id="shapes-sphere-heading" class="shapes-heading">Sphere</text>
+        <row id="shapes-sphere-radius-row" class="shapes-row"><text id="shapes-sphere-radius-label" color-bind="shapes-sphere-radius-diff-color" class="shapes-label">Radius:</text><native id="shapes-sphere-radius-native" bind="shapes-sphere-radius-port" class="shapes-value" /></row>
+      </column>
+      <column id="shapes-box-section" visible="shapes-box-visible" class="shapes-section">
+        <text id="shapes-box-heading" class="shapes-heading">Box</text>
+        <row id="shapes-box-half-extents-row" class="shapes-row"><text id="shapes-box-half-extents-label" color-bind="shapes-box-half-extents-diff-color" class="shapes-label">Half Extents:</text><native id="shapes-box-half-extents-native" bind="shapes-box-half-extents-port" class="shapes-value" /></row>
+        <row id="shapes-box-convex-radius-row" class="shapes-row"><text id="shapes-box-convex-radius-label" color-bind="shapes-box-convex-radius-diff-color" class="shapes-label">Convex Radius:</text><native id="shapes-box-convex-radius-native" bind="shapes-box-convex-radius-port" class="shapes-value" /></row>
+      </column>
+      <column id="shapes-capsule-section" visible="shapes-capsule-visible" class="shapes-section">
+        <text id="shapes-capsule-heading" class="shapes-heading">Capsule</text>
+        <row id="shapes-capsule-half-height-row" class="shapes-row"><text id="shapes-capsule-half-height-label" color-bind="shapes-capsule-half-height-diff-color" class="shapes-label">Half Height:</text><native id="shapes-capsule-half-height-native" bind="shapes-capsule-half-height-port" class="shapes-value" /></row>
+        <row id="shapes-capsule-radius-row" class="shapes-row"><text id="shapes-capsule-radius-label" color-bind="shapes-capsule-radius-diff-color" class="shapes-label">Radius:</text><native id="shapes-capsule-radius-native" bind="shapes-capsule-radius-port" class="shapes-value" /></row>
+      </column>
+      <column id="shapes-cylinder-section" visible="shapes-cylinder-visible" class="shapes-section">
+        <text id="shapes-cylinder-heading" class="shapes-heading">Cylinder</text>
+        <row id="shapes-cylinder-half-height-row" class="shapes-row"><text id="shapes-cylinder-half-height-label" color-bind="shapes-cylinder-half-height-diff-color" class="shapes-label">Half Height:</text><native id="shapes-cylinder-half-height-native" bind="shapes-cylinder-half-height-port" class="shapes-value" /></row>
+        <row id="shapes-cylinder-radius-row" class="shapes-row"><text id="shapes-cylinder-radius-label" color-bind="shapes-cylinder-radius-diff-color" class="shapes-label">Radius:</text><native id="shapes-cylinder-radius-native" bind="shapes-cylinder-radius-port" class="shapes-value" /></row>
+        <row id="shapes-cylinder-convex-radius-row" class="shapes-row"><text id="shapes-cylinder-convex-radius-label" color-bind="shapes-cylinder-convex-radius-diff-color" class="shapes-label">Convex Radius:</text><native id="shapes-cylinder-convex-radius-native" bind="shapes-cylinder-convex-radius-port" class="shapes-value" /></row>
+      </column>
+    </column>
+  </region>
+</ui>

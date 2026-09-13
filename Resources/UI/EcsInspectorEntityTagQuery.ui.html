@@ -1,0 +1,47 @@
+<ui version="1">
+  <region name="main">
+    <column id="entity-tag-query-inspector" class="entity-tag-query-inspector">
+      <row id="entity-tag-query-satisfied-row" class="entity-tag-query-row">
+        <text id="entity-tag-query-satisfied-label" class="entity-tag-query-label">Is Satisfied:</text>
+        <debug-status id="entity-tag-query-satisfied" label-bind="entity-tag-query-satisfied" foreground-bind="entity-tag-query-status-foreground" background-bind="entity-tag-query-status-background" show-dot="true" class="entity-tag-query-status" />
+      </row>
+      <row id="entity-tag-query-count-row" class="entity-tag-query-row">
+        <text id="entity-tag-query-count-label" bind="entity-tag-query-requirements-label" class="entity-tag-query-label" />
+        <text id="entity-tag-query-count" bind="entity-tag-query-requirements" class="entity-tag-query-number" />
+      </row>
+      <repeat id="entity-tag-query-records" bind="entity-tag-query-rows" direction="vertical" class="entity-tag-query-records">
+        <column id="entity-tag-query-record" class="entity-tag-query-record">
+          <row id="entity-tag-query-requirement-row" visible-field="requirement-visible" class="entity-tag-query-row">
+            <text id="entity-tag-query-requirement-summary" bind-field="summary" class="entity-tag-query-summary" />
+            <debug-inspector-action id="entity-tag-query-remove" label-field="remove-label" item-action="entity-tag-query-remove" enabled-bind="entity-tag-query-request-enabled" tooltip-field="remove-tooltip" disabled-reason-bind="entity-tag-query-disabled-reason" class="entity-tag-query-remove" />
+          </row>
+          <row id="entity-tag-query-ensure-row" visible-field="ensure-visible" class="entity-tag-query-row entity-tag-query-detail-row">
+            <text id="entity-tag-query-ensure-label" class="entity-tag-query-detail-label">Ensure &lt;=:</text>
+            <text id="entity-tag-query-ensure" bind-field="ensure" class="entity-tag-query-number" />
+          </row>
+          <row id="entity-tag-query-match-row" visible-field="match-visible" class="entity-tag-query-row entity-tag-query-detail-row">
+            <text id="entity-tag-query-match-label" bind-field="match-label" class="entity-tag-query-detail-label" />
+            <debug-entity-ref id="entity-tag-query-match" entity-id-field="match-id" name-field="match-name" item-action="entity-tag-query-navigate" show-name="true" class="entity-tag-query-match" />
+          </row>
+        </column>
+      </repeat>
+      <text id="entity-tag-query-add-heading" class="entity-tag-query-heading">Add Requirement</text>
+      <row id="entity-tag-query-tag-row" class="entity-tag-query-row">
+        <text id="entity-tag-query-tag-label" class="entity-tag-query-label">Tag:</text>
+        <native id="entity-tag-query-tag-native" bind="entity-tag-query-tag-port" visible="entity-tag-query-available" class="entity-tag-query-native" />
+      </row>
+      <row id="entity-tag-query-kind-row" class="entity-tag-query-row">
+        <text id="entity-tag-query-kind-label" class="entity-tag-query-label">Kind:</text>
+        <native id="entity-tag-query-kind-native" bind="entity-tag-query-kind-port" visible="entity-tag-query-available" class="entity-tag-query-native" />
+      </row>
+      <row id="entity-tag-query-add-count-row" class="entity-tag-query-row">
+        <text id="entity-tag-query-add-count-label" class="entity-tag-query-label">Count (Of):</text>
+        <native id="entity-tag-query-count-native" bind="entity-tag-query-count-port" visible="entity-tag-query-available" class="entity-tag-query-native" />
+      </row>
+      <row id="entity-tag-query-add-row" class="entity-tag-query-row">
+        <text id="entity-tag-query-add-spacer" class="entity-tag-query-label"> </text>
+        <debug-inspector-action id="entity-tag-query-add" label-bind="entity-tag-query-add-label" action="entity-tag-query-add" enabled-bind="entity-tag-query-request-enabled" tooltip-bind="entity-tag-query-add-tooltip" disabled-reason-bind="entity-tag-query-disabled-reason" class="entity-tag-query-add" />
+      </row>
+    </column>
+  </region>
+</ui>

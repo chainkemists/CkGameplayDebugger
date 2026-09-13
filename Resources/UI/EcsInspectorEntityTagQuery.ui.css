@@ -1,0 +1,15 @@
+.entity-tag-query-inspector { min-width: 0; gap: 3px; }
+.entity-tag-query-row { min-width: 0; gap: 8px; vertical-align: center; }
+.entity-tag-query-label { min-width: 130px; color: #A8B4C4; }
+.entity-tag-query-status { min-width: 0; flex-grow: 1; }
+.entity-tag-query-number { color: #8FD3FF; }
+.entity-tag-query-records { min-width: 0; gap: 2px; }
+.entity-tag-query-record { min-width: 0; gap: 2px; }
+.entity-tag-query-summary { min-width: 0; flex-grow: 1; color: #DCE5F2; }
+.entity-tag-query-detail-row { padding: 0px 0px 0px 18px; }
+.entity-tag-query-detail-label { min-width: 112px; color: #8390A2; }
+.entity-tag-query-match { min-width: 0; }
+.entity-tag-query-remove { min-width: 72px; }
+.entity-tag-query-heading { color: #DCE5F2; }
+.entity-tag-query-native { min-width: 0; flex-grow: 1; }
+.entity-tag-query-add { min-width: 72px; }

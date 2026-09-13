@@ -1,0 +1,43 @@
+<ui version="1">
+  <region name="main">
+    <column id="inventories-inspector" class="inventories-inspector">
+      <repeat id="inventory-records" bind="inventory-records" direction="vertical" visible="inventories-available" class="inventory-records">
+        <column id="inventory-record" class="inventory-record">
+          <row id="inventory-header" visible-field="inventory-visible" class="inventory-header">
+            <button id="inventory-select" bind-field="label" color-field="diff-color" item-action="inventory-navigate" class="inventory-title" />
+            <text id="inventory-summary" bind-field="summary" color-field="accent-color" class="inventory-summary" />
+            <debug-inspector-action id="inventory-grid" label-field="grid-label" item-action="inventory-open-grid" visible-field="grid-visible" tooltip-field="grid-tooltip" class="inventory-action" />
+          </row>
+          <row id="inventory-meter-row" visible-field="meter-visible" class="inventory-meter-row">
+            <text id="inventory-meter-label" bind-field="meter-label" color-field="diff-color" class="inventory-sub-label" />
+            <debug-meter id="inventory-meter" fraction-field="fraction" fill-field="accent-color" width="96" height="7" class="inventory-meter" />
+            <text id="inventory-meter-value" bind-field="meter-value" class="inventory-meter-value" />
+          </row>
+          <row id="inventory-bound-row" visible-field="bound-visible" class="inventory-control-row">
+            <text id="inventory-bound-label" color-field="diff-color" class="inventory-sub-label">Bound Max:</text>
+            <int32-input id="inventory-bound" value-field="bound-value" item-committed="inventory-bound-committed" min="-1" enabled-bind="inventories-can-request" class="inventory-input" />
+          </row>
+          <row id="inventory-item-row" visible-field="item-visible" class="inventory-item-row">
+            <button id="inventory-item-select" bind-field="label" color-field="diff-color" item-action="inventory-navigate" class="inventory-item-name" />
+            <row id="inventory-stack-pill" visible-field="stack-visible" class="inventory-pill"><text id="inventory-stack" bind-field="summary" color-field="accent-color" /></row>
+          </row>
+          <row id="inventory-consume-row" visible-field="consume-visible" class="inventory-control-row">
+            <text id="inventory-consume-label" class="inventory-sub-label">Consume:</text>
+            <int32-input id="inventory-consume-count" value-field="consume-value" item-committed="inventory-consume-committed" min="1" enabled-bind="inventories-can-request" class="inventory-input" />
+            <debug-inspector-action id="inventory-consume" label-field="consume-label" item-action="inventory-consume" enabled-bind="inventories-can-request" tooltip-field="consume-tooltip" disabled-reason-bind="inventories-disabled-reason" class="inventory-action" />
+          </row>
+          <row id="inventory-tags-row" visible-field="tags-visible" class="inventory-control-row">
+            <text id="inventory-tags-label" class="inventory-sub-label">Tag:</text>
+            <text-input id="inventory-tag" value-field="tag-value" item-committed="inventory-tag-committed" enabled-bind="inventories-can-request" class="inventory-tag-input" />
+            <debug-inspector-action id="inventory-tag-add" label-field="add-label" item-action="inventory-add-tag" enabled-bind="inventories-can-request" tooltip-field="tag-tooltip" disabled-reason-bind="inventories-disabled-reason" class="inventory-action" />
+            <debug-inspector-action id="inventory-tag-remove" label-field="remove-label" item-action="inventory-remove-tag" enabled-bind="inventories-can-request" tooltip-field="tag-tooltip" disabled-reason-bind="inventories-disabled-reason" class="inventory-action" />
+          </row>
+          <row id="inventory-diagnostic-row" visible-field="diagnostic-visible" class="inventory-diagnostic-row">
+            <button id="inventory-diagnostic-select" bind-field="label" color-field="accent-color" item-action="inventory-navigate" class="inventory-diagnostic" />
+          </row>
+        </column>
+      </repeat>
+      <text id="inventories-unavailable" visible="inventories-unavailable" class="inventories-unavailable">No inventories</text>
+    </column>
+  </region>
+</ui>

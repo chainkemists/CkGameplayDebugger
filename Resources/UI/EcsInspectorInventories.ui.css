@@ -1,0 +1,20 @@
+.inventories-inspector { min-width: 0; padding: 4px; gap: 3px; }
+.inventory-records { min-width: 0; gap: 2px; }
+.inventory-record { min-width: 0; gap: 2px; }
+.inventory-header { min-width: 0; gap: 8px; vertical-align: center; background-color: #1C232D; padding: 3px 5px; }
+.inventory-title { min-width: 170px; }
+.inventory-summary { min-width: 80px; flex-grow: 1; }
+.inventory-meter-row { min-width: 0; gap: 8px; padding: 1px 8px; vertical-align: center; }
+.inventory-sub-label { min-width: 120px; color: #A8B4C4; }
+.inventory-meter { min-width: 96px; }
+.inventory-meter-value { min-width: 64px; color: #E3E8EF; }
+.inventory-control-row { min-width: 0; gap: 6px; padding: 1px 8px; vertical-align: center; }
+.inventory-input { min-width: 72px; max-width: 120px; }
+.inventory-tag-input { min-width: 140px; flex-grow: 1; }
+.inventory-item-row { min-width: 0; gap: 8px; padding: 2px 16px; vertical-align: center; }
+.inventory-item-name { min-width: 180px; flex-grow: 1; }
+.inventory-pill { padding: 2px 6px; border-radius: 3px; background-color: #202731; }
+.inventory-action { flex-shrink: 0; }
+.inventory-diagnostic-row { min-width: 0; padding: 1px 16px; }
+.inventory-diagnostic { min-width: 0; color: #E3E8EF; }
+.inventories-unavailable { color: #8F99A8; }

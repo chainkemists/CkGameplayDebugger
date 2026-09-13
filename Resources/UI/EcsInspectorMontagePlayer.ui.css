@@ -1,0 +1,14 @@
+.montage-player-inspector { min-width: 0; gap: 3px; }
+.montage-player-live { min-width: 0; gap: 3px; }
+.montage-player-heading { color: #F0B4D8; }
+.montage-player-row { min-width: 0; gap: 8px; vertical-align: center; }
+.montage-player-label { min-width: 126px; color: #B7A6B2; }
+.montage-player-value { min-width: 0; flex-grow: 1; color: #F3E7EE; }
+.montage-player-number { min-width: 0; flex-grow: 1; color: #8BCBFF; }
+.montage-player-status { min-width: 0; flex-grow: 1; }
+.montage-player-meter { min-width: 0; flex-grow: 1; gap: 8px; vertical-align: center; }
+.montage-player-controls { min-width: 0; gap: 3px; }
+.montage-player-native { min-width: 0; flex-grow: 1; }
+.montage-player-actions { min-width: 0; flex-grow: 1; gap: 6px; flex-wrap: wrap; }
+.montage-player-action { min-width: 0; }
+.montage-player-unavailable { color: #B7A6B2; }

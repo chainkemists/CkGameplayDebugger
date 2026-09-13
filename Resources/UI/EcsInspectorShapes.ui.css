@@ -1,0 +1,6 @@
+.shapes-inspector { min-width: 0; gap: 3px; }
+.shapes-section { min-width: 0; gap: 3px; }
+.shapes-heading { color: #E6C766; }
+.shapes-row { min-width: 0; gap: 8px; vertical-align: center; }
+.shapes-label { min-width: 130px; color: #A8B4C4; }
+.shapes-value { min-width: 0; flex-grow: 1; }

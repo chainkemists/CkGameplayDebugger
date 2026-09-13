@@ -1,0 +1,40 @@
+<ui version="1">
+  <region name="main">
+    <column id="byte-attributes-inspector" visible="byte-attributes-available" class="byte-attributes-inspector">
+      <repeat id="byte-attribute-records" bind="byte-attributes" direction="vertical" class="byte-attribute-records">
+        <column id="byte-attribute-record" visible-field="record-visible" class="byte-attribute-record">
+          <row id="byte-attribute-heading" visible-field="attribute-visible" class="byte-attribute-row">
+            <button id="byte-attribute-name" bind-field="name" color-field="attribute-diff-color" item-action="byte-attribute-navigate" class="byte-attribute-name" />
+            <debug-meter id="byte-attribute-meter" fraction-field="fraction" fill-field="meter-color" width="72" height="6" visible-field="meter-visible" class="byte-attribute-meter" />
+            <text id="byte-attribute-summary" bind-field="summary" class="byte-attribute-value" />
+          </row>
+          <row id="byte-attribute-current" visible-field="current-visible" class="byte-attribute-row">
+            <text id="byte-attribute-current-label" color-field="override-diff-color" class="byte-attribute-label">Current override:</text>
+            <int32-input id="byte-attribute-current-input" value-field="current" item-committed="byte-attribute-current-override" min="0" max="255" enabled-bind="byte-attributes-can-request" visible-field="edit-visible" class="byte-attribute-input" />
+            <text id="byte-attribute-current-read" bind-field="current-text" visible-field="read-visible" class="byte-attribute-value" />
+          </row>
+          <row id="byte-attribute-min" visible-field="min-visible" class="byte-attribute-row">
+            <text id="byte-attribute-min-label" color-field="override-diff-color" class="byte-attribute-label">Min override:</text>
+            <int32-input id="byte-attribute-min-input" value-field="min" item-committed="byte-attribute-min-override" min="0" max="255" enabled-bind="byte-attributes-can-request" visible-field="edit-visible" class="byte-attribute-input" />
+            <text id="byte-attribute-min-read" bind-field="min-text" visible-field="read-visible" class="byte-attribute-value" />
+          </row>
+          <row id="byte-attribute-max" visible-field="max-visible" class="byte-attribute-row">
+            <text id="byte-attribute-max-label" color-field="override-diff-color" class="byte-attribute-label">Max override:</text>
+            <int32-input id="byte-attribute-max-input" value-field="max" item-committed="byte-attribute-max-override" min="0" max="255" enabled-bind="byte-attributes-can-request" visible-field="edit-visible" class="byte-attribute-input" />
+            <text id="byte-attribute-max-read" bind-field="max-text" visible-field="read-visible" class="byte-attribute-value" />
+          </row>
+          <row id="byte-attribute-modifier" visible-field="modifier-visible" class="byte-attribute-row">
+            <text id="byte-attribute-modifier-label" bind-field="row-label" color-field="diff-color" class="byte-attribute-label" />
+            <int32-input id="byte-attribute-modifier-input" value-field="modifier-delta" item-committed="byte-attribute-modifier" min="0" max="255" enabled-bind="byte-attributes-can-request" visible-field="edit-visible" class="byte-attribute-input" />
+            <text id="byte-attribute-modifier-read" bind-field="row-value" visible-field="read-visible" class="byte-attribute-value" />
+            <debug-inspector-action id="byte-attribute-remove" label-field="remove-label" item-action="byte-attribute-remove" visible-field="remove-visible" enabled-bind="byte-attributes-can-request" tooltip-field="action-tooltip" disabled-reason-bind="byte-attributes-disabled-reason" class="byte-attribute-action" />
+          </row>
+          <row id="byte-attribute-clear" visible-field="clear-visible" class="byte-attribute-row">
+            <text id="byte-attribute-clear-label" bind-field="row-label" color-field="diff-color" class="byte-attribute-label" />
+            <debug-inspector-action id="byte-attribute-clear-action" label-field="clear-label" item-action="byte-attribute-clear" enabled-bind="byte-attributes-can-request" tooltip-field="action-tooltip" disabled-reason-bind="byte-attributes-disabled-reason" class="byte-attribute-action" />
+          </row>
+        </column>
+      </repeat>
+    </column>
+  </region>
+</ui>

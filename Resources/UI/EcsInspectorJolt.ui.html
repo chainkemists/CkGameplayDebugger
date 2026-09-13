@@ -1,0 +1,74 @@
+<ui version="1">
+  <region name="main">
+    <column id="jolt-inspector" class="jolt-inspector">
+      <column id="jolt-body-section" visible="jolt-body-visible" class="jolt-section">
+        <text id="jolt-body-header" class="jolt-header">Jolt Body</text>
+        <row id="jolt-body-id-row" class="jolt-row">
+          <text id="jolt-body-id-label" color-bind="jolt-body-id-diff-color" class="jolt-label">Body Id:</text>
+          <text id="jolt-body-id-value" bind="jolt-body-id" class="jolt-value jolt-number" />
+        </row>
+        <row id="jolt-motion-type-row" class="jolt-row">
+          <text id="jolt-motion-type-label" color-bind="jolt-motion-type-diff-color" class="jolt-label">Motion Type:</text>
+          <debug-status id="jolt-motion-type-value" label-bind="jolt-motion-type" foreground-bind="jolt-motion-type-foreground" background-bind="jolt-motion-type-background" show-dot="true" class="jolt-status" />
+        </row>
+        <row id="jolt-sleep-state-row" class="jolt-row">
+          <text id="jolt-sleep-state-label" color-bind="jolt-sleep-state-diff-color" class="jolt-label">Sleep State:</text>
+          <debug-status id="jolt-sleep-state-value" label-bind="jolt-sleep-state" foreground-bind="jolt-sleep-state-foreground" background-bind="jolt-sleep-state-background" show-dot="true" class="jolt-status" />
+        </row>
+        <row id="jolt-body-added-row" class="jolt-row">
+          <text id="jolt-body-added-label" color-bind="jolt-body-added-diff-color" class="jolt-label">Body Added:</text>
+          <debug-status id="jolt-body-added-value" label-bind="jolt-body-added" foreground-bind="jolt-body-added-foreground" background-bind="jolt-body-added-background" show-dot="true" class="jolt-status" />
+        </row>
+        <row id="jolt-linear-velocity-row" class="jolt-row">
+          <text id="jolt-linear-velocity-label" color-bind="jolt-linear-velocity-diff-color" class="jolt-label">Linear Velocity:</text>
+          <row id="jolt-linear-velocity-values" class="jolt-axis-values">
+            <text id="jolt-linear-velocity-x" bind="jolt-linear-velocity-x" class="jolt-axis-x" />
+            <text id="jolt-linear-velocity-y" bind="jolt-linear-velocity-y" class="jolt-axis-y" />
+            <text id="jolt-linear-velocity-z" bind="jolt-linear-velocity-z" class="jolt-axis-z" />
+          </row>
+        </row>
+        <row id="jolt-linear-speed-row" class="jolt-row">
+          <text id="jolt-linear-speed-label" color-bind="jolt-linear-speed-diff-color" class="jolt-label">Linear Speed:</text>
+          <row id="jolt-linear-speed-value" class="jolt-sparkline-value">
+            <debug-sparkline id="jolt-linear-speed-sparkline" samples-bind="jolt-linear-speed-series" width="96" height="20" color="#66B8FFFF" fill-opacity="0.18" />
+            <text id="jolt-linear-speed-text" bind="jolt-linear-speed" class="jolt-value jolt-number" />
+          </row>
+        </row>
+      </column>
+      <column id="jolt-character-section" visible="jolt-character-visible" class="jolt-section">
+        <text id="jolt-character-header" class="jolt-header">Jolt Character</text>
+        <row id="jolt-ground-state-row" class="jolt-row">
+          <text id="jolt-ground-state-label" color-bind="jolt-ground-state-diff-color" class="jolt-label">Ground State:</text>
+          <debug-status id="jolt-ground-state-value" label-bind="jolt-ground-state" foreground-bind="jolt-ground-state-foreground" background-bind="jolt-ground-state-background" show-dot="true" class="jolt-status" />
+        </row>
+        <row id="jolt-ground-normal-row" class="jolt-row">
+          <text id="jolt-ground-normal-label" color-bind="jolt-ground-normal-diff-color" class="jolt-label">Ground Normal:</text>
+          <row id="jolt-ground-normal-values" class="jolt-axis-values">
+            <text id="jolt-ground-normal-x" bind="jolt-ground-normal-x" class="jolt-axis-x" />
+            <text id="jolt-ground-normal-y" bind="jolt-ground-normal-y" class="jolt-axis-y" />
+            <text id="jolt-ground-normal-z" bind="jolt-ground-normal-z" class="jolt-axis-z" />
+          </row>
+        </row>
+        <row id="jolt-ground-velocity-row" class="jolt-row">
+          <text id="jolt-ground-velocity-label" color-bind="jolt-ground-velocity-diff-color" class="jolt-label">Ground Velocity:</text>
+          <row id="jolt-ground-velocity-values" class="jolt-axis-values">
+            <text id="jolt-ground-velocity-x" bind="jolt-ground-velocity-x" class="jolt-axis-x" />
+            <text id="jolt-ground-velocity-y" bind="jolt-ground-velocity-y" class="jolt-axis-y" />
+            <text id="jolt-ground-velocity-z" bind="jolt-ground-velocity-z" class="jolt-axis-z" />
+          </row>
+        </row>
+      </column>
+      <column id="jolt-static-actor-section" visible="jolt-static-actor-visible" class="jolt-section">
+        <text id="jolt-static-actor-header" class="jolt-header">Jolt Static Actor</text>
+        <row id="jolt-source-actor-row" class="jolt-row">
+          <text id="jolt-source-actor-label" color-bind="jolt-source-actor-diff-color" class="jolt-label">Source Actor:</text>
+          <text id="jolt-source-actor-value" bind="jolt-source-actor" class="jolt-value" />
+        </row>
+        <row id="jolt-num-bodies-row" class="jolt-row">
+          <text id="jolt-num-bodies-label" color-bind="jolt-num-bodies-diff-color" class="jolt-label">Num Bodies:</text>
+          <debug-status id="jolt-num-bodies-value" label-bind="jolt-num-bodies" foreground-bind="jolt-num-bodies-foreground" background-bind="jolt-num-bodies-background" show-dot="false" class="jolt-count" />
+        </row>
+      </column>
+    </column>
+  </region>
+</ui>

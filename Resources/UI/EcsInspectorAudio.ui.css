@@ -1,0 +1,14 @@
+.audio-inspector { min-width: 0; padding: 4px; gap: 6px; }
+.audio-section { min-width: 0; gap: 3px; }
+.audio-heading { color: #f0f3f7; }
+.audio-row { min-width: 0; gap: 8px; vertical-align: center; }
+.audio-label { min-width: 156px; color: #a8b4c4; }
+.audio-value { min-width: 0; }
+.audio-number { min-width: 0; color: #f1c76b; }
+.audio-handle { min-width: 0; color: #86c5d1; }
+.audio-actions { min-width: 0; gap: 6px; vertical-align: center; }
+.audio-action { min-width: 0; }
+.audio-number-input { min-width: 96px; }
+.audio-toggle { min-width: 0; }
+.audio-track-records { min-width: 0; gap: 3px; }
+.audio-unavailable { color: #7f8b99; }

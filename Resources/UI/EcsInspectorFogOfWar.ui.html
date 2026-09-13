@@ -1,0 +1,17 @@
+<ui version="1">
+  <region name="main">
+    <column id="fog-inspector" class="fog-inspector">
+      <row id="fog-grid-value-row" class="fog-row"><text id="fog-grid-value-label" color-bind="fog-grid-diff-color" class="fog-label">Grid:</text><text id="fog-grid-value" bind="fog-grid" class="fog-value" /></row>
+      <row id="fog-explored-row" class="fog-row"><text id="fog-explored-label" color-bind="fog-explored-diff-color" class="fog-label">Explored:</text><row id="fog-explored-meter-row" class="fog-meter"><debug-meter id="fog-explored-meter" fraction-bind="fog-explored-fraction" fill-bind="fog-explored-fill" width="72" height="6"/><text id="fog-explored-value" bind="fog-explored" class="fog-value" /></row></row>
+      <row id="fog-center-row" class="fog-row"><text id="fog-center-label" color-bind="fog-center-diff-color" class="fog-label">Bounds Center:</text><text id="fog-center-value" bind="fog-center" class="fog-value" /></row>
+      <row id="fog-extents-row" class="fog-row"><text id="fog-extents-label" color-bind="fog-extents-diff-color" class="fog-label">Bounds Half-Extents:</text><text id="fog-extents-value" bind="fog-extents" class="fog-value" /></row>
+      <row id="fog-grid-actions-row" class="fog-row"><text id="fog-grid-actions-label" color-bind="fog-grid-diff-color" class="fog-label">Grid:</text><row id="fog-grid-actions" class="fog-actions"><debug-inspector-action id="fog-reveal-all" label-bind="fog-reveal-all-label" action="fog-reveal-all" enabled-bind="fog-can-request" disabled-reason-bind="fog-disabled-reason"/><debug-inspector-action id="fog-reset" label-bind="fog-reset-label" action="fog-reset" enabled-bind="fog-can-request" disabled-reason-bind="fog-disabled-reason"/></row></row>
+      <row id="fog-location-row" class="fog-row"><text id="fog-location-label" color-bind="fog-location-diff-color" class="fog-label">Reveal Location:</text><native id="fog-reveal-location-native" bind="fog-reveal-location-port" class="fog-native"/></row>
+      <row id="fog-staged-radius-row" class="fog-row"><text id="fog-staged-radius-label" color-bind="fog-staged-radius-diff-color" class="fog-label">Reveal Radius:</text><native id="fog-reveal-radius-native" bind="fog-reveal-radius-port" class="fog-native"/></row>
+      <row id="fog-reveal-row" class="fog-row"><text id="fog-reveal-label" color-bind="fog-reveal-diff-color" class="fog-label">Reveal:</text><debug-inspector-action id="fog-reveal-here" label-bind="fog-reveal-here-label" action="fog-reveal-here" enabled-bind="fog-can-request" disabled-reason-bind="fog-disabled-reason"/></row>
+      <row id="fog-revealers-row" class="fog-row"><text id="fog-revealers-label" color-bind="fog-revealers-diff-color" class="fog-label">Revealers:</text><text id="fog-revealers-value" bind="fog-revealers" class="fog-value" /></row>
+      <row id="fog-params-radius-row" class="fog-row"><text id="fog-params-radius-label" color-bind="fog-params-radius-diff-color" class="fog-label">Reveal Radius:</text><text id="fog-params-radius-value" bind="fog-params-radius" class="fog-value" /></row>
+      <row id="fog-interval-row" class="fog-row"><text id="fog-interval-label" color-bind="fog-interval-diff-color" class="fog-label">Interval:</text><text id="fog-interval-value" bind="fog-interval" class="fog-value" /></row>
+    </column>
+  </region>
+</ui>

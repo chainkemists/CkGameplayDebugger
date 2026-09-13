@@ -1,0 +1,7 @@
+.fog-inspector { padding: 4px; gap: 3px; min-width: 0; }
+.fog-row { gap: 8px; vertical-align: center; min-width: 0; }
+.fog-label { min-width: 132px; color: #b4b9c3; }
+.fog-value { color: #e3e8ef; }
+.fog-native { min-width: 0; }
+.fog-meter { gap: 6px; vertical-align: center; min-width: 0; }
+.fog-actions { gap: 6px; min-width: 0; }

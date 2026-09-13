@@ -1,0 +1,9 @@
+.ui-inspector { min-width: 0; padding: 4px; gap: 4px; }
+.ui-content { min-width: 0; gap: 4px; }
+.ui-heading { min-width: 0; color: #9FB4CF; font-weight: bold; }
+.ui-row { min-width: 0; gap: 8px; vertical-align: center; }
+.ui-label { min-width: 170px; color: #A8B4C4; }
+.ui-pill { min-width: 72px; padding: 2px 7px; border-radius: 3px; background-color: #202731; }
+.ui-pill-text { min-width: 0; }
+.ui-control { min-width: 140px; flex-grow: 1; }
+.ui-muted { min-width: 0; color: #8F99A8; }

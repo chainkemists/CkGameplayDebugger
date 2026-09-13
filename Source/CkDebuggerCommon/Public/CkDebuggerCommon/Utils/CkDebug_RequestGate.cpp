@@ -99,11 +99,18 @@ auto
     if (ck::Is_NOT_Valid(InHandle))
     { return {}; }
 
-    auto* World = UCk_Utils_EntityLifetime_UE::Get_WorldForEntity(InHandle);
+    const FCk_Handle WorldOwner = UCk_Utils_EntityLifetime_UE::Get_EntityInOwnershipChain_If(
+        InHandle,
+        [](const FCk_Handle& Entity)
+        {
+            return Entity.Has<TWeakObjectPtr<UWorld>>()
+                && Entity.Get<TWeakObjectPtr<UWorld>>().IsValid();
+        });
 
-    if (ck::Is_NOT_Valid(World))
+    if (ck::Is_NOT_Valid(WorldOwner))
     { return {}; }
 
+    UWorld* const World = WorldOwner.Get<TWeakObjectPtr<UWorld>>().Get();
     return World->GetNetMode();
 }
 

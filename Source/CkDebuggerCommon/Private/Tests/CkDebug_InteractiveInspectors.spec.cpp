@@ -8,6 +8,8 @@
 
 #include "CkCore/Format/CkFormat.h"
 #include "CkCore/Macros/CkMacros.h"
+#include "CkEcs/EntityLifetime/CkEntityLifetime_Utils.h"
+#include "CkEcs/World/CkEcsWorld.h"
 
 // --------------------------------------------------------------------------------------------------------------------
 // The foundation the interactive inspector rows stand on, tested where it is pure: the edit guard's
@@ -206,6 +208,17 @@ bool FCkDebugInspector_RequestGateTruthTable::RunTest(const FString& Parameters)
 
     TestFalse(TEXT("an invalid handle has no net mode"),
         ck::DebugRequestGate::Get_NetMode(InvalidHandle).IsSet());
+
+    auto WorldlessEcs = ck::FEcsWorld{};
+    const FCk_Handle WorldlessTransient = UCk_Utils_EntityLifetime_UE::Get_TransientEntity(
+        WorldlessEcs.Get_Registry());
+    TestTrue(TEXT("a worldless transient handle remains structurally valid"),
+        ck::IsValid(WorldlessTransient));
+    TestFalse(TEXT("a worldless transient has no net mode without asserting"),
+        ck::DebugRequestGate::Get_NetMode(WorldlessTransient).IsSet());
+    TestFalse(TEXT("a worldless transient fails CosmeticOnly closed"),
+        ck::DebugRequestGate::Evaluate(
+            WorldlessTransient, ECk_DebugRequest_Requirement::CosmeticOnly).IsEnabled);
 
     return true;
 }

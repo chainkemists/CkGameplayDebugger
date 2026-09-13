@@ -1,0 +1,12 @@
+.camera-inspector { min-width: 0; padding: 4px; gap: 4px; }
+.camera-director { min-width: 0; gap: 4px; }
+.camera-heading { color: #f0f3f7; }
+.camera-row { min-width: 0; gap: 8px; vertical-align: center; }
+.camera-label { min-width: 190px; color: #a8b4c4; }
+.camera-number { color: #f1c76b; }
+.camera-math { color: #9fc7ee; }
+.camera-object { color: #b8a1e3; }
+.camera-status { color: #9fcf94; }
+.camera-inputs { gap: 4px; vertical-align: center; }
+.camera-layers { gap: 2px; }
+.camera-unavailable { color: #7f8b99; }

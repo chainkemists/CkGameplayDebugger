@@ -28,6 +28,7 @@ bool FCkDebugOverlay_SelectionSettingsRejectsInvalid_Test::RunTest(const FString
     TestEqual(TEXT("default cone matches the accepted live setting"), Defaults.ConeHalfAngle, 7.0f);
     TestEqual(TEXT("default family interaction matches the accepted live setting"), Defaults.Family,
         ECk_DebugOverlay_SelectionFamily::Toggle);
+    TestTrue(TEXT("selected-entity outlining defaults enabled"), Defaults.OutlineSelected);
 
     auto* Settings = NewObject<UCk_DebugOverlay_SelectionSettings>();
     TestNotNull(TEXT("transient selection settings are constructed"), Settings);
@@ -81,6 +82,7 @@ bool FCkDebugOverlay_SelectionSettingsJsonRoundTrip_Test::RunTest(const FString&
     Config.Labels = ECk_DebugOverlay_SelectionLabels::Shortlist;
     Config.ShowAimCone = false;
     Config.IncludeOccluded = true;
+    Config.OutlineSelected = false;
     Config.DiamondScale = 1.75f;
     TestTrue(TEXT("source accepts round-trip configuration"), Source->TrySet_Config(Config, false));
 
@@ -102,6 +104,15 @@ bool FCkDebugOverlay_SelectionSettingsJsonRoundTrip_Test::RunTest(const FString&
     TestEqual(TEXT("radius round-trips"), Result.SearchRadius, Config.SearchRadius);
     TestEqual(TEXT("labels round-trip"), static_cast<uint8>(Result.Labels), static_cast<uint8>(Config.Labels));
     TestEqual(TEXT("occlusion preference round-trips"), Result.IncludeOccluded, Config.IncludeOccluded);
+    TestEqual(TEXT("outline preference round-trips"), Result.OutlineSelected, Config.OutlineSelected);
+
+    const auto LegacyJson = FString{TEXT("{\"SchemaVersion\":1,\"Name\":\"Legacy\",\"Config\":{\"Hierarchy\":0,\"RootAnchor\":0,\"Scope\":0,\"Targeting\":0,\"ViewBias\":0.9,\"SearchRadius\":10000,\"ConeHalfAngle\":7,\"Order\":0,\"Stability\":0,\"Family\":1,\"Labels\":0,\"ShowAimCone\":true,\"IncludeOccluded\":false,\"DiamondScale\":1}}")};
+    FName LegacyName;
+    TestTrue(TEXT("schema-one JSON without the new field remains importable"),
+        Target->TryImport_NamedPresetJson(LegacyJson, LegacyName, false));
+    TestTrue(TEXT("legacy preset applies"), Target->TryApply_NamedPreset(LegacyName, false));
+    TestTrue(TEXT("legacy preset receives the new enabled default"),
+        Target->Get_Config().OutlineSelected);
     return true;
 }
 

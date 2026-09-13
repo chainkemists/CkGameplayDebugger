@@ -94,6 +94,7 @@ namespace ck_debugoverlay_selection_settings
             InLeft.Order == InRight.Order && InLeft.Stability == InRight.Stability &&
             InLeft.Family == InRight.Family && InLeft.Labels == InRight.Labels &&
             InLeft.ShowAimCone == InRight.ShowAimCone && InLeft.IncludeOccluded == InRight.IncludeOccluded &&
+            InLeft.OutlineSelected == InRight.OutlineSelected &&
             FMath::IsNearlyEqual(InLeft.DiamondScale, InRight.DiamondScale);
     }
 
@@ -112,6 +113,7 @@ namespace ck_debugoverlay_selection_settings
         InObject->SetNumberField(TEXT("Labels"), static_cast<uint8>(InConfig.Labels));
         InObject->SetBoolField(TEXT("ShowAimCone"), InConfig.ShowAimCone);
         InObject->SetBoolField(TEXT("IncludeOccluded"), InConfig.IncludeOccluded);
+        InObject->SetBoolField(TEXT("OutlineSelected"), InConfig.OutlineSelected);
         InObject->SetNumberField(TEXT("DiamondScale"), InConfig.DiamondScale);
     }
 
@@ -147,6 +149,7 @@ namespace ck_debugoverlay_selection_settings
         if (NOT TryGet_Enum(InObject, TEXT("Labels"), EnumValue)) { OutError = TEXT("Config.Labels is required."); return false; } OutConfig.Labels = static_cast<ECk_DebugOverlay_SelectionLabels>(EnumValue);
         if (NOT InObject->TryGetBoolField(TEXT("ShowAimCone"), BoolValue)) { OutError = TEXT("Config.ShowAimCone is required."); return false; } OutConfig.ShowAimCone = BoolValue;
         if (NOT InObject->TryGetBoolField(TEXT("IncludeOccluded"), BoolValue)) { OutError = TEXT("Config.IncludeOccluded is required."); return false; } OutConfig.IncludeOccluded = BoolValue;
+        if (InObject->TryGetBoolField(TEXT("OutlineSelected"), BoolValue)) { OutConfig.OutlineSelected = BoolValue; }
         if (NOT TryGet_Number(InObject, TEXT("DiamondScale"), Value)) { OutError = TEXT("Config.DiamondScale is required."); return false; } OutConfig.DiamondScale = static_cast<float>(Value);
         return Is_Valid(OutConfig, OutError);
     }

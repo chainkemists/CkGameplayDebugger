@@ -15,7 +15,7 @@ public class CkEntityDebugOverlay : CkModuleRules
             "Core", "CoreUObject", "Engine", "DeveloperSettings",
             "GameplayTags", "InputCore", "Json",
             "Slate", "SlateCore", "UMG", "ApplicationCore",
-            "CkCore", "CkEcs", "CkEcsExt", "CkEntityExtension", "CkLog", "CkSettings", "CkDebuggerCommon",
+            "CkCore", "CkEcs", "CkEcsExt", "CkEntityExtension", "CkLog", "CkSettings", "CkDebuggerCommon", "CkUsf",
             "CkEditorTools",
             // AI vertical-slice feature deps (more added as providers are ported):
             "CkStateMachine", "CkGoap", "CkPhysics", "CkJolt", "CkAnimation", "CkRecord", "CkCrowd",

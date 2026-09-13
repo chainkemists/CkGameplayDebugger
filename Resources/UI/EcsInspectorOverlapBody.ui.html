@@ -1,0 +1,20 @@
+<ui version="1">
+  <region name="main">
+    <column id="overlap-body-inspector" class="overlap-body-inspector">
+      <column id="overlap-marker-section" visible="overlap-has-marker" class="overlap-section">
+        <text id="overlap-marker-heading" class="overlap-heading">Marker</text>
+        <row id="overlap-marker-enabled-row" class="overlap-row"><text id="overlap-marker-enabled-label" color-bind="overlap-enabled-diff-color" class="overlap-label">Enabled:</text><debug-switch id="overlap-marker-enabled-switch" checked-bind="overlap-marker-enabled" changed="overlap-marker-enabled-changed" enabled-bind="overlap-marker-can-toggle" class="overlap-switch" /></row>
+        <row id="overlap-marker-state-row" class="overlap-row"><text id="overlap-marker-state-label" color-bind="overlap-state-diff-color" class="overlap-label">State:</text><debug-status id="overlap-marker-state" label-bind="overlap-marker-state" foreground-bind="overlap-marker-state-foreground" background-bind="overlap-marker-state-background" show-dot="true" class="overlap-status" /></row>
+        <row id="overlap-marker-shape-row" class="overlap-row"><text id="overlap-marker-shape-label" color-bind="overlap-shape-diff-color" class="overlap-label">Shape:</text><debug-status id="overlap-marker-shape" label-bind="overlap-marker-shape" foreground-bind="overlap-marker-shape-foreground" background-bind="overlap-marker-shape-background" show-dot="true" class="overlap-status" /></row>
+      </column>
+      <column id="overlap-sensor-section" visible="overlap-has-sensor" class="overlap-section">
+        <text id="overlap-sensor-heading" class="overlap-heading">Sensor</text>
+        <row id="overlap-sensor-enabled-row" class="overlap-row"><text id="overlap-sensor-enabled-label" color-bind="overlap-enabled-diff-color" class="overlap-label">Enabled:</text><debug-switch id="overlap-sensor-enabled-switch" checked-bind="overlap-sensor-enabled" changed="overlap-sensor-enabled-changed" enabled-bind="overlap-sensor-can-toggle" class="overlap-switch" /></row>
+        <row id="overlap-sensor-state-row" class="overlap-row"><text id="overlap-sensor-state-label" color-bind="overlap-state-diff-color" class="overlap-label">State:</text><debug-status id="overlap-sensor-state" label-bind="overlap-sensor-state" foreground-bind="overlap-sensor-state-foreground" background-bind="overlap-sensor-state-background" show-dot="true" class="overlap-status" /></row>
+        <row id="overlap-sensor-shape-row" class="overlap-row"><text id="overlap-sensor-shape-label" color-bind="overlap-shape-diff-color" class="overlap-label">Shape:</text><debug-status id="overlap-sensor-shape" label-bind="overlap-sensor-shape" foreground-bind="overlap-sensor-shape-foreground" background-bind="overlap-sensor-shape-background" show-dot="true" class="overlap-status" /></row>
+        <row id="overlap-marker-count-row" class="overlap-row"><text id="overlap-marker-count-label" color-bind="overlap-marker-count-diff-color" class="overlap-label">Marker Overlaps:</text><debug-status id="overlap-marker-count" label-bind="overlap-marker-count" foreground-bind="overlap-count-foreground" background-bind="overlap-count-background" show-dot="false" class="overlap-count" /></row>
+        <row id="overlap-non-marker-count-row" class="overlap-row"><text id="overlap-non-marker-count-label" color-bind="overlap-non-marker-count-diff-color" class="overlap-label">Non-Marker Overlaps:</text><debug-status id="overlap-non-marker-count" label-bind="overlap-non-marker-count" foreground-bind="overlap-count-foreground" background-bind="overlap-count-background" show-dot="false" class="overlap-count" /></row>
+      </column>
+    </column>
+  </region>
+</ui>

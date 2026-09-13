@@ -1,0 +1,8 @@
+.overlap-body-inspector { min-width: 0; gap: 6px; }
+.overlap-section { min-width: 0; gap: 3px; }
+.overlap-heading { color: #DCE5F2; }
+.overlap-row { min-width: 0; gap: 8px; vertical-align: center; }
+.overlap-label { min-width: 145px; color: #A8B4C4; }
+.overlap-switch { min-width: 30px; }
+.overlap-status { min-width: 0; flex-grow: 1; }
+.overlap-count { min-width: 0; flex-grow: 1; }

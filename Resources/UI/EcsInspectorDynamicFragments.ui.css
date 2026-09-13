@@ -1,0 +1,10 @@
+.dynamic-fragment-inspector { min-width: 0; padding: 4px; gap: 3px; }
+.dynamic-fragment-properties { min-width: 0; gap: 3px; }
+.dynamic-fragment-property-row { min-width: 0; gap: 8px; vertical-align: center; }
+.dynamic-fragment-property-name { min-width: 150px; color: #a8b4c4; }
+.dynamic-fragment-property-value { min-width: 0; color: #e3e8ef; }
+.dynamic-fragment-handle { min-width: 0; }
+.dynamic-fragment-unavailable { color: #8f99a8; }
+.dynamic-fragment-actions { min-width: 0; gap: 6px; vertical-align: center; }
+.dynamic-fragment-action-wrap { min-width: 0; }
+.dynamic-fragment-action { min-width: 92px; }

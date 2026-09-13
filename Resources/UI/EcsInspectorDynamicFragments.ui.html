@@ -1,0 +1,24 @@
+<ui version="1">
+  <region name="main">
+    <column id="dynamic-fragment-inspector" class="dynamic-fragment-inspector">
+      <repeat id="dynamic-fragment-properties" bind="dynamic-fragment-properties" direction="vertical" class="dynamic-fragment-properties">
+        <row id="dynamic-fragment-property-row" class="dynamic-fragment-property-row">
+          <text id="dynamic-fragment-property-name" bind-field="property-name" color-field="diff-color" tooltip-field="property-name" class="dynamic-fragment-property-name" />
+          <text id="dynamic-fragment-property-value" bind-field="property-value" color-field="property-color" tooltip-field="property-value" visible-field="is-value" class="dynamic-fragment-property-value" />
+          <row id="dynamic-fragment-handle-valid" visible-field="handle-valid" class="dynamic-fragment-handle">
+            <debug-entity-ref id="dynamic-fragment-handle-ref" entity-id-field="handle-id" name-field="handle-name" item-action="dynamic-fragment-navigate" show-name="true" />
+          </row>
+          <text id="dynamic-fragment-handle-invalid" bind-field="property-value" color-field="property-color" tooltip-field="handle-tooltip" visible-field="handle-invalid" class="dynamic-fragment-property-value" />
+        </row>
+      </repeat>
+      <text id="dynamic-fragment-unavailable" visible="dynamic-fragment-unavailable" class="dynamic-fragment-unavailable">Dynamic fragment unavailable.</text>
+      <row id="dynamic-fragment-actions" class="dynamic-fragment-actions">
+        <text id="dynamic-fragment-actions-label" color-bind="dynamic-fragment-actions-diff-color" class="dynamic-fragment-property-name">Fragment:</text>
+        <debug-inspector-action id="dynamic-fragment-remove" label-bind="dynamic-fragment-remove-label" action="dynamic-fragment-remove" enabled-bind="dynamic-fragment-can-remove" tooltip-bind="dynamic-fragment-remove-tooltip" disabled-reason-bind="dynamic-fragment-remove-disabled-reason" class="dynamic-fragment-action" />
+        <row id="dynamic-fragment-mark-wrap" visible="dynamic-fragment-replicated" class="dynamic-fragment-action-wrap">
+          <debug-inspector-action id="dynamic-fragment-mark-rep-dirty" label-bind="dynamic-fragment-mark-label" action="dynamic-fragment-mark-rep-dirty" enabled-bind="dynamic-fragment-can-mark-rep-dirty" tooltip-bind="dynamic-fragment-mark-tooltip" disabled-reason-bind="dynamic-fragment-mark-disabled-reason" class="dynamic-fragment-action" />
+        </row>
+      </row>
+    </column>
+  </region>
+</ui>

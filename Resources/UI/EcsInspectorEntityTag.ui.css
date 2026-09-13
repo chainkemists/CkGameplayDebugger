@@ -1,0 +1,12 @@
+.entity-tag-inspector { min-width: 0; gap: 3px; }
+.entity-tag-row { min-width: 0; gap: 8px; vertical-align: center; }
+.entity-tag-label { min-width: 150px; color: #A8B4C4; }
+.entity-tag-count { min-width: 0; flex-grow: 1; }
+.entity-tag-root-count-value { min-width: 0; flex-grow: 1; color: #99E699; }
+.entity-tag-tags-row { vertical-align: top; }
+.entity-tag-chips { min-width: 0; flex-grow: 1; gap: 4px; }
+.entity-tag-chip { padding: 2px 7px; background-color: #26303D; border-color: #465367; border-width: 1px; border-radius: 6px; }
+.entity-tag-chip-text { color: #DCE5F2; }
+.entity-tag-native-row { min-width: 0; }
+.entity-tag-remove-records { min-width: 0; gap: 3px; }
+.entity-tag-remove { min-width: 92px; }

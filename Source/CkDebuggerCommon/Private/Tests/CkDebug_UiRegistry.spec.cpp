@@ -78,6 +78,15 @@ namespace ck_debug_ui_registry_tests
         { FindWidgets(ConstCastSharedRef<SWidget>(Children->GetChildAt(Index)), InType, OutWidgets); }
     }
 
+    auto GetToolTipText(const TSharedRef<SWidget>& InWidget) -> FString
+    {
+        const TSharedPtr<IToolTip> Tooltip = InWidget->GetToolTip();
+        if (!Tooltip.IsValid()) { return {}; }
+        const TSharedRef<SWidget> Content = Tooltip->GetContentWidget();
+        Content->SlatePrepass();
+        return Content->GetAccessibleText().ToString();
+    }
+
     auto RegionContent(const TSharedRef<FCkUiView>& InView) -> TSharedRef<SWidget>
     {
         const TSharedRef<SWidget> Region = InView->GetRegion(TEXT("main"));
@@ -404,12 +413,14 @@ auto FCkDebug_UiRegistry_DebugSwitch::RunTest(const FString&) -> bool
     bool Alternate = false;
     bool Enabled = true;
     bool CanDispatch = true;
+    FString Tooltip = TEXT("Initial switch tooltip");
     int32 FirstChangedCount = 0;
     int32 SecondChangedCount = 0;
     auto Data = FCkUiView::FDataBindings{};
     Data.Visibility.Add(TEXT("checked"), TAttribute<bool>::CreateLambda([&Checked]() { return Checked; }));
     Data.Visibility.Add(TEXT("alternate"), TAttribute<bool>::CreateLambda([&Alternate]() { return Alternate; }));
     Data.Visibility.Add(TEXT("enabled"), TAttribute<bool>::CreateLambda([&Enabled]() { return Enabled; }));
+    Data.Text.Add(TEXT("tooltip"), TAttribute<FText>::CreateLambda([&Tooltip]() { return FText::FromString(Tooltip); }));
     Data.CanDispatchEvents = TAttribute<bool>::CreateLambda([&CanDispatch]() { return CanDispatch; });
     Data.BoolChanged.Add(TEXT("changed"), FCkUiOnBoolChanged::CreateLambda([&Checked, &FirstChangedCount](const bool InChecked)
     { Checked = InChecked; ++FirstChangedCount; }));
@@ -418,8 +429,8 @@ auto FCkDebug_UiRegistry_DebugSwitch::RunTest(const FString&) -> bool
 
     TSharedPtr<FCkUiView> View = FCkUiView::Create({}, {}, {}, FSlateFontInfo{}, MoveTemp(Data), Registry);
     const TSharedRef<SWidget> Region = View->GetRegion(TEXT("main"));
-    const FString Source = TEXT("<ui version=\"1\"><region name=\"main\"><debug-switch id=\"retained-switch\" checked-bind=\"checked\" changed=\"changed\"/></region></ui>");
-    const FString SourceWithEnabled = TEXT("<ui version=\"1\"><region name=\"main\"><debug-switch id=\"retained-switch\" checked-bind=\"checked\" changed=\"changed\" enabled-bind=\"enabled\"/></region></ui>");
+    const FString Source = TEXT("<ui version=\"1\"><region name=\"main\"><debug-switch id=\"retained-switch\" checked-bind=\"checked\" changed=\"changed\" tooltip-bind=\"tooltip\"/></region></ui>");
+    const FString SourceWithEnabled = TEXT("<ui version=\"1\"><region name=\"main\"><debug-switch id=\"retained-switch\" checked-bind=\"checked\" changed=\"changed\" enabled-bind=\"enabled\" tooltip-bind=\"tooltip\"/></region></ui>");
     if (!TestTrue(TEXT("Authored debug switch loads"), View->TryReload(Source, TEXT(""), TEXT("DebugSwitch")).Succeeded)) { return false; }
 
     FSlateApplication& Slate = FSlateApplication::Get();
@@ -430,6 +441,11 @@ auto FCkDebug_UiRegistry_DebugSwitch::RunTest(const FString&) -> bool
     const TSharedPtr<SCkDebug_Switch> Switch = StaticCastSharedPtr<SCkDebug_Switch>(FindWidget(Region, TEXT("SCkDebug_Switch")));
     if (!TestTrue(TEXT("Debug switch mounts the existing switch widget"), Switch.IsValid())) { return false; }
     TestTrue(TEXT("Omitted enabled binding defaults the switch to enabled"), Switch->IsEnabled());
+    TestEqual(TEXT("Authored debug switch resolves its tooltip binding"),
+        GetToolTipText(Switch.ToSharedRef()), Tooltip);
+    Tooltip = TEXT("Updated switch tooltip");
+    TestEqual(TEXT("Retained debug switch tooltip remains live"),
+        GetToolTipText(Switch.ToSharedRef()), Tooltip);
 
     const FGeometry Geometry = FGeometry::MakeRoot(FVector2D{30.0f, 17.0f}, FSlateLayoutTransform{});
     const TSet<FKey> PressedButtons{EKeys::LeftMouseButton};

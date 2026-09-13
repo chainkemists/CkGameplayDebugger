@@ -121,6 +121,9 @@ struct CKENTITYDEBUGOVERLAY_API FCk_DebugOverlay_SelectionConfig
     bool IncludeOccluded = false;
 
     UPROPERTY(Config)
+    bool OutlineSelected = true;
+
+    UPROPERTY(Config)
     float DiamondScale = 1.0f;
 };
 

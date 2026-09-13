@@ -82,6 +82,8 @@ private:
     auto Get_SelectionStatus(bool InCompact = false) const -> FText;
     auto Update_SelectionHud() -> void;
     auto TryGet_SelectionPosition(const FSelectionEntry& InEntry) const -> TOptional<FVector>;
+    auto Reconcile_SelectionOutline(const FCk_Handle& InSource) -> void;
+    auto Release_SelectionOutline() -> void;
 
     TWeakObjectPtr<UWorld> _SelectionWorld;
     TArray<ck_debugoverlay::selection_session::FNode> _SelectionNodes;
@@ -92,6 +94,8 @@ private:
     FCk_Handle _SelectionAimTarget;
     FCk_Handle _SelectionCycleTarget;
     FCk_Handle _SelectionLockedEntity;
+    FCk_Handle _SelectionOutlineTarget;
+    FCk_Handle _SelectionOutlineSource;
     ck_debugoverlay::selection_session::FViewpoint _SelectionView;
     ck::DebugViewportView::FProjection _SelectionProjection;
     bool _SelectionProjectionValid = false;

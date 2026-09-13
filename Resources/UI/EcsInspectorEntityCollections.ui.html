@@ -1,0 +1,20 @@
+<ui version="1">
+  <region name="main">
+    <column id="entity-collections-inspector" class="entity-collections-inspector">
+      <repeat id="entity-collections-records" bind="entity-collections" direction="vertical" visible="entity-collections-available" class="entity-collections-records">
+        <column id="entity-collections-record" visible-field="record-visible" class="entity-collections-record">
+          <row id="entity-collections-header" visible-field="collection-visible" class="entity-collections-row">
+            <text id="entity-collections-name" bind-field="name" color-field="diff-color" class="entity-collections-label" />
+            <button id="entity-collections-select" bind-field="count-text" tooltip-field="select-tooltip" item-action="entity-collections-select" class="entity-collections-count" />
+          </row>
+          <repeat id="entity-collections-members" child-bind="members" direction="vertical" class="entity-collections-members">
+            <row id="entity-collections-member-row" visible-field="remove-visible" class="entity-collections-row entity-collections-member-row">
+              <text id="entity-collections-member-label" bind-field="label" color-field="diff-color" class="entity-collections-label" />
+              <debug-inspector-action id="entity-collections-remove" label-field="remove-label" item-action="entity-collections-remove-member" enabled-bind="entity-collections-available" tooltip-field="remove-tooltip" disabled-reason-bind="entity-collections-disabled-reason" class="entity-collections-remove" />
+            </row>
+          </repeat>
+        </column>
+      </repeat>
+    </column>
+  </region>
+</ui>

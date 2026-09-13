@@ -1,0 +1,9 @@
+.entity-collections-inspector { min-width: 0; gap: 3px; }
+.entity-collections-records { min-width: 0; gap: 3px; }
+.entity-collections-record { min-width: 0; gap: 3px; }
+.entity-collections-row { min-width: 0; gap: 8px; vertical-align: center; }
+.entity-collections-label { min-width: 150px; color: #A8B4C4; }
+.entity-collections-count { min-width: 0; -ck-button-padding-x: 7px; -ck-button-padding-y: 2px; -ck-button-color: #99E699; -ck-button-background: #1C3528; -ck-button-border-color: #4D9A66; -ck-button-outline-width: 1px; -ck-button-radius: 6px; }
+.entity-collections-members { min-width: 0; gap: 3px; }
+.entity-collections-member-row { min-width: 0; }
+.entity-collections-remove { min-width: 92px; }

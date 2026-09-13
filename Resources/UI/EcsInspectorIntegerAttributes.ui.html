@@ -1,0 +1,49 @@
+<ui version="1">
+  <region name="main">
+    <column id="integer-attributes-inspector" visible="integer-attributes-available" class="integer-attributes-inspector">
+      <repeat id="integer-attribute-records" bind="integer-attributes" direction="vertical" class="integer-attribute-records">
+        <column id="integer-attribute-record" visible-field="record-visible" class="integer-attribute-record">
+          <row id="integer-attribute-heading" visible-field="attribute-visible" class="integer-attribute-row">
+            <button id="integer-attribute-name" bind-field="name" color-field="attribute-diff-color" item-action="integer-attribute-navigate" class="integer-attribute-name" />
+            <debug-meter id="integer-attribute-meter" fraction-field="fraction" fill-field="meter-color" width="72" height="6" visible-field="meter-visible" class="integer-attribute-meter" />
+            <text id="integer-attribute-summary" bind-field="summary" class="integer-attribute-value" />
+          </row>
+          <row id="integer-attribute-current" visible-field="current-visible" class="integer-attribute-row">
+            <text id="integer-attribute-current-label" color-field="override-diff-color" class="integer-attribute-label">Current override:</text>
+            <int32-input id="integer-attribute-current-input" value-field="current" item-committed="integer-attribute-current-override" enabled-bind="integer-attributes-can-request" visible-field="edit-visible" class="integer-attribute-input" />
+            <text id="integer-attribute-current-read" bind-field="current-text" visible-field="read-visible" class="integer-attribute-value" />
+          </row>
+          <row id="integer-attribute-min" visible-field="min-visible" class="integer-attribute-row">
+            <text id="integer-attribute-min-label" color-field="override-diff-color" class="integer-attribute-label">Min override:</text>
+            <int32-input id="integer-attribute-min-input" value-field="min" item-committed="integer-attribute-min-override" enabled-bind="integer-attributes-can-request" visible-field="edit-visible" class="integer-attribute-input" />
+            <text id="integer-attribute-min-read" bind-field="min-text" visible-field="read-visible" class="integer-attribute-value" />
+          </row>
+          <row id="integer-attribute-max" visible-field="max-visible" class="integer-attribute-row">
+            <text id="integer-attribute-max-label" color-field="override-diff-color" class="integer-attribute-label">Max override:</text>
+            <int32-input id="integer-attribute-max-input" value-field="max" item-committed="integer-attribute-max-override" enabled-bind="integer-attributes-can-request" visible-field="edit-visible" class="integer-attribute-input" />
+            <text id="integer-attribute-max-read" bind-field="max-text" visible-field="read-visible" class="integer-attribute-value" />
+          </row>
+          <row id="integer-attribute-refill" visible-field="refill-status-visible" class="integer-attribute-row">
+            <text id="integer-attribute-refill-label" bind-field="refill-label" color-field="refill-status-diff-color" class="integer-attribute-label" />
+            <debug-status id="integer-attribute-refill-state" label-field="refill-state" foreground-field="refill-foreground" background-field="refill-background" show-dot="true" class="integer-attribute-refill-status" />
+          </row>
+          <row id="integer-attribute-refill-control" visible-field="refill-control-visible" class="integer-attribute-row">
+            <text id="integer-attribute-refill-control-label" bind-field="refill-control-label" color-field="refill-control-diff-color" class="integer-attribute-label" />
+            <debug-inspector-action id="integer-attribute-refill-pause" label-field="pause-label" item-action="integer-attribute-refill-pause" visible-field="refill-actions-visible" enabled-bind="integer-attributes-can-request" tooltip-field="pause-tooltip" disabled-reason-bind="integer-attributes-disabled-reason" class="integer-attribute-action" />
+            <debug-inspector-action id="integer-attribute-refill-resume" label-field="resume-label" item-action="integer-attribute-refill-resume" visible-field="refill-actions-visible" enabled-bind="integer-attributes-can-request" tooltip-field="resume-tooltip" disabled-reason-bind="integer-attributes-disabled-reason" class="integer-attribute-action" />
+          </row>
+          <row id="integer-attribute-modifier" visible-field="modifier-visible" class="integer-attribute-row">
+            <text id="integer-attribute-modifier-label" bind-field="row-label" color-field="diff-color" class="integer-attribute-label" />
+            <int32-input id="integer-attribute-modifier-input" value-field="modifier-delta" item-committed="integer-attribute-modifier" enabled-bind="integer-attributes-can-request" visible-field="edit-visible" class="integer-attribute-input" />
+            <text id="integer-attribute-modifier-read" bind-field="row-value" visible-field="read-visible" class="integer-attribute-value" />
+            <debug-inspector-action id="integer-attribute-remove" label-field="remove-label" item-action="integer-attribute-remove" visible-field="remove-visible" enabled-bind="integer-attributes-can-request" tooltip-field="action-tooltip" disabled-reason-bind="integer-attributes-disabled-reason" class="integer-attribute-action" />
+          </row>
+          <row id="integer-attribute-clear" visible-field="clear-visible" class="integer-attribute-row">
+            <text id="integer-attribute-clear-label" bind-field="row-label" color-field="diff-color" class="integer-attribute-label" />
+            <debug-inspector-action id="integer-attribute-clear-action" label-field="clear-label" item-action="integer-attribute-clear" enabled-bind="integer-attributes-can-request" tooltip-field="action-tooltip" disabled-reason-bind="integer-attributes-disabled-reason" class="integer-attribute-action" />
+          </row>
+        </column>
+      </repeat>
+    </column>
+  </region>
+</ui>

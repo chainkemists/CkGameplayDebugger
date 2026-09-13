@@ -53,10 +53,10 @@ namespace ck_inspector_interaction_resolver
             : FString{};
     }
 
-    auto TextField(const FString& InValue) -> FCkUiFieldValue
+    auto MakeInteractionResolverTextField(const FString& InValue) -> FCkUiFieldValue
     { return FCkUiFieldValue{.Kind = ECkUiFieldKind::Text, .Text = FText::FromString(InValue)}; }
 
-    auto BoolField(const bool InValue) -> FCkUiFieldValue
+    auto MakeInteractionResolverBoolField(const bool InValue) -> FCkUiFieldValue
     { return FCkUiFieldValue{.Kind = ECkUiFieldKind::Bool, .Bool = InValue}; }
 
     auto AddTargetRecord(const FString& InKey, const FCk_Handle& InTarget, TArray<FCkUiRecordData>& OutRecords) -> void
@@ -65,8 +65,10 @@ namespace ck_inspector_interaction_resolver
         { return; }
         auto Record = FCkUiRecordData{};
         Record.Key = InKey;
-        Record.Fields.Add(TEXT("target-id"), TextField(ck::Format_UE(TEXT("{}"), InTarget.Get_Entity())));
-        Record.Fields.Add(TEXT("target-name"), TextField(UCk_Utils_Handle_UE::Get_DebugName(InTarget).ToString()));
+        Record.Fields.Add(
+            TEXT("target-id"), MakeInteractionResolverTextField(ck::Format_UE(TEXT("{}"), InTarget.Get_Entity())));
+        Record.Fields.Add(TEXT("target-name"),
+            MakeInteractionResolverTextField(UCk_Utils_Handle_UE::Get_DebugName(InTarget).ToString()));
         OutRecords.Add(MoveTemp(Record));
     }
 
@@ -229,14 +231,18 @@ auto SCkInspector_InteractionResolverAuthored::Refresh_Collections() -> bool
             auto Record = FCkUiRecordData{};
             Record.Key = MappingKey;
             Record.Fields = {
-                {TEXT("intent"), TextField(IntentName)},
-                    {TEXT("distance-sort"), TextField(ck::Format_UE(TEXT("{}"), Mapping.Get_DistanceSorting()))},
-                    {TEXT("max-concurrent"), TextField(ck::Format_UE(TEXT("{}"), Mapping.Get_MaxConcurrentInteractions()))},
-                    {TEXT("channels-empty"), BoolField(Mapping.Get_Channels().IsEmpty())},
-                {TEXT("start-label"), TextField(TEXT("Start"))},
-                {TEXT("start-tooltip"), TextField(ck::Format_UE(TEXT("Request_StartIntent({})"), IntentName))},
-                {TEXT("stop-label"), TextField(TEXT("Stop"))},
-                {TEXT("stop-tooltip"), TextField(ck::Format_UE(TEXT("Request_StopIntent({})"), IntentName))}};
+                {TEXT("intent"), MakeInteractionResolverTextField(IntentName)},
+                    {TEXT("distance-sort"), MakeInteractionResolverTextField(
+                        ck::Format_UE(TEXT("{}"), Mapping.Get_DistanceSorting()))},
+                    {TEXT("max-concurrent"), MakeInteractionResolverTextField(
+                        ck::Format_UE(TEXT("{}"), Mapping.Get_MaxConcurrentInteractions()))},
+                    {TEXT("channels-empty"), MakeInteractionResolverBoolField(Mapping.Get_Channels().IsEmpty())},
+                {TEXT("start-label"), MakeInteractionResolverTextField(TEXT("Start"))},
+                {TEXT("start-tooltip"), MakeInteractionResolverTextField(
+                    ck::Format_UE(TEXT("Request_StartIntent({})"), IntentName))},
+                {TEXT("stop-label"), MakeInteractionResolverTextField(TEXT("Stop"))},
+                {TEXT("stop-tooltip"), MakeInteractionResolverTextField(
+                    ck::Format_UE(TEXT("Request_StopIntent({})"), IntentName))}};
 
             auto ChannelRecords = TArray<FCkUiRecordData>{};
             const auto& Channels = Mapping.Get_Channels();
@@ -249,15 +255,15 @@ auto SCkInspector_InteractionResolverAuthored::Refresh_Collections() -> bool
                 auto ChannelRecord = FCkUiRecordData{};
                 ChannelRecord.Key = GetChannelKey(MappingKey, ChannelIndex, Channel);
                 ChannelRecord.Fields = {
-                    {TEXT("channel"), TextField(ChannelName)},
-                    {TEXT("clear-visible"), BoolField(Channel.IsValid())},
-                    {TEXT("clear-label"), TextField(ChannelName)},
-                    {TEXT("clear-tooltip"), TextField(ck::Format_UE(
+                    {TEXT("channel"), MakeInteractionResolverTextField(ChannelName)},
+                    {TEXT("clear-visible"), MakeInteractionResolverBoolField(Channel.IsValid())},
+                    {TEXT("clear-label"), MakeInteractionResolverTextField(ChannelName)},
+                    {TEXT("clear-tooltip"), MakeInteractionResolverTextField(ck::Format_UE(
                         TEXT("Request_RemoveAllTargetsByChannel({}) — drops every target this resolver holds on that channel."),
                         ChannelName))}};
                 ChannelRecords.Add(MoveTemp(ChannelRecord));
             }
-            Record.Fields.Add(TEXT("has-clear-actions"), BoolField(HasClearActions));
+            Record.Fields.Add(TEXT("has-clear-actions"), MakeInteractionResolverBoolField(HasClearActions));
             Record.Children.Add(TEXT("channels"), MoveTemp(ChannelRecords));
 
             auto BestRecords = TArray<FCkUiRecordData>{};
@@ -271,7 +277,7 @@ auto SCkInspector_InteractionResolverAuthored::Refresh_Collections() -> bool
                     if (NOT Key.IsEmpty()) { BestByKey.Add(Key, Target); }
                 }
             }
-            Record.Fields.Add(TEXT("best-empty"), BoolField(BestRecords.IsEmpty()));
+            Record.Fields.Add(TEXT("best-empty"), MakeInteractionResolverBoolField(BestRecords.IsEmpty()));
             Record.Children.Add(TEXT("best-targets"), MoveTemp(BestRecords));
             MappingRecords.Add(MoveTemp(Record));
         }

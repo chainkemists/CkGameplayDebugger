@@ -1,10 +1,70 @@
 #pragma once
 
+#include "CkAttribute/FloatAttribute/CkFloatAttribute_Fragment_Data.h"
 #include "CkEcsDebugger/Inspectors/CkDebuggerInspector_Base.h"
 
-class FCkInspector_FloatAttributes : public ICkDebuggerComponentInspector_Base
+#include "Widgets/SCompoundWidget.h"
+
+class FCkUiCollection;
+class FCkUiView;
+
+class CKECSDEBUGGER_API SCkInspector_FloatAttributesAuthored final : public SCompoundWidget
 {
 public:
+    SLATE_BEGIN_ARGS(SCkInspector_FloatAttributesAuthored) {}
+        SLATE_ARGUMENT(FCk_Handle, Entity)
+        SLATE_ARGUMENT(FString, Filter)
+        SLATE_ARGUMENT(TSet<FString>, DiffLabels)
+        SLATE_ARGUMENT(TSharedPtr<FCkDebuggerModel_EntitySelection>, SelectionModel)
+    SLATE_END_ARGS()
+
+    auto Construct(const FArguments& InArgs) -> void;
+    virtual ~SCkInspector_FloatAttributesAuthored() override;
+    virtual auto Tick(const FGeometry& InAllottedGeometry, double InCurrentTime, float InDeltaTime) -> void override;
+    auto Release() -> void;
+    auto Get_View() const -> TSharedPtr<FCkUiView> { return _View; }
+    auto Get_RecordsCollection() const -> TSharedPtr<FCkUiCollection> { return _Records; }
+    auto Get_LoadError() const -> const FString& { return _LoadError; }
+    auto Is_Mounted() const -> bool { return _Mounted; }
+    auto Is_Inert() const -> bool { return NOT _Active; }
+    auto Get_IsAvailable() const -> bool;
+    auto Get_CanRequest() const -> bool;
+    auto Get_RequestDisabledReason() const -> FString;
+
+private:
+    auto Build_AuthoredView() -> bool;
+    auto Refresh_Records() -> bool;
+    auto Resolve_Attribute(const FString& InKey, FCk_Handle_FloatAttribute& OutAttribute) const -> bool;
+    auto Resolve_Modifier(const FString& InKey, FCk_Handle_FloatAttributeModifier& OutModifier) const -> bool;
+    auto Resolve_Refill(const FString& InKey, FCk_Handle_FloatAttributeRefill& OutRefill) const -> bool;
+    auto Commit_Override(const FString& InKey, float InValue, ECk_MinMaxCurrent InComponent) -> void;
+    auto Commit_Modifier(const FString& InKey, float InValue) -> void;
+    auto Remove_Modifier(const FString& InKey) -> void;
+    auto Clear_Component(const FString& InKey) -> void;
+    auto Pause_Refill(const FString& InKey) -> void;
+    auto Resume_Refill(const FString& InKey) -> void;
+    auto Navigate(const FString& InKey) -> void;
+
+    FCk_Handle _Entity;
+    FString _Filter;
+    TSet<FString> _DiffLabels;
+    TWeakPtr<FCkDebuggerModel_EntitySelection> _SelectionModel;
+    TSharedPtr<FCkUiCollection> _Records;
+    TMap<FString, FCk_Handle_FloatAttribute> _Attributes;
+    TMap<FString, FCk_Handle_FloatAttributeModifier> _Modifiers;
+    TMap<FString, FCk_Handle_FloatAttributeRefill> _Refills;
+    TMap<FString, FString> _RouteAttributeKeys;
+    TMap<FString, ECk_MinMaxCurrent> _RouteComponents;
+    TSharedPtr<FCkUiView> _View;
+    FString _LoadError;
+    bool _Active = true;
+    bool _Mounted = false;
+};
+
+class CKECSDEBUGGER_API FCkInspector_FloatAttributes : public ICkDebuggerComponentInspector_Base
+{
+public:
+    ~FCkInspector_FloatAttributes() override;
     auto Get_ComponentName() const -> FText override;
     auto Get_Icon() const -> ECk_Icon override { return ECk_Icon::AttributeFloat; }
     auto Get_FeatureColor() const -> TOptional<FLinearColor> override { return FLinearColor::FromSRGBColor(FColor::FromHex(TEXT("3FA1AD"))); }
@@ -14,7 +74,11 @@ public:
     auto Get_SortPriority() const -> int32 override { return 40; }
     auto Tick(const FCk_Handle& Entity, float InDeltaTime) -> void override;
     auto IsFilterable() const -> bool override { return true; }
+    auto OnDeactivated() -> void override;
+    auto Get_LastAuthoredLoadError() const -> const FString& { return _LastAuthoredLoadError; }
 
 private:
-    auto BuildAttributeGrid(const FCk_Handle& Entity, const FString& InFilter) -> TSharedRef<SWidget>;
+    auto Build_NativeBody(const FCk_Handle& InEntity, const FString& InFilter) -> TSharedRef<SWidget>;
+    TArray<TWeakPtr<SCkInspector_FloatAttributesAuthored>> _Instances;
+    FString _LastAuthoredLoadError;
 };

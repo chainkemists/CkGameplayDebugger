@@ -1,0 +1,49 @@
+<ui version="1">
+  <region name="main">
+    <column id="float-attributes-inspector" visible="float-attributes-available" class="float-attributes-inspector">
+      <repeat id="float-attribute-records" bind="float-attributes" direction="vertical" class="float-attribute-records">
+        <column id="float-attribute-record" visible-field="record-visible" class="float-attribute-record">
+          <row id="float-attribute-heading" visible-field="attribute-visible" class="float-attribute-row">
+            <button id="float-attribute-name" bind-field="name" color-field="attribute-diff-color" item-action="float-attribute-navigate" class="float-attribute-name" />
+            <debug-meter id="float-attribute-meter" fraction-field="fraction" fill-field="meter-color" width="72" height="6" visible-field="meter-visible" class="float-attribute-meter" />
+            <text id="float-attribute-summary" bind-field="summary" class="float-attribute-value" />
+          </row>
+          <row id="float-attribute-current" visible-field="current-visible" class="float-attribute-row">
+            <text id="float-attribute-current-label" color-field="override-diff-color" class="float-attribute-label">Current override:</text>
+            <number-input id="float-attribute-current-input" value-field="current" item-committed="float-attribute-current-override" kind="float" fractional-digits="2" enabled-bind="float-attributes-can-request" visible-field="edit-visible" class="float-attribute-input" />
+            <text id="float-attribute-current-read" bind-field="current-text" visible-field="read-visible" class="float-attribute-value" />
+          </row>
+          <row id="float-attribute-min" visible-field="min-visible" class="float-attribute-row">
+            <text id="float-attribute-min-label" color-field="override-diff-color" class="float-attribute-label">Min override:</text>
+            <number-input id="float-attribute-min-input" value-field="min" item-committed="float-attribute-min-override" kind="float" fractional-digits="2" enabled-bind="float-attributes-can-request" visible-field="edit-visible" class="float-attribute-input" />
+            <text id="float-attribute-min-read" bind-field="min-text" visible-field="read-visible" class="float-attribute-value" />
+          </row>
+          <row id="float-attribute-max" visible-field="max-visible" class="float-attribute-row">
+            <text id="float-attribute-max-label" color-field="override-diff-color" class="float-attribute-label">Max override:</text>
+            <number-input id="float-attribute-max-input" value-field="max" item-committed="float-attribute-max-override" kind="float" fractional-digits="2" enabled-bind="float-attributes-can-request" visible-field="edit-visible" class="float-attribute-input" />
+            <text id="float-attribute-max-read" bind-field="max-text" visible-field="read-visible" class="float-attribute-value" />
+          </row>
+          <row id="float-attribute-refill" visible-field="refill-status-visible" class="float-attribute-row">
+            <text id="float-attribute-refill-label" bind-field="refill-label" color-field="refill-status-diff-color" class="float-attribute-label" />
+            <debug-status id="float-attribute-refill-state" label-field="refill-state" foreground-field="refill-foreground" background-field="refill-background" show-dot="true" class="float-attribute-refill-status" />
+          </row>
+          <row id="float-attribute-refill-control" visible-field="refill-control-visible" class="float-attribute-row">
+            <text id="float-attribute-refill-control-label" bind-field="refill-control-label" color-field="refill-control-diff-color" class="float-attribute-label" />
+            <debug-inspector-action id="float-attribute-refill-pause" label-field="pause-label" item-action="float-attribute-refill-pause" visible-field="refill-actions-visible" enabled-bind="float-attributes-can-request" tooltip-field="pause-tooltip" disabled-reason-bind="float-attributes-disabled-reason" class="float-attribute-action" />
+            <debug-inspector-action id="float-attribute-refill-resume" label-field="resume-label" item-action="float-attribute-refill-resume" visible-field="refill-actions-visible" enabled-bind="float-attributes-can-request" tooltip-field="resume-tooltip" disabled-reason-bind="float-attributes-disabled-reason" class="float-attribute-action" />
+          </row>
+          <row id="float-attribute-modifier" visible-field="modifier-visible" class="float-attribute-row">
+            <text id="float-attribute-modifier-label" bind-field="row-label" color-field="diff-color" class="float-attribute-label" />
+            <number-input id="float-attribute-modifier-input" value-field="modifier-delta" item-committed="float-attribute-modifier" kind="float" fractional-digits="2" enabled-bind="float-attributes-can-request" visible-field="edit-visible" class="float-attribute-input" />
+            <text id="float-attribute-modifier-read" bind-field="row-value" visible-field="read-visible" class="float-attribute-value" />
+            <debug-inspector-action id="float-attribute-remove" label-field="remove-label" item-action="float-attribute-remove" visible-field="remove-visible" enabled-bind="float-attributes-can-request" tooltip-field="action-tooltip" disabled-reason-bind="float-attributes-disabled-reason" class="float-attribute-action" />
+          </row>
+          <row id="float-attribute-clear" visible-field="clear-visible" class="float-attribute-row">
+            <text id="float-attribute-clear-label" bind-field="row-label" color-field="diff-color" class="float-attribute-label" />
+            <debug-inspector-action id="float-attribute-clear-action" label-field="clear-label" item-action="float-attribute-clear" enabled-bind="float-attributes-can-request" tooltip-field="action-tooltip" disabled-reason-bind="float-attributes-disabled-reason" class="float-attribute-action" />
+          </row>
+        </column>
+      </repeat>
+    </column>
+  </region>
+</ui>

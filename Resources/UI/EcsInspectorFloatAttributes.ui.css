@@ -1,0 +1,11 @@
+.float-attributes-inspector { min-width: 0; gap: 4px; }
+.float-attribute-records { min-width: 0; gap: 6px; }
+.float-attribute-record { min-width: 0; gap: 3px; padding: 4px 0px; border-color: #4B3928; border-width: 1px; }
+.float-attribute-row { min-width: 0; gap: 8px; vertical-align: center; }
+.float-attribute-label { min-width: 132px; color: #C9B9A8; }
+.float-attribute-name { min-width: 132px; -ck-button-padding-x: 7px; -ck-button-padding-y: 2px; -ck-button-radius: 5px; }
+.float-attribute-meter { min-width: 0; flex-grow: 1; }
+.float-attribute-refill-status { min-width: 96px; }
+.float-attribute-value { min-width: 0; flex-grow: 1; color: #F0E4D5; }
+.float-attribute-input { min-width: 0; flex-grow: 1; }
+.float-attribute-action { min-width: 88px; }

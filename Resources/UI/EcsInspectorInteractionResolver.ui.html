@@ -1,0 +1,52 @@
+<ui version="1">
+  <region name="main">
+    <column id="interaction-resolver-inspector" class="interaction-resolver-inspector">
+      <column id="interaction-resolver-live" visible="interaction-resolver-available" class="interaction-resolver-live">
+        <repeat id="interaction-resolver-mappings" bind="interaction-resolver-mappings" direction="vertical" class="interaction-resolver-mappings">
+          <column id="interaction-resolver-mapping" class="interaction-resolver-mapping">
+            <text id="interaction-resolver-intent-heading" bind-field="intent" class="interaction-resolver-heading" />
+            <row id="interaction-resolver-intent-row" class="interaction-resolver-row">
+              <text id="interaction-resolver-intent-label" color-bind="interaction-resolver-intent-diff-color" class="interaction-resolver-label">Intent:</text>
+              <row id="interaction-resolver-intent-actions" class="interaction-resolver-actions">
+                <debug-inspector-action id="interaction-resolver-start" label-field="start-label" item-action="interaction-resolver-start-intent" enabled-bind="interaction-resolver-can-request" tooltip-field="start-tooltip" disabled-reason-bind="interaction-resolver-disabled-reason" class="interaction-resolver-action" />
+                <debug-inspector-action id="interaction-resolver-stop" label-field="stop-label" item-action="interaction-resolver-stop-intent" enabled-bind="interaction-resolver-can-request" tooltip-field="stop-tooltip" disabled-reason-bind="interaction-resolver-disabled-reason" class="interaction-resolver-action" />
+              </row>
+            </row>
+            <row id="interaction-resolver-channels-row" class="interaction-resolver-row interaction-resolver-top-row">
+              <text id="interaction-resolver-channels-label" color-bind="interaction-resolver-channels-diff-color" class="interaction-resolver-label">Channels:</text>
+              <repeat id="interaction-resolver-channels" child-bind="channels" direction="horizontal" class="interaction-resolver-channels">
+                <text id="interaction-resolver-channel" bind-field="channel" class="interaction-resolver-chip" />
+              </repeat>
+              <text id="interaction-resolver-channels-empty" visible-field="channels-empty" class="interaction-resolver-empty">None</text>
+            </row>
+            <row id="interaction-resolver-clear-row" visible-field="has-clear-actions" class="interaction-resolver-row interaction-resolver-top-row">
+              <text id="interaction-resolver-clear-label" color-bind="interaction-resolver-clear-channel-diff-color" class="interaction-resolver-label">Clear Channel:</text>
+              <repeat id="interaction-resolver-clear-actions" child-bind="channels" direction="horizontal" class="interaction-resolver-actions">
+                <debug-inspector-action id="interaction-resolver-clear" visible-field="clear-visible" label-field="clear-label" item-action="interaction-resolver-clear-channel" enabled-bind="interaction-resolver-can-request" tooltip-field="clear-tooltip" disabled-reason-bind="interaction-resolver-disabled-reason" class="interaction-resolver-action" />
+              </repeat>
+            </row>
+            <row id="interaction-resolver-distance-row" class="interaction-resolver-row"><text id="interaction-resolver-distance-label" color-bind="interaction-resolver-distance-sort-diff-color" class="interaction-resolver-label">Distance Sort:</text><text id="interaction-resolver-distance-value" bind-field="distance-sort" class="interaction-resolver-value interaction-resolver-enum" /></row>
+            <row id="interaction-resolver-max-row" class="interaction-resolver-row"><text id="interaction-resolver-max-label" color-bind="interaction-resolver-max-concurrent-diff-color" class="interaction-resolver-label">Max Concurrent:</text><text id="interaction-resolver-max-value" bind-field="max-concurrent" class="interaction-resolver-value interaction-resolver-number" /></row>
+            <row id="interaction-resolver-best-row" class="interaction-resolver-row interaction-resolver-top-row">
+              <text id="interaction-resolver-best-label" color-bind="interaction-resolver-best-targets-diff-color" class="interaction-resolver-label">Best Targets:</text>
+              <repeat id="interaction-resolver-best-targets" child-bind="best-targets" direction="horizontal" class="interaction-resolver-targets">
+                <debug-entity-ref id="interaction-resolver-best-target" entity-id-field="target-id" name-field="target-name" item-action="interaction-resolver-navigate-best" show-name="true" />
+              </repeat>
+              <text id="interaction-resolver-best-empty" visible-field="best-empty" class="interaction-resolver-empty">(None)</text>
+            </row>
+          </column>
+        </repeat>
+        <text id="interaction-resolver-runtime-heading" class="interaction-resolver-heading">Runtime</text>
+        <row id="interaction-resolver-active-row" class="interaction-resolver-row"><text id="interaction-resolver-active-label" color-bind="interaction-resolver-active-intents-diff-color" class="interaction-resolver-label">Active Intents:</text><text id="interaction-resolver-active-value" bind="interaction-resolver-active-intents" class="interaction-resolver-value interaction-resolver-active" /></row>
+        <row id="interaction-resolver-available-row" class="interaction-resolver-row interaction-resolver-top-row">
+          <text id="interaction-resolver-available-label" color-bind="interaction-resolver-available-targets-diff-color" class="interaction-resolver-label">Available Targets:</text>
+          <repeat id="interaction-resolver-available-targets" bind="interaction-resolver-available-targets" direction="horizontal" visible="interaction-resolver-has-available-targets" class="interaction-resolver-targets">
+            <debug-entity-ref id="interaction-resolver-available-target" entity-id-field="target-id" name-field="target-name" item-action="interaction-resolver-navigate-available" show-name="true" />
+          </repeat>
+          <text id="interaction-resolver-available-empty" visible="interaction-resolver-no-available-targets" class="interaction-resolver-empty">(None)</text>
+        </row>
+      </column>
+      <text id="interaction-resolver-unavailable" visible="interaction-resolver-unavailable" class="interaction-resolver-unavailable">Interaction Resolver unavailable.</text>
+    </column>
+  </region>
+</ui>

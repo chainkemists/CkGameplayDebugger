@@ -1,0 +1,16 @@
+.iskm-proxy-inspector { min-width: 0; padding: 4px; gap: 3px; }
+.iskm-proxy-live { min-width: 0; gap: 3px; }
+.iskm-proxy-row { min-width: 0; gap: 8px; vertical-align: center; }
+.iskm-proxy-label { min-width: 178px; color: #A8B4C4; }
+.iskm-proxy-object { min-width: 0; flex-grow: 1; color: #7FD6FF; }
+.iskm-proxy-value { min-width: 0; flex-grow: 1; color: #D8E1EC; }
+.iskm-proxy-accent { min-width: 0; flex-grow: 1; color: #D7A6FF; }
+.iskm-proxy-heading { color: #F0F3F7; }
+.iskm-proxy-note { min-width: 0; color: #8F99A8; }
+.iskm-proxy-number { min-width: 96px; }
+.iskm-proxy-meter { min-width: 120px; flex-grow: 1; }
+.iskm-proxy-meter-value { min-width: 0; gap: 8px; vertical-align: center; flex-grow: 1; }
+.iskm-proxy-status { min-width: 0; }
+.iskm-proxy-input { min-width: 160px; flex-grow: 1; }
+.iskm-proxy-actions { min-width: 0; gap: 4px; flex-grow: 1; }
+.iskm-proxy-unavailable { color: #8F99A8; }

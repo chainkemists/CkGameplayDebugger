@@ -473,6 +473,7 @@ auto FCkDebug_UiRegistry_DebugSwitch::RunTest(const FString&) -> bool
 
     Enabled = false;
     Tick(Slate);
+    TestFalse(TEXT("Enabled binding disables the physical switch"), Switch->IsEnabled());
     Switch->OnMouseButtonDown(Geometry, Click);
     Switch->OnKeyDown(Geometry, FKeyEvent{EKeys::Enter, FModifierKeysState{}, 0, false, 0, 0});
     if (!TestTrue(TEXT("Disabled switch does not dispatch mouse or keyboard toggles"), !Checked && SecondChangedCount == 1)) { return false; }

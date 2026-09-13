@@ -1,0 +1,11 @@
+.scene-node-inspector { min-width: 0; gap: 3px; }
+.scene-node-row { min-width: 0; gap: 8px; vertical-align: center; }
+.scene-node-label { min-width: 150px; }
+.scene-node-value { min-width: 0; flex-grow: 1; }
+.scene-node-heading { color: #E6C766; }
+.scene-node-components { min-width: 0; gap: 8px; }
+.scene-node-axis-x { color: #E06C75; }
+.scene-node-axis-y { color: #98C379; }
+.scene-node-axis-z { color: #61AFEF; }
+.scene-node-siblings { min-width: 0; gap: 4px; flex-wrap: wrap; }
+.scene-node-sibling { min-width: 0; }

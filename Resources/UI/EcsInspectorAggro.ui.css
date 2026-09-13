@@ -1,0 +1,11 @@
+.aggro-inspector { min-width: 0; padding: 4px; gap: 6px; }
+.aggro-section { min-width: 0; gap: 3px; }
+.aggro-heading { color: #f0f3f7; }
+.aggro-row { min-width: 0; gap: 8px; vertical-align: center; }
+.aggro-label { min-width: 152px; color: #a8b4c4; }
+.aggro-value { min-width: 0; gap: 6px; vertical-align: center; }
+.aggro-number { min-width: 0; color: #f1c76b; }
+.aggro-state { min-width: 0; color: #c4a7e7; }
+.aggro-actions { min-width: 0; gap: 6px; vertical-align: center; }
+.aggro-input { min-width: 96px; }
+.aggro-unavailable { color: #7f8b99; }

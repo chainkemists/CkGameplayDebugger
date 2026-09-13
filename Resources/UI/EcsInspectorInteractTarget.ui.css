@@ -1,0 +1,9 @@
+.interact-target-inspector { min-width: 0; gap: 3px; }
+.interact-target-row { min-width: 0; gap: 8px; vertical-align: center; }
+.interact-target-label { min-width: 130px; color: #A8B4C4; }
+.interact-target-value { min-width: 0; flex-grow: 1; }
+.interact-target-tag { color: #E5C07B; }
+.interact-target-status { min-width: 0; }
+.interact-target-enum { color: #C678DD; }
+.interact-target-action { min-width: 88px; }
+.interact-target-interactions { min-width: 0; gap: 4px; flex-wrap: wrap; }

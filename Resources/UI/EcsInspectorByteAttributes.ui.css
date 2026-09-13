@@ -1,0 +1,10 @@
+.byte-attributes-inspector { min-width: 0; gap: 4px; }
+.byte-attribute-records { min-width: 0; gap: 6px; }
+.byte-attribute-record { min-width: 0; gap: 3px; padding: 4px 0px; border-color: #4B3928; border-width: 1px; }
+.byte-attribute-row { min-width: 0; gap: 8px; vertical-align: center; }
+.byte-attribute-label { min-width: 132px; color: #C9B9A8; }
+.byte-attribute-name { min-width: 132px; -ck-button-padding-x: 7px; -ck-button-padding-y: 2px; -ck-button-radius: 5px; }
+.byte-attribute-meter { min-width: 0; flex-grow: 1; }
+.byte-attribute-value { min-width: 0; flex-grow: 1; color: #F0E4D5; }
+.byte-attribute-input { min-width: 0; flex-grow: 1; }
+.byte-attribute-action { min-width: 88px; }

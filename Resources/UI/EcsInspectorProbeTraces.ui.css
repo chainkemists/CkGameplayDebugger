@@ -1,0 +1,19 @@
+.probe-trace-inspector { min-width: 0; padding: 4px; gap: 4px; }
+.probe-trace-live { min-width: 0; gap: 4px; }
+.probe-trace-heading { color: #F0B6D0; }
+.probe-trace-row { min-width: 0; gap: 8px; vertical-align: center; }
+.probe-trace-label { min-width: 112px; color: #D7A9BD; }
+.probe-trace-value { min-width: 0; flex-grow: 1; color: #F4E6EE; }
+.probe-trace-enum { color: #EAB2D0; }
+.probe-trace-config { color: #C9A8FF; }
+.probe-trace-filter { color: #AFA5AD; }
+.probe-trace-switch { min-width: 0; }
+.probe-trace-axis-values { min-width: 0; flex-grow: 1; gap: 8px; }
+.probe-trace-axis-x { min-width: 48px; color: #E57373; }
+.probe-trace-axis-y { min-width: 48px; color: #81C784; }
+.probe-trace-axis-z { min-width: 48px; color: #64B5F6; }
+.probe-trace-overlaps-row { vertical-align: top; }
+.probe-trace-overlaps { min-width: 0; flex-grow: 1; gap: 4px; flex-wrap: wrap; }
+.probe-trace-overlap { min-width: 0; }
+.probe-trace-empty { color: #AFA5AD; }
+.probe-trace-unavailable { color: #AFA5AD; }

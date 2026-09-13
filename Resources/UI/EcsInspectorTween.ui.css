@@ -1,0 +1,14 @@
+.tween-inspector { min-width: 0; gap: 3px; }
+.tween-header { color: #72C9E9; }
+.tween-row { min-width: 0; gap: 8px; vertical-align: center; }
+.tween-label { min-width: 110px; color: #A8B4C4; }
+.tween-value { min-width: 0; flex-grow: 1; color: #D8E1EC; }
+.tween-number { color: #79C6FF; }
+.tween-handle { color: #7BD8CF; }
+.tween-status { min-width: 0; flex-grow: 1; }
+.tween-meter { min-width: 0; gap: 8px; vertical-align: center; flex-grow: 1; }
+.tween-actions { min-width: 0; gap: 6px; flex-grow: 1; }
+.tween-action { min-width: 0; }
+.tween-native { min-width: 0; flex-grow: 1; }
+.tween-controls { min-width: 0; gap: 3px; }
+.tween-chain { min-width: 0; gap: 3px; }

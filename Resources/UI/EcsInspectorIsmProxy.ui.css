@@ -1,0 +1,14 @@
+.ism-proxy-inspector { min-width: 0; padding: 4px; gap: 3px; }
+.ism-proxy-live { min-width: 0; gap: 3px; }
+.ism-proxy-row { min-width: 0; gap: 8px; vertical-align: center; }
+.ism-proxy-label { min-width: 178px; color: #a8b4c4; }
+.ism-proxy-object-value { min-width: 0; color: #7fd6ff; }
+.ism-proxy-enum-value { min-width: 0; color: #d7a6ff; }
+.ism-proxy-axis-values { min-width: 0; gap: 8px; }
+.ism-proxy-axis-x { min-width: 58px; color: #ff7777; }
+.ism-proxy-axis-y { min-width: 58px; color: #7fdc8c; }
+.ism-proxy-axis-z { min-width: 58px; color: #79a8ff; }
+.ism-proxy-heading { color: #f0f3f7; }
+.ism-proxy-note { min-width: 0; color: #8f99a8; }
+.ism-proxy-number { min-width: 96px; }
+.ism-proxy-unavailable { color: #8f99a8; }

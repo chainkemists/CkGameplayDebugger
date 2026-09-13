@@ -1,0 +1,12 @@
+.transform-inspector { min-width: 0; gap: 3px; }
+.transform-section { min-width: 0; gap: 3px; }
+.transform-header { color: #E6C766; }
+.transform-row { min-width: 0; gap: 8px; vertical-align: center; }
+.transform-label { min-width: 170px; color: #A8B4C4; }
+.transform-axis-values { min-width: 0; gap: 8px; flex-grow: 1; }
+.transform-axis-x { min-width: 72px; color: #E45B5B; }
+.transform-axis-y { min-width: 72px; color: #67C96B; }
+.transform-axis-z { min-width: 72px; color: #5B8FE4; }
+.transform-native { min-width: 0; flex-grow: 1; }
+.transform-actions { min-width: 0; gap: 6px; flex-grow: 1; }
+.transform-action { min-width: 0; }

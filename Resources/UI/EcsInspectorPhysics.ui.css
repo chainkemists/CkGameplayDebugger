@@ -1,0 +1,13 @@
+.physics-inspector { min-width: 0; gap: 4px; }
+.physics-section { min-width: 0; gap: 3px; }
+.physics-header { color: #E6C766; }
+.physics-row { min-width: 0; gap: 8px; vertical-align: center; }
+.physics-label { min-width: 132px; color: #A8B4C4; }
+.physics-axis-values { min-width: 0; gap: 8px; flex-grow: 1; }
+.physics-axis-x { min-width: 72px; color: #E45B5B; }
+.physics-axis-y { min-width: 72px; color: #67C96B; }
+.physics-axis-z { min-width: 72px; color: #5B8FE4; }
+.physics-sparkline-value { min-width: 0; gap: 8px; vertical-align: center; flex-grow: 1; }
+.physics-value { color: #D8DEE9; }
+.physics-native { min-width: 0; flex-grow: 1; }
+.physics-actions { min-width: 0; gap: 6px; flex-grow: 1; }

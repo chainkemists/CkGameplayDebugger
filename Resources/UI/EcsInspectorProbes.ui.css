@@ -1,0 +1,15 @@
+.probe-inspector { min-width: 0; padding: 4px; gap: 3px; }
+.probe-live { min-width: 0; gap: 3px; }
+.probe-heading { color: #f0f3f7; }
+.probe-row { min-width: 0; gap: 8px; vertical-align: center; }
+.probe-label { min-width: 112px; color: #a8b4c4; }
+.probe-tag-value { min-width: 0; color: #8fc7ff; }
+.probe-config-value { min-width: 0; color: #c9a8ff; }
+.probe-filter-value { min-width: 0; color: #8f99a8; }
+.probe-state { min-width: 0; }
+.probe-switch { min-width: 0; }
+.probe-overlaps-row { vertical-align: top; }
+.probe-overlaps { min-width: 0; gap: 4px; }
+.probe-overlap { min-width: 0; }
+.probe-empty { color: #8f99a8; }
+.probe-unavailable { color: #8f99a8; }

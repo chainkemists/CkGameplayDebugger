@@ -1,0 +1,18 @@
+<ui version="1">
+  <region name="main">
+    <column id="probe-inspector" class="probe-inspector">
+      <column id="probe-live" visible="probe-available" class="probe-live">
+        <text id="probe-heading" class="probe-heading">Probe</text>
+        <row id="probe-name-row" class="probe-row"><text id="probe-name-label" color-bind="probe-name-diff-color" class="probe-label">Name:</text><text id="probe-name-value" bind="probe-name" class="probe-tag-value" /></row>
+        <row id="probe-state-row" class="probe-row"><text id="probe-state-label" color-bind="probe-state-diff-color" class="probe-label">State:</text><debug-status id="probe-state-value" label-bind="probe-state" foreground-bind="probe-state-foreground" background-bind="probe-state-background" show-dot="true" class="probe-state" /></row>
+        <row id="probe-debug-draw-row" class="probe-row"><text id="probe-debug-draw-label" color-bind="probe-debug-draw-diff-color" tooltip-bind="probe-debug-draw-tooltip" class="probe-label">Debug Draw:</text><debug-switch id="probe-debug-draw-switch" checked-bind="probe-debug-draw" changed="probe-debug-draw-changed" enabled-bind="probe-can-toggle-debug-draw" tooltip-bind="probe-debug-draw-tooltip" class="probe-switch" /></row>
+        <row id="probe-overlaps-row" class="probe-row probe-overlaps-row"><text id="probe-overlaps-label" color-bind="probe-overlaps-diff-color" class="probe-label">Overlaps:</text><repeat id="probe-overlaps" bind="probe-overlaps" direction="horizontal" visible="probe-has-overlaps" class="probe-overlaps"><debug-entity-ref id="probe-overlap" entity-id-field="overlap-id" name-field="overlap-name" item-action="probe-navigate-overlap" show-name="true" class="probe-overlap" /></repeat><text id="probe-overlaps-empty" visible="probe-no-overlaps" class="probe-empty">(None)</text></row>
+        <row id="probe-response-row" class="probe-row"><text id="probe-response-label" color-bind="probe-response-diff-color" class="probe-label">Response:</text><text id="probe-response-value" bind="probe-response" class="probe-config-value" /></row>
+        <row id="probe-motion-row" class="probe-row"><text id="probe-motion-label" color-bind="probe-motion-diff-color" class="probe-label">Motion:</text><text id="probe-motion-value" bind="probe-motion" class="probe-config-value" /></row>
+        <row id="probe-quality-row" class="probe-row"><text id="probe-quality-label" color-bind="probe-quality-diff-color" class="probe-label">Quality:</text><text id="probe-quality-value" bind="probe-quality" class="probe-config-value" /></row>
+        <row id="probe-filter-row" class="probe-row"><text id="probe-filter-label" color-bind="probe-filter-diff-color" class="probe-label">Filter:</text><text id="probe-filter-value" bind="probe-filter" class="probe-filter-value" /></row>
+      </column>
+      <text id="probe-unavailable" visible="probe-unavailable" class="probe-unavailable">Probe unavailable.</text>
+    </column>
+  </region>
+</ui>

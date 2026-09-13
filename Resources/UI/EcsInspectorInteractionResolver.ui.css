@@ -1,0 +1,19 @@
+.interaction-resolver-inspector { min-width: 0; gap: 6px; }
+.interaction-resolver-live { min-width: 0; gap: 6px; }
+.interaction-resolver-mappings { min-width: 0; gap: 8px; }
+.interaction-resolver-mapping { min-width: 0; gap: 4px; padding: 5px 0px 7px 0px; }
+.interaction-resolver-heading { color: #F4E6EE; font-weight: bold; }
+.interaction-resolver-row { min-width: 0; gap: 8px; vertical-align: center; }
+.interaction-resolver-top-row { vertical-align: top; }
+.interaction-resolver-label { min-width: 118px; color: #AFA5AD; }
+.interaction-resolver-value { min-width: 0; flex-grow: 1; color: #F4E6EE; }
+.interaction-resolver-enum { color: #EAB2D0; }
+.interaction-resolver-number { color: #9DDCFF; }
+.interaction-resolver-active { color: #9FE2BF; }
+.interaction-resolver-actions { min-width: 0; flex-grow: 1; gap: 4px; flex-wrap: wrap; }
+.interaction-resolver-action { min-width: 0; }
+.interaction-resolver-channels { min-width: 0; flex-grow: 1; gap: 4px; flex-wrap: wrap; }
+.interaction-resolver-chip { color: #D8C5E8; }
+.interaction-resolver-targets { min-width: 0; flex-grow: 1; gap: 4px; flex-wrap: wrap; }
+.interaction-resolver-empty { color: #AFA5AD; }
+.interaction-resolver-unavailable { color: #AFA5AD; }

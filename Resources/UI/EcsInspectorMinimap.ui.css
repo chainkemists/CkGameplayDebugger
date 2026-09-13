@@ -1,0 +1,8 @@
+.minimap-inspector { min-width: 0; gap: 3px; }
+.minimap-row { min-width: 0; gap: 8px; vertical-align: center; }
+.minimap-label { min-width: 130px; color: #A8B4C4; }
+.minimap-value { min-width: 0; flex-grow: 1; }
+.minimap-number { color: #99E699; }
+.minimap-enum { color: #E6C766; }
+.minimap-input { width: 120px; min-width: 78px; }
+.minimap-meter { min-width: 0; gap: 8px; vertical-align: center; }

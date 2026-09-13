@@ -1,0 +1,13 @@
+.timer-inspector { min-width: 0; gap: 3px; }
+.timer-header { color: #E6C766; }
+.timer-row { min-width: 0; gap: 8px; vertical-align: center; }
+.timer-label { min-width: 110px; color: #A8B4C4; }
+.timer-value { min-width: 0; flex-grow: 1; color: #D8E1EC; }
+.timer-tag { color: #67D4C7; }
+.timer-enum { color: #D8A7FF; }
+.timer-number { color: #79C6FF; }
+.timer-status { min-width: 0; flex-grow: 1; }
+.timer-meter { min-width: 0; gap: 8px; vertical-align: center; flex-grow: 1; }
+.timer-actions { min-width: 0; gap: 6px; flex-grow: 1; }
+.timer-action { min-width: 0; }
+.timer-native { min-width: 0; flex-grow: 1; }

@@ -1,0 +1,45 @@
+<ui version="1">
+  <region name="main">
+    <column id="probe-trace-inspector" class="probe-trace-inspector">
+      <column id="probe-trace-live" visible="probe-trace-available" class="probe-trace-live">
+        <text id="probe-trace-heading" class="probe-trace-heading">Probe Trace</text>
+        <row id="probe-trace-enabled-row" class="probe-trace-row">
+          <text id="probe-trace-enabled-label" color-bind="probe-trace-enabled-diff-color" tooltip-bind="probe-trace-enabled-tooltip" class="probe-trace-label">Enabled:</text>
+          <debug-switch id="probe-trace-enabled-switch" checked-bind="probe-trace-enabled" changed="probe-trace-enabled-changed" enabled-bind="probe-trace-can-toggle-enabled" tooltip-bind="probe-trace-enabled-tooltip" class="probe-trace-switch" />
+        </row>
+        <row id="probe-trace-type-row" class="probe-trace-row">
+          <text id="probe-trace-type-label" color-bind="probe-trace-type-diff-color" class="probe-trace-label">Type:</text>
+          <text id="probe-trace-type-value" bind="probe-trace-type" class="probe-trace-value probe-trace-enum" />
+        </row>
+        <row id="probe-trace-direction-row" class="probe-trace-row">
+          <text id="probe-trace-direction-label" color-bind="probe-trace-direction-diff-color" class="probe-trace-label">Direction:</text>
+          <row id="probe-trace-direction-values" class="probe-trace-axis-values">
+            <text id="probe-trace-direction-x" bind="probe-trace-direction-x" class="probe-trace-axis-x" />
+            <text id="probe-trace-direction-y" bind="probe-trace-direction-y" class="probe-trace-axis-y" />
+            <text id="probe-trace-direction-z" bind="probe-trace-direction-z" class="probe-trace-axis-z" />
+          </row>
+        </row>
+        <row id="probe-trace-policy-row" class="probe-trace-row">
+          <text id="probe-trace-policy-label" color-bind="probe-trace-policy-diff-color" class="probe-trace-label">Policy:</text>
+          <text id="probe-trace-policy-value" bind="probe-trace-policy" class="probe-trace-value probe-trace-config" />
+        </row>
+        <row id="probe-trace-shape-row" visible="probe-trace-shape-visible" class="probe-trace-row">
+          <text id="probe-trace-shape-label" color-bind="probe-trace-shape-diff-color" class="probe-trace-label">Shape:</text>
+          <text id="probe-trace-shape-value" bind="probe-trace-shape" class="probe-trace-value probe-trace-config" />
+        </row>
+        <row id="probe-trace-filter-row" class="probe-trace-row">
+          <text id="probe-trace-filter-label" color-bind="probe-trace-filter-diff-color" class="probe-trace-label">Filter:</text>
+          <text id="probe-trace-filter-value" bind="probe-trace-filter" class="probe-trace-value probe-trace-filter" />
+        </row>
+        <row id="probe-trace-overlaps-row" class="probe-trace-row probe-trace-overlaps-row">
+          <text id="probe-trace-overlaps-label" color-bind="probe-trace-overlaps-diff-color" class="probe-trace-label">Overlaps:</text>
+          <repeat id="probe-trace-overlaps" bind="probe-trace-overlaps" direction="horizontal" visible="probe-trace-overlaps-present" class="probe-trace-overlaps">
+            <debug-entity-ref id="probe-trace-overlap" entity-id-field="overlap-id" name-field="overlap-name" item-action="probe-trace-navigate-overlap" show-name="true" class="probe-trace-overlap" />
+          </repeat>
+          <text id="probe-trace-overlaps-empty" visible="probe-trace-overlaps-empty" class="probe-trace-empty">(None)</text>
+        </row>
+      </column>
+      <text id="probe-trace-unavailable" visible="probe-trace-unavailable" class="probe-trace-unavailable">Probe Trace unavailable.</text>
+    </column>
+  </region>
+</ui>

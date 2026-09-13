@@ -1,0 +1,9 @@
+.compass-inspector { min-width: 0; gap: 3px; }
+.compass-row { min-width: 0; gap: 8px; vertical-align: center; }
+.compass-label { min-width: 130px; color: #A8B4C4; }
+.compass-value { min-width: 0; flex-grow: 1; }
+.compass-number { color: #99E699; }
+.compass-enum { color: #E6C766; }
+.compass-tag { color: #66CC99; }
+.compass-input { width: 78px; min-width: 60px; }
+.compass-meter-value { min-width: 0; gap: 8px; vertical-align: center; }

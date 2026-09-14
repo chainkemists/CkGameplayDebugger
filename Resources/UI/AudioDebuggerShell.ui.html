@@ -4,10 +4,10 @@
       <column id="audio-shell" class="audio-shell">
         <native id="audio-shell-tabs" bind="audio-tabs" class="audio-shell-fixed" />
         <row id="audio-shell-stats" class="audio-shell-stats audio-shell-fixed">
-          <column id="audio-stat-concurrency-card" class="audio-stat-card"><text id="audio-stat-concurrency-label" class="audio-stat-label">Active / max</text><text id="audio-stat-concurrency" bind="audio-stat-concurrency" class="audio-stat-value" /></column>
-          <column id="audio-stat-audible-card" class="audio-stat-card"><text id="audio-stat-audible-label" class="audio-stat-label">Audible</text><text id="audio-stat-audible" bind="audio-stat-audible" class="audio-stat-value audio-stat-ok" /></column>
-          <column id="audio-stat-fading-card" class="audio-stat-card"><text id="audio-stat-fading-label" class="audio-stat-label">Fading</text><text id="audio-stat-fading" bind="audio-stat-fading" class="audio-stat-value audio-stat-warn" /></column>
-          <column id="audio-stat-virtualized-card" class="audio-stat-card"><text id="audio-stat-virtualized-label" class="audio-stat-label">Virtualized</text><text id="audio-stat-virtualized" bind="audio-stat-virtualized" class="audio-stat-value audio-stat-err" /></column>
+          <column id="audio-stat-concurrency-wrap" class="audio-stat-wrap"><column id="audio-stat-concurrency-card" class="audio-stat-card"><text id="audio-stat-concurrency-label" class="audio-stat-label">Active / max</text><text id="audio-stat-concurrency" bind="audio-stat-concurrency" class="audio-stat-value" /></column></column>
+          <column id="audio-stat-audible-wrap" class="audio-stat-wrap"><column id="audio-stat-audible-card" class="audio-stat-card"><text id="audio-stat-audible-label" class="audio-stat-label">Audible</text><text id="audio-stat-audible" bind="audio-stat-audible" class="audio-stat-value audio-stat-ok" /></column></column>
+          <column id="audio-stat-fading-wrap" class="audio-stat-wrap"><column id="audio-stat-fading-card" class="audio-stat-card"><text id="audio-stat-fading-label" class="audio-stat-label">Fading</text><text id="audio-stat-fading" bind="audio-stat-fading" class="audio-stat-value audio-stat-warn" /></column></column>
+          <column id="audio-stat-virtualized-wrap" class="audio-stat-wrap"><column id="audio-stat-virtualized-card" class="audio-stat-card"><text id="audio-stat-virtualized-label" class="audio-stat-label">Virtualized</text><text id="audio-stat-virtualized" bind="audio-stat-virtualized" class="audio-stat-value audio-stat-err" /></column></column>
         </row>
         <native id="audio-shell-filters" bind="audio-filters" class="audio-shell-fixed" />
         <native id="audio-shell-pages" bind="audio-pages" class="audio-shell-pages" />

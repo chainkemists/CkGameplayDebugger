@@ -4,10 +4,13 @@
 #include "CkAudio/AudioTrack/CkAudioTrack_Fragment.h"
 #include "CkAudio/AudioTrack/CkAudioTrack_Utils.h"
 #include "CkDebuggerCommon/Lifecycle/CkDebug_SessionLifecycle.h"
+#include "CkDebuggerCommon/Settings/CkDebuggerStyleSettings.h"
 #include "CkEcs/Registry/CkRegistry.h"
 #include "CkEcs/Registry/CkRegistry_SlotTable.h"
 #include "CkSlateLayout/CkFlexText.h"
 #include "CkSlateLayout/SCkUiSurface.h"
+
+#include "CkEditorTools/Style/CkStyle.h"
 
 #include "Framework/Application/SlateApplication.h"
 #include "Engine/World.h"
@@ -20,6 +23,7 @@
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Input/SCheckBox.h"
 #include "Widgets/Docking/SDockTab.h"
+#include "Widgets/Layout/SBorder.h"
 #include "Widgets/SWindow.h"
 #include "Widgets/Text/STextBlock.h"
 
@@ -27,6 +31,31 @@
 
 namespace ck_audio_debugger_authored_shell_tests
 {
+    struct FScopedStyleSelection
+    {
+        FScopedStyleSelection()
+        {
+            if (const auto* Settings = UCkDebuggerStyleSettings::Get())
+            {
+                Selection = Settings->Selection;
+                ProfileName = Settings->ActiveProfileName;
+            }
+        }
+
+        ~FScopedStyleSelection()
+        {
+            if (auto* Settings = UCkDebuggerStyleSettings::Get_Mutable())
+            {
+                Settings->Selection = Selection;
+                Settings->ActiveProfileName = ProfileName;
+                Settings->NotifyChanged();
+            }
+        }
+
+        FCkDebuggerStyleSelection Selection;
+        FString ProfileName;
+    };
+
     auto FindTaggedWidget(const TSharedRef<SWidget>& InRoot, const FName InTag) -> TSharedPtr<SWidget>
     {
         if (InRoot->GetTag() == InTag) { return InRoot; }
@@ -153,6 +182,15 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
 {
     using namespace ck_audio_debugger_authored_shell_tests;
 
+    const auto StyleGuard = FScopedStyleSelection{};
+    auto* StyleSettings = UCkDebuggerStyleSettings::Get_Mutable();
+    if (NOT TestNotNull(TEXT("Audio authored-shell test requires debugger style settings"), StyleSettings))
+    { return false; }
+    StyleSettings->Selection.TextScale = ECkDebugAxis_TextScale::Normal;
+    StyleSettings->Selection.CornerStyle = ECkDebugAxis_CornerStyle::Rounded;
+    StyleSettings->Selection.SurfaceElevation = ECkDebugAxis_SurfaceElevation::Layered;
+    StyleSettings->NotifyChanged();
+
     if (NOT FSlateApplication::IsInitialized())
     {
         AddError(TEXT("Audio authored-shell test requires Slate."));
@@ -204,6 +242,58 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
         DebuggerWindow->_PageSwitcher->GetActiveWidgetIndex(), 1);
     TestTrue(TEXT("authored shell exposes horizontal overflow reachability"),
         View->GetScroll(TEXT("audio-shell-scroll")).IsValid());
+
+    const TSharedPtr<SWidget> AuthoredValueWidget = FindTaggedWidget(Main, TEXT("audio-stat-concurrency"));
+    const bool AuthoredValueIsText = AuthoredValueWidget.IsValid()
+        && AuthoredValueWidget->GetTypeAsString() == TEXT("SCkFlexText");
+    const float NormalValueFontSize = AuthoredValueIsText
+        ? StaticCastSharedPtr<SCkFlexText>(AuthoredValueWidget)->GetFont().Size : 0.0f;
+    const TSharedPtr<SWidget> LayeredWrap = FindTaggedWidget(Main, TEXT("audio-stat-concurrency-wrap"));
+    const TSharedPtr<SWidget> RoundedCard = FindTaggedWidget(Main, TEXT("audio-stat-concurrency-card"));
+    const float LayeredWrapHeight = LayeredWrap.IsValid() ? LayeredWrap->GetDesiredSize().Y : 0.0f;
+    const bool RoundedCardIsBorder = RoundedCard.IsValid()
+        && RoundedCard->GetTypeAsString() == TEXT("SBorder");
+    const FSlateBrush* RoundedCardBrush = RoundedCardIsBorder
+        ? StaticCastSharedPtr<SBorder>(RoundedCard)->GetBorderImage() : nullptr;
+    TestTrue(TEXT("authored Audio card starts from native rounded-card geometry"),
+        RoundedCardBrush != nullptr
+            && RoundedCardBrush->DrawAs == ESlateBrushDrawType::RoundedBox
+            && RoundedCardBrush->OutlineSettings.CornerRadii.X == CkStyle::RadiusL()
+            && RoundedCardBrush->OutlineSettings.Width == CkStyle::RingWidth());
+
+    const int64 RevisionBeforeGeometryChange = View->GetRevision();
+    StyleSettings->Selection.CornerStyle = ECkDebugAxis_CornerStyle::Sharp;
+    StyleSettings->Selection.SurfaceElevation = ECkDebugAxis_SurfaceElevation::Flat;
+    StyleSettings->NotifyChanged();
+    DebuggerWindow->OnStyleRevisionChanged();
+    TickSlate(Slate);
+    const TSharedPtr<SWidget> FlatWrap = FindTaggedWidget(
+        View->GetRegion(TEXT("main")), TEXT("audio-stat-concurrency-wrap"));
+    const TSharedPtr<SWidget> SharpCard = FindTaggedWidget(
+        View->GetRegion(TEXT("main")), TEXT("audio-stat-concurrency-card"));
+    const bool SharpCardIsBorder = SharpCard.IsValid() && SharpCard->GetTypeAsString() == TEXT("SBorder");
+    const FSlateBrush* SharpCardBrush = SharpCardIsBorder
+        ? StaticCastSharedPtr<SBorder>(SharpCard)->GetBorderImage() : nullptr;
+    TestTrue(TEXT("live corner and elevation axes republish authored Audio card geometry"),
+        View->GetRevision() > RevisionBeforeGeometryChange
+            && FlatWrap.IsValid() && FlatWrap->GetDesiredSize().Y < LayeredWrapHeight
+            && SharpCardBrush != nullptr
+            && SharpCardBrush->OutlineSettings.CornerRadii.X == 0.0f
+            && SharpCardBrush->OutlineSettings.Width == CkStyle::RingWidth());
+
+    const int64 RevisionBeforeTextChange = View->GetRevision();
+    StyleSettings->Selection.TextScale = ECkDebugAxis_TextScale::Large;
+    StyleSettings->NotifyChanged();
+    DebuggerWindow->OnStyleRevisionChanged();
+    TickSlate(Slate);
+    const TSharedPtr<SWidget> RestyledValueWidget = FindTaggedWidget(
+        View->GetRegion(TEXT("main")), TEXT("audio-stat-concurrency"));
+    TestTrue(TEXT("live Style Lab revision republishes authored Audio card tokens without rebuilding the window"),
+        AuthoredValueIsText
+            && RestyledValueWidget.IsValid()
+            && RestyledValueWidget->GetTypeAsString() == TEXT("SCkFlexText")
+            && View->GetRevision() > RevisionBeforeTextChange
+            && StaticCastSharedPtr<SCkFlexText>(RestyledValueWidget)->GetFont().Size > NormalValueFontSize);
 
     const TSharedPtr<SButton> CrossfadeTab = FindButtonWithText(
         DebuggerWindow->_Tabs.ToSharedRef(), TEXT("Crossfade"));
@@ -297,9 +387,11 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
     MarkupRestored = FFileHelper::SaveStringToFile(
         Markup, *FPaths::Combine(Directory, TEXT("AudioDebuggerShell.ui.html")));
     TestTrue(TEXT("Audio fixture restores the valid production resource"), MarkupRestored);
-    DebuggerWindow->PollAuthoredShell(FPlatformTime::Seconds() + 10.0);
+    StyleSettings->Selection.TextScale = ECkDebugAxis_TextScale::Small;
+    StyleSettings->NotifyChanged();
+    DebuggerWindow->OnStyleRevisionChanged();
     TickSlate(Slate);
-    TestTrue(TEXT("valid file change recovers a live startup fallback without reopening"),
+    TestTrue(TEXT("normal style-revision tick recovers a live startup fallback without consuming the file change"),
         View->GetLastResult().Succeeded && NOT DebuggerWindow->_UsingNativeFallback
             && ContainsWidget(View->GetRegion(TEXT("main")), DebuggerWindow->_Tabs.ToSharedRef())
             && NOT ContainsWidget(View->GetRegion(TEXT("main")), DebuggerWindow->_StatCards.ToSharedRef())

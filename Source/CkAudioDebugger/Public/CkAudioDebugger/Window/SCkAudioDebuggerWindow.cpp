@@ -12,6 +12,7 @@
 
 #include "CkDebuggerCommon/Search/SCkDebug_SearchBar.h"
 #include "CkDebuggerCommon/Lifecycle/CkDebug_SessionLifecycle.h"
+#include "CkDebuggerCommon/Settings/CkDebuggerStyleSettings.h"
 #include "CkDebuggerCommon/Styles/CkDebuggerAxes.h"
 #include "CkDebuggerCommon/Styles/CkDebuggerCommonStyle.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_AlertRow.h"
@@ -101,6 +102,40 @@ namespace ck_audio_debugger_window
     auto Get_CardLabelFont() -> FSlateFontInfo
     {
         return ck::debug_axes::ScaledFont("Regular", CkStyle::FontSizeMicro());
+    }
+
+    auto Get_CardRadius() -> float
+    {
+        switch (UCkDebuggerStyleSettings::Get_Selection().CornerStyle)
+        {
+            case ECkDebugAxis_CornerStyle::Rounded: return CkStyle::RadiusL();
+            case ECkDebugAxis_CornerStyle::Sharp:   return 0.0f;
+            case ECkDebugAxis_CornerStyle::Pill:    return CkStyle::RadiusPill();
+        }
+
+        return CkStyle::RadiusL();
+    }
+
+    auto Get_AuthoredShellStyleTokens() -> FCkUiView::FTokens
+    {
+        const auto Color = [](const FLinearColor& InColor)
+        {
+            return TEXT("#") + InColor.ToFColorSRGB().ToHex();
+        };
+        return {
+            {TEXT("--audio-stat-label-size"), FString::FromInt(Get_CardLabelFont().Size)},
+            {TEXT("--audio-stat-value-size"), FString::FromInt(Get_CardValueFont().Size)},
+            {TEXT("--audio-stat-radius"), FString::SanitizeFloat(Get_CardRadius())},
+            {TEXT("--audio-stat-ring-width"), FString::SanitizeFloat(CkStyle::RingWidth())},
+            {TEXT("--audio-stat-outer-extent"), FString::SanitizeFloat(ck::debug_axes::Get_CardOuterExtent())},
+            {TEXT("--audio-stat-surface"), Color(ck::debug_axes::Get_SurfaceTint(2))},
+            {TEXT("--audio-stat-outline"), Color(CkStyle::Border())},
+            {TEXT("--audio-stat-label"), Color(CkStyle::TextDim())},
+            {TEXT("--audio-stat-text"), Color(CkStyle::Text())},
+            {TEXT("--audio-stat-ok"), Color(CkStyle::Ok())},
+            {TEXT("--audio-stat-warn"), Color(CkStyle::Warn())},
+            {TEXT("--audio-stat-err"), Color(CkStyle::Err())},
+        };
     }
 
     auto
@@ -332,14 +367,15 @@ auto SCkAudioDebuggerWindow::BuildAuthoredShell() -> void
     Data.Text.Add(TEXT("audio-stat-virtualized"), TAttribute<FText>::CreateLambda(
         [Cell = _StatVirtualized]() { return *Cell; }));
     const TSharedRef<FCkUiView> View = FCkUiView::Create(
-        MoveTemp(NativeBindings), {}, {}, CkStyle::RegularFont(CkStyle::FontSizeBody()), MoveTemp(Data));
+        MoveTemp(NativeBindings), {}, ck_audio_debugger_window::Get_AuthoredShellStyleTokens(),
+        CkStyle::RegularFont(CkStyle::FontSizeBody()), MoveTemp(Data));
     const TSharedRef<SWidget> Main = View->GetRegion(TEXT("main"));
     const FString Directory = FPaths::Combine(Plugin->GetBaseDir(), TEXT("Resources/UI"));
     _AuthoredMarkupPath = FPaths::Combine(Directory, TEXT("AudioDebuggerShell.ui.html"));
     _AuthoredStylesheetPath = FPaths::Combine(Directory, TEXT("AudioDebuggerShell.ui.css"));
     View->SetFiles(_AuthoredMarkupPath, _AuthoredStylesheetPath);
     _AuthoredShellView = View;
-    View->PollFiles();
+    View->PollFiles(ck_audio_debugger_window::Get_AuthoredShellStyleTokens());
     _UsingNativeFallback = NOT View->GetLastResult().Succeeded;
     _AuthoredShellHost->SetContent(_UsingNativeFallback ? BuildNativeContent() : Main);
 }
@@ -349,14 +385,18 @@ auto SCkAudioDebuggerWindow::PollAuthoredShell(const double InCurrentTime) -> vo
     constexpr double PollIntervalSeconds = 0.5;
     if (InCurrentTime < _NextAuthoredShellPollSeconds || NOT _AuthoredShellView.IsValid()) { return; }
     _NextAuthoredShellPollSeconds = InCurrentTime + PollIntervalSeconds;
-    const bool ContentChanged = _AuthoredShellView->PollFiles();
+    const FCkUiView::FTokens StyleTokens = ck_audio_debugger_window::Get_AuthoredShellStyleTokens();
+    const bool ContentChanged = _AuthoredShellView->PollFiles(StyleTokens);
     if (NOT _UsingNativeFallback || NOT ContentChanged) { return; }
 
     // A startup fallback owns the same four native widgets that a valid authored candidate must stage. Poll once to
     // detect a content change, then detach the fallback and retry that candidate against unparented bindings.
     _AuthoredShellHost->SetContent(SNullWidget::NullWidget);
-    const FCkUiLoadResult Recovery = _AuthoredShellView->ReloadFiles(
-        _AuthoredMarkupPath, _AuthoredStylesheetPath);
+    // Resetting the paths clears the poll cache, so the retry uses FCkUiView's bounded file reader and stages the
+    // restored source plus current style tokens in one transaction after the fallback releases its native ports.
+    _AuthoredShellView->SetFiles(_AuthoredMarkupPath, _AuthoredStylesheetPath);
+    _AuthoredShellView->PollFiles(StyleTokens);
+    const FCkUiLoadResult& Recovery = _AuthoredShellView->GetLastResult();
     _UsingNativeFallback = NOT Recovery.Succeeded;
     _AuthoredShellHost->SetContent(
         _UsingNativeFallback ? BuildNativeContent() : _AuthoredShellView->GetRegion(TEXT("main")));
@@ -1320,6 +1360,9 @@ auto
     OnStyleRevisionChanged()
     -> void
 {
+    // PollAuthoredShell owns source and token publication together because it also coordinates native-fallback
+    // detachment. Polling here could consume a restored-file change while the fallback still owns those ports.
+    _NextAuthoredShellPollSeconds = 0.0;
     // Force the next tick through the structure pass so the rows pick the new palette up; the cells themselves carry
     // no style.
     _LastSignature.Reset();

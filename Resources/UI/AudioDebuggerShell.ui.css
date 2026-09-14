@@ -16,22 +16,28 @@
   padding: 8px 12px 4px 12px;
 }
 
+.audio-stat-wrap {
+  min-width: 0;
+  padding: var(--audio-stat-outer-extent);
+  flex-grow: 1;
+}
+
 .audio-stat-card {
   min-width: 0;
   gap: 2px;
   padding: 4px 8px;
   flex-grow: 1;
-  background-color: #1E2530;
-  border-color: #354153;
-  border-width: 1px;
-  border-radius: 5px;
+  background-color: var(--audio-stat-surface);
+  border-color: var(--audio-stat-outline);
+  border-width: var(--audio-stat-ring-width);
+  border-radius: var(--audio-stat-radius);
 }
 
-.audio-stat-label { color: #A8B4C4; font-size: 11px; }
-.audio-stat-value { color: #D8E1EC; font-family: monospace; font-size: 19px; }
-.audio-stat-ok { color: #79D69A; }
-.audio-stat-warn { color: #E7B96A; }
-.audio-stat-err { color: #EF7D86; }
+.audio-stat-label { color: var(--audio-stat-label); font-family: sans-serif; font-size: var(--audio-stat-label-size); }
+.audio-stat-value { color: var(--audio-stat-text); font-family: sans-serif; font-size: var(--audio-stat-value-size); font-weight: bold; }
+.audio-stat-ok { color: var(--audio-stat-ok); }
+.audio-stat-warn { color: var(--audio-stat-warn); }
+.audio-stat-err { color: var(--audio-stat-err); }
 
 .audio-shell-pages {
   min-height: 0;

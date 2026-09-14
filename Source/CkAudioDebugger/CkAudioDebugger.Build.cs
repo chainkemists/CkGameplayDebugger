@@ -12,6 +12,7 @@ public class CkAudioDebugger : CkModuleRules
             "GameplayTags",
 
             "InputCore",
+            "Projects",
 
             "Slate",
             "SlateCore",
@@ -26,6 +27,7 @@ public class CkAudioDebugger : CkModuleRules
             "CkAudio",
 
             "CkDebuggerCommon",
+            "CkSlateLayout",
             "CkEditorTools",  // shared CkStyle:: tokens used directly by the window
         });
 

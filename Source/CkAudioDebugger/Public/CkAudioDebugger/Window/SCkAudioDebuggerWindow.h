@@ -12,7 +12,9 @@
 
 class SCkDebug_EventLog;
 class SCkDebug_MeterBar;
+class FCkUiView;
 class SHorizontalBox;
+class SBox;
 class STextBlock;
 class SVerticalBox;
 class SWidgetSwitcher;
@@ -105,6 +107,8 @@ public:
     Construct(
         const FArguments& InArgs) -> void;
 
+    ~SCkAudioDebuggerWindow() override;
+
     auto
     Tick(
         const FGeometry& InAllottedGeometry,
@@ -118,6 +122,18 @@ protected:
     virtual auto OnStyleRevisionChanged() -> void override;
 
 private:
+    friend class FCkAudioDebugger_AuthoredShell;
+
+    auto
+    BuildNativeContent() -> TSharedRef<SWidget>;
+
+    auto
+    BuildAuthoredShell() -> void;
+
+    auto
+    PollAuthoredShell(
+        double InCurrentTime) -> void;
+
     auto
     DoCreate_Tabs() -> TSharedRef<SWidget>;
 
@@ -126,6 +142,9 @@ private:
 
     auto
     DoCreate_FilterRow() -> TSharedRef<SWidget>;
+
+    auto
+    DoCreate_PageSwitcher() -> TSharedRef<SWidgetSwitcher>;
 
     auto
     DoCreate_CrossfadeLane(
@@ -231,7 +250,16 @@ private:
 
     FCkAudioDebugger_DataCollector _Collector;
 
+    TSharedPtr<SWidget>         _Tabs;
+    TSharedPtr<SWidget>         _StatCards;
+    TSharedPtr<SWidget>         _FilterRow;
     TSharedPtr<SWidgetSwitcher> _PageSwitcher;
+    TSharedPtr<SBox>            _AuthoredShellHost;
+    TSharedPtr<FCkUiView>       _AuthoredShellView;
+    FString                     _AuthoredMarkupPath;
+    FString                     _AuthoredStylesheetPath;
+    double                      _NextAuthoredShellPollSeconds = 0.0;
+    bool                        _UsingNativeFallback = false;
     TSharedPtr<SVerticalBox>    _DirectorBox;
     TSharedPtr<SVerticalBox>    _DirectorPageBox;
     TSharedPtr<STextBlock>      _StatusText;

@@ -29,14 +29,19 @@
 #include "CkDebuggerCommon/Window/CkDebuggerRefreshGate.h"
 #include "CkDebuggerCommon/Window/SCkDebug_WindowChrome.h"
 
+#include "CkSlateLayout/SCkUiSurface.h"
+
 #include "CkEditorTools/Style/CkStyle.h"
 
 #include "Engine/Engine.h"
 #include "Engine/World.h"
+#include "Interfaces/IPluginManager.h"
+#include "Misc/Paths.h"
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/Layout/SScrollBox.h"
 #include "Widgets/Layout/SSeparator.h"
 #include "Widgets/Layout/SWidgetSwitcher.h"
+#include "Widgets/SNullWidget.h"
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/Text/STextBlock.h"
 
@@ -215,6 +220,11 @@ auto
 
     _SpatialView = MakeShared<FCkAudioDebugger_SpatialView>();
 
+    _Tabs = DoCreate_Tabs();
+    _StatCards = DoCreate_StatCards();
+    _FilterRow = DoCreate_FilterRow();
+    _PageSwitcher = DoCreate_PageSwitcher();
+
     ChildSlot
     [
         SNew(SCkDebug_WindowChrome)
@@ -257,90 +267,73 @@ auto
         })
         .Content()
         [
-            SNew(SVerticalBox)
-
-            + SVerticalBox::Slot()
-            .AutoHeight()
-            [
-                DoCreate_Tabs()
-            ]
-
-            + SVerticalBox::Slot()
-            .AutoHeight()
-            [
-                DoCreate_StatCards()
-            ]
-
-            + SVerticalBox::Slot()
-            .AutoHeight()
-            [
-                DoCreate_FilterRow()
-            ]
-
-            + SVerticalBox::Slot()
-            .FillHeight(1.0f)
-            [
-                // Slot order MUST match ECkAudioDebugger_Page's declaration order — the switcher is driven by the
-                // enum's integer value rather than by a lookup, so a reordered enum silently shows the wrong page.
-                SAssignNew(_PageSwitcher, SWidgetSwitcher)
-                .WidgetIndex_Lambda([this]() { return static_cast<int32>(_ActivePage); })
-
-                + SWidgetSwitcher::Slot()
-                [
-                    SNew(SScrollBox)
-                    + SScrollBox::Slot()
-                    .Padding(CkStyle::SpaceL, CkStyle::SpaceM)
-                    [
-                        SAssignNew(_DirectorPageBox, SVerticalBox)
-                    ]
-                ]
-
-                + SWidgetSwitcher::Slot()
-                [
-                    SNew(SVerticalBox)
-
-                    + SVerticalBox::Slot()
-                    .FillHeight(1.0f)
-                    [
-                        SNew(SScrollBox)
-                        + SScrollBox::Slot()
-                        .Padding(CkStyle::SpaceL, CkStyle::SpaceS)
-                        [
-                            SAssignNew(_DirectorBox, SVerticalBox)
-                        ]
-                    ]
-
-                    + SVerticalBox::Slot()
-                    .AutoHeight()
-                    [
-                        DoCreate_CrossfadeLane(false)
-                    ]
-                ]
-
-                + SWidgetSwitcher::Slot()
-                [
-                    DoCreate_CrossfadeLane(true)
-                ]
-
-                + SWidgetSwitcher::Slot()
-                [
-                    DoCreate_SpatialPage()
-                ]
-
-                + SWidgetSwitcher::Slot()
-                [
-                    DoCreate_EventsPage()
-                ]
-
-                + SWidgetSwitcher::Slot()
-                [
-                    DoCreate_OverlayPage()
-                ]
-            ]
+            SAssignNew(_AuthoredShellHost, SBox)
         ]
     ];
 
+    BuildAuthoredShell();
     Register_WithGate();
+}
+
+SCkAudioDebuggerWindow::~SCkAudioDebuggerWindow()
+{
+    _AuthoredShellView.Reset();
+}
+
+auto SCkAudioDebuggerWindow::BuildNativeContent() -> TSharedRef<SWidget>
+{
+    return SNew(SVerticalBox)
+        + SVerticalBox::Slot().AutoHeight()[_Tabs.ToSharedRef()]
+        + SVerticalBox::Slot().AutoHeight()[_StatCards.ToSharedRef()]
+        + SVerticalBox::Slot().AutoHeight()[_FilterRow.ToSharedRef()]
+        + SVerticalBox::Slot().FillHeight(1.0f)[_PageSwitcher.ToSharedRef()];
+}
+
+auto SCkAudioDebuggerWindow::BuildAuthoredShell() -> void
+{
+    const TSharedPtr<IPlugin> Plugin = IPluginManager::Get().FindPlugin(TEXT("CkDebugger"));
+    if (NOT Plugin.IsValid())
+    {
+        _AuthoredShellHost->SetContent(BuildNativeContent());
+        return;
+    }
+
+    auto NativeBindings = FCkUiView::FNativeBindings{};
+    NativeBindings.Add(TEXT("audio-tabs"), _Tabs.ToSharedRef());
+    NativeBindings.Add(TEXT("audio-stats"), _StatCards.ToSharedRef());
+    NativeBindings.Add(TEXT("audio-filters"), _FilterRow.ToSharedRef());
+    NativeBindings.Add(TEXT("audio-pages"), _PageSwitcher.ToSharedRef());
+    auto Data = FCkUiView::FDataBindings{};
+    Data.SlateUserIndex = 0;
+    const TSharedRef<FCkUiView> View = FCkUiView::Create(
+        MoveTemp(NativeBindings), {}, {}, CkStyle::RegularFont(CkStyle::FontSizeBody()), MoveTemp(Data));
+    const TSharedRef<SWidget> Main = View->GetRegion(TEXT("main"));
+    const FString Directory = FPaths::Combine(Plugin->GetBaseDir(), TEXT("Resources/UI"));
+    _AuthoredMarkupPath = FPaths::Combine(Directory, TEXT("AudioDebuggerShell.ui.html"));
+    _AuthoredStylesheetPath = FPaths::Combine(Directory, TEXT("AudioDebuggerShell.ui.css"));
+    View->SetFiles(_AuthoredMarkupPath, _AuthoredStylesheetPath);
+    _AuthoredShellView = View;
+    View->PollFiles();
+    _UsingNativeFallback = NOT View->GetLastResult().Succeeded;
+    _AuthoredShellHost->SetContent(_UsingNativeFallback ? BuildNativeContent() : Main);
+}
+
+auto SCkAudioDebuggerWindow::PollAuthoredShell(const double InCurrentTime) -> void
+{
+    constexpr double PollIntervalSeconds = 0.5;
+    if (InCurrentTime < _NextAuthoredShellPollSeconds || NOT _AuthoredShellView.IsValid()) { return; }
+    _NextAuthoredShellPollSeconds = InCurrentTime + PollIntervalSeconds;
+    const bool ContentChanged = _AuthoredShellView->PollFiles();
+    if (NOT _UsingNativeFallback || NOT ContentChanged) { return; }
+
+    // A startup fallback owns the same four native widgets that a valid authored candidate must stage. Poll once to
+    // detect a content change, then detach the fallback and retry that candidate against unparented bindings.
+    _AuthoredShellHost->SetContent(SNullWidget::NullWidget);
+    const FCkUiLoadResult Recovery = _AuthoredShellView->ReloadFiles(
+        _AuthoredMarkupPath, _AuthoredStylesheetPath);
+    _UsingNativeFallback = NOT Recovery.Succeeded;
+    _AuthoredShellHost->SetContent(
+        _UsingNativeFallback ? BuildNativeContent() : _AuthoredShellView->GetRegion(TEXT("main")));
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -522,6 +515,54 @@ auto
             // than it is intent.
             MakeCard(FText::FromString(TEXT("Virtualized")), _StatVirtualized, CkStyle::Err())
         ];
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkAudioDebuggerWindow::
+    DoCreate_PageSwitcher()
+    -> TSharedRef<SWidgetSwitcher>
+{
+    // Slot order MUST match ECkAudioDebugger_Page's declaration order. The switcher is driven by the enum's integer
+    // value, so a reordered enum would otherwise silently show the wrong page.
+    return SNew(SWidgetSwitcher)
+        .WidgetIndex_Lambda([this]() { return static_cast<int32>(_ActivePage); })
+
+        + SWidgetSwitcher::Slot()
+        [
+            SNew(SScrollBox)
+            + SScrollBox::Slot()
+            .Padding(CkStyle::SpaceL, CkStyle::SpaceM)
+            [
+                SAssignNew(_DirectorPageBox, SVerticalBox)
+            ]
+        ]
+
+        + SWidgetSwitcher::Slot()
+        [
+            SNew(SVerticalBox)
+            + SVerticalBox::Slot()
+            .FillHeight(1.0f)
+            [
+                SNew(SScrollBox)
+                + SScrollBox::Slot()
+                .Padding(CkStyle::SpaceL, CkStyle::SpaceS)
+                [
+                    SAssignNew(_DirectorBox, SVerticalBox)
+                ]
+            ]
+            + SVerticalBox::Slot()
+            .AutoHeight()
+            [
+                DoCreate_CrossfadeLane(false)
+            ]
+        ]
+
+        + SWidgetSwitcher::Slot()[DoCreate_CrossfadeLane(true)]
+        + SWidgetSwitcher::Slot()[DoCreate_SpatialPage()]
+        + SWidgetSwitcher::Slot()[DoCreate_EventsPage()]
+        + SWidgetSwitcher::Slot()[DoCreate_OverlayPage()];
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -1238,6 +1279,7 @@ auto
     // MUST be the WindowBase super, not SCompoundWidget — the base Tick drives the gated style-revision watch that
     // routes into OnStyleRevisionChanged.
     SCkDebugger_WindowBase::Tick(InAllottedGeometry, InCurrentTime, InDeltaTime);
+    PollAuthoredShell(InCurrentTime);
 
     if (NOT FCkDebuggerRefreshGate::Should_RefreshNow(WindowId))
     { return; }

@@ -1,0 +1,17 @@
+.audio-shell {
+  min-width: 760px;
+  min-height: 0;
+  flex-grow: 1;
+  flex-shrink: 1;
+}
+
+.audio-shell-fixed {
+  flex-grow: 0;
+  flex-shrink: 0;
+}
+
+.audio-shell-pages {
+  min-height: 0;
+  flex-grow: 1;
+  flex-shrink: 1;
+}

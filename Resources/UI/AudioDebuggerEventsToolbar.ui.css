@@ -1,0 +1,3 @@
+.audio-events-toolbar { min-width: 0; padding: 8px 12px 4px 12px; vertical-align: center; }
+.audio-events-toggle-wrap { padding: 0 4px 0 0; }
+.audio-events-caveat { flex-grow: 1; color: var(--audio-events-muted); font-family: monospace; font-size: var(--audio-events-micro-size); horizontal-align: right; text-wrap: nowrap; }

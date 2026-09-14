@@ -25,7 +25,14 @@ public:
     auto Get_Snapshot() const -> const FCkAudioDebugger_Snapshot&;
 
 private:
+    friend class FCkAudioDebugger_AuthoredShell;
+
     FCkAudioDebugger_Snapshot _Snapshot;
+
+#if WITH_DEV_AUTOMATION_TESTS
+    // Lets the authored-shell fixture drive the real refresh and action path without manufacturing a PIE world.
+    TOptional<FCkAudioDebugger_Snapshot> _SnapshotOverrideForTests;
+#endif
 };
 
 // --------------------------------------------------------------------------------------------------------------------

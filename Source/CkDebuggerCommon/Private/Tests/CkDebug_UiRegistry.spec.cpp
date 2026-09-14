@@ -207,6 +207,47 @@ auto FCkDebug_UiRegistry_Runtime::RunTest(const FString&) -> bool
     TestEqual(TEXT("Icon meaning updates through its binding"), Icon->Get_Meaning().ToString(), FString(TEXT("Updated actor")));
     TestTrue(TEXT("Icon color updates through its binding"), Icon->Get_ColorAndOpacity().GetSpecifiedColor().Equals(IconColor));
 
+    TestFalse(TEXT("existing authored meters have no target marker"), Meter->Get_TargetFraction().IsSet());
+    auto TargetVisible = true;
+    auto TargetFraction = 0.75f;
+    auto TargetColor = FLinearColor::Yellow;
+    auto TargetData = FCkUiView::FDataBindings{};
+    TargetData.Number.Add(TEXT("fraction"), 0.25f);
+    TargetData.Color.Add(TEXT("fill"), FLinearColor::Blue);
+    TargetData.Visibility.Add(TEXT("target-visible"), TAttribute<bool>::CreateLambda([&TargetVisible]() { return TargetVisible; }));
+    TargetData.Number.Add(TEXT("target-fraction"), TAttribute<float>::CreateLambda([&TargetFraction]() { return TargetFraction; }));
+    TargetData.Color.Add(TEXT("target-color"), TAttribute<FLinearColor>::CreateLambda([&TargetColor]() { return TargetColor; }));
+    const auto TargetView = FCkUiView::Create({}, {}, {}, FSlateFontInfo{}, MoveTemp(TargetData), Registry);
+    const auto TargetRegion = TargetView->GetRegion(TEXT("main"));
+    const auto TargetMarkup = FString{TEXT("<ui version=\"1\"><region name=\"main\"><debug-meter id=\"target-meter\" fraction-bind=\"fraction\" fill-bind=\"fill\" target-visible-bind=\"target-visible\" target-fraction-bind=\"target-fraction\" target-color-bind=\"target-color\"/></region></ui>")};
+    if (!TestTrue(TEXT("authored target marker admits with typed live bindings"), TargetView->TryReload(TargetMarkup, TEXT("")).Succeeded)) { return false; }
+    const auto TargetMeter = StaticCastSharedPtr<SCkDebug_MeterBar>(FindWidget(TargetRegion, TEXT("SCkDebug_MeterBar")));
+    if (!TestTrue(TEXT("target bindings reach the real meter leaf"), TargetMeter.IsValid()
+        && TargetMeter->Get_Fraction() == 0.25f && TargetMeter->Get_TargetFraction() == TOptional<float>{0.75f}
+        && TargetMeter->Get_TargetColor() == FLinearColor::Yellow)) { return false; }
+    TargetFraction = 2.0f;
+    TargetColor = FLinearColor::Red;
+    TestTrue(TEXT("target values clamp to the fixed gain ceiling and colors remain live"),
+        TargetMeter->Get_TargetFraction() == TOptional<float>{1.0f} && TargetMeter->Get_TargetColor() == FLinearColor::Red);
+    TargetVisible = false;
+    TestFalse(TEXT("settled meter hides its target without rebuilding the leaf"), TargetMeter->Get_TargetFraction().IsSet());
+    TestTrue(TEXT("compatible target meter reload preserves its physical leaf and applies changed desired size"),
+        TargetView->TryReload(TargetMarkup.Replace(TEXT("id=\"target-meter\""),
+            TEXT("id=\"target-meter\" width=\"120\" height=\"7\"")), TEXT("")).Succeeded
+            && FindWidget(TargetRegion, TEXT("SCkDebug_MeterBar")) == TargetMeter
+            && TargetMeter->ComputeDesiredSize(1.0f) == FVector2D{120.0f, 7.0f});
+    TestTrue(TEXT("invalid meter resize fails without changing its accepted size"),
+        !TargetMeter->TrySet_DesiredSize(FVector2D{0.0f, 7.0f})
+            && TargetMeter->ComputeDesiredSize(1.0f) == FVector2D{120.0f, 7.0f});
+    const auto TargetRevision = TargetView->GetRevision();
+    for (const auto* Missing : {TEXT(" target-visible-bind=\"target-visible\""), TEXT(" target-fraction-bind=\"target-fraction\"")})
+    {
+        TestTrue(TEXT("partial target binding rejects atomically and retains the accepted meter"),
+            !TargetView->TryReload(TargetMarkup.Replace(Missing, TEXT("")), TEXT("")).Succeeded
+                && TargetView->GetRevision() == TargetRevision
+                && FindWidget(TargetRegion, TEXT("SCkDebug_MeterBar")) == TargetMeter);
+    }
+
     const int64 Revision = View->GetRevision();
     const TSharedPtr<SWidget> OriginalMeter = Meter;
     const TSharedPtr<SWidget> OriginalStatus = Status;

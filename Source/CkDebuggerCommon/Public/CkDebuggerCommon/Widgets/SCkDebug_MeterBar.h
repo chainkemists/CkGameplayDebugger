@@ -52,6 +52,21 @@ public:
 
     auto ComputeDesiredSize(float InLayoutScaleMultiplier) const -> FVector2D override;
 
+    auto Get_Fraction() const -> float { return _Fraction.Get(0.0f); }
+    auto Get_FillColor() const -> FLinearColor { return _FillColor.Get(FLinearColor::White); }
+    auto Get_TargetFraction() const -> TOptional<float> { return _TargetFraction.Get(TOptional<float>{}); }
+    auto Get_TargetColor() const -> FLinearColor { return _TargetColor.Get(FLinearColor::White); }
+    auto TrySet_DesiredSize(const FVector2D InSize) -> bool
+    {
+        const auto ValidSize = FMath::IsFinite(InSize.X) && InSize.X > 0.0f
+            && FMath::IsFinite(InSize.Y) && InSize.Y > 0.0f;
+        if (!ValidSize) { return false; }
+        if (_DesiredSize == InSize) { return true; }
+        _DesiredSize = InSize;
+        Invalidate(EInvalidateWidgetReason::Layout);
+        return true;
+    }
+
 private:
     TAttribute<float> _Fraction;
     TAttribute<FLinearColor> _FillColor;

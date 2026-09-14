@@ -5,6 +5,7 @@
 #include "CkAudio/AudioTrack/CkAudioTrack_Utils.h"
 #include "CkDebuggerCommon/Lifecycle/CkDebug_SessionLifecycle.h"
 #include "CkDebuggerCommon/Settings/CkDebuggerStyleSettings.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_Sparkline.h"
 #include "CkEcs/Registry/CkRegistry.h"
 #include "CkEcs/Registry/CkRegistry_SlotTable.h"
 #include "CkSlateLayout/CkFlexText.h"
@@ -220,6 +221,13 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
         if (View.IsValid()) { AddError(FString::Join(View->GetLastResult().Errors, TEXT("\n"))); }
         return false;
     }
+    TSharedPtr<FCkUiView> CrossfadeView = DebuggerWindow->_AuthoredCrossfadeView;
+    if (NOT TestTrue(TEXT("production Audio window admits its authored Crossfade page"),
+        CrossfadeView.IsValid() && CrossfadeView->GetLastResult().Succeeded))
+    {
+        if (CrossfadeView.IsValid()) { AddError(FString::Join(CrossfadeView->GetLastResult().Errors, TEXT("\n"))); }
+        return false;
+    }
 
     const TSharedRef<SWidget> Main = View->GetRegion(TEXT("main"));
     TestTrue(TEXT("authored shell retains three production native boundaries and authors live summary cards"),
@@ -242,6 +250,16 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
         DebuggerWindow->_PageSwitcher->GetActiveWidgetIndex(), 1);
     TestTrue(TEXT("authored shell exposes horizontal overflow reachability"),
         View->GetScroll(TEXT("audio-shell-scroll")).IsValid());
+    const TSharedRef<SWidget> CrossfadeMain = CrossfadeView->GetRegion(TEXT("main"));
+    TestTrue(TEXT("dedicated Crossfade page authors its ordinary presentation around the exact dual-series plot"),
+        TaggedText(CrossfadeMain, TEXT("audio-crossfade-title")) == TEXT("Crossfade lane")
+            && TaggedText(CrossfadeMain, TEXT("audio-crossfade-subtitle")) == TEXT("recent history of _CurrentVolume")
+            && TaggedText(CrossfadeMain, TEXT("audio-crossfade-legend")) == TEXT("(nothing playing)")
+            && ContainsWidget(CrossfadeMain, DebuggerWindow->_CrossfadePagePlot.ToSharedRef())
+            && DebuggerWindow->_CrossfadePagePlot->Get_Samples() == DebuggerWindow->_CrossfadeSeriesA
+            && DebuggerWindow->_CrossfadePagePlot->Get_BandSamples() == DebuggerWindow->_CrossfadeSeriesB
+            && DebuggerWindow->_CrossfadePagePlot->Get_BandFillOpacity() == 0.0f
+            && DebuggerWindow->_CrossfadePagePlot->Get_DesiredSize() == FVector2D{320.0f, 220.0f});
 
     const TSharedPtr<SWidget> AuthoredValueWidget = FindTaggedWidget(Main, TEXT("audio-stat-concurrency"));
     const bool AuthoredValueIsText = AuthoredValueWidget.IsValid()
@@ -262,6 +280,7 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
             && RoundedCardBrush->OutlineSettings.Width == CkStyle::RingWidth());
 
     const int64 RevisionBeforeGeometryChange = View->GetRevision();
+    const int64 CrossfadeRevisionBeforeGeometryChange = CrossfadeView->GetRevision();
     StyleSettings->Selection.CornerStyle = ECkDebugAxis_CornerStyle::Sharp;
     StyleSettings->Selection.SurfaceElevation = ECkDebugAxis_SurfaceElevation::Flat;
     StyleSettings->NotifyChanged();
@@ -276,6 +295,7 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
         ? StaticCastSharedPtr<SBorder>(SharpCard)->GetBorderImage() : nullptr;
     TestTrue(TEXT("live corner and elevation axes republish authored Audio card geometry"),
         View->GetRevision() > RevisionBeforeGeometryChange
+            && CrossfadeView->GetRevision() > CrossfadeRevisionBeforeGeometryChange
             && FlatWrap.IsValid() && FlatWrap->GetDesiredSize().Y < LayeredWrapHeight
             && SharpCardBrush != nullptr
             && SharpCardBrush->OutlineSettings.CornerRadii.X == 0.0f
@@ -299,17 +319,22 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
         DebuggerWindow->_Tabs.ToSharedRef(), TEXT("Crossfade"));
     TestTrue(TEXT("physical nondefault tab selection routes through the production tab strip"),
         CrossfadeTab.IsValid() && Click(Slate, CrossfadeTab.ToSharedRef())
-            && DebuggerWindow->_PageSwitcher->GetActiveWidgetIndex() == 2);
+            && DebuggerWindow->_PageSwitcher->GetActiveWidgetIndex() == 2
+            && ContainsWidget(DebuggerWindow->_CrossfadePageHost.ToSharedRef(), CrossfadeView->GetRegion(TEXT("main"))));
 
     const TSharedPtr<IPlugin> Plugin = IPluginManager::Get().FindPlugin(TEXT("CkDebugger"));
     FString Markup;
     FString Css;
+    FString CrossfadeMarkup;
+    FString CrossfadeCss;
     const FString Directory = Plugin.IsValid()
         ? FPaths::Combine(Plugin->GetBaseDir(), TEXT("Resources/UI"))
         : FString{};
     if (NOT TestTrue(TEXT("installed Audio shell resources are readable"), Plugin.IsValid()
         && FFileHelper::LoadFileToString(Markup, *FPaths::Combine(Directory, TEXT("AudioDebuggerShell.ui.html")))
-        && FFileHelper::LoadFileToString(Css, *FPaths::Combine(Directory, TEXT("AudioDebuggerShell.ui.css")))))
+        && FFileHelper::LoadFileToString(Css, *FPaths::Combine(Directory, TEXT("AudioDebuggerShell.ui.css")))
+        && FFileHelper::LoadFileToString(CrossfadeMarkup, *FPaths::Combine(Directory, TEXT("AudioDebuggerCrossfade.ui.html")))
+        && FFileHelper::LoadFileToString(CrossfadeCss, *FPaths::Combine(Directory, TEXT("AudioDebuggerCrossfade.ui.css")))))
     { return false; }
 
     const auto Revision = View->GetRevision();
@@ -323,6 +348,29 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
             && TaggedText(View->GetRegion(TEXT("main")), TEXT("audio-stat-concurrency-label")) == TEXT("Active / max")
             && ContainsWidget(View->GetRegion(TEXT("main")), DebuggerWindow->_FilterRow.ToSharedRef())
             && ContainsWidget(View->GetRegion(TEXT("main")), DebuggerWindow->_PageSwitcher.ToSharedRef())
+            && DebuggerWindow->_PageSwitcher->GetActiveWidgetIndex() == 2);
+
+    const int64 CrossfadeRevision = CrossfadeView->GetRevision();
+    const TSharedPtr<TArray<float>> SeriesA = DebuggerWindow->_CrossfadeSeriesA;
+    const TSharedPtr<TArray<float>> SeriesB = DebuggerWindow->_CrossfadeSeriesB;
+    const FCkUiLoadResult CrossfadeReloaded = CrossfadeView->TryReload(
+        CrossfadeMarkup, CrossfadeCss, TEXT("Audio compatible Crossfade candidate"));
+    TickSlate(Slate);
+    if (NOT CrossfadeReloaded.Succeeded) { AddError(FString::Join(CrossfadeReloaded.Errors, TEXT("\n"))); }
+    TestTrue(TEXT("compatible Crossfade reload retains plot, series ownership and selected page"),
+        CrossfadeReloaded.Succeeded && CrossfadeView->GetRevision() > CrossfadeRevision
+            && DebuggerWindow->_CrossfadeSeriesA == SeriesA
+            && DebuggerWindow->_CrossfadeSeriesB == SeriesB
+            && ContainsWidget(CrossfadeView->GetRegion(TEXT("main")), DebuggerWindow->_CrossfadePagePlot.ToSharedRef())
+            && DebuggerWindow->_PageSwitcher->GetActiveWidgetIndex() == 2);
+    const int64 CrossfadeRevisionBeforeReject = CrossfadeView->GetRevision();
+    const FCkUiLoadResult CrossfadeRejected = CrossfadeView->TryReload(
+        TEXT("<ui version=\"1\"><region name=\"main\"><native id=\"missing\" bind=\"missing-crossfade-plot\"/></region></ui>"),
+        TEXT(""), TEXT("Audio rejected Crossfade candidate"));
+    TestFalse(TEXT("missing Crossfade plot is rejected atomically"), CrossfadeRejected.Succeeded);
+    TestTrue(TEXT("rejected Crossfade reload keeps the accepted page and exact plot"),
+        CrossfadeView->GetRevision() == CrossfadeRevisionBeforeReject
+            && ContainsWidget(CrossfadeView->GetRegion(TEXT("main")), DebuggerWindow->_CrossfadePagePlot.ToSharedRef())
             && DebuggerWindow->_PageSwitcher->GetActiveWidgetIndex() == 2);
 
     const auto RevisionBeforeReject = View->GetRevision();
@@ -352,21 +400,31 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
     HostWindow.Reset();
     TickSlate(Slate);
     const TWeakPtr<FCkUiView> ReleasedView = View;
+    const TWeakPtr<FCkUiView> ReleasedCrossfadeView = CrossfadeView;
     DebuggerWindow.Reset();
     View.Reset();
+    CrossfadeView.Reset();
     TestFalse(TEXT("authored Audio view releases with its production window"), ReleasedView.IsValid());
+    TestFalse(TEXT("authored Crossfade view releases with its production window"), ReleasedCrossfadeView.IsValid());
 
     const FString InvalidStartupMarkup =
         TEXT("<ui version=\"1\"><region name=\"main\"><native id=\"missing\" bind=\"missing-audio-port\"/></region></ui>");
+    const FString InvalidCrossfadeStartupMarkup =
+        TEXT("<ui version=\"1\"><region name=\"main\"><native id=\"missing\" bind=\"missing-crossfade-plot\"/></region></ui>");
     bool MarkupRestored = false;
+    bool CrossfadeMarkupRestored = false;
     ON_SCOPE_EXIT
     {
         if (NOT MarkupRestored)
         { FFileHelper::SaveStringToFile(Markup, *FPaths::Combine(Directory, TEXT("AudioDebuggerShell.ui.html"))); }
+        if (NOT CrossfadeMarkupRestored)
+        { FFileHelper::SaveStringToFile(CrossfadeMarkup, *FPaths::Combine(Directory, TEXT("AudioDebuggerCrossfade.ui.html"))); }
     };
     if (NOT TestTrue(TEXT("Audio fixture installs its valid-but-unbound startup candidate"),
         FFileHelper::SaveStringToFile(
-            InvalidStartupMarkup, *FPaths::Combine(Directory, TEXT("AudioDebuggerShell.ui.html")))))
+            InvalidStartupMarkup, *FPaths::Combine(Directory, TEXT("AudioDebuggerShell.ui.html")))
+            && FFileHelper::SaveStringToFile(InvalidCrossfadeStartupMarkup,
+                *FPaths::Combine(Directory, TEXT("AudioDebuggerCrossfade.ui.html")))))
     { return false; }
 
     DebuggerWindow = SNew(SCkAudioDebuggerWindow);
@@ -391,13 +449,28 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
     StyleSettings->NotifyChanged();
     DebuggerWindow->OnStyleRevisionChanged();
     TickSlate(Slate);
-    TestTrue(TEXT("normal style-revision tick recovers a live startup fallback without consuming the file change"),
+    TestTrue(TEXT("normal style-revision tick recovers the outer shell and admits the still-invalid Crossfade fallback"),
         View->GetLastResult().Succeeded && NOT DebuggerWindow->_UsingNativeFallback
+            && DebuggerWindow->_AuthoredCrossfadeView.IsValid()
+            && NOT DebuggerWindow->_AuthoredCrossfadeView->GetLastResult().Succeeded
+            && DebuggerWindow->_UsingNativeCrossfadeFallback
+            && ContainsWidget(DebuggerWindow->_CrossfadePageHost.ToSharedRef(), DebuggerWindow->_CrossfadePagePlot.ToSharedRef())
             && ContainsWidget(View->GetRegion(TEXT("main")), DebuggerWindow->_Tabs.ToSharedRef())
             && NOT ContainsWidget(View->GetRegion(TEXT("main")), DebuggerWindow->_StatCards.ToSharedRef())
             && TaggedText(View->GetRegion(TEXT("main")), TEXT("audio-stat-concurrency-label")) == TEXT("Active / max")
             && ContainsWidget(View->GetRegion(TEXT("main")), DebuggerWindow->_FilterRow.ToSharedRef())
             && ContainsWidget(View->GetRegion(TEXT("main")), DebuggerWindow->_PageSwitcher.ToSharedRef()));
+    CrossfadeMarkupRestored = FFileHelper::SaveStringToFile(
+        CrossfadeMarkup, *FPaths::Combine(Directory, TEXT("AudioDebuggerCrossfade.ui.html")));
+    TestTrue(TEXT("Audio fixture restores the valid Crossfade resource"), CrossfadeMarkupRestored);
+    DebuggerWindow->OnStyleRevisionChanged();
+    TickSlate(Slate);
+    CrossfadeView = DebuggerWindow->_AuthoredCrossfadeView;
+    TestTrue(TEXT("bounded Crossfade polling recovers from native startup fallback with the exact retained plot"),
+        CrossfadeView.IsValid() && CrossfadeView->GetLastResult().Succeeded
+            && NOT DebuggerWindow->_UsingNativeCrossfadeFallback
+            && ContainsWidget(CrossfadeView->GetRegion(TEXT("main")), DebuggerWindow->_CrossfadePagePlot.ToSharedRef())
+            && TaggedText(CrossfadeView->GetRegion(TEXT("main")), TEXT("audio-crossfade-title")) == TEXT("Crossfade lane"));
 
     using namespace ck::registry_table;
     auto Registry = EnttRegistryType{};
@@ -497,6 +570,35 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
 
     DebuggerWindow->DoRecord_VolumeHistory();
     DebuggerWindow->DoRecord_Events();
+    const TSharedPtr<SButton> LiveCrossfadeTab = FindButtonWithText(DebuggerWindow->_Tabs.ToSharedRef(), TEXT("Crossfade"));
+    if (NOT TestTrue(TEXT("production Crossfade tab remains physically selectable"),
+        LiveCrossfadeTab.IsValid() && Click(Slate, LiveCrossfadeTab.ToSharedRef())))
+    { return false; }
+    DebuggerWindow->_VolumeHistory.Reset();
+    TrackInfoA.TrackName = TEXT("Fade A");
+    TrackInfoA.CurrentVolume = 0.25f;
+    TrackInfoA.State = ECk_AudioTrack_State::FadingIn;
+    TrackInfoB.TrackName = TEXT("Fade B");
+    TrackInfoB.CurrentVolume = 0.75f;
+    TrackInfoB.State = ECk_AudioTrack_State::FadingOut;
+    FixtureSnapshot.Directors[0].Tracks = {TrackInfoA, TrackInfoB};
+    DebuggerWindow->_Collector.Collect(nullptr);
+    DebuggerWindow->DoRecord_VolumeHistory();
+    TrackInfoA.CurrentVolume = 0.45f;
+    TrackInfoB.CurrentVolume = 0.55f;
+    FixtureSnapshot.Directors[0].Tracks = {TrackInfoA, TrackInfoB};
+    DebuggerWindow->_Collector.Collect(nullptr);
+    DebuggerWindow->DoRecord_VolumeHistory();
+    TestTrue(TEXT("production sampling drives both retained Crossfade series and authored legend"),
+        DebuggerWindow->_PageSwitcher->GetActiveWidgetIndex() == 2
+            && DebuggerWindow->_CrossfadeSeriesA->Num() == 2
+            && DebuggerWindow->_CrossfadeSeriesB->Num() == 2
+            && (*DebuggerWindow->_CrossfadeSeriesA)[0] == 0.75f
+            && (*DebuggerWindow->_CrossfadeSeriesA)[1] == 0.55f
+            && (*DebuggerWindow->_CrossfadeSeriesB)[0] == 0.25f
+            && (*DebuggerWindow->_CrossfadeSeriesB)[1] == 0.45f
+            && TaggedText(CrossfadeView->GetRegion(TEXT("main")), TEXT("audio-crossfade-legend"))
+                == TEXT("Fade B   ·   Fade A"));
     const auto SessionFixture = FixtureSnapshot;
     UWorld* InvalidatedWorld = NewObject<UWorld>();
     UWorld* UnrelatedWorld = NewObject<UWorld>();

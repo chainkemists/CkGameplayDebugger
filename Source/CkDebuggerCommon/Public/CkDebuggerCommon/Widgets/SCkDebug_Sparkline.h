@@ -75,6 +75,10 @@ public:
     auto ComputeDesiredSize(float InLayoutScaleMultiplier) const -> FVector2D override;
 
     auto Get_FloatSeries() const -> TWeakPtr<const FCkUiFloatSeries> { return _FloatSeries; }
+    auto Get_Samples() const -> TSharedPtr<const TArray<float>> { return _Samples; }
+    auto Get_BandSamples() const -> TSharedPtr<const TArray<float>> { return _BandSamples; }
+    auto Get_BandFillOpacity() const -> float { return _BandFillOpacity; }
+    auto Get_DesiredSize() const -> FVector2D { return _DesiredSize; }
 
 private:
     TSharedPtr<TArray<float>> _Samples;

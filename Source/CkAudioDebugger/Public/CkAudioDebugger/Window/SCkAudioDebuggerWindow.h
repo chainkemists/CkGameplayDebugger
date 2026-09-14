@@ -13,6 +13,7 @@
 class SCkDebug_EventLog;
 class SCkDebug_MeterBar;
 class SCkDebug_Sparkline;
+class SCkAudioDebugger_FalloffCurve;
 class FCkUiView;
 class SHorizontalBox;
 class SBox;
@@ -144,6 +145,13 @@ private:
         double InCurrentTime) -> void;
 
     auto
+    BuildAuthoredAttenuationPanel() -> void;
+
+    auto
+    PollAuthoredAttenuationPanel(
+        double InCurrentTime) -> void;
+
+    auto
     DoCreate_Tabs() -> TSharedRef<SWidget>;
 
     auto
@@ -166,6 +174,12 @@ private:
 
     auto
     DoCreate_SpatialPage() -> TSharedRef<SWidget>;
+
+    auto
+    DoCreate_AttenuationPanel() -> TSharedRef<SWidget>;
+
+    auto
+    DoCreate_NativeAttenuationPanel() -> TSharedRef<SWidget>;
 
     auto
     DoCreate_EventsPage() -> TSharedRef<SWidget>;
@@ -289,20 +303,27 @@ private:
     TSharedPtr<SBox>            _AuthoredShellHost;
     TSharedPtr<FCkUiView>       _AuthoredShellView;
     TSharedPtr<FCkUiView>       _AuthoredCrossfadeView;
+    TSharedPtr<FCkUiView>       _AuthoredAttenuationView;
     FString                     _AuthoredMarkupPath;
     FString                     _AuthoredStylesheetPath;
     FString                     _AuthoredCrossfadeMarkupPath;
     FString                     _AuthoredCrossfadeStylesheetPath;
+    FString                     _AuthoredAttenuationMarkupPath;
+    FString                     _AuthoredAttenuationStylesheetPath;
     double                      _NextAuthoredShellPollSeconds = 0.0;
     double                      _NextAuthoredCrossfadePollSeconds = 0.0;
+    double                      _NextAuthoredAttenuationPollSeconds = 0.0;
     bool                        _UsingNativeFallback = false;
     bool                        _UsingNativeCrossfadeFallback = false;
+    bool                        _UsingNativeAttenuationFallback = false;
     TSharedPtr<SVerticalBox>    _DirectorBox;
     TSharedPtr<SVerticalBox>    _DirectorPageBox;
     TSharedPtr<STextBlock>      _StatusText;
     TSharedPtr<FText>           _CrossfadeLegendText;
     TSharedPtr<SBox>            _CrossfadePageHost;
     TSharedPtr<SCkDebug_Sparkline> _CrossfadePagePlot;
+    TSharedPtr<SBox>            _AttenuationPanelHost;
+    TSharedPtr<SCkAudioDebugger_FalloffCurve> _AttenuationCurve;
 
     TSharedPtr<SHorizontalBox>  _SpatialSelectorBox;
     TSharedPtr<SHorizontalBox>  _OverlayActionsBox;

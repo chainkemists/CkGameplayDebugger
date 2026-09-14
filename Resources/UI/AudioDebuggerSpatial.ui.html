@@ -1,0 +1,42 @@
+<ui version="1">
+  <region name="main">
+    <column id="audio-spatial-root" class="audio-spatial-root">
+      <column id="audio-spatial-selector-wrap" class="audio-spatial-selector-wrap">
+        <scroll id="audio-spatial-selector-scroll" direction="horizontal" class="audio-spatial-selector-scroll">
+          <repeat id="audio-spatial-tracks" bind="audio-spatial-tracks" direction="horizontal" visible="audio-spatial-ready" class="audio-spatial-tracks">
+            <audio-spatial-selector id="audio-spatial-selector" label-field="name" checked-field="checked" tone-field="tone" item-action="audio-spatial-select" />
+          </repeat>
+        </scroll>
+      </column>
+      <scroll id="audio-spatial-scroll" class="audio-spatial-scroll">
+        <column id="audio-spatial-body" class="audio-spatial-body">
+          <column id="audio-spatial-unavailable-wrap" visible="audio-spatial-unavailable" class="audio-spatial-unavailable-wrap">
+            <text id="audio-spatial-unavailable" bind="audio-spatial-unavailable" class="audio-spatial-muted" />
+          </column>
+          <row id="audio-spatial-plots" visible="audio-spatial-plots" class="audio-spatial-plots">
+            <column id="audio-spatial-radar-column" class="audio-spatial-radar-column">
+              <audio-radar id="audio-spatial-radar" class="audio-spatial-radar" />
+              <column id="audio-spatial-legend-wrap" class="audio-spatial-legend-wrap">
+                <text id="audio-spatial-legend" bind="audio-spatial-legend" class="audio-spatial-legend audio-spatial-muted" />
+              </column>
+            </column>
+            <column id="audio-spatial-attenuation-wrap" class="audio-spatial-attenuation-wrap">
+              <native id="audio-spatial-attenuation" bind="audio-spatial-attenuation" class="audio-spatial-attenuation" />
+            </column>
+          </row>
+          <column id="audio-spatial-alert-wrap" visible="audio-spatial-alert" class="audio-spatial-alert-wrap">
+            <row id="audio-spatial-alert" class="audio-spatial-alert">
+              <debug-icon id="audio-spatial-alert-icon" icon-bind="audio-spatial-alert-icon" meaning-bind="audio-spatial-alert-meaning" color-bind="audio-spatial-alert-color" size="16" />
+              <text id="audio-spatial-alert-lead" class="audio-spatial-alert-lead">Inaudible</text>
+              <text id="audio-spatial-alert-body" bind="audio-spatial-alert" class="audio-spatial-alert-body" />
+            </row>
+          </column>
+        </column>
+      </scroll>
+      <row id="audio-spatial-divider" class="audio-spatial-divider" />
+      <column id="audio-spatial-footer" class="audio-spatial-footer">
+        <text id="audio-spatial-listener" bind="audio-spatial-listener" class="audio-spatial-muted" />
+      </column>
+    </column>
+  </region>
+</ui>

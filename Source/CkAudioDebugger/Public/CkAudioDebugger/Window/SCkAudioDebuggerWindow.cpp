@@ -154,6 +154,7 @@ namespace ck_audio_debugger_window
             {TEXT("--audio-events-micro-size"), FString::FromInt(Get_MicroFont().Size)},
             {TEXT("--audio-director-muted"), Color(CkStyle::TextMute())},
             {TEXT("--audio-track-value-size"), FString::FromInt(Get_MonoFont().Size)},
+            {TEXT("--audio-spatial-alert-surface"), Color(CkStyle::GetToneDimColor(ECk_Tone::Err))},
         };
     }
 
@@ -328,6 +329,11 @@ namespace ck_audio_debugger_window
         return ck::Format_UE(TEXT("{}:header:{}"), InGeneration, Build_EntityKey(InDirector));
     }
 
+    auto Build_SpatialRecordKey(const FCk_Handle& InTrack, int64 InGeneration) -> FString
+    {
+        return ck::Format_UE(TEXT("{}:spatial:{}"), InGeneration, Build_EntityKey(InTrack));
+    }
+
     auto Get_TrackRecordSchema() -> TArray<FCkUiFieldSchema>
     {
         return {{TEXT("is-header"), ECkUiFieldKind::Bool}, {TEXT("is-track"), ECkUiFieldKind::Bool},
@@ -500,6 +506,148 @@ namespace ck_audio_debugger_window
         TSharedPtr<SCkDebug_Chip> Widget;
     };
 
+    // The selector combines Audio's pin/follow semantics with the exact shared toggle and status primitives.
+    // It has no handle ownership; retiring the repeat record or view revokes its dispatch attribute.
+    class FSpatialSelector final : public ICkUiRetainedWidget, public TSharedFromThis<FSpatialSelector>
+    {
+    public:
+        struct FConfiguration
+        {
+            TAttribute<FText> Label;
+            TAttribute<bool> Checked;
+            TAttribute<float> Tone;
+            TAttribute<bool> CanDispatch;
+            FSimpleDelegate Action;
+        };
+        static auto TryConfiguration(const FCkUiCustomWidgetArguments& InArguments,
+            FConfiguration& OutConfiguration, FString& OutFailure) -> bool
+        {
+            const auto* Label = InArguments.TextBindings.Find(TEXT("label"));
+            const auto* Checked = InArguments.BoolBindings.Find(TEXT("checked"));
+            const auto* Tone = InArguments.NumberBindings.Find(TEXT("tone"));
+            const auto* Action = InArguments.Actions.Find(TEXT("action"));
+            if (Label == nullptr || NOT Label->IsSet() || Checked == nullptr || NOT Checked->IsSet()
+                || Tone == nullptr || NOT Tone->IsSet() || Action == nullptr || NOT Action->IsBound())
+            { OutFailure = TEXT("audio-spatial-selector requires label, checked, tone and action bindings."); return false; }
+            OutConfiguration = {*Label, *Checked, *Tone, InArguments.CanDispatchEvents, *Action};
+            return true;
+        }
+        explicit FSpatialSelector(FConfiguration InConfiguration) : Configuration(MoveTemp(InConfiguration)) {}
+        auto Initialize() -> void
+        {
+            const TWeakPtr<FSpatialSelector> WeakSelector = AsShared();
+            const auto Label = TAttribute<FText>::CreateLambda([WeakSelector]()
+            {
+                const auto Selector = WeakSelector.Pin();
+                return Selector.IsValid() ? Selector->Configuration.Label.Get(FText::GetEmpty()) : FText::GetEmpty();
+            });
+            Widget = SNew(SCkDebug_ToggleSurface)
+                .AccessibleText(Label)
+                .ToolTipText_Lambda([Label]()
+                { return FText::FromString(ck::Format_UE(TEXT("Inspect '{}' on the radar"), Label.Get().ToString())); })
+                .IsOn_Lambda([WeakSelector]()
+                {
+                    const auto Selector = WeakSelector.Pin();
+                    return Selector.IsValid() && Selector->Configuration.CanDispatch.Get(false)
+                        && Selector->Configuration.Checked.Get(false);
+                })
+                .IsEnabled_Lambda([WeakSelector]()
+                {
+                    const auto Selector = WeakSelector.Pin();
+                    return Selector.IsValid() && Selector->Configuration.CanDispatch.Get(false);
+                })
+                .OnStateChanged_Lambda([WeakSelector](bool)
+                {
+                    const auto Selector = WeakSelector.Pin();
+                    if (Selector.IsValid() && Selector->Configuration.CanDispatch.Get(false))
+                    { const auto Action = Selector->Configuration.Action; Action.ExecuteIfBound(); }
+                })
+                [
+                    SNew(SCkDebug_StatusPill).ShowDot(false).Text(Label)
+                    .Tone_Lambda([WeakSelector]()
+                    {
+                        const auto Selector = WeakSelector.Pin();
+                        if (NOT Selector.IsValid()) { return ECk_Tone::Neutral; }
+                        const auto Tone = Selector->Configuration.Tone.Get(0.0f);
+                        if (Tone == static_cast<float>(ECk_Tone::Err)) { return ECk_Tone::Err; }
+                        if (Tone == static_cast<float>(ECk_Tone::Warn)) { return ECk_Tone::Warn; }
+                        if (Tone == static_cast<float>(ECk_Tone::Ok)) { return ECk_Tone::Ok; }
+                        return ECk_Tone::Neutral;
+                    })
+                ];
+        }
+        auto GetWidget() const -> TSharedRef<SWidget> override { return Widget.ToSharedRef(); }
+        auto PrepareReload(const FCkUiCustomWidgetArguments& InArguments, FString& OutFailure) const
+            -> TUniquePtr<ICkUiPreparedWidgetUpdate> override
+        {
+            auto Next = FConfiguration{};
+            if (NOT TryConfiguration(InArguments, Next, OutFailure)) { return {}; }
+            return MakeUnique<FUpdate>(ConstCastSharedRef<FSpatialSelector>(AsShared()), MoveTemp(Next));
+        }
+    private:
+        class FUpdate final : public ICkUiPreparedWidgetUpdate
+        {
+        public:
+            FUpdate(TSharedRef<FSpatialSelector> InOwner, FConfiguration InConfiguration)
+                : Owner(MoveTemp(InOwner)), Configuration(MoveTemp(InConfiguration)) {}
+            void Commit() noexcept override { Owner->Configuration = MoveTemp(Configuration); }
+        private:
+            TSharedRef<FSpatialSelector> Owner;
+            FConfiguration Configuration;
+        };
+        FConfiguration Configuration;
+        TSharedPtr<SCkDebug_ToggleSurface> Widget;
+    };
+
+    // Audio's observer-relative plot retains the one window-created Radar and its shared in-place spatial model.
+    class FSpatialRadar final : public ICkUiRetainedWidget
+    {
+    public:
+        explicit FSpatialRadar(TSharedRef<SCkAudioDebugger_Radar> InRadar) : Radar(MoveTemp(InRadar)) {}
+        auto GetWidget() const -> TSharedRef<SWidget> override { return Radar; }
+        auto PrepareReload(const FCkUiCustomWidgetArguments&, FString&) const
+            -> TUniquePtr<ICkUiPreparedWidgetUpdate> override { return MakeUnique<FUpdate>(); }
+    private:
+        class FUpdate final : public ICkUiPreparedWidgetUpdate { void Commit() noexcept override {} };
+        TSharedRef<SCkAudioDebugger_Radar> Radar;
+    };
+
+    auto TryCreate_SpatialRegistry(const TSharedRef<SCkAudioDebugger_Radar>& InRadar,
+        TSharedPtr<const FCkUiWidgetRegistrySnapshot>& OutRegistry) -> bool
+    {
+        TSharedPtr<const FCkUiWidgetRegistrySnapshot> Common;
+        if (NOT FCkDebug_UiRegistry::TryCreate(Common).Succeeded) { return false; }
+        auto Staging = FCkUiWidgetRegistry{};
+        const auto* Icon = Common->Find(TEXT("debug-icon"));
+        if (Icon == nullptr || NOT Staging.Register(*Icon).Succeeded) { return false; }
+        auto Selector = FCkUiCustomWidgetRegistration{};
+        Selector.Schema.Tag = TEXT("audio-spatial-selector");
+        Selector.Schema.Properties = {{TEXT("label"), ECkUiCustomPropertyKind::TextBinding},
+            {TEXT("checked"), ECkUiCustomPropertyKind::BoolBinding},
+            {TEXT("tone"), ECkUiCustomPropertyKind::NumberBinding}, {TEXT("action"), ECkUiCustomPropertyKind::Action}};
+        Selector.RetainedFactory = [](const FCkUiCustomWidgetArguments& InArguments,
+            FString& OutFailure) -> TSharedPtr<ICkUiRetainedWidget>
+        {
+            auto Configuration = FSpatialSelector::FConfiguration{};
+            if (NOT FSpatialSelector::TryConfiguration(InArguments, Configuration, OutFailure)) { return {}; }
+            const auto Result = MakeShared<FSpatialSelector>(MoveTemp(Configuration));
+            Result->Initialize();
+            return Result;
+        };
+        if (NOT Staging.Register(MoveTemp(Selector)).Succeeded) { return false; }
+        auto Radar = FCkUiCustomWidgetRegistration{};
+        Radar.Schema.Tag = TEXT("audio-radar");
+        Radar.RetainedFactory = [InRadar](const FCkUiCustomWidgetArguments&, FString& OutFailure) -> TSharedPtr<ICkUiRetainedWidget>
+        {
+            if (InRadar->GetParentWidget().IsValid())
+            { OutFailure = TEXT("audio-radar requires the window's detached Radar."); return {}; }
+            return MakeShared<FSpatialRadar>(InRadar);
+        };
+        if (NOT Staging.Register(MoveTemp(Radar)).Succeeded) { return false; }
+        OutRegistry = Staging.CreateSnapshot();
+        return true;
+    }
+
     auto TryCreate_DirectorsRegistry(TSharedPtr<const FCkUiWidgetRegistrySnapshot>& OutRegistry) -> bool
     {
         TSharedPtr<const FCkUiWidgetRegistrySnapshot> Common;
@@ -577,6 +725,9 @@ auto
     DoUpdate_DirectorRecords();
     FCkUiCollection::TryCreate(Get_TrackRecordSchema(), _TrackRecords);
     DoUpdate_TrackRecords();
+    FCkUiCollection::TryCreate({{TEXT("name"), ECkUiFieldKind::Text},
+        {TEXT("checked"), ECkUiFieldKind::Bool}, {TEXT("tone"), ECkUiFieldKind::Number}}, _SpatialRecords);
+    DoUpdate_SpatialRecords();
     _Tabs = DoCreate_Tabs();
     _StatCards = DoCreate_StatCards();
     DoCreate_FilterControls();
@@ -636,6 +787,7 @@ auto
         BuildAuthoredEventsToolbar();
         BuildAuthoredDirectorsPage();
         BuildAuthoredTracksPage();
+        BuildAuthoredSpatialPage();
     }
     DoRebuild_OverlayActions();
     _SessionInvalidatedHandle = ck::DebugSessionLifecycle::Get_OnSessionInvalidated().AddSP(
@@ -665,6 +817,8 @@ SCkAudioDebuggerWindow::~SCkAudioDebuggerWindow()
     _AuthoredDirectorsView.Reset();
     if (_TracksPageHost.IsValid()) { _TracksPageHost->SetContent(SNullWidget::NullWidget); }
     _AuthoredTracksView.Reset();
+    if (_SpatialPageHost.IsValid()) { _SpatialPageHost->SetContent(SNullWidget::NullWidget); }
+    _AuthoredSpatialView.Reset();
     _AuthoredShellView.Reset();
     if (_Tabs.IsValid()) { _Tabs->ReleaseOwnerInteraction(); }
 }
@@ -777,6 +931,179 @@ auto SCkAudioDebuggerWindow::PollAuthoredShell(const double InCurrentTime) -> vo
     { BuildAuthoredDirectorsPage(); }
     if (NOT _UsingNativeFallback && NOT _AuthoredTracksView.IsValid())
     { BuildAuthoredTracksPage(); }
+    if (NOT _UsingNativeFallback && NOT _AuthoredSpatialView.IsValid())
+    { BuildAuthoredSpatialPage(); }
+}
+
+auto SCkAudioDebuggerWindow::BuildAuthoredSpatialPage() -> void
+{
+    if (NOT _SpatialPageHost.IsValid() || NOT _SpatialRecords.IsValid() || NOT _Radar.IsValid()) { return; }
+    const auto Plugin = IPluginManager::Get().FindPlugin(TEXT("CkDebugger"));
+    TSharedPtr<const FCkUiWidgetRegistrySnapshot> Registry;
+    if (NOT Plugin.IsValid() || NOT ck_audio_debugger_window::TryCreate_SpatialRegistry(_Radar.ToSharedRef(), Registry)) { return; }
+    auto Data = FCkUiView::FDataBindings{};
+    const TWeakPtr<SCkAudioDebuggerWindow> WeakWindow = SharedThis(this);
+    const auto Model = _SpatialView;
+    Data.SlateUserIndex = 0;
+    Data.Collections.Add(TEXT("audio-spatial-tracks"), _SpatialRecords);
+    Data.CanDispatchEvents = TAttribute<bool>::CreateLambda([WeakWindow]()
+    {
+        const auto Window = WeakWindow.Pin();
+        return Window.IsValid() && Window->_SpatialRecordsReady && Window->_Collector.Get_Snapshot().HasWorld;
+    });
+    Data.Visibility.Add(TEXT("audio-spatial-ready"), TAttribute<bool>::CreateLambda([WeakWindow]()
+    {
+        const auto Window = WeakWindow.Pin();
+        return Window.IsValid() && Window->_SpatialRecordsReady;
+    }));
+    Data.Visibility.Add(TEXT("audio-spatial-unavailable"), TAttribute<bool>::CreateLambda([Model]()
+    { return NOT Model.IsValid() || NOT Model->HasSpatialData; }));
+    Data.Visibility.Add(TEXT("audio-spatial-plots"), TAttribute<bool>::CreateLambda([Model]()
+    { return Model.IsValid() && Model->HasSpatialData; }));
+    Data.Visibility.Add(TEXT("audio-spatial-alert"), TAttribute<bool>::CreateLambda([Model]()
+    { return Model.IsValid() && Model->HasSpatialData && (Model->IsVirtualized || Model->IsOutOfRange); }));
+    Data.Text.Add(TEXT("audio-spatial-unavailable"), TAttribute<FText>::CreateLambda([Model]()
+    {
+        if (NOT Model.IsValid() || NOT Model->HasSelection)
+        { return FText::FromString(TEXT("No track to inspect. The Spatial page needs a track with a live audio component in a running PIE session.")); }
+        return FText::FromString(ck::Format_UE(TEXT("'{}' has no spatial data: it is either 2D (no attenuation settings resolved) or its pooled audio component has already been released. Neither has a position to plot."), Model->TrackName));
+    }));
+    Data.Text.Add(TEXT("audio-spatial-legend"), TAttribute<FText>::CreateLambda([Model]()
+    {
+        return Model.IsValid() && Model->HasSpatialData ? FText::FromString(ck::Format_UE(TEXT("inner {}m  ·  falloff {}m"),
+            FString::SanitizeFloat(Model->InnerRadiusCm / 100.0f, 1),
+            FString::SanitizeFloat(Model->MaxFalloffCm / 100.0f, 1))) : FText::GetEmpty();
+    }));
+    Data.Text.Add(TEXT("audio-spatial-alert"), TAttribute<FText>::CreateLambda([Model]()
+    {
+        if (NOT Model.IsValid() || NOT Model->HasSpatialData) { return FText::GetEmpty(); }
+        if (Model->IsVirtualized)
+        { return FText::FromString(ck::Format_UE(TEXT("{} is virtualized — playing at {} and not mixed at all."),
+            Model->TrackName, FString::SanitizeFloat(Model->TrackVolume, 2))); }
+        return FText::FromString(ck::Format_UE(TEXT("{} is {} m away — outside its {} m falloff. Playing at {}, audible {}."),
+            Model->TrackName, FString::SanitizeFloat(Model->DistanceCm / 100.0f, 1),
+            FString::SanitizeFloat(Model->MaxFalloffCm / 100.0f, 1),
+            FString::SanitizeFloat(Model->TrackVolume, 2), FString::SanitizeFloat(Model->AudibleVolume, 2)));
+    }));
+    Data.Text.Add(TEXT("audio-spatial-listener"), TAttribute<FText>::CreateLambda([WeakWindow]()
+    {
+        const auto Window = WeakWindow.Pin();
+        if (NOT Window.IsValid()) { return FText::GetEmpty(); }
+        const auto& Snapshot = Window->_Collector.Get_Snapshot();
+        return FText::FromString(Snapshot.HasListener ? ck::Format_UE(TEXT("listener: {}"), Snapshot.ListenerSource)
+            : FString{TEXT("no listener — distances cannot be computed")});
+    }));
+    Data.Images.Add(TEXT("audio-spatial-alert-icon"), TAttribute<const FSlateBrush*>::CreateLambda([]()
+    { return FCkIconStyle::Get_Brush(ck::debug_axes::Get_ToneIcon(ECk_Tone::Err), ECk_Icon_BrushSize::Size_16x16); }));
+    Data.Text.Add(TEXT("audio-spatial-alert-meaning"), FText::FromString(TEXT("This track is playing and cannot be heard")));
+    Data.Color.Add(TEXT("audio-spatial-alert-color"), TAttribute<FLinearColor>::CreateLambda([]() { return CkStyle::Err(); }));
+    Data.ItemActions.Add(TEXT("audio-spatial-select"), FCkUiOnItemAction::CreateLambda([WeakWindow](FString InKey)
+    { if (const auto Window = WeakWindow.Pin()) { Window->DoSelect_SpatialRecord(InKey); } }));
+
+    // Both fallback mounts release their exact child before the authored candidate acquires it.
+    _NativeRadarHost->SetContent(SNullWidget::NullWidget);
+    _NativeSpatialAttenuationHost->SetContent(SNullWidget::NullWidget);
+    auto NativeBindings = FCkUiView::FNativeBindings{};
+    NativeBindings.Add(TEXT("audio-spatial-attenuation"), _AttenuationPanelHost.ToSharedRef());
+    const auto View = FCkUiView::Create(MoveTemp(NativeBindings), {}, ck_audio_debugger_window::Get_AuthoredShellStyleTokens(),
+        CkStyle::RegularFont(CkStyle::FontSizeBody()), MoveTemp(Data), Registry);
+    const auto Main = View->GetRegion(TEXT("main"));
+    const auto Directory = FPaths::Combine(Plugin->GetBaseDir(), TEXT("Resources/UI"));
+    _AuthoredSpatialMarkupPath = FPaths::Combine(Directory, TEXT("AudioDebuggerSpatial.ui.html"));
+    _AuthoredSpatialStylesheetPath = FPaths::Combine(Directory, TEXT("AudioDebuggerSpatial.ui.css"));
+    View->SetFiles(_AuthoredSpatialMarkupPath, _AuthoredSpatialStylesheetPath);
+    _AuthoredSpatialView = View;
+    View->PollFiles(ck_audio_debugger_window::Get_AuthoredShellStyleTokens());
+    _UsingNativeSpatialFallback = NOT View->GetLastResult().Succeeded;
+    if (_UsingNativeSpatialFallback)
+    {
+        _NativeRadarHost->SetContent(_Radar.ToSharedRef());
+        _NativeSpatialAttenuationHost->SetContent(_AttenuationPanelHost.ToSharedRef());
+    }
+    else { _SpatialSelectorBox->ClearChildren(); }
+    _SpatialPageHost->SetContent(_UsingNativeSpatialFallback ? _NativeSpatialPage.ToSharedRef() : Main);
+}
+
+auto SCkAudioDebuggerWindow::PollAuthoredSpatialPage(const double InCurrentTime) -> void
+{
+    if (InCurrentTime < _NextAuthoredSpatialPollSeconds || NOT _AuthoredSpatialView.IsValid()) { return; }
+    _NextAuthoredSpatialPollSeconds = InCurrentTime + 0.5;
+    if (_UsingNativeSpatialFallback)
+    {
+        _NativeRadarHost->SetContent(SNullWidget::NullWidget);
+        _NativeSpatialAttenuationHost->SetContent(SNullWidget::NullWidget);
+    }
+    _AuthoredSpatialView->PollFiles(ck_audio_debugger_window::Get_AuthoredShellStyleTokens());
+    if (_UsingNativeSpatialFallback && _AuthoredSpatialView->GetLastResult().Succeeded)
+    {
+        _UsingNativeSpatialFallback = false;
+        _SpatialSelectorBox->ClearChildren();
+        _SpatialPageHost->SetContent(_AuthoredSpatialView->GetRegion(TEXT("main")));
+    }
+    else if (_UsingNativeSpatialFallback)
+    {
+        _NativeRadarHost->SetContent(_Radar.ToSharedRef());
+        _NativeSpatialAttenuationHost->SetContent(_AttenuationPanelHost.ToSharedRef());
+    }
+}
+
+auto SCkAudioDebuggerWindow::DoUpdate_SpatialRecords() -> void
+{
+    using namespace ck_audio_debugger_window;
+    if (NOT _SpatialRecords.IsValid()) { _SpatialRecordsReady = false; return; }
+    auto Records = TArray<FCkUiRecordData>{};
+    const auto& Snapshot = _Collector.Get_Snapshot();
+    const auto* Selected = Snapshot.HasWorld ? TryGet_SelectedSpatialTrack() : nullptr;
+    const auto SelectedKey = Selected != nullptr ? Build_SpatialRecordKey(Selected->TrackEntity, _DirectorSessionGeneration) : FString{};
+    if (Snapshot.HasWorld)
+    {
+        for (const auto& Director : Snapshot.Directors)
+        {
+            for (const auto& Track : Director.Tracks)
+            {
+                if (Track.State == ECk_AudioTrack_State::Stopped || ck::Is_NOT_Valid(Track.TrackEntity)) { continue; }
+                const auto Key = Build_SpatialRecordKey(Track.TrackEntity, _DirectorSessionGeneration);
+                const auto Tone = Key != SelectedKey ? ECk_Tone::Neutral
+                    : Track.IsVirtualized ? ECk_Tone::Err : Track.Get_IsOutOfRange() ? ECk_Tone::Warn : ECk_Tone::Ok;
+                auto Record = FCkUiRecordData{};
+                Record.Key = Key;
+                auto NameField = FCkUiFieldValue{};
+                NameField.Text = FText::FromString(Track.TrackName);
+                Record.Fields.Add(TEXT("name"), MoveTemp(NameField));
+                auto CheckedField = FCkUiFieldValue{};
+                CheckedField.Kind = ECkUiFieldKind::Bool;
+                CheckedField.Bool = Key == _SelectedSpatialTrackKey;
+                Record.Fields.Add(TEXT("checked"), MoveTemp(CheckedField));
+                auto ToneField = FCkUiFieldValue{};
+                ToneField.Kind = ECkUiFieldKind::Number;
+                ToneField.Number = static_cast<float>(Tone);
+                Record.Fields.Add(TEXT("tone"), MoveTemp(ToneField));
+                Records.Add(MoveTemp(Record));
+            }
+        }
+    }
+    _SpatialRecordsReady = _SpatialRecords->TrySetRecords(MoveTemp(Records)).Succeeded;
+    if (NOT _SpatialRecordsReady) { _SpatialRecords->TrySetRecords({}); }
+}
+
+auto SCkAudioDebuggerWindow::DoSelect_SpatialRecord(const FString& InKey) -> void
+{
+    if (NOT _SpatialRecordsReady || NOT _SpatialRecords.IsValid() || NOT _Collector.Get_Snapshot().HasWorld
+        || NOT _SpatialRecords->FindRecord(InKey).IsValid()) { return; }
+    for (const auto& Director : _Collector.Get_Snapshot().Directors)
+    {
+        for (const auto& Track : Director.Tracks)
+        {
+            if (Track.State != ECk_AudioTrack_State::Stopped && ck::IsValid(Track.TrackEntity)
+                && ck_audio_debugger_window::Build_SpatialRecordKey(Track.TrackEntity, _DirectorSessionGeneration) == InKey)
+            {
+                _SelectedSpatialTrackKey = _SelectedSpatialTrackKey == InKey ? FString{} : InKey;
+                _SpatialSignature.Reset();
+                DoUpdate_SpatialView();
+                return;
+            }
+        }
+    }
 }
 
 auto SCkAudioDebuggerWindow::BuildAuthoredDirectorsPage() -> void
@@ -1786,8 +2113,11 @@ auto
     using namespace ck_audio_debugger_window;
 
     const auto View = _SpatialView;
+    const TWeakPtr<SCkAudioDebuggerWindow> WeakWindow = SharedThis(this);
+    _Radar = SNew(SCkAudioDebugger_Radar).View(View);
+    const auto Attenuation = DoCreate_AttenuationPanel();
 
-    return SNew(SVerticalBox)
+    _NativeSpatialPage = SNew(SVerticalBox)
 
         // ---- Selector: which track the radar is about ----
         + SVerticalBox::Slot()
@@ -1865,12 +2195,11 @@ auto
                         + SVerticalBox::Slot()
                         .AutoHeight()
                         [
-                            SNew(SBox)
+                            SAssignNew(_NativeRadarHost, SBox)
                             .WidthOverride(k_RadarSize)
                             .HeightOverride(k_RadarSize)
                             [
-                                SNew(SCkAudioDebugger_Radar)
-                                .View(_SpatialView)
+                                _Radar.ToSharedRef()
                             ]
                         ]
 
@@ -1899,7 +2228,7 @@ auto
                     .FillWidth(1.0f)
                     .Padding(CkStyle::SpaceXL, 0.0f, 0.0f, 0.0f)
                     [
-                        DoCreate_AttenuationPanel()
+                        SAssignNew(_NativeSpatialAttenuationHost, SBox)[Attenuation]
                     ]
                 ]
 
@@ -1958,15 +2287,18 @@ auto
             SNew(STextBlock)
             .Font_Static(&Get_MicroFont)
             .ColorAndOpacity(CkStyle::TextMute())
-            .Text_Lambda([this]()
+            .Text_Lambda([WeakWindow]()
             {
-                const auto& Snapshot = _Collector.Get_Snapshot();
+                const auto Window = WeakWindow.Pin();
+                if (NOT Window.IsValid()) { return FText::GetEmpty(); }
+                const auto& Snapshot = Window->_Collector.Get_Snapshot();
 
                 return FText::FromString(Snapshot.HasListener
                     ? ck::Format_UE(TEXT("listener: {}"), Snapshot.ListenerSource)
                     : FString{TEXT("no listener — distances cannot be computed")});
             })
         ];
+    return SAssignNew(_SpatialPageHost, SBox)[_NativeSpatialPage.ToSharedRef()];
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -2215,6 +2547,7 @@ auto
     PollAuthoredEventsToolbar(InCurrentTime);
     PollAuthoredDirectorsPage(InCurrentTime);
     PollAuthoredTracksPage(InCurrentTime);
+    PollAuthoredSpatialPage(InCurrentTime);
 
     UWorld* World = DoGet_PieWorld();
     if (World == _InvalidatedWorld.Get())
@@ -2284,6 +2617,7 @@ auto
     _NextAuthoredEventsToolbarPollSeconds = 0.0;
     _NextAuthoredDirectorsPollSeconds = 0.0;
     _NextAuthoredTracksPollSeconds = 0.0;
+    _NextAuthoredSpatialPollSeconds = 0.0;
     // Force the next tick through the structure pass so the rows pick the new palette up; the cells themselves carry
     // no style.
     _LastSignature.Reset();
@@ -3021,6 +3355,7 @@ auto
     const auto& Snapshot = _Collector.Get_Snapshot();
 
     const FCkAudioDebugger_TrackInfo* Best = nullptr;
+    if (NOT Snapshot.HasWorld) { return nullptr; }
 
     // Ranked by how much the reader is likely to have come here for it, not by volume alone: a virtualized track and
     // an out-of-range one are both "playing and silent", which is the question this page answers.
@@ -3036,9 +3371,10 @@ auto
     {
         for (const auto& Track : Director.Tracks)
         {
+            if (Track.State == ECk_AudioTrack_State::Stopped || ck::Is_NOT_Valid(Track.TrackEntity)) { continue; }
             if (NOT _SelectedSpatialTrackKey.IsEmpty())
             {
-                if (ck_audio_debugger_window::Build_EntityKey(Track.TrackEntity) == _SelectedSpatialTrackKey)
+                if (ck_audio_debugger_window::Build_SpatialRecordKey(Track.TrackEntity, _DirectorSessionGeneration) == _SelectedSpatialTrackKey)
                 { return &Track; }
 
                 continue;
@@ -3075,9 +3411,11 @@ auto
     if (NOT _SpatialView.IsValid())
     { return; }
 
+    DoUpdate_SpatialRecords();
     auto& View = *_SpatialView;
 
     View = FCkAudioDebugger_SpatialView{};
+    if (NOT _SpatialRecordsReady) { return; }
 
     const auto& Snapshot = _Collector.Get_Snapshot();
 
@@ -3152,11 +3490,11 @@ auto
     { return; }
 
     _SpatialSelectorBox->ClearChildren();
+    if (NOT _UsingNativeSpatialFallback || NOT _SpatialRecordsReady) { return; }
 
-    const auto* Selected = TryGet_SelectedSpatialTrack();
-    const auto SelectedKey = Selected != nullptr ? Build_EntityKey(Selected->TrackEntity) : FString{};
     const TWeakPtr<SCkAudioDebuggerWindow> WeakWindow{SharedThis(this)};
-    const auto Generation = _RuntimeGeneration;
+    const TWeakPtr<FCkUiCollection> WeakRecords = _SpatialRecords;
+    const auto Generation = _DirectorSessionGeneration;
 
     for (const auto& Director : _Collector.Get_Snapshot().Directors)
     {
@@ -3165,12 +3503,14 @@ auto
             if (Track.State == ECk_AudioTrack_State::Stopped)
             { continue; }
 
-            const auto Name = Track.TrackName;
-            const auto Key = Build_EntityKey(Track.TrackEntity);
-
-            const auto Tone = Track.IsVirtualized
-                ? ECk_Tone::Err
-                : (Track.Get_IsOutOfRange() ? ECk_Tone::Warn : ECk_Tone::Ok);
+            const auto Key = Build_SpatialRecordKey(Track.TrackEntity, _DirectorSessionGeneration);
+            const auto Label = TAttribute<FText>::CreateLambda([WeakRecords, Key]()
+            {
+                const auto Records = WeakRecords.Pin();
+                const auto Record = Records.IsValid() ? Records->FindRecord(Key) : nullptr;
+                const auto* Field = Record.IsValid() ? Record->FindField(TEXT("name")) : nullptr;
+                return Field != nullptr ? Field->Text : FText::GetEmpty();
+            });
 
             _SpatialSelectorBox->AddSlot()
             .AutoWidth()
@@ -3182,27 +3522,33 @@ auto
                 {
                     const auto Window = WeakWindow.Pin();
                     return Window.IsValid()
-                        && Window->CanDispatch_RuntimeAction(Generation)
+                        && Window->_DirectorSessionGeneration == Generation && Window->_SpatialRecordsReady
+                        && Window->_SpatialRecords->FindRecord(Key).IsValid()
                         && Window->_SelectedSpatialTrackKey == Key;
                 })
-                .AccessibleText(FText::FromString(Name))
-                .ToolTipText(FText::FromString(ck::Format_UE(
-                    TEXT("Inspect '{}' on the radar"), Name)))
-                .OnStateChanged_Lambda([WeakWindow, Generation, Key](const bool InOn)
+                .AccessibleText(Label)
+                .ToolTipText_Lambda([Label]()
+                { return FText::FromString(ck::Format_UE(TEXT("Inspect '{}' on the radar"), Label.Get().ToString())); })
+                .OnStateChanged_Lambda([WeakWindow, Generation, Key](const bool)
                 {
                     const auto Window = WeakWindow.Pin();
-                    if (NOT Window.IsValid() || NOT Window->CanDispatch_RuntimeAction(Generation))
+                    if (NOT Window.IsValid() || Window->_DirectorSessionGeneration != Generation)
                     { return; }
 
                     // Re-clicking the current selection clears it, which hands the page back to the
                     // most-diagnostic-track default rather than pinning the reader to a stale choice.
-                    Window->_SelectedSpatialTrackKey = InOn ? Key : FString{};
-                    Window->_SpatialSignature.Reset();
+                    Window->DoSelect_SpatialRecord(Key);
                 })
                 [
                     SNew(SCkDebug_StatusPill)
-                    .Text(FText::FromString(Name))
-                    .Tone(Key == SelectedKey ? Tone : ECk_Tone::Neutral)
+                    .Text(Label)
+                    .Tone_Lambda([WeakRecords, Key]()
+                    {
+                        const auto Records = WeakRecords.Pin();
+                        const auto Record = Records.IsValid() ? Records->FindRecord(Key) : nullptr;
+                        const auto* Field = Record.IsValid() ? Record->FindField(TEXT("tone")) : nullptr;
+                        return Field != nullptr ? static_cast<ECk_Tone>(Field->Number) : ECk_Tone::Neutral;
+                    })
                     .ShowDot(false)
                 ]
             ];
@@ -3665,6 +4011,7 @@ auto
     DoUpdate_TabRecords();
     DoUpdate_DirectorRecords();
     DoUpdate_TrackRecords();
+    DoUpdate_SpatialRecords();
 
     if (_DirectorBox.IsValid()) { _DirectorBox->ClearChildren(); }
     if (_DirectorPageBox.IsValid()) { _DirectorPageBox->ClearChildren(); }

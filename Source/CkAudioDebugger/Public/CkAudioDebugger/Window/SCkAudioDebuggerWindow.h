@@ -16,6 +16,7 @@ class SCkDebug_Sparkline;
 class SCkDebug_SearchBar;
 class SCkDebug_ToggleSurface;
 class SCkAudioDebugger_FalloffCurve;
+class SCkAudioDebugger_Radar;
 class FCkUiView;
 class FCkUiCollection;
 class SCkDebug_UnderlineTabs;
@@ -167,6 +168,11 @@ private:
     auto PollAuthoredTracksPage(double InCurrentTime) -> void;
     auto DoUpdate_TrackRecords() -> void;
     auto DoNavigate_TrackRecord(const FString& InKey) -> void;
+
+    auto BuildAuthoredSpatialPage() -> void;
+    auto PollAuthoredSpatialPage(double InCurrentTime) -> void;
+    auto DoUpdate_SpatialRecords() -> void;
+    auto DoSelect_SpatialRecord(const FString& InKey) -> void;
 
     auto
     PollAuthoredEventsToolbar(
@@ -391,6 +397,19 @@ private:
     TSharedPtr<SBox>            _AttenuationPanelHost;
     TSharedPtr<SCkAudioDebugger_FalloffCurve> _AttenuationCurve;
 
+    TSharedPtr<FCkUiView>       _AuthoredSpatialView;
+    TSharedPtr<FCkUiCollection> _SpatialRecords;
+    TSharedPtr<SBox>           _SpatialPageHost;
+    TSharedPtr<SWidget>        _NativeSpatialPage;
+    TSharedPtr<SBox>           _NativeRadarHost;
+    TSharedPtr<SBox>           _NativeSpatialAttenuationHost;
+    TSharedPtr<SCkAudioDebugger_Radar> _Radar;
+    FString                    _AuthoredSpatialMarkupPath;
+    FString                    _AuthoredSpatialStylesheetPath;
+    double                     _NextAuthoredSpatialPollSeconds = 0.0;
+    bool                       _UsingNativeSpatialFallback = true;
+    bool                       _SpatialRecordsReady = false;
+
     TSharedPtr<SHorizontalBox>  _SpatialSelectorBox;
     TSharedPtr<SHorizontalBox>  _OverlayActionsBox;
     TSharedPtr<SVerticalBox>    _OverlayListBox;
@@ -448,7 +467,7 @@ private:
     FDelegateHandle _SessionInvalidatedHandle;
     FDelegateHandle _WorldInvalidatedHandle;
     int64 _RuntimeGeneration = 0;
-    /** Directors and Tracks share this lifecycle-only identity; Overlay rebuilds advance only _RuntimeGeneration. */
+    /** Authored entity rows share this lifecycle-only identity; Overlay rebuilds advance only _RuntimeGeneration. */
     int64 _DirectorSessionGeneration = 0;
 
     ECkAudioDebugger_Page _ActivePage = ECkAudioDebugger_Page::Tracks;

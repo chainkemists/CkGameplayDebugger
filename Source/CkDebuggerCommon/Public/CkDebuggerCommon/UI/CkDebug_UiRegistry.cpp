@@ -633,6 +633,120 @@ namespace ck_debug_ui_registry
         return InRegistry.Register(MoveTemp(Registration));
     }
 
+    struct FMeterConfiguration
+    {
+        TAttribute<float> Fraction;
+        TAttribute<FLinearColor> Fill;
+        TAttribute<TOptional<float>> Target;
+        TAttribute<FLinearColor> TargetColor;
+        TAttribute<FText> Tooltip;
+        FVector2D Size = FVector2D{96.0f, 4.0f};
+    };
+
+    auto MakeMeterConfiguration(const FCkUiCustomWidgetArguments& InArguments,
+        FMeterConfiguration& OutConfiguration, FString& OutFailure) -> bool
+    {
+        const auto* Fraction = FindRequiredNumberBinding(InArguments, TEXT("fraction"), OutFailure);
+        const auto* Fill = FindRequiredColorBinding(InArguments, TEXT("fill"), OutFailure);
+        if (Fraction == nullptr || Fill == nullptr) { return false; }
+        const auto* TargetVisible = InArguments.BoolBindings.Find(TEXT("target-visible"));
+        const auto* TargetFraction = InArguments.NumberBindings.Find(TEXT("target-fraction"));
+        const auto* TargetColor = InArguments.ColorBindings.Find(TEXT("target-color"));
+        const auto HasTarget = TargetVisible != nullptr || TargetFraction != nullptr || TargetColor != nullptr;
+        if (HasTarget && (TargetVisible == nullptr || !TargetVisible->IsSet()
+            || TargetFraction == nullptr || !TargetFraction->IsSet()
+            || (TargetColor != nullptr && !TargetColor->IsSet())))
+        {
+            OutFailure = TEXT("debug-meter target requires both target-visible and target-fraction bindings.");
+            return false;
+        }
+        const auto Width = InArguments.NumberProperties.FindRef(TEXT("width"), 96.0f);
+        const auto Height = InArguments.NumberProperties.FindRef(TEXT("height"), 4.0f);
+        if (!FMath::IsFinite(Width) || Width <= 0.0f || !FMath::IsFinite(Height) || Height <= 0.0f)
+        {
+            OutFailure = TEXT("debug-meter width and height must be finite positive numbers.");
+            return false;
+        }
+        OutConfiguration.Fraction = *Fraction;
+        OutConfiguration.Fill = *Fill;
+        OutConfiguration.Size = FVector2D{Width, Height};
+        OutConfiguration.Target = HasTarget
+            ? TAttribute<TOptional<float>>::CreateLambda([Visible = *TargetVisible, Value = *TargetFraction]()
+            {
+                const auto FractionValue = Value.Get(0.0f);
+                return Visible.Get(false) && FMath::IsFinite(FractionValue)
+                    ? TOptional<float>{FMath::Clamp(FractionValue, 0.0f, 1.0f)} : TOptional<float>{};
+            })
+            : TAttribute<TOptional<float>>(TOptional<float>{});
+        OutConfiguration.TargetColor = TargetColor != nullptr ? *TargetColor : TAttribute<FLinearColor>(FLinearColor::White);
+        if (const auto* Tooltip = InArguments.TextBindings.Find(TEXT("tooltip"))) { OutConfiguration.Tooltip = *Tooltip; }
+        return true;
+    }
+
+    // Repeat value publications prepare their descendants as well as structural reloads. Keep the physical meter
+    // and replace only its bound configuration, so a moving gain never reconstructs the painted leaf.
+    class FMeterComponent final : public ICkUiRetainedWidget, public TSharedFromThis<FMeterComponent>
+    {
+    public:
+        explicit FMeterComponent(FMeterConfiguration InConfiguration) : Configuration(MoveTemp(InConfiguration)) {}
+        auto Initialize() -> void
+        {
+            const TWeakPtr<FMeterComponent> WeakMeter = AsShared();
+            Widget = SNew(SCkDebug_MeterBar)
+                .Fraction_Lambda([WeakMeter]()
+                {
+                    const auto Meter = WeakMeter.Pin();
+                    return Meter.IsValid() ? Meter->Configuration.Fraction.Get(0.0f) : 0.0f;
+                })
+                .FillColor_Lambda([WeakMeter]()
+                {
+                    const auto Meter = WeakMeter.Pin();
+                    return Meter.IsValid() ? Meter->Configuration.Fill.Get(FLinearColor::Transparent) : FLinearColor::Transparent;
+                })
+                .TargetFraction_Lambda([WeakMeter]()
+                {
+                    const auto Meter = WeakMeter.Pin();
+                    return Meter.IsValid() ? Meter->Configuration.Target.Get(TOptional<float>{}) : TOptional<float>{};
+                })
+                .TargetColor_Lambda([WeakMeter]()
+                {
+                    const auto Meter = WeakMeter.Pin();
+                    return Meter.IsValid() ? Meter->Configuration.TargetColor.Get(FLinearColor::White) : FLinearColor::Transparent;
+                })
+                .DesiredSize(Configuration.Size);
+            Widget->SetToolTipText(TAttribute<FText>::CreateLambda([WeakMeter]()
+            {
+                const auto Meter = WeakMeter.Pin();
+                return Meter.IsValid() ? Meter->Configuration.Tooltip.Get(FText::GetEmpty()) : FText::GetEmpty();
+            }));
+        }
+        auto GetWidget() const -> TSharedRef<SWidget> override { return Widget.ToSharedRef(); }
+        auto PrepareReload(const FCkUiCustomWidgetArguments& InArguments, FString& OutFailure) const
+            -> TUniquePtr<ICkUiPreparedWidgetUpdate> override
+        {
+            auto Next = FMeterConfiguration{};
+            if (!MakeMeterConfiguration(InArguments, Next, OutFailure)) { return {}; }
+            return MakeUnique<FUpdate>(ConstCastSharedRef<FMeterComponent>(AsShared()), MoveTemp(Next));
+        }
+    private:
+        class FUpdate final : public ICkUiPreparedWidgetUpdate
+        {
+        public:
+            FUpdate(TSharedRef<FMeterComponent> InOwner, FMeterConfiguration InConfiguration)
+                : Owner(MoveTemp(InOwner)), Configuration(MoveTemp(InConfiguration)) {}
+            void Commit() noexcept override
+            {
+                Owner->Configuration = MoveTemp(Configuration);
+                Owner->Widget->TrySet_DesiredSize(Owner->Configuration.Size);
+            }
+        private:
+            TSharedRef<FMeterComponent> Owner;
+            FMeterConfiguration Configuration;
+        };
+        FMeterConfiguration Configuration;
+        TSharedPtr<SCkDebug_MeterBar> Widget;
+    };
+
     auto RegisterMeter(FCkUiWidgetRegistry& InRegistry) -> FCkUiLoadResult
     {
         auto Registration = FCkUiCustomWidgetRegistration{};
@@ -640,32 +754,19 @@ namespace ck_debug_ui_registry
         Registration.Schema.Properties = {
             {TEXT("fraction"), ECkUiCustomPropertyKind::NumberBinding},
             {TEXT("fill"), ECkUiCustomPropertyKind::ColorBinding},
+            {TEXT("target-visible"), ECkUiCustomPropertyKind::BoolBinding, false},
+            {TEXT("target-fraction"), ECkUiCustomPropertyKind::NumberBinding, false},
+            {TEXT("target-color"), ECkUiCustomPropertyKind::ColorBinding, false},
             {TEXT("width"), ECkUiCustomPropertyKind::Number, false},
             {TEXT("height"), ECkUiCustomPropertyKind::Number, false},
             {TEXT("tooltip"), ECkUiCustomPropertyKind::TextBinding, false},
         };
-        Registration.Factory = [](const FCkUiCustomWidgetArguments& Arguments, FString& OutFailure) -> TSharedPtr<SWidget>
+        Registration.RetainedFactory = [](const FCkUiCustomWidgetArguments& Arguments, FString& OutFailure) -> TSharedPtr<ICkUiRetainedWidget>
         {
-            const TAttribute<float>* Fraction = FindRequiredNumberBinding(Arguments, TEXT("fraction"), OutFailure);
-            const TAttribute<FLinearColor>* Fill = FindRequiredColorBinding(Arguments, TEXT("fill"), OutFailure);
-            if (Fraction == nullptr || Fill == nullptr) { return nullptr; }
-
-            const float ResolvedWidth = Arguments.NumberProperties.FindRef(TEXT("width"), 96.0f);
-            const float ResolvedHeight = Arguments.NumberProperties.FindRef(TEXT("height"), 4.0f);
-            if (!FMath::IsFinite(ResolvedWidth) || ResolvedWidth <= 0.0f || !FMath::IsFinite(ResolvedHeight) || ResolvedHeight <= 0.0f)
-            {
-                OutFailure = TEXT("debug-meter width and height must be finite positive numbers.");
-                return nullptr;
-            }
-
-            const TSharedRef<SCkDebug_MeterBar> Meter = SNew(SCkDebug_MeterBar)
-                .Fraction(*Fraction)
-                .FillColor(*Fill)
-                .DesiredSize(FVector2D(ResolvedWidth, ResolvedHeight));
-            if (const TAttribute<FText>* Tooltip = Arguments.TextBindings.Find(TEXT("tooltip")); Tooltip != nullptr)
-            {
-                Meter->SetToolTipText(*Tooltip);
-            }
+            auto Configuration = FMeterConfiguration{};
+            if (!MakeMeterConfiguration(Arguments, Configuration, OutFailure)) { return {}; }
+            const auto Meter = MakeShared<FMeterComponent>(MoveTemp(Configuration));
+            Meter->Initialize();
             return Meter;
         };
         return InRegistry.Register(MoveTemp(Registration));

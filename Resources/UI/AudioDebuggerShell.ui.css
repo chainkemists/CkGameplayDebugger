@@ -16,6 +16,12 @@
   padding: 8px 12px 4px 12px;
 }
 
+.audio-shell-filters { min-width: 0; vertical-align: center; }
+.audio-filter-search-wrap { min-width: 0; flex-grow: 1; padding: 0 8px 8px 12px; }
+.audio-filter-state-wrap { padding: 0 4px 8px 0; }
+.audio-filter-stopped-wrap { padding: 0 8px 8px 0; }
+.audio-filter-group-wrap { padding: 0 12px 8px 0; }
+
 .audio-stat-wrap {
   min-width: 0;
   padding: var(--audio-stat-outer-extent);

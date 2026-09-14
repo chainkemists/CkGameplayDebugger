@@ -331,7 +331,7 @@ auto
 
     _Tabs = DoCreate_Tabs();
     _StatCards = DoCreate_StatCards();
-    _FilterRow = DoCreate_FilterRow();
+    DoCreate_FilterControls();
     _PageSwitcher = DoCreate_PageSwitcher();
 
     ChildSlot
@@ -419,7 +419,7 @@ auto SCkAudioDebuggerWindow::BuildNativeContent() -> TSharedRef<SWidget>
     return SNew(SVerticalBox)
         + SVerticalBox::Slot().AutoHeight()[_Tabs.ToSharedRef()]
         + SVerticalBox::Slot().AutoHeight()[_StatCards.ToSharedRef()]
-        + SVerticalBox::Slot().AutoHeight()[_FilterRow.ToSharedRef()]
+        + SVerticalBox::Slot().AutoHeight()[DoCreate_FilterRow()]
         + SVerticalBox::Slot().FillHeight(1.0f)[_PageSwitcher.ToSharedRef()];
 }
 
@@ -434,7 +434,11 @@ auto SCkAudioDebuggerWindow::BuildAuthoredShell() -> void
 
     auto NativeBindings = FCkUiView::FNativeBindings{};
     NativeBindings.Add(TEXT("audio-tabs"), _Tabs.ToSharedRef());
-    NativeBindings.Add(TEXT("audio-filters"), _FilterRow.ToSharedRef());
+    NativeBindings.Add(TEXT("audio-filter-search"), _FilterSearchBar.ToSharedRef());
+    NativeBindings.Add(TEXT("audio-filter-playing"), _FilterPlayingToggle.ToSharedRef());
+    NativeBindings.Add(TEXT("audio-filter-fading"), _FilterFadingToggle.ToSharedRef());
+    NativeBindings.Add(TEXT("audio-filter-stopped"), _FilterStoppedToggle.ToSharedRef());
+    NativeBindings.Add(TEXT("audio-filter-group"), _FilterGroupToggle.ToSharedRef());
     NativeBindings.Add(TEXT("audio-pages"), _PageSwitcher.ToSharedRef());
     auto Data = FCkUiView::FDataBindings{};
     Data.SlateUserIndex = 0;
@@ -469,7 +473,7 @@ auto SCkAudioDebuggerWindow::PollAuthoredShell(const double InCurrentTime) -> vo
     const bool ContentChanged = _AuthoredShellView->PollFiles(StyleTokens);
     if (NOT _UsingNativeFallback || NOT ContentChanged) { return; }
 
-    // A startup fallback owns the same four native widgets that a valid authored candidate must stage. Poll once to
+    // A startup fallback owns the same native widgets that a valid authored candidate must stage. Poll once to
     // detect a content change, then detach the fallback and retry that candidate against unparented bindings.
     _AuthoredShellHost->SetContent(SNullWidget::NullWidget);
     // Resetting the paths clears the poll cache, so the retry uses FCkUiView's bounded file reader and stages the
@@ -821,33 +825,94 @@ auto
 
 auto
     SCkAudioDebuggerWindow::
-    DoCreate_FilterRow()
-    -> TSharedRef<SWidget>
+    DoCreate_FilterControls()
+    -> void
 {
     using namespace ck_audio_debugger_window;
 
     // Every state toggle drops the signature rather than only flipping its bool: it changes which rows exist, and the
     // value pass writes cells positionally into the rows the structure pass emitted.
-    const auto MakeStateToggle = [this](const FText& InLabel, ECk_Tone InTone, bool* InFlag) -> TSharedRef<SWidget>
+    const TWeakPtr<SCkAudioDebuggerWindow> WeakWindow = SharedThis(this);
+    const auto MakeOnStateChanged = [WeakWindow](bool SCkAudioDebuggerWindow::* InFlag)
+    {
+        return FOnCkDebug_ToggleSurfaceChanged::CreateLambda([WeakWindow, InFlag](const bool InOn)
+        {
+            if (const TSharedPtr<SCkAudioDebuggerWindow> Window = WeakWindow.Pin())
+            {
+                if (Window.Get()->*InFlag == InOn) { return; }
+                Window.Get()->*InFlag = InOn;
+                Window->_LastSignature.Reset();
+            }
+        });
+    };
+    const auto MakeIsOn = [WeakWindow](bool SCkAudioDebuggerWindow::* InFlag)
+    {
+        return TAttribute<bool>::CreateLambda([WeakWindow, InFlag]()
+        {
+            const TSharedPtr<SCkAudioDebuggerWindow> Window = WeakWindow.Pin();
+            return Window.IsValid() && Window.Get()->*InFlag;
+        });
+    };
+    const auto MakeStateToggle = [WeakWindow, MakeIsOn, MakeOnStateChanged](const FText& InLabel,
+        ECk_Tone InTone, bool SCkAudioDebuggerWindow::* InFlag) -> TSharedRef<SCkDebug_ToggleSurface>
     {
         return SNew(SCkDebug_ToggleSurface)
-            .IsOn_Lambda([InFlag]() { return *InFlag; })
+            .IsOn(MakeIsOn(InFlag))
+            .IsEnabled_Lambda([WeakWindow]() { return WeakWindow.IsValid(); })
             .ToolTipText(FText::Format(
                 FText::FromString(TEXT("Show {0} tracks")), InLabel))
             .AccessibleText(InLabel)
-            .OnStateChanged_Lambda([this, InFlag](const bool InOn)
-            {
-                if (*InFlag == InOn) { return; }
-                *InFlag = InOn;
-                _LastSignature.Reset();
-            })
+            .OnStateChanged(MakeOnStateChanged(InFlag))
             [
                 SNew(SCkDebug_StatusPill)
                 .Text(InLabel)
-                .Tone_Lambda([InFlag, InTone]() { return *InFlag ? InTone : ECk_Tone::Neutral; })
+                .Tone_Lambda([IsOn = MakeIsOn(InFlag), InTone]() { return IsOn.Get(false) ? InTone : ECk_Tone::Neutral; })
                 .ShowDot(false)
             ];
     };
+
+    _FilterSearchBar = SNew(SCkDebug_SearchBar)
+        .HintText(FText::FromString(TEXT("Filter tracks")))
+        .IsEnabled_Lambda([WeakWindow]() { return WeakWindow.IsValid(); })
+        .OnSearchTextChanged_Lambda([WeakWindow](const FString& InText)
+        {
+            if (const TSharedPtr<SCkAudioDebuggerWindow> Window = WeakWindow.Pin())
+            {
+                Window->_FilterString = InText;
+                Window->_HighlightString = InText;
+                Window->_LastSignature.Reset();
+            }
+        });
+    _FilterPlayingToggle = MakeStateToggle(FText::FromString(TEXT("Playing")), ECk_Tone::Ok,
+        &SCkAudioDebuggerWindow::_ShowPlaying);
+    _FilterFadingToggle = MakeStateToggle(FText::FromString(TEXT("Fading")), ECk_Tone::Warn,
+        &SCkAudioDebuggerWindow::_ShowFading);
+    _FilterStoppedToggle = MakeStateToggle(FText::FromString(TEXT("Stopped")), ECk_Tone::Accent,
+        &SCkAudioDebuggerWindow::_ShowStopped);
+    _FilterGroupToggle = SNew(SCkDebug_ToggleSurface)
+        .IsOn(MakeIsOn(&SCkAudioDebuggerWindow::_GroupByDirector))
+        .IsEnabled_Lambda([WeakWindow]() { return WeakWindow.IsValid(); })
+        .ToolTipText(FText::FromString(
+            TEXT("Group rows under their director. Off flattens every track into one list, which is what you ")
+            TEXT("want when comparing volumes across directors.")))
+        .AccessibleText(FText::FromString(TEXT("Group by director")))
+        .OnStateChanged(MakeOnStateChanged(&SCkAudioDebuggerWindow::_GroupByDirector))
+        [
+            SNew(STextBlock)
+            .Font_Static(&Get_MicroFont)
+            .ColorAndOpacity(CkStyle::TextDim())
+            .Text(FText::FromString(TEXT("Group by director")))
+        ];
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkAudioDebuggerWindow::
+    DoCreate_FilterRow()
+    -> TSharedRef<SWidget>
+{
+    // Fallback-only layout: never retain this parent after the shell releases it to transfer its five native ports.
 
     return SNew(SHorizontalBox)
 
@@ -856,14 +921,7 @@ auto
         .VAlign(VAlign_Center)
         .Padding(CkStyle::SpaceL, 0.0f, CkStyle::SpaceM, CkStyle::SpaceM)
         [
-            SNew(SCkDebug_SearchBar)
-            .HintText(FText::FromString(TEXT("Filter tracks")))
-            .OnSearchTextChanged_Lambda([this](const FString& InText)
-            {
-                _FilterString = InText;
-                _HighlightString = InText;
-                _LastSignature.Reset();
-            })
+            _FilterSearchBar.ToSharedRef()
         ]
 
         + SHorizontalBox::Slot()
@@ -871,7 +929,7 @@ auto
         .VAlign(VAlign_Center)
         .Padding(0.0f, 0.0f, CkStyle::SpaceS, CkStyle::SpaceM)
         [
-            MakeStateToggle(FText::FromString(TEXT("Playing")), ECk_Tone::Ok, &_ShowPlaying)
+            _FilterPlayingToggle.ToSharedRef()
         ]
 
         + SHorizontalBox::Slot()
@@ -879,7 +937,7 @@ auto
         .VAlign(VAlign_Center)
         .Padding(0.0f, 0.0f, CkStyle::SpaceS, CkStyle::SpaceM)
         [
-            MakeStateToggle(FText::FromString(TEXT("Fading")), ECk_Tone::Warn, &_ShowFading)
+            _FilterFadingToggle.ToSharedRef()
         ]
 
         + SHorizontalBox::Slot()
@@ -887,7 +945,7 @@ auto
         .VAlign(VAlign_Center)
         .Padding(0.0f, 0.0f, CkStyle::SpaceM, CkStyle::SpaceM)
         [
-            MakeStateToggle(FText::FromString(TEXT("Stopped")), ECk_Tone::Accent, &_ShowStopped)
+            _FilterStoppedToggle.ToSharedRef()
         ]
 
         + SHorizontalBox::Slot()
@@ -895,24 +953,7 @@ auto
         .VAlign(VAlign_Center)
         .Padding(0.0f, 0.0f, CkStyle::SpaceL, CkStyle::SpaceM)
         [
-            SNew(SCkDebug_ToggleSurface)
-            .IsOn_Lambda([this]() { return _GroupByDirector; })
-            .ToolTipText(FText::FromString(
-                TEXT("Group rows under their director. Off flattens every track into one list, which is what you ")
-                TEXT("want when comparing volumes across directors.")))
-            .AccessibleText(FText::FromString(TEXT("Group by director")))
-            .OnStateChanged_Lambda([this](const bool InOn)
-            {
-                if (_GroupByDirector == InOn) { return; }
-                _GroupByDirector = InOn;
-                _LastSignature.Reset();
-            })
-            [
-                SNew(STextBlock)
-                .Font_Static(&Get_MicroFont)
-                .ColorAndOpacity(CkStyle::TextDim())
-                .Text(FText::FromString(TEXT("Group by director")))
-            ]
+            _FilterGroupToggle.ToSharedRef()
         ];
 }
 

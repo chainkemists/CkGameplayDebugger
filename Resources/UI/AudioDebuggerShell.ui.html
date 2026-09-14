@@ -9,7 +9,23 @@
           <column id="audio-stat-fading-wrap" class="audio-stat-wrap"><column id="audio-stat-fading-card" class="audio-stat-card"><text id="audio-stat-fading-label" class="audio-stat-label">Fading</text><text id="audio-stat-fading" bind="audio-stat-fading" class="audio-stat-value audio-stat-warn" /></column></column>
           <column id="audio-stat-virtualized-wrap" class="audio-stat-wrap"><column id="audio-stat-virtualized-card" class="audio-stat-card"><text id="audio-stat-virtualized-label" class="audio-stat-label">Virtualized</text><text id="audio-stat-virtualized" bind="audio-stat-virtualized" class="audio-stat-value audio-stat-err" /></column></column>
         </row>
-        <native id="audio-shell-filters" bind="audio-filters" class="audio-shell-fixed" />
+        <row id="audio-shell-filters" class="audio-shell-filters audio-shell-fixed">
+          <column id="audio-filter-search-wrap" class="audio-filter-search-wrap">
+            <native id="audio-filter-search" bind="audio-filter-search" />
+          </column>
+          <column id="audio-filter-playing-wrap" class="audio-filter-state-wrap">
+            <native id="audio-filter-playing" bind="audio-filter-playing" />
+          </column>
+          <column id="audio-filter-fading-wrap" class="audio-filter-state-wrap">
+            <native id="audio-filter-fading" bind="audio-filter-fading" />
+          </column>
+          <column id="audio-filter-stopped-wrap" class="audio-filter-stopped-wrap">
+            <native id="audio-filter-stopped" bind="audio-filter-stopped" />
+          </column>
+          <column id="audio-filter-group-wrap" class="audio-filter-group-wrap">
+            <native id="audio-filter-group" bind="audio-filter-group" />
+          </column>
+        </row>
         <native id="audio-shell-pages" bind="audio-pages" class="audio-shell-pages" />
       </column>
     </scroll>

@@ -6,6 +6,7 @@
 #include "CkDebuggerCommon/Lifecycle/CkDebug_SessionLifecycle.h"
 #include "CkEcs/Registry/CkRegistry.h"
 #include "CkEcs/Registry/CkRegistry_SlotTable.h"
+#include "CkSlateLayout/CkFlexText.h"
 #include "CkSlateLayout/SCkUiSurface.h"
 
 #include "Framework/Application/SlateApplication.h"
@@ -26,6 +27,26 @@
 
 namespace ck_audio_debugger_authored_shell_tests
 {
+    auto FindTaggedWidget(const TSharedRef<SWidget>& InRoot, const FName InTag) -> TSharedPtr<SWidget>
+    {
+        if (InRoot->GetTag() == InTag) { return InRoot; }
+        FChildren* Children = InRoot->GetChildren();
+        for (int32 Index = 0; Children != nullptr && Index < Children->Num(); ++Index)
+        {
+            if (const TSharedPtr<SWidget> Found = FindTaggedWidget(
+                ConstCastSharedRef<SWidget>(Children->GetChildAt(Index)), InTag); Found.IsValid())
+            { return Found; }
+        }
+        return nullptr;
+    }
+
+    auto TaggedText(const TSharedRef<SWidget>& InRoot, const TCHAR* InTag) -> FString
+    {
+        const TSharedPtr<SWidget> Widget = FindTaggedWidget(InRoot, FName{InTag});
+        return Widget.IsValid() && Widget->GetTypeAsString() == TEXT("SCkFlexText")
+            ? StaticCastSharedPtr<SCkFlexText>(Widget)->GetText().ToString() : FString{};
+    }
+
     auto TickSlate(FSlateApplication& InSlate) -> void
     {
         InSlate.PumpMessages();
@@ -163,15 +184,20 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
     }
 
     const TSharedRef<SWidget> Main = View->GetRegion(TEXT("main"));
-    TestTrue(TEXT("authored shell retains all four production presentation boundaries"),
+    TestTrue(TEXT("authored shell retains three production native boundaries and authors live summary cards"),
         DebuggerWindow->_Tabs.IsValid()
             && DebuggerWindow->_StatCards.IsValid()
             && DebuggerWindow->_FilterRow.IsValid()
             && DebuggerWindow->_PageSwitcher.IsValid()
             && ContainsWidget(Main, DebuggerWindow->_Tabs.ToSharedRef())
-            && ContainsWidget(Main, DebuggerWindow->_StatCards.ToSharedRef())
+            && NOT ContainsWidget(Main, DebuggerWindow->_StatCards.ToSharedRef())
             && ContainsWidget(Main, DebuggerWindow->_FilterRow.ToSharedRef())
-            && ContainsWidget(Main, DebuggerWindow->_PageSwitcher.ToSharedRef()));
+            && ContainsWidget(Main, DebuggerWindow->_PageSwitcher.ToSharedRef())
+            && TaggedText(Main, TEXT("audio-stat-concurrency-label")) == TEXT("Active / max")
+            && TaggedText(Main, TEXT("audio-stat-audible-label")) == TEXT("Audible")
+            && TaggedText(Main, TEXT("audio-stat-fading-label")) == TEXT("Fading")
+            && TaggedText(Main, TEXT("audio-stat-virtualized-label")) == TEXT("Virtualized")
+            && TaggedText(Main, TEXT("audio-stat-concurrency")) == TEXT("0 / 0"));
     TestEqual(TEXT("production page switcher retains all six Audio pages"),
         DebuggerWindow->_PageSwitcher->GetNumWidgets(), 6);
     TestEqual(TEXT("production Audio shell preserves Tracks as its default page"),
@@ -200,10 +226,11 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
     const FCkUiLoadResult Reloaded = View->TryReload(Markup, Css, TEXT("Audio compatible shell candidate"));
     TickSlate(Slate);
     if (NOT Reloaded.Succeeded) { AddError(FString::Join(Reloaded.Errors, TEXT("\n"))); }
-    TestTrue(TEXT("compatible reload retains every native boundary and page state"),
+    TestTrue(TEXT("compatible reload retains native boundaries, authored summary ownership and page state"),
         Reloaded.Succeeded && View->GetRevision() > Revision
             && ContainsWidget(View->GetRegion(TEXT("main")), DebuggerWindow->_Tabs.ToSharedRef())
-            && ContainsWidget(View->GetRegion(TEXT("main")), DebuggerWindow->_StatCards.ToSharedRef())
+            && NOT ContainsWidget(View->GetRegion(TEXT("main")), DebuggerWindow->_StatCards.ToSharedRef())
+            && TaggedText(View->GetRegion(TEXT("main")), TEXT("audio-stat-concurrency-label")) == TEXT("Active / max")
             && ContainsWidget(View->GetRegion(TEXT("main")), DebuggerWindow->_FilterRow.ToSharedRef())
             && ContainsWidget(View->GetRegion(TEXT("main")), DebuggerWindow->_PageSwitcher.ToSharedRef())
             && DebuggerWindow->_PageSwitcher->GetActiveWidgetIndex() == 2);
@@ -275,7 +302,8 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
     TestTrue(TEXT("valid file change recovers a live startup fallback without reopening"),
         View->GetLastResult().Succeeded && NOT DebuggerWindow->_UsingNativeFallback
             && ContainsWidget(View->GetRegion(TEXT("main")), DebuggerWindow->_Tabs.ToSharedRef())
-            && ContainsWidget(View->GetRegion(TEXT("main")), DebuggerWindow->_StatCards.ToSharedRef())
+            && NOT ContainsWidget(View->GetRegion(TEXT("main")), DebuggerWindow->_StatCards.ToSharedRef())
+            && TaggedText(View->GetRegion(TEXT("main")), TEXT("audio-stat-concurrency-label")) == TEXT("Active / max")
             && ContainsWidget(View->GetRegion(TEXT("main")), DebuggerWindow->_FilterRow.ToSharedRef())
             && ContainsWidget(View->GetRegion(TEXT("main")), DebuggerWindow->_PageSwitcher.ToSharedRef()));
 
@@ -330,7 +358,8 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
         DebuggerWindow->_DirectorSlots.Num() == 1
             && DebuggerWindow->_DirectorPageSlots.Num() == 1
             && DebuggerWindow->_DirectorSlots[0].ActiveText->GetText().ToString() == TEXT("1 / 4 active")
-            && DebuggerWindow->_DirectorPageSlots[0].ActiveText->GetText().ToString() == TEXT("1 / 4 active"));
+            && DebuggerWindow->_DirectorPageSlots[0].ActiveText->GetText().ToString() == TEXT("1 / 4 active")
+            && TaggedText(View->GetRegion(TEXT("main")), TEXT("audio-stat-concurrency")) == TEXT("1 / 4"));
 
     const TSharedPtr<SButton> OverlayTab = FindButtonWithText(DebuggerWindow->_Tabs.ToSharedRef(), TEXT("Overlay"));
     if (NOT TestTrue(TEXT("production Overlay tab is physically selectable"),

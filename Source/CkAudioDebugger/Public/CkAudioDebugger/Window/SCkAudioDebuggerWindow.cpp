@@ -319,11 +319,18 @@ auto SCkAudioDebuggerWindow::BuildAuthoredShell() -> void
 
     auto NativeBindings = FCkUiView::FNativeBindings{};
     NativeBindings.Add(TEXT("audio-tabs"), _Tabs.ToSharedRef());
-    NativeBindings.Add(TEXT("audio-stats"), _StatCards.ToSharedRef());
     NativeBindings.Add(TEXT("audio-filters"), _FilterRow.ToSharedRef());
     NativeBindings.Add(TEXT("audio-pages"), _PageSwitcher.ToSharedRef());
     auto Data = FCkUiView::FDataBindings{};
     Data.SlateUserIndex = 0;
+    Data.Text.Add(TEXT("audio-stat-concurrency"), TAttribute<FText>::CreateLambda(
+        [Cell = _StatConcurrency]() { return *Cell; }));
+    Data.Text.Add(TEXT("audio-stat-audible"), TAttribute<FText>::CreateLambda(
+        [Cell = _StatAudible]() { return *Cell; }));
+    Data.Text.Add(TEXT("audio-stat-fading"), TAttribute<FText>::CreateLambda(
+        [Cell = _StatFading]() { return *Cell; }));
+    Data.Text.Add(TEXT("audio-stat-virtualized"), TAttribute<FText>::CreateLambda(
+        [Cell = _StatVirtualized]() { return *Cell; }));
     const TSharedRef<FCkUiView> View = FCkUiView::Create(
         MoveTemp(NativeBindings), {}, {}, CkStyle::RegularFont(CkStyle::FontSizeBody()), MoveTemp(Data));
     const TSharedRef<SWidget> Main = View->GetRegion(TEXT("main"));

@@ -28,10 +28,12 @@
 #include "CkDebuggerCommon/Widgets/SCkDebug_StatusPill.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_ToggleSurface.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_UnderlineTabs.h"
+#include "CkDebuggerCommon/UI/CkDebug_UiRegistry.h"
 #include "CkDebuggerCommon/Window/CkDebuggerRefreshGate.h"
 #include "CkDebuggerCommon/Window/SCkDebug_WindowChrome.h"
 
 #include "CkSlateLayout/SCkUiSurface.h"
+#include "CkSlateLayout/CkUiCollection.h"
 
 #include "CkEditorTools/Style/CkStyle.h"
 
@@ -329,6 +331,10 @@ auto
 
     _SpatialView = MakeShared<FCkAudioDebugger_SpatialView>();
 
+    const FCkUiLoadResult TabsCreated = FCkUiCollection::TryCreate({
+        {TEXT("label"), ECkUiFieldKind::Text}, {TEXT("count"), ECkUiFieldKind::Text},
+        {TEXT("warning"), ECkUiFieldKind::Bool}}, _TabRecords);
+    if (TabsCreated.Succeeded) { DoUpdate_TabRecords(); }
     _Tabs = DoCreate_Tabs();
     _StatCards = DoCreate_StatCards();
     DoCreate_FilterControls();
@@ -412,6 +418,7 @@ SCkAudioDebuggerWindow::~SCkAudioDebuggerWindow()
     { _EventsToolbarHost->SetContent(SNullWidget::NullWidget); }
     _AuthoredEventsToolbarView.Reset();
     _AuthoredShellView.Reset();
+    if (_Tabs.IsValid()) { _Tabs->ReleaseOwnerInteraction(); }
 }
 
 auto SCkAudioDebuggerWindow::BuildNativeContent() -> TSharedRef<SWidget>
@@ -428,12 +435,20 @@ auto SCkAudioDebuggerWindow::BuildAuthoredShell() -> void
     const TSharedPtr<IPlugin> Plugin = IPluginManager::Get().FindPlugin(TEXT("CkDebugger"));
     if (NOT Plugin.IsValid())
     {
+        _UsingNativeFallback = true;
+        _AuthoredShellHost->SetContent(BuildNativeContent());
+        return;
+    }
+
+    TSharedPtr<const FCkUiWidgetRegistrySnapshot> Registry;
+    if (NOT _TabsProjectionReady || NOT FCkDebug_UiRegistry::TryCreate(Registry).Succeeded)
+    {
+        _UsingNativeFallback = true;
         _AuthoredShellHost->SetContent(BuildNativeContent());
         return;
     }
 
     auto NativeBindings = FCkUiView::FNativeBindings{};
-    NativeBindings.Add(TEXT("audio-tabs"), _Tabs.ToSharedRef());
     NativeBindings.Add(TEXT("audio-filter-search"), _FilterSearchBar.ToSharedRef());
     NativeBindings.Add(TEXT("audio-filter-playing"), _FilterPlayingToggle.ToSharedRef());
     NativeBindings.Add(TEXT("audio-filter-fading"), _FilterFadingToggle.ToSharedRef());
@@ -442,6 +457,24 @@ auto SCkAudioDebuggerWindow::BuildAuthoredShell() -> void
     NativeBindings.Add(TEXT("audio-pages"), _PageSwitcher.ToSharedRef());
     auto Data = FCkUiView::FDataBindings{};
     Data.SlateUserIndex = 0;
+    const TWeakPtr<SCkAudioDebuggerWindow> WeakWindow = SharedThis(this);
+    Data.Collections.Add(TEXT("audio-tabs"), _TabRecords);
+    Data.String.Add(TEXT("audio-page"), TAttribute<FString>::CreateLambda([WeakWindow]()
+    {
+        const auto Window = WeakWindow.Pin();
+        return Window.IsValid() ? ck_audio_debugger_window::Get_PageId(Window->_ActivePage).ToString() : FString{};
+    }));
+    Data.Visibility.Add(TEXT("audio-tabs-ready"), TAttribute<bool>::CreateLambda([WeakWindow]()
+    {
+        const auto Window = WeakWindow.Pin();
+        return Window.IsValid() && Window->_TabsProjectionReady;
+    }));
+    Data.StringChanged.Add(TEXT("audio-select-page"), FCkUiOnStringChanged::CreateLambda([WeakWindow](const FString& InKey)
+    {
+        const auto Window = WeakWindow.Pin();
+        if (Window.IsValid() && Window->_TabsProjectionReady && Window->_TabRecords->FindRecord(InKey).IsValid())
+        { Window->DoSelect_Page(FName(*InKey)); }
+    }));
     Data.Text.Add(TEXT("audio-stat-concurrency"), TAttribute<FText>::CreateLambda(
         [Cell = _StatConcurrency]() { return *Cell; }));
     Data.Text.Add(TEXT("audio-stat-audible"), TAttribute<FText>::CreateLambda(
@@ -452,7 +485,7 @@ auto SCkAudioDebuggerWindow::BuildAuthoredShell() -> void
         [Cell = _StatVirtualized]() { return *Cell; }));
     const TSharedRef<FCkUiView> View = FCkUiView::Create(
         MoveTemp(NativeBindings), {}, ck_audio_debugger_window::Get_AuthoredShellStyleTokens(),
-        CkStyle::RegularFont(CkStyle::FontSizeBody()), MoveTemp(Data));
+        CkStyle::RegularFont(CkStyle::FontSizeBody()), MoveTemp(Data), Registry);
     const TSharedRef<SWidget> Main = View->GetRegion(TEXT("main"));
     const FString Directory = FPaths::Combine(Plugin->GetBaseDir(), TEXT("Resources/UI"));
     _AuthoredMarkupPath = FPaths::Combine(Directory, TEXT("AudioDebuggerShell.ui.html"));
@@ -461,6 +494,7 @@ auto SCkAudioDebuggerWindow::BuildAuthoredShell() -> void
     _AuthoredShellView = View;
     View->PollFiles(ck_audio_debugger_window::Get_AuthoredShellStyleTokens());
     _UsingNativeFallback = NOT View->GetLastResult().Succeeded;
+    if (NOT _UsingNativeFallback) { _Tabs->ReleaseOwnerInteraction(); }
     _AuthoredShellHost->SetContent(_UsingNativeFallback ? BuildNativeContent() : Main);
 }
 
@@ -482,6 +516,7 @@ auto SCkAudioDebuggerWindow::PollAuthoredShell(const double InCurrentTime) -> vo
     _AuthoredShellView->PollFiles(StyleTokens);
     const FCkUiLoadResult& Recovery = _AuthoredShellView->GetLastResult();
     _UsingNativeFallback = NOT Recovery.Succeeded;
+    if (NOT _UsingNativeFallback) { _Tabs->ReleaseOwnerInteraction(); }
     _AuthoredShellHost->SetContent(
         _UsingNativeFallback ? BuildNativeContent() : _AuthoredShellView->GetRegion(TEXT("main")));
     if (NOT _UsingNativeFallback && NOT _AuthoredCrossfadeView.IsValid())
@@ -597,19 +632,21 @@ auto
 auto
     SCkAudioDebuggerWindow::
     DoCreate_Tabs()
-    -> TSharedRef<SWidget>
+    -> TSharedRef<SCkDebug_UnderlineTabs>
 {
     using namespace ck_audio_debugger_window;
 
     auto Tabs = TArray<FCkDebug_UnderlineTabDesc>{};
+    const TWeakPtr<SCkAudioDebuggerWindow> WeakWindow = SharedThis(this);
 
     {
         auto Tab = FCkDebug_UnderlineTabDesc{};
         Tab.Id = Get_PageId(ECkAudioDebugger_Page::Directors);
         Tab.Label = FText::FromString(TEXT("Directors"));
-        Tab.CountText = TAttribute<FText>::CreateLambda([this]()
+        Tab.CountText = TAttribute<FText>::CreateLambda([WeakWindow]()
         {
-            return FText::AsNumber(_Collector.Get_Snapshot().Directors.Num());
+            const auto Window = WeakWindow.Pin();
+            return Window.IsValid() ? FText::AsNumber(Window->_Collector.Get_Snapshot().Directors.Num()) : FText::GetEmpty();
         });
         Tabs.Add(MoveTemp(Tab));
     }
@@ -618,16 +655,18 @@ auto
         auto Tab = FCkDebug_UnderlineTabDesc{};
         Tab.Id = Get_PageId(ECkAudioDebugger_Page::Tracks);
         Tab.Label = FText::FromString(TEXT("Tracks"));
-        Tab.CountText = TAttribute<FText>::CreateLambda([this]()
+        Tab.CountText = TAttribute<FText>::CreateLambda([WeakWindow]()
         {
-            return FText::AsNumber(_Collector.Get_Snapshot().Get_TrackCount());
+            const auto Window = WeakWindow.Pin();
+            return Window.IsValid() ? FText::AsNumber(Window->_Collector.Get_Snapshot().Get_TrackCount()) : FText::GetEmpty();
         });
 
         // The amber dot is the page's own alarm: a virtualized track is playing and inaudible, and the reader has to
         // be able to see that from a tab they are not currently on.
-        Tab.ShowWarnDot = TAttribute<bool>::CreateLambda([this]()
+        Tab.ShowWarnDot = TAttribute<bool>::CreateLambda([WeakWindow]()
         {
-            return _Collector.Get_Snapshot().Get_VirtualizedCount() > 0;
+            const auto Window = WeakWindow.Pin();
+            return Window.IsValid() && Window->_Collector.Get_Snapshot().Get_VirtualizedCount() > 0;
         });
         Tabs.Add(MoveTemp(Tab));
     }
@@ -636,9 +675,10 @@ auto
         auto Tab = FCkDebug_UnderlineTabDesc{};
         Tab.Id = Get_PageId(ECkAudioDebugger_Page::Crossfade);
         Tab.Label = FText::FromString(TEXT("Crossfade"));
-        Tab.CountText = TAttribute<FText>::CreateLambda([this]()
+        Tab.CountText = TAttribute<FText>::CreateLambda([WeakWindow]()
         {
-            const auto Fading = _Collector.Get_Snapshot().Get_FadingCount();
+            const auto Window = WeakWindow.Pin();
+            const auto Fading = Window.IsValid() ? Window->_Collector.Get_Snapshot().Get_FadingCount() : 0;
             return Fading > 0 ? FText::AsNumber(Fading) : FText::GetEmpty();
         });
         Tabs.Add(MoveTemp(Tab));
@@ -651,9 +691,11 @@ auto
 
         // Out-of-range is this page's alarm, exactly as virtualized is the Tracks page's: playing, positioned, and
         // past the last audible metre.
-        Tab.ShowWarnDot = TAttribute<bool>::CreateLambda([this]()
+        Tab.ShowWarnDot = TAttribute<bool>::CreateLambda([WeakWindow]()
         {
-            for (const auto& Director : _Collector.Get_Snapshot().Directors)
+            const auto Window = WeakWindow.Pin();
+            if (NOT Window.IsValid()) { return false; }
+            for (const auto& Director : Window->_Collector.Get_Snapshot().Directors)
             {
                 for (const auto& Track : Director.Tracks)
                 {
@@ -683,24 +725,62 @@ auto
 
     return SNew(SCkDebug_UnderlineTabs)
         .Tabs(Tabs)
-        .ActiveTabId_Lambda([this]() { return Get_PageId(_ActivePage); })
-        .OnTabSelected_Lambda([this](FName InPageId)
+        .CanDispatchEvents_Lambda([WeakWindow]()
         {
-            for (const auto Page : {
-                ECkAudioDebugger_Page::Directors,
-                ECkAudioDebugger_Page::Tracks,
-                ECkAudioDebugger_Page::Crossfade,
-                ECkAudioDebugger_Page::Spatial,
-                ECkAudioDebugger_Page::Events,
-                ECkAudioDebugger_Page::Overlay})
-            {
-                if (Get_PageId(Page) == InPageId)
-                {
-                    _ActivePage = Page;
-                    return;
-                }
-            }
+            const auto Window = WeakWindow.Pin();
+            return Window.IsValid() && Window->_UsingNativeFallback;
+        })
+        .ActiveTabId_Lambda([WeakWindow]()
+        {
+            const auto Window = WeakWindow.Pin();
+            return Window.IsValid() ? Get_PageId(Window->_ActivePage) : NAME_None;
+        })
+        .OnTabSelected_Lambda([WeakWindow](FName InPageId)
+        {
+            const auto Window = WeakWindow.Pin();
+            if (Window.IsValid() && Window->_UsingNativeFallback) { Window->DoSelect_Page(InPageId); }
         });
+}
+
+auto SCkAudioDebuggerWindow::DoSelect_Page(FName InPageId) -> void
+{
+    for (const auto Page : {ECkAudioDebugger_Page::Directors, ECkAudioDebugger_Page::Tracks,
+        ECkAudioDebugger_Page::Crossfade, ECkAudioDebugger_Page::Spatial,
+        ECkAudioDebugger_Page::Events, ECkAudioDebugger_Page::Overlay})
+    {
+        if (ck_audio_debugger_window::Get_PageId(Page) == InPageId) { _ActivePage = Page; return; }
+    }
+}
+
+auto SCkAudioDebuggerWindow::DoUpdate_TabRecords() -> void
+{
+    if (NOT _TabRecords.IsValid()) { _TabsProjectionReady = false; return; }
+    const auto& Snapshot = _Collector.Get_Snapshot();
+    bool OutOfRange = false;
+    for (const auto& Director : Snapshot.Directors)
+    {
+        for (const auto& Track : Director.Tracks) { OutOfRange |= Track.Get_IsOutOfRange(); }
+    }
+    TArray<FCkUiRecordData> Records;
+    for (const auto Page : {ECkAudioDebugger_Page::Directors, ECkAudioDebugger_Page::Tracks,
+        ECkAudioDebugger_Page::Crossfade, ECkAudioDebugger_Page::Spatial,
+        ECkAudioDebugger_Page::Events, ECkAudioDebugger_Page::Overlay})
+    {
+        FCkUiRecordData Record;
+        Record.Key = ck_audio_debugger_window::Get_PageId(Page).ToString();
+        FText Count;
+        if (Page == ECkAudioDebugger_Page::Directors) { Count = FText::AsNumber(Snapshot.Directors.Num()); }
+        if (Page == ECkAudioDebugger_Page::Tracks) { Count = FText::AsNumber(Snapshot.Get_TrackCount()); }
+        if (Page == ECkAudioDebugger_Page::Crossfade && Snapshot.Get_FadingCount() > 0)
+        { Count = FText::AsNumber(Snapshot.Get_FadingCount()); }
+        Record.Fields.Add(TEXT("label"), FCkUiFieldValue{.Kind = ECkUiFieldKind::Text, .Text = FText::FromString(Record.Key)});
+        Record.Fields.Add(TEXT("count"), FCkUiFieldValue{.Kind = ECkUiFieldKind::Text, .Text = Count});
+        Record.Fields.Add(TEXT("warning"), FCkUiFieldValue{.Kind = ECkUiFieldKind::Bool,
+            .Bool = (Page == ECkAudioDebugger_Page::Tracks && Snapshot.Get_VirtualizedCount() > 0)
+                || (Page == ECkAudioDebugger_Page::Spatial && OutOfRange)});
+        Records.Add(MoveTemp(Record));
+    }
+    _TabsProjectionReady = _TabRecords->TrySetRecords(MoveTemp(Records)).Succeeded;
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -2243,6 +2323,7 @@ auto
     DoUpdate_LiveValues()
     -> void
 {
+    DoUpdate_TabRecords();
     const auto& Snapshot = _Collector.Get_Snapshot();
 
     auto ActiveTotal = 0;
@@ -3014,6 +3095,7 @@ auto
 {
     ++_RuntimeGeneration;
     _Collector.Reset();
+    DoUpdate_TabRecords();
 
     if (_DirectorBox.IsValid()) { _DirectorBox->ClearChildren(); }
     if (_DirectorPageBox.IsValid()) { _DirectorPageBox->ClearChildren(); }

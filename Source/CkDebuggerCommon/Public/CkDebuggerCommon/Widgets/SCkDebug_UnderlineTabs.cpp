@@ -10,6 +10,7 @@
 #include "CkEditorTools/Style/CkStyle.h"
 
 #include "Framework/Application/SlateApplication.h"
+#include "Framework/Application/SlateUser.h"
 
 #include "Widgets/Images/SImage.h"
 #include "Widgets/Input/SButton.h"
@@ -18,6 +19,7 @@
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/Text/STextBlock.h"
+#include "Widgets/SNullWidget.h"
 
 // ====================================================================================================================
 // Named, not anonymous: this module builds with unity on, and a merged TU collides file-local
@@ -35,6 +37,19 @@ namespace ck_debug_underline_tabs
     constexpr auto WidthDeadband = 4.0f;
 
     constexpr auto WarnDotSize = 6.0f;
+
+    auto MakeDiagnosticTag(const TCHAR* InPrefix, const FName InId) -> FName
+    {
+        const FString Prefix{InPrefix};
+        const FString Id = InId.ToString();
+        FString Candidate = Prefix + Id;
+        if (Candidate.Len() < NAME_SIZE) { return FName{*Candidate}; }
+
+        const FString Suffix = FString::Printf(TEXT(".%08X"), GetTypeHash(InId));
+        const int32 PrefixBudget = NAME_SIZE - 1 - Prefix.Len() - Suffix.Len();
+        Candidate = Prefix + Id.Left(FMath::Max(0, PrefixBudget)) + Suffix;
+        return FName{*Candidate};
+    }
 
     auto Get_IsMeasurable(float InWidth) -> bool
     {
@@ -169,6 +184,7 @@ auto
     _Tabs          = InArgs._Tabs;
     _ActiveTabId   = InArgs._ActiveTabId;
     _OnTabSelected = InArgs._OnTabSelected;
+    _CanDispatchEvents = InArgs._CanDispatchEvents;
     _TabPadding    = InArgs._TabPadding;
     _FontSize      = InArgs._FontSize > 0 ? InArgs._FontSize : CkStyle::FontSizeBody();
 
@@ -188,6 +204,12 @@ auto
     const auto WeakTabs = TWeakPtr<SCkDebug_UnderlineTabs>(SharedThis(this));
 
     _OverflowButton = SNew(SComboButton)
+        .Tag(TEXT("CkDebug.Tabs.Overflow"))
+        .IsEnabled_Lambda([WeakTabs]()
+        {
+            const auto Pinned = WeakTabs.Pin();
+            return Pinned.IsValid() && Pinned->GetCanDispatchEvents();
+        })
         .ButtonStyle(&FCkDebuggerCommonStyle::Get_FlatButtonStyle())
         .ContentPadding(FMargin{CkStyle::SpaceM, _TabPadding.Top})
         .HasDownArrow(false)
@@ -270,6 +292,7 @@ auto
                 })
                 [
                     SNew(STextBlock)
+                    .Tag(ck_debug_underline_tabs::MakeDiagnosticTag(TEXT("CkDebug.Tab.Count."), InTab.Id))
                     .Text(CountText)
                     .Font(CkStyle::MonoFont(CkStyle::FontSizeMicro()))
                     .ColorAndOpacity(FSlateColor{CkStyle::TextMute()})
@@ -285,6 +308,7 @@ auto
         .Padding(CkStyle::SpaceS, 0.0f, 0.0f, 0.0f)
         [
             SNew(SBox)
+            .Tag(ck_debug_underline_tabs::MakeDiagnosticTag(TEXT("CkDebug.Tab.Warning."), InTab.Id))
             .WidthOverride(WarnDotSize)
             .HeightOverride(WarnDotSize)
             .Visibility_Lambda([ShowWarnDot]
@@ -303,12 +327,13 @@ auto
 
 auto
     SCkDebug_UnderlineTabs::
-    Build_Tab(const FCkDebug_UnderlineTabDesc& InTab) const
+    Build_Tab(const FCkDebug_UnderlineTabDesc& InTab)
     -> TSharedRef<SWidget>
 {
     const auto ActiveTabId = _ActiveTabId;
-    const auto OnSelected  = _OnTabSelected;
     const auto TabId       = InTab.Id;
+    const auto WeakTabs = TWeakPtr<SCkDebug_UnderlineTabs>(SharedThis(this));
+    const auto Label = InTab.LabelText.IsSet() ? InTab.LabelText : TAttribute<FText>{InTab.Label};
     const auto IsActive    = [ActiveTabId, TabId] { return ActiveTabId.Get(NAME_None) == TabId; };
 
     auto LabelRow = SNew(SHorizontalBox);
@@ -337,7 +362,7 @@ auto
         .VAlign(VAlign_Center)
         [
             SNew(STextBlock)
-            .Text(InTab.Label)
+            .Text(Label)
             .Font(CkStyle::BoldFont(_FontSize))
             .ColorAndOpacity_Lambda([IsActive]
             {
@@ -356,12 +381,18 @@ auto
             .AutoHeight()
             [
                 SNew(SButton)
+                .Tag(ck_debug_underline_tabs::MakeDiagnosticTag(TEXT("CkDebug.Tab."), TabId))
+                .IsEnabled_Lambda([WeakTabs]()
+                {
+                    const auto Pinned = WeakTabs.Pin();
+                    return Pinned.IsValid() && Pinned->GetCanDispatchEvents();
+                })
                 .ButtonStyle(&FCkDebuggerCommonStyle::Get_FlatButtonStyle())
                 .ContentPadding(_TabPadding)
-                .OnClicked_Lambda([OnSelected, TabId]
+                .OnClicked_Lambda([WeakTabs, TabId]
                 {
-                    OnSelected.ExecuteIfBound(TabId);
-                    return FReply::Handled();
+                    const auto Pinned = WeakTabs.Pin();
+                    return Pinned.IsValid() ? Pinned->DispatchTab(TabId, false) : FReply::Unhandled();
                 })
                 [
                     LabelRow
@@ -392,6 +423,7 @@ auto
     Build_OverflowMenu()
     -> TSharedRef<SWidget>
 {
+    if (NOT GetCanDispatchEvents()) { return SNullWidget::NullWidget; }
     // Built ON OPEN, never per frame: the menu only exists while the user is looking at it.
     auto MenuColumn = SNew(SVerticalBox);
 
@@ -403,8 +435,9 @@ auto
         const auto& Tab = _Tabs[TabIndex];
 
         const auto ActiveTabId = _ActiveTabId;
-        const auto OnSelected  = _OnTabSelected;
         const auto TabId       = Tab.Id;
+        const auto WeakTabs = TWeakPtr<SCkDebug_UnderlineTabs>(SharedThis(this));
+        const auto Label = Tab.LabelText.IsSet() ? Tab.LabelText : TAttribute<FText>{Tab.Label};
         const auto IsActive    = [ActiveTabId, TabId] { return ActiveTabId.Get(NAME_None) == TabId; };
 
         auto EntryRow = SNew(SHorizontalBox);
@@ -431,7 +464,7 @@ auto
             .VAlign(VAlign_Center)
             [
                 SNew(STextBlock)
-                .Text(Tab.Label)
+                .Text(Label)
                 .Font(CkStyle::BoldFont(_FontSize))
                 .ColorAndOpacity_Lambda([IsActive]
                 {
@@ -445,17 +478,20 @@ auto
             .AutoHeight()
             [
                 SNew(SButton)
+                .Tag(ck_debug_underline_tabs::MakeDiagnosticTag(TEXT("CkDebug.Tab."), TabId))
+                .IsEnabled_Lambda([WeakTabs]()
+                {
+                    const auto Pinned = WeakTabs.Pin();
+                    return Pinned.IsValid() && Pinned->GetCanDispatchEvents();
+                })
                 .ButtonStyle(&FCkDebuggerCommonStyle::Get_FlatButtonStyle())
                 .ContentPadding(FMargin{CkStyle::SpaceM, CkStyle::SpaceS})
                 .HAlign(HAlign_Fill)
                 .Visibility(Tab.Visibility)
-                .OnClicked_Lambda([OnSelected, TabId]
+                .OnClicked_Lambda([WeakTabs, TabId]
                 {
-                    if (FSlateApplication::IsInitialized())
-                    { FSlateApplication::Get().DismissAllMenus(); }
-
-                    OnSelected.ExecuteIfBound(TabId);
-                    return FReply::Handled();
+                    const auto Pinned = WeakTabs.Pin();
+                    return Pinned.IsValid() ? Pinned->DispatchTab(TabId, true) : FReply::Unhandled();
                 })
                 [
                     EntryRow
@@ -463,7 +499,7 @@ auto
             ];
     }
 
-    return SNew(SBorder)
+    _OverflowMenuContent = SNew(SBorder)
         .BorderImage(CkStyle::GetRoundedBrush())
         .BorderBackgroundColor(FSlateColor{CkStyle::Bg1()})
         .Padding(FMargin{CkStyle::SpaceS})
@@ -474,6 +510,55 @@ auto
                 MenuColumn
             ]
         ];
+    return _OverflowMenuContent.ToSharedRef();
+}
+
+auto SCkDebug_UnderlineTabs::GetCanDispatchEvents() const -> bool
+{ return NOT _OwnerReleased && _CanDispatchEvents.Get(true); }
+
+auto SCkDebug_UnderlineTabs::GetPopupFocusTarget() const -> TSharedPtr<SWidget>
+{ return _OverflowButton.IsValid() && _OverflowButton->IsOpen() ? _OverflowMenuContent : nullptr; }
+
+auto SCkDebug_UnderlineTabs::ReleaseTransientInteraction() -> void
+{
+    if (FSlateApplication::IsInitialized() && _OverflowMenuContent.IsValid())
+    {
+        FSlateApplication& Slate = FSlateApplication::Get();
+        Slate.ForEachUser([this, &Slate](FSlateUser& User)
+        {
+            if (User.IsWidgetInFocusPath(_OverflowMenuContent))
+            { Slate.ClearUserFocus(User.GetUserIndex(), EFocusCause::SetDirectly); }
+        }, true);
+    }
+    if (_OverflowButton.IsValid() && _OverflowButton->IsOpen())
+    { _OverflowButton->SetIsOpen(false); }
+    _OverflowMenuContent.Reset();
+}
+
+auto SCkDebug_UnderlineTabs::ReleaseOwnerInteraction() -> void
+{
+    _OwnerReleased = true;
+    ReleaseTransientInteraction();
+    _OnTabSelected.Unbind();
+}
+
+auto SCkDebug_UnderlineTabs::DispatchTab(FName InTabId, bool InFromOverflow) -> FReply
+{
+    if (NOT GetCanDispatchEvents()) { return FReply::Unhandled(); }
+    const auto* Tab = _Tabs.FindByPredicate([InTabId](const FCkDebug_UnderlineTabDesc& InTab)
+    { return InTab.Id == InTabId; });
+    if (Tab == nullptr || Tab->Visibility.Get(EVisibility::Visible) != EVisibility::Visible)
+    { return FReply::Unhandled(); }
+    if (InFromOverflow)
+    {
+        // Close only this strip's popup. A retired held menu action must not dismiss another owner's menu.
+        if (NOT _OverflowButton.IsValid() || NOT _OverflowButton->IsOpen()) { return FReply::Unhandled(); }
+        _OverflowButton->SetIsOpen(false);
+    }
+    if (NOT GetCanDispatchEvents()) { return FReply::Unhandled(); }
+    const FOnCkDebug_TabSelected Selected = _OnTabSelected;
+    Selected.ExecuteIfBound(InTabId);
+    return FReply::Handled();
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -674,6 +759,12 @@ auto
     -> void
 {
     SCompoundWidget::Tick(InAllottedGeometry, InCurrentTime, InDeltaTime);
+
+    if (NOT GetCanDispatchEvents())
+    {
+        ReleaseTransientInteraction();
+        return;
+    }
 
     Refresh_Measurements();
     Refresh_Layout(static_cast<float>(InAllottedGeometry.GetLocalSize().X));

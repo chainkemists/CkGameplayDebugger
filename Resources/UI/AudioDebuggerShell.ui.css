@@ -1,3 +1,6 @@
+.audio-tabs { min-width: 0; }
+.audio-shell-scroll { min-width: 0; min-height: 0; flex-grow: 1; flex-shrink: 1; }
+
 .audio-shell {
   min-width: 760px;
   min-height: 0;

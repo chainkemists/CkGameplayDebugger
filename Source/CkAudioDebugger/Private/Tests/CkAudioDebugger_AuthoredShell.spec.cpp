@@ -1,4 +1,5 @@
 #include "CkAudioDebugger/Window/SCkAudioDebuggerWindow.h"
+#include "CkAudioDebugger/Window/SCkAudioDebugger_FalloffCurve.h"
 #include "../../CkAudioDebugger_Module.h"
 
 #include "CkAudio/AudioTrack/CkAudioTrack_Fragment.h"
@@ -228,6 +229,14 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
         if (CrossfadeView.IsValid()) { AddError(FString::Join(CrossfadeView->GetLastResult().Errors, TEXT("\n"))); }
         return false;
     }
+    TSharedPtr<FCkUiView> AttenuationView = DebuggerWindow->_AuthoredAttenuationView;
+    if (NOT TestTrue(TEXT("production Audio window admits its authored attenuation block"),
+        AttenuationView.IsValid() && AttenuationView->GetLastResult().Succeeded))
+    {
+        if (AttenuationView.IsValid())
+        { AddError(FString::Join(AttenuationView->GetLastResult().Errors, TEXT("\n"))); }
+        return false;
+    }
 
     const TSharedRef<SWidget> Main = View->GetRegion(TEXT("main"));
     TestTrue(TEXT("authored shell retains three production native boundaries and authors live summary cards"),
@@ -260,6 +269,16 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
             && DebuggerWindow->_CrossfadePagePlot->Get_BandSamples() == DebuggerWindow->_CrossfadeSeriesB
             && DebuggerWindow->_CrossfadePagePlot->Get_BandFillOpacity() == 0.0f
             && DebuggerWindow->_CrossfadePagePlot->Get_DesiredSize() == FVector2D{320.0f, 220.0f});
+    const TSharedRef<SWidget> AttenuationMain = AttenuationView->GetRegion(TEXT("main"));
+    TestTrue(TEXT("authored attenuation block owns six labels around the retained native curve"),
+        ContainsWidget(AttenuationMain, DebuggerWindow->_AttenuationCurve.ToSharedRef())
+            && TaggedText(AttenuationMain, TEXT("audio-attenuation-distance-label")) == TEXT("Distance")
+            && TaggedText(AttenuationMain, TEXT("audio-attenuation-bearing-label")) == TEXT("Bearing")
+            && TaggedText(AttenuationMain, TEXT("audio-attenuation-gain-label")) == TEXT("Attenuation gain")
+            && TaggedText(AttenuationMain, TEXT("audio-attenuation-track-volume-label")) == TEXT("Track volume")
+            && TaggedText(AttenuationMain, TEXT("audio-attenuation-audible-label")) == TEXT("Audible")
+            && TaggedText(AttenuationMain, TEXT("audio-attenuation-asset-label")) == TEXT("Attenuation asset")
+            && TaggedText(AttenuationMain, TEXT("audio-attenuation-heading")).IsEmpty());
 
     const TSharedPtr<SWidget> AuthoredValueWidget = FindTaggedWidget(Main, TEXT("audio-stat-concurrency"));
     const bool AuthoredValueIsText = AuthoredValueWidget.IsValid()
@@ -281,6 +300,7 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
 
     const int64 RevisionBeforeGeometryChange = View->GetRevision();
     const int64 CrossfadeRevisionBeforeGeometryChange = CrossfadeView->GetRevision();
+    const int64 AttenuationRevisionBeforeGeometryChange = AttenuationView->GetRevision();
     StyleSettings->Selection.CornerStyle = ECkDebugAxis_CornerStyle::Sharp;
     StyleSettings->Selection.SurfaceElevation = ECkDebugAxis_SurfaceElevation::Flat;
     StyleSettings->NotifyChanged();
@@ -296,12 +316,19 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
     TestTrue(TEXT("live corner and elevation axes republish authored Audio card geometry"),
         View->GetRevision() > RevisionBeforeGeometryChange
             && CrossfadeView->GetRevision() > CrossfadeRevisionBeforeGeometryChange
+            && AttenuationView->GetRevision() > AttenuationRevisionBeforeGeometryChange
             && FlatWrap.IsValid() && FlatWrap->GetDesiredSize().Y < LayeredWrapHeight
             && SharpCardBrush != nullptr
             && SharpCardBrush->OutlineSettings.CornerRadii.X == 0.0f
             && SharpCardBrush->OutlineSettings.Width == CkStyle::RingWidth());
 
     const int64 RevisionBeforeTextChange = View->GetRevision();
+    const TSharedPtr<SWidget> NormalAttenuationValue = FindTaggedWidget(
+        AttenuationView->GetRegion(TEXT("main")), TEXT("audio-attenuation-audible"));
+    const bool AttenuationValueIsText = NormalAttenuationValue.IsValid()
+        && NormalAttenuationValue->GetTypeAsString() == TEXT("SCkFlexText");
+    const int32 NormalAttenuationFontSize = AttenuationValueIsText
+        ? StaticCastSharedPtr<SCkFlexText>(NormalAttenuationValue)->GetFont().Size : 0;
     StyleSettings->Selection.TextScale = ECkDebugAxis_TextScale::Large;
     StyleSettings->NotifyChanged();
     DebuggerWindow->OnStyleRevisionChanged();
@@ -314,6 +341,27 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
             && RestyledValueWidget->GetTypeAsString() == TEXT("SCkFlexText")
             && View->GetRevision() > RevisionBeforeTextChange
             && StaticCastSharedPtr<SCkFlexText>(RestyledValueWidget)->GetFont().Size > NormalValueFontSize);
+    const TSharedPtr<SWidget> LargeAttenuationValue = FindTaggedWidget(
+        AttenuationView->GetRegion(TEXT("main")), TEXT("audio-attenuation-audible"));
+    TestTrue(TEXT("live Style Lab text scale updates the authored attenuation value font"),
+        AttenuationValueIsText && LargeAttenuationValue.IsValid()
+            && LargeAttenuationValue->GetTypeAsString() == TEXT("SCkFlexText")
+            && StaticCastSharedPtr<SCkFlexText>(LargeAttenuationValue)->GetFont().Size > NormalAttenuationFontSize);
+
+    const TSharedPtr<SButton> EmptySpatialTab = FindButtonWithText(DebuggerWindow->_Tabs.ToSharedRef(), TEXT("Spatial"));
+    if (NOT TestTrue(TEXT("production Spatial tab is physically selectable without a session"),
+        EmptySpatialTab.IsValid() && Click(Slate, EmptySpatialTab.ToSharedRef())))
+    { return false; }
+    const TSharedPtr<SWidget> EmptySpatialPlots = FindTaggedWidget(
+        DebuggerWindow->_PageSwitcher.ToSharedRef(), TEXT("audio-spatial-plots"));
+    const TSharedPtr<SWidget> EmptySpatialMessage = FindTaggedWidget(
+        DebuggerWindow->_PageSwitcher.ToSharedRef(), TEXT("audio-spatial-unavailable"));
+    TestTrue(TEXT("unavailable Spatial state hides both plots and explains the missing track"),
+        DebuggerWindow->_PageSwitcher->GetActiveWidgetIndex() == 3
+            && EmptySpatialPlots.IsValid() && EmptySpatialPlots->GetVisibility() == EVisibility::Collapsed
+            && EmptySpatialMessage.IsValid() && EmptySpatialMessage->GetVisibility().IsVisible()
+            && EmptySpatialMessage->GetTypeAsString() == TEXT("STextBlock")
+            && StaticCastSharedPtr<STextBlock>(EmptySpatialMessage)->GetText().ToString().Contains(TEXT("No track to inspect")));
 
     const TSharedPtr<SButton> CrossfadeTab = FindButtonWithText(
         DebuggerWindow->_Tabs.ToSharedRef(), TEXT("Crossfade"));
@@ -327,6 +375,8 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
     FString Css;
     FString CrossfadeMarkup;
     FString CrossfadeCss;
+    FString AttenuationMarkup;
+    FString AttenuationCss;
     const FString Directory = Plugin.IsValid()
         ? FPaths::Combine(Plugin->GetBaseDir(), TEXT("Resources/UI"))
         : FString{};
@@ -334,7 +384,9 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
         && FFileHelper::LoadFileToString(Markup, *FPaths::Combine(Directory, TEXT("AudioDebuggerShell.ui.html")))
         && FFileHelper::LoadFileToString(Css, *FPaths::Combine(Directory, TEXT("AudioDebuggerShell.ui.css")))
         && FFileHelper::LoadFileToString(CrossfadeMarkup, *FPaths::Combine(Directory, TEXT("AudioDebuggerCrossfade.ui.html")))
-        && FFileHelper::LoadFileToString(CrossfadeCss, *FPaths::Combine(Directory, TEXT("AudioDebuggerCrossfade.ui.css")))))
+        && FFileHelper::LoadFileToString(CrossfadeCss, *FPaths::Combine(Directory, TEXT("AudioDebuggerCrossfade.ui.css")))
+        && FFileHelper::LoadFileToString(AttenuationMarkup, *FPaths::Combine(Directory, TEXT("AudioDebuggerAttenuation.ui.html")))
+        && FFileHelper::LoadFileToString(AttenuationCss, *FPaths::Combine(Directory, TEXT("AudioDebuggerAttenuation.ui.css")))))
     { return false; }
 
     const auto Revision = View->GetRevision();
@@ -401,30 +453,40 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
     TickSlate(Slate);
     const TWeakPtr<FCkUiView> ReleasedView = View;
     const TWeakPtr<FCkUiView> ReleasedCrossfadeView = CrossfadeView;
+    const TWeakPtr<FCkUiView> ReleasedAttenuationView = AttenuationView;
     DebuggerWindow.Reset();
     View.Reset();
     CrossfadeView.Reset();
+    AttenuationView.Reset();
     TestFalse(TEXT("authored Audio view releases with its production window"), ReleasedView.IsValid());
     TestFalse(TEXT("authored Crossfade view releases with its production window"), ReleasedCrossfadeView.IsValid());
+    TestFalse(TEXT("authored attenuation view releases with its production window"), ReleasedAttenuationView.IsValid());
 
     const FString InvalidStartupMarkup =
         TEXT("<ui version=\"1\"><region name=\"main\"><native id=\"missing\" bind=\"missing-audio-port\"/></region></ui>");
     const FString InvalidCrossfadeStartupMarkup =
         TEXT("<ui version=\"1\"><region name=\"main\"><native id=\"missing\" bind=\"missing-crossfade-plot\"/></region></ui>");
+    const FString InvalidAttenuationStartupMarkup =
+        TEXT("<ui version=\"1\"><region name=\"main\"><native id=\"missing\" bind=\"missing-attenuation-curve\"/></region></ui>");
     bool MarkupRestored = false;
     bool CrossfadeMarkupRestored = false;
+    bool AttenuationMarkupRestored = false;
     ON_SCOPE_EXIT
     {
         if (NOT MarkupRestored)
         { FFileHelper::SaveStringToFile(Markup, *FPaths::Combine(Directory, TEXT("AudioDebuggerShell.ui.html"))); }
         if (NOT CrossfadeMarkupRestored)
         { FFileHelper::SaveStringToFile(CrossfadeMarkup, *FPaths::Combine(Directory, TEXT("AudioDebuggerCrossfade.ui.html"))); }
+        if (NOT AttenuationMarkupRestored)
+        { FFileHelper::SaveStringToFile(AttenuationMarkup, *FPaths::Combine(Directory, TEXT("AudioDebuggerAttenuation.ui.html"))); }
     };
     if (NOT TestTrue(TEXT("Audio fixture installs its valid-but-unbound startup candidate"),
         FFileHelper::SaveStringToFile(
             InvalidStartupMarkup, *FPaths::Combine(Directory, TEXT("AudioDebuggerShell.ui.html")))
             && FFileHelper::SaveStringToFile(InvalidCrossfadeStartupMarkup,
-                *FPaths::Combine(Directory, TEXT("AudioDebuggerCrossfade.ui.html")))))
+                *FPaths::Combine(Directory, TEXT("AudioDebuggerCrossfade.ui.html")))
+            && FFileHelper::SaveStringToFile(InvalidAttenuationStartupMarkup,
+                *FPaths::Combine(Directory, TEXT("AudioDebuggerAttenuation.ui.html")))))
     { return false; }
 
     DebuggerWindow = SNew(SCkAudioDebuggerWindow);
@@ -440,7 +502,10 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
         View.IsValid() && NOT View->GetLastResult().Succeeded
             && DebuggerWindow->_UsingNativeFallback
             && ContainsWidget(DebuggerWindow->_AuthoredShellHost.ToSharedRef(),
-                DebuggerWindow->_PageSwitcher.ToSharedRef()));
+                DebuggerWindow->_PageSwitcher.ToSharedRef())
+            && NOT DebuggerWindow->_AuthoredAttenuationView.IsValid()
+            && ContainsWidget(DebuggerWindow->_AttenuationPanelHost.ToSharedRef(),
+                DebuggerWindow->_AttenuationCurve.ToSharedRef()));
 
     MarkupRestored = FFileHelper::SaveStringToFile(
         Markup, *FPaths::Combine(Directory, TEXT("AudioDebuggerShell.ui.html")));
@@ -460,6 +525,13 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
             && TaggedText(View->GetRegion(TEXT("main")), TEXT("audio-stat-concurrency-label")) == TEXT("Active / max")
             && ContainsWidget(View->GetRegion(TEXT("main")), DebuggerWindow->_FilterRow.ToSharedRef())
             && ContainsWidget(View->GetRegion(TEXT("main")), DebuggerWindow->_PageSwitcher.ToSharedRef()));
+    AttenuationView = DebuggerWindow->_AuthoredAttenuationView;
+    if (NOT TestTrue(TEXT("outer recovery independently leaves invalid attenuation in its native fallback"),
+        AttenuationView.IsValid() && NOT AttenuationView->GetLastResult().Succeeded
+            && DebuggerWindow->_UsingNativeAttenuationFallback
+            && ContainsWidget(DebuggerWindow->_AttenuationPanelHost.ToSharedRef(),
+                DebuggerWindow->_AttenuationCurve.ToSharedRef())))
+    { return false; }
     CrossfadeMarkupRestored = FFileHelper::SaveStringToFile(
         CrossfadeMarkup, *FPaths::Combine(Directory, TEXT("AudioDebuggerCrossfade.ui.html")));
     TestTrue(TEXT("Audio fixture restores the valid Crossfade resource"), CrossfadeMarkupRestored);
@@ -471,6 +543,21 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
             && NOT DebuggerWindow->_UsingNativeCrossfadeFallback
             && ContainsWidget(CrossfadeView->GetRegion(TEXT("main")), DebuggerWindow->_CrossfadePagePlot.ToSharedRef())
             && TaggedText(CrossfadeView->GetRegion(TEXT("main")), TEXT("audio-crossfade-title")) == TEXT("Crossfade lane"));
+    TestTrue(TEXT("Crossfade recovery does not admit the invalid attenuation sibling"),
+        DebuggerWindow->_UsingNativeAttenuationFallback && NOT AttenuationView->GetLastResult().Succeeded);
+    const TSharedPtr<SCkAudioDebugger_FalloffCurve> FallbackCurve = DebuggerWindow->_AttenuationCurve;
+    AttenuationMarkupRestored = FFileHelper::SaveStringToFile(
+        AttenuationMarkup, *FPaths::Combine(Directory, TEXT("AudioDebuggerAttenuation.ui.html")));
+    if (NOT TestTrue(TEXT("Audio fixture restores the valid attenuation resource"), AttenuationMarkupRestored))
+    { return false; }
+    DebuggerWindow->OnStyleRevisionChanged();
+    TickSlate(Slate);
+    if (NOT TestTrue(TEXT("bounded attenuation polling recovers the exact native curve from startup fallback"),
+        AttenuationView->GetLastResult().Succeeded && NOT DebuggerWindow->_UsingNativeAttenuationFallback
+            && DebuggerWindow->_AttenuationCurve == FallbackCurve
+            && ContainsWidget(AttenuationView->GetRegion(TEXT("main")), FallbackCurve.ToSharedRef())
+            && TaggedText(AttenuationView->GetRegion(TEXT("main")), TEXT("audio-attenuation-audible-label")) == TEXT("Audible")))
+    { return false; }
 
     using namespace ck::registry_table;
     auto Registry = EnttRegistryType{};
@@ -599,6 +686,139 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
             && (*DebuggerWindow->_CrossfadeSeriesB)[1] == 0.45f
             && TaggedText(CrossfadeView->GetRegion(TEXT("main")), TEXT("audio-crossfade-legend"))
                 == TEXT("Fade B   ·   Fade A"));
+
+    TrackInfoA.TrackName = TEXT("Spatial track");
+    TrackInfoA.State = ECk_AudioTrack_State::Playing;
+    TrackInfoA.CurrentVolume = 0.8f;
+    TrackInfoA.HasSpatialData = true;
+    TrackInfoA.IsAttenuated = true;
+    TrackInfoA.IsSpatialized = true;
+    TrackInfoA.AttenuationGain = 0.25f;
+    TrackInfoA.DistanceToListener = 250.0f;
+    TrackInfoA.BearingDegrees = 90.0f;
+    TrackInfoA.InnerRadius = 100.0f;
+    TrackInfoA.FalloffDistance = 900.0f;
+    TrackInfoA.MaxFalloffDistance = 1000.0f;
+    TrackInfoA.AttenuationAssetName = TEXT("Spatial attenuation");
+    TrackInfoA.FalloffCurve = {1.0f, 0.75f, 0.25f, 0.0f};
+    FixtureSnapshot.HasListener = true;
+    FixtureSnapshot.ListenerSource = TEXT("fixture listener");
+    FixtureSnapshot.Directors[0].Tracks = {TrackInfoA};
+    DebuggerWindow->_Collector.Collect(nullptr);
+    DebuggerWindow->DoUpdate_SpatialView();
+    const TSharedPtr<SButton> SpatialTab = FindButtonWithText(DebuggerWindow->_Tabs.ToSharedRef(), TEXT("Spatial"));
+    if (NOT TestTrue(TEXT("populated Spatial page remains physically selectable"),
+        SpatialTab.IsValid() && Click(Slate, SpatialTab.ToSharedRef())))
+    { return false; }
+    const TSharedPtr<SCheckBox> SpatialTrackToggle = FindCheckBoxWithText(
+        DebuggerWindow->_SpatialSelectorBox.ToSharedRef(), TEXT("Spatial track"));
+    if (NOT TestTrue(TEXT("production Spatial selector physically pins the track before it becomes 2D"),
+        SpatialTrackToggle.IsValid() && Click(Slate, SpatialTrackToggle.ToSharedRef())
+            && NOT DebuggerWindow->_SelectedSpatialTrackKey.IsEmpty()))
+    { return false; }
+    const TSharedPtr<FCkAudioDebugger_SpatialView> SpatialModel = DebuggerWindow->_SpatialView;
+    const TSharedPtr<SCkAudioDebugger_FalloffCurve> SpatialCurve = DebuggerWindow->_AttenuationCurve;
+    const TSharedRef<SWidget> LiveAttenuationMain = AttenuationView->GetRegion(TEXT("main"));
+    const TSharedPtr<SWidget> SpatialPlots = FindTaggedWidget(
+        DebuggerWindow->_PageSwitcher.ToSharedRef(), TEXT("audio-spatial-plots"));
+    const TSharedPtr<SWidget> SpatialMessage = FindTaggedWidget(
+        DebuggerWindow->_PageSwitcher.ToSharedRef(), TEXT("audio-spatial-unavailable"));
+    if (NOT TestTrue(TEXT("production spatial projection mounts the authored arithmetic beside the live native curve"),
+        SpatialModel.IsValid() && SpatialCurve.IsValid()
+            && SpatialPlots.IsValid() && SpatialMessage.IsValid()
+            && SpatialPlots->GetVisibility().IsVisible()
+            && SpatialMessage->GetVisibility() == EVisibility::Collapsed
+            && DebuggerWindow->_PageSwitcher->GetActiveWidgetIndex() == 3
+            && ContainsWidget(DebuggerWindow->_AttenuationPanelHost.ToSharedRef(), LiveAttenuationMain)
+            && ContainsWidget(LiveAttenuationMain, SpatialCurve.ToSharedRef())
+            && SpatialCurve->GetCachedGeometry().GetLocalSize().X > 0.0f
+            && FMath::IsNearlyEqual(SpatialCurve->GetCachedGeometry().GetLocalSize().Y, 110.0f)))
+    { return false; }
+    TestTrue(TEXT("collector projection renders all attenuation values and exact volume-times-gain arithmetic"),
+        TaggedText(LiveAttenuationMain, TEXT("audio-attenuation-heading")) == TEXT("Why the audible volume is 0.20")
+            && TaggedText(LiveAttenuationMain, TEXT("audio-attenuation-distance")) == TEXT("2.5 m")
+            && TaggedText(LiveAttenuationMain, TEXT("audio-attenuation-bearing")) == TEXT("90°  right")
+            && TaggedText(LiveAttenuationMain, TEXT("audio-attenuation-gain")) == TEXT("0.25")
+            && TaggedText(LiveAttenuationMain, TEXT("audio-attenuation-track-volume")) == TEXT("0.80")
+            && TaggedText(LiveAttenuationMain, TEXT("audio-attenuation-audible")) == TEXT("0.20")
+            && TaggedText(LiveAttenuationMain, TEXT("audio-attenuation-asset")) == TEXT("Spatial attenuation"));
+
+    const int64 AttenuationRevision = AttenuationView->GetRevision();
+    const FCkUiLoadResult AttenuationReloaded = AttenuationView->TryReload(
+        AttenuationMarkup, AttenuationCss, TEXT("Audio compatible attenuation candidate"));
+    TickSlate(Slate);
+    if (NOT AttenuationReloaded.Succeeded)
+    { AddError(FString::Join(AttenuationReloaded.Errors, TEXT("\n"))); }
+    TestTrue(TEXT("compatible attenuation reload retains the exact curve, model, values and selected Spatial page"),
+        AttenuationReloaded.Succeeded && AttenuationView->GetRevision() > AttenuationRevision
+            && DebuggerWindow->_SpatialView == SpatialModel && DebuggerWindow->_AttenuationCurve == SpatialCurve
+            && ContainsWidget(AttenuationView->GetRegion(TEXT("main")), SpatialCurve.ToSharedRef())
+            && TaggedText(AttenuationView->GetRegion(TEXT("main")), TEXT("audio-attenuation-audible")) == TEXT("0.20")
+            && DebuggerWindow->_PageSwitcher->GetActiveWidgetIndex() == 3);
+    const int64 AttenuationRevisionBeforeReject = AttenuationView->GetRevision();
+    const FCkUiLoadResult AttenuationRejected = AttenuationView->TryReload(
+        InvalidAttenuationStartupMarkup, TEXT(""), TEXT("Audio rejected attenuation candidate"));
+    TestTrue(TEXT("missing attenuation curve is rejected without changing the accepted block"),
+        NOT AttenuationRejected.Succeeded
+            && FString::Join(AttenuationRejected.Errors, TEXT("\n")).Contains(TEXT("missing-attenuation-curve"))
+            && AttenuationView->GetRevision() == AttenuationRevisionBeforeReject
+            && ContainsWidget(AttenuationView->GetRegion(TEXT("main")), SpatialCurve.ToSharedRef())
+            && TaggedText(AttenuationView->GetRegion(TEXT("main")), TEXT("audio-attenuation-audible")) == TEXT("0.20"));
+
+    TrackInfoA.CurrentVolume = 0.6f;
+    TrackInfoA.AttenuationGain = 0.5f;
+    FixtureSnapshot.Directors[0].Tracks = {TrackInfoA};
+    DebuggerWindow->_Collector.Collect(nullptr);
+    DebuggerWindow->DoUpdate_SpatialView();
+    TestTrue(TEXT("same selected track updates authored arithmetic through the retained spatial model"),
+        DebuggerWindow->_SpatialView == SpatialModel && DebuggerWindow->_AttenuationCurve == SpatialCurve
+            && TaggedText(LiveAttenuationMain, TEXT("audio-attenuation-track-volume")) == TEXT("0.60")
+            && TaggedText(LiveAttenuationMain, TEXT("audio-attenuation-gain")) == TEXT("0.50")
+            && TaggedText(LiveAttenuationMain, TEXT("audio-attenuation-audible")) == TEXT("0.30"));
+    TrackInfoA.IsVirtualized = true;
+    FixtureSnapshot.Directors[0].Tracks = {TrackInfoA};
+    DebuggerWindow->_Collector.Collect(nullptr);
+    DebuggerWindow->DoUpdate_SpatialView();
+    TestEqual(TEXT("virtualization projects zero audible volume without changing the track volume"),
+        TaggedText(LiveAttenuationMain, TEXT("audio-attenuation-audible")), FString{TEXT("0.00")});
+    TrackInfoA.IsVirtualized = false;
+    TrackInfoA.IsAttenuated = false;
+    TrackInfoA.AttenuationAssetName.Reset();
+    FixtureSnapshot.Directors[0].Tracks = {TrackInfoA};
+    DebuggerWindow->_Collector.Collect(nullptr);
+    DebuggerWindow->DoUpdate_SpatialView();
+    TestTrue(TEXT("unattenuated spatial data keeps native gain and asset text semantics"),
+        TaggedText(LiveAttenuationMain, TEXT("audio-attenuation-gain")) == TEXT("n/a (not attenuated)")
+            && TaggedText(LiveAttenuationMain, TEXT("audio-attenuation-audible")) == TEXT("0.60")
+            && TaggedText(LiveAttenuationMain, TEXT("audio-attenuation-asset")) == TEXT("(none)"));
+    TrackInfoA.HasSpatialData = false;
+    FixtureSnapshot.Directors[0].Tracks = {TrackInfoA};
+    DebuggerWindow->_Collector.Collect(nullptr);
+    DebuggerWindow->DoUpdate_SpatialView();
+    TickSlate(Slate);
+    TestTrue(TEXT("a selected 2D track hides attenuation and clears previously rendered numeric data"),
+        SpatialModel->HasSelection && NOT SpatialModel->HasSpatialData
+            && SpatialPlots->GetVisibility() == EVisibility::Collapsed
+            && SpatialMessage->GetVisibility().IsVisible()
+            && SpatialMessage->GetTypeAsString() == TEXT("STextBlock")
+            && StaticCastSharedPtr<STextBlock>(SpatialMessage)->GetText().ToString().Contains(TEXT("has no spatial data"))
+            && TaggedText(LiveAttenuationMain, TEXT("audio-attenuation-audible")).IsEmpty());
+    FixtureSnapshot.Directors[0].Tracks.Reset();
+    DebuggerWindow->_Collector.Collect(nullptr);
+    DebuggerWindow->DoUpdate_SpatialView();
+    TickSlate(Slate);
+    TestTrue(TEXT("removing the selected track leaves no stale attenuation selection or curve samples"),
+        NOT SpatialModel->HasSelection && SpatialModel->FalloffCurve.IsEmpty()
+            && SpatialPlots->GetVisibility() == EVisibility::Collapsed
+            && TaggedText(LiveAttenuationMain, TEXT("audio-attenuation-heading")).IsEmpty());
+    TrackInfoA.HasSpatialData = true;
+    TrackInfoA.IsAttenuated = true;
+    FixtureSnapshot.Directors[0].Tracks = {TrackInfoA};
+    DebuggerWindow->_Collector.Collect(nullptr);
+    DebuggerWindow->DoUpdate_SpatialView();
+    TestTrue(TEXT("spatial lifecycle assertion begins from populated authored state"),
+        SpatialModel->HasSpatialData && NOT SpatialModel->FalloffCurve.IsEmpty()
+            && TaggedText(LiveAttenuationMain, TEXT("audio-attenuation-audible")) == TEXT("0.30"));
     const auto SessionFixture = FixtureSnapshot;
     UWorld* InvalidatedWorld = NewObject<UWorld>();
     UWorld* UnrelatedWorld = NewObject<UWorld>();
@@ -622,14 +842,24 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
             && DebuggerWindow->_StatConcurrency->ToString() == TEXT("0 / 0"));
     TestFalse(TEXT("held production overlay action remains inert after world invalidation"),
         TrackB.Has<ck::FTag_AudioTrack_DebugDraw>());
+    TestTrue(TEXT("world invalidation clears the shared spatial model observed by retained authored text and curve"),
+        DebuggerWindow->_SpatialView == SpatialModel && NOT SpatialModel->HasSelection
+            && NOT SpatialModel->HasSpatialData && SpatialModel->FalloffCurve.IsEmpty()
+            && TaggedText(LiveAttenuationMain, TEXT("audio-attenuation-audible")).IsEmpty());
 
     DebuggerWindow->_Collector._SnapshotOverrideForTests.Emplace(SessionFixture);
     DebuggerWindow->_Collector.Collect(nullptr);
+    DebuggerWindow->DoUpdate_SpatialView();
+    TestTrue(TEXT("session clearing is independently primed with live attenuation data"),
+        SpatialModel->HasSpatialData
+            && TaggedText(LiveAttenuationMain, TEXT("audio-attenuation-audible")) == TEXT("0.30"));
     DebuggerWindow->_ObservedWorld = InvalidatedWorld;
     ck::DebugSessionLifecycle::Get_OnSessionInvalidated().Broadcast();
     TestTrue(TEXT("session invalidation independently clears Audio state"),
         NOT DebuggerWindow->_Collector.Get_Snapshot().HasWorld
-            && DebuggerWindow->_InvalidatedWorld.Get() == InvalidatedWorld);
+            && DebuggerWindow->_InvalidatedWorld.Get() == InvalidatedWorld
+            && NOT SpatialModel->HasSpatialData && SpatialModel->FalloffCurve.IsEmpty()
+            && TaggedText(LiveAttenuationMain, TEXT("audio-attenuation-audible")).IsEmpty());
     ck::DebugSessionLifecycle::Get_OnSessionInvalidated().Broadcast();
     TestTrue(TEXT("repeated session invalidation preserves the blocked-world marker"),
         DebuggerWindow->_InvalidatedWorld.Get() == InvalidatedWorld);

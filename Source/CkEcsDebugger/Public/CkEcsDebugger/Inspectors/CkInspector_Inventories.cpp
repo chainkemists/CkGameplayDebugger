@@ -51,6 +51,13 @@ FCkInspector_Inventories::~FCkInspector_Inventories()
 
 namespace ck_inspector_inventories
 {
+    auto Make_RecordIdentity(const FCk_Handle& InHandle) -> FString
+    {
+        const auto& Entity = InHandle.Get_Entity();
+        return FString::Printf(TEXT("%u:%u"), static_cast<uint32>(Entity.Get_ID()),
+            static_cast<uint32>(Entity.Get_VersionNumber()));
+    }
+
     // ---- Palette ----
     // This file used to own a private 20-color "tetris" palette plus six loose literals. Every one of them
     // now resolves through CkStyle roles or a documented derivation:
@@ -393,7 +400,8 @@ auto SCkInspector_InventoriesAuthored::Refresh_Records() -> bool
     {
         if (ck::Is_NOT_Valid(Inventory)) { continue; }
         const bool IsSpatial = UCk_Utils_Inventory_UE::Get_IsSpatial(Inventory);
-        const FString InventoryKey = TEXT("inventory/") + Inventory.ToString();
+        const FString InventoryKey = TEXT("inventory/")
+            + ck_inspector_inventories::Make_RecordIdentity(Inventory);
         const FString Type = IsSpatial ? TEXT("Spatial") : TEXT("DataOnly");
         const FString Header = ck::Format_UE(TEXT("{} ({})"), Inventory.ToString(), Type);
         auto HeaderRecord = MakeBaseRecord(InventoryKey);
@@ -475,7 +483,8 @@ auto SCkInspector_InventoriesAuthored::Refresh_Records() -> bool
             const auto* Definition = UCk_Utils_Item_UE::Get_Definition(Item);
             const FString Name = Definition != nullptr ? Definition->Get_CoreInfo().Get_Name().ToString() : Item.ToString();
             if (NOT _Filter.IsEmpty() && NOT Name.Contains(_Filter, ESearchCase::IgnoreCase)) { continue; }
-            const FString Key = InventoryKey + TEXT("/item/") + Item.ToString();
+            const FString Key = InventoryKey + TEXT("/item/")
+                + ck_inspector_inventories::Make_RecordIdentity(Item);
             auto Record = MakeBaseRecord(Key);
             const bool IsStackable = UCk_Utils_ItemTrait_Stackable_UE::Get_IsStackable(Item);
             const bool HasTags = UCk_Utils_ItemTrait_Tags_UE::Get_HasTagsFeature(Item);

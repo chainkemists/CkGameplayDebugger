@@ -17,6 +17,8 @@ class SCkDebug_SearchBar;
 class SCkDebug_ToggleSurface;
 class SCkAudioDebugger_FalloffCurve;
 class FCkUiView;
+class FCkUiCollection;
+class SCkDebug_UnderlineTabs;
 class SHorizontalBox;
 class SBox;
 class STextBlock;
@@ -161,7 +163,10 @@ private:
         double InCurrentTime) -> void;
 
     auto
-    DoCreate_Tabs() -> TSharedRef<SWidget>;
+    DoCreate_Tabs() -> TSharedRef<SCkDebug_UnderlineTabs>;
+
+    auto DoUpdate_TabRecords() -> void;
+    auto DoSelect_Page(FName InPageId) -> void;
 
     auto
     DoCreate_StatCards() -> TSharedRef<SWidget>;
@@ -311,7 +316,9 @@ private:
 
     FCkAudioDebugger_DataCollector _Collector;
 
-    TSharedPtr<SWidget>         _Tabs;
+    TSharedPtr<SCkDebug_UnderlineTabs> _Tabs;
+    TSharedPtr<FCkUiCollection> _TabRecords;
+    bool _TabsProjectionReady = false;
     TSharedPtr<SWidget>         _StatCards;
     TSharedPtr<SCkDebug_SearchBar> _FilterSearchBar;
     TSharedPtr<SCkDebug_ToggleSurface> _FilterPlayingToggle;

@@ -6,6 +6,7 @@
 #include "CkDebuggerCommon/Widgets/SCkDebug_Icon.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_Switch.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_EntityRef.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_UnderlineTabs.h"
 #include "CkDebuggerCommon/Window/SCkDebug_WindowChrome.h"
 #include "CkDebuggerCommon/Settings/CkDebuggerStyleSettings.h"
 #include "CkDebuggerCommon/Styles/CkDebuggerAxes.h"
@@ -26,6 +27,7 @@
 #include "Widgets/IToolTip.h"
 #include "Widgets/Text/STextBlock.h"
 #include "Widgets/Input/SSearchBox.h"
+#include "Widgets/Input/SComboButton.h"
 #include "Styling/CoreStyle.h"
 #include "Styling/SlateBrush.h"
 
@@ -616,6 +618,175 @@ auto FCkDebug_UiRegistry_EntityRef::RunTest(const FString&) -> bool
     const FCursorReply ReleasedCursor = EntityRef->OnCursorQuery(Geometry, LeftClick);
     TestTrue(TEXT("Released view leaves held entity reference inert"), !ReleasedCursor.IsEventHandled()
         && !EntityRef->OnMouseButtonDown(Geometry, LeftClick).IsEventHandled() && SecondActionCount == 1);
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCkDebug_UiRegistry_Tabs,
+    "Ck.DebuggerCommon.UnderlineTabs.Authored",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+auto FCkDebug_UiRegistry_Tabs::RunTest(const FString&) -> bool
+{
+    using namespace ck_debug_ui_registry_tests;
+    if (!FSlateApplication::IsInitialized()) { AddError(TEXT("Authored tabs require Slate.")); return false; }
+    FSlateApplication& Slate = FSlateApplication::Get();
+    const FVector2D SavedCursor = Slate.GetCursorPos();
+    ON_SCOPE_EXIT { Slate.SetCursorPos(SavedCursor); };
+    const auto Click = [&Slate](const TSharedRef<SWidget>& InWidget) -> bool
+    {
+        const auto Window = Slate.FindWidgetWindow(InWidget);
+        if (!Window.IsValid() || !Window->GetNativeWindow().IsValid()) { return false; }
+        Window->BringToFront(true);
+        Tick(Slate);
+        Slate.ReleaseAllPointerCapture(0);
+        const FGeometry Geometry = InWidget->GetCachedGeometry();
+        const FVector2D Position = Geometry.LocalToAbsolute(Geometry.GetLocalSize() * 0.5f);
+        const TSet<FKey> NoButtons;
+        const TSet<FKey> DownButtons{EKeys::LeftMouseButton};
+        const FPointerEvent Move{0, FSlateApplication::CursorPointerIndex, Position, Position,
+            NoButtons, EKeys::Invalid, 0.0f, FModifierKeysState{}};
+        const FPointerEvent Down{0, FSlateApplication::CursorPointerIndex, Position, Position,
+            DownButtons, EKeys::LeftMouseButton, 0.0f, FModifierKeysState{}};
+        const FPointerEvent Up{0, FSlateApplication::CursorPointerIndex, Position, Position,
+            NoButtons, EKeys::LeftMouseButton, 0.0f, FModifierKeysState{}};
+        Slate.SetCursorPos(Position);
+        Slate.ProcessMouseMoveEvent(Move, true);
+        const FWidgetPath Path = Slate.LocateWindowUnderMouse(Position, Slate.GetInteractiveTopLevelWindows(), false, 0);
+        bool Targeted = false;
+        for (int32 Index = 0; Index < Path.Widgets.Num(); ++Index)
+        { Targeted |= Path.Widgets[Index].Widget == InWidget; }
+        if (!Targeted) { return false; }
+        const bool Handled = Slate.ProcessMouseButtonDownEvent(Window->GetNativeWindow(), Down);
+        Slate.ProcessMouseButtonUpEvent(Up);
+        Tick(Slate);
+        return Handled;
+    };
+    const auto MakeRecords = [](FString InCount, bool InWarning)
+    {
+        TArray<FCkUiRecordData> Records;
+        for (const FString Key : {FString{TEXT("Alpha")}, FString{TEXT("Beta")}, FString{TEXT("Gamma")}})
+        {
+            FCkUiRecordData Record;
+            Record.Key = Key;
+            Record.Fields.Add(TEXT("label"), FCkUiFieldValue{.Kind = ECkUiFieldKind::Text, .Text = FText::FromString(Key)});
+            Record.Fields.Add(TEXT("count"), FCkUiFieldValue{.Kind = ECkUiFieldKind::Text,
+                .Text = Key == TEXT("Beta") ? FText::FromString(InCount) : FText::GetEmpty()});
+            Record.Fields.Add(TEXT("warning"), FCkUiFieldValue{.Kind = ECkUiFieldKind::Bool,
+                .Bool = Key == TEXT("Beta") && InWarning});
+            Records.Add(MoveTemp(Record));
+        }
+        return Records;
+    };
+    TSharedPtr<const FCkUiWidgetRegistrySnapshot> Registry;
+    TSharedPtr<FCkUiCollection> Collection;
+    TSharedPtr<FCkUiCollection> BadCollection;
+    TSharedPtr<FCkUiCollection> LongKeyCollection;
+    auto LongKeyRecords = MakeRecords(TEXT("3"), false);
+    LongKeyRecords[0].Key = FString::ChrN(NAME_SIZE, TEXT('A'));
+    if (!TestTrue(TEXT("Tab registry and typed projections create"), FCkDebug_UiRegistry::TryCreate(Registry).Succeeded
+        && FCkUiCollection::TryCreate({{TEXT("label"), ECkUiFieldKind::Text}, {TEXT("count"), ECkUiFieldKind::Text},
+            {TEXT("warning"), ECkUiFieldKind::Bool}}, Collection).Succeeded
+        && FCkUiCollection::TryCreate({{TEXT("label"), ECkUiFieldKind::Text}}, BadCollection).Succeeded
+        && FCkUiCollection::TryCreate({{TEXT("label"), ECkUiFieldKind::Text}, {TEXT("count"), ECkUiFieldKind::Text},
+            {TEXT("warning"), ECkUiFieldKind::Bool}}, LongKeyCollection).Succeeded
+        && LongKeyCollection->TrySetRecords(MoveTemp(LongKeyRecords)).Succeeded
+        && Collection->TrySetRecords(MakeRecords(TEXT("3"), false)).Succeeded)) { return false; }
+    FString Selected = TEXT("Alpha");
+    int32 Calls = 0;
+    bool CanDispatch = true;
+    FCkUiView::FDataBindings Data;
+    Data.SlateUserIndex = 0;
+    Data.Collections.Add(TEXT("pages"), Collection);
+    Data.Collections.Add(TEXT("bad-pages"), BadCollection);
+    Data.Collections.Add(TEXT("long-key-pages"), LongKeyCollection);
+    Data.String.Add(TEXT("selected"), TAttribute<FString>::CreateLambda([&Selected]() { return Selected; }));
+    Data.StringChanged.Add(TEXT("select"), FCkUiOnStringChanged::CreateLambda([&Selected, &Calls](const FString& InKey)
+    { Selected = InKey; ++Calls; }));
+    Data.CanDispatchEvents = TAttribute<bool>::CreateLambda([&CanDispatch]() { return CanDispatch; });
+    TSharedPtr<FCkUiView> View = FCkUiView::Create({}, {}, {}, {}, MoveTemp(Data), Registry);
+    const TSharedRef<SWidget> Region = View->GetRegion(TEXT("main"));
+    const FString Markup = TEXT("<ui version=\"1\"><region name=\"main\"><column id=\"body\"><debug-tabs id=\"tabs\" class=\"tabs\" tabs-bind=\"pages\" value-bind=\"selected\" changed=\"select\"/></column></region></ui>");
+    const FString Css = TEXT(".tabs { min-width: 0; flex-shrink: 1; }");
+    const FCkUiLoadResult Loaded = View->TryReload(Markup, Css);
+    if (!TestTrue(TEXT("Typed authored tabs load: ") + FString::Join(Loaded.Errors, TEXT(" | ")), Loaded.Succeeded))
+    { return false; }
+    FWindowScope Scope{Slate};
+    Scope.Window = SNew(SWindow).AutoCenter(EAutoCenter::None).ClientSize(FVector2D{800.0f, 220.0f})
+        .CreateTitleBar(false).HasCloseButton(false)[Region];
+    Slate.AddWindow(Scope.Window.ToSharedRef(), true);
+    Tick(Slate);
+    const auto Tabs = StaticCastSharedPtr<SCkDebug_UnderlineTabs>(FindWidget(Region, TEXT("SCkDebug_UnderlineTabs")));
+    const auto Beta = FindTaggedWidget(Region, TEXT("CkDebug.Tab.Beta"));
+    if (!TestTrue(TEXT("Shared adapter uses production strip and physical tab selection"), Tabs.IsValid() && Beta.IsValid()
+        && Click(Beta.ToSharedRef()) && Selected == TEXT("Beta") && Calls == 1)) { return false; }
+    TestTrue(TEXT("Live tab projection publishes"), Collection->TrySetRecords(MakeRecords(TEXT("99"), true)).Succeeded);
+    Tick(Slate);
+    const auto Count = StaticCastSharedPtr<STextBlock>(FindTaggedWidget(Tabs.ToSharedRef(), TEXT("CkDebug.Tab.Count.Beta")));
+    const auto Warning = FindTaggedWidget(Tabs.ToSharedRef(), TEXT("CkDebug.Tab.Warning.Beta"));
+    TestTrue(TEXT("Count and warning refresh without replacing header"), Count.IsValid() && Count->GetText().ToString() == TEXT("99")
+        && Warning.IsValid() && Warning->GetVisibility() == EVisibility::SelfHitTestInvisible
+        && FindTaggedWidget(Region, TEXT("CkDebug.Tab.Beta")) == Beta);
+    Selected = FString::ChrN(NAME_SIZE, TEXT('Z'));
+    Tick(Slate);
+    TestTrue(TEXT("Oversized live selection renders fail-closed without dispatch"), !Tabs->GetCanDispatchEvents() && Calls == 1);
+    Selected = TEXT("Beta");
+    Tick(Slate);
+    TestTrue(TEXT("Valid live selection recovers the retained strip"), Tabs->GetCanDispatchEvents() && Calls == 1);
+    const int64 Revision = View->GetRevision();
+    TestTrue(TEXT("Malformed tab schema rejects atomically"), !View->TryReload(
+        Markup.Replace(TEXT("tabs-bind=\"pages\""), TEXT("tabs-bind=\"bad-pages\"")), Css).Succeeded
+        && View->GetRevision() == Revision && FindWidget(Region, TEXT("SCkDebug_UnderlineTabs")) == Tabs);
+    TestTrue(TEXT("Missing tab action rejects atomically"), !View->TryReload(
+        Markup.Replace(TEXT(" changed=\"select\""), TEXT("")), Css).Succeeded && View->GetRevision() == Revision);
+    TestTrue(TEXT("Oversized tab key rejects before FName conversion without publication or callback"),
+        !View->TryReload(Markup.Replace(TEXT("tabs-bind=\"pages\""), TEXT("tabs-bind=\"long-key-pages\"")), Css).Succeeded
+            && View->GetRevision() == Revision && Calls == 1);
+    TestTrue(TEXT("Compatible reload retains native strip, header and selected page"), View->TryReload(Markup, Css).Succeeded
+        && FindWidget(Region, TEXT("SCkDebug_UnderlineTabs")) == Tabs
+        && FindTaggedWidget(Region, TEXT("CkDebug.Tab.Beta")) == Beta && Selected == TEXT("Beta"));
+    auto MissingPage = MakeRecords(TEXT("99"), true);
+    MissingPage.Pop();
+    const int64 BeforeTopologyReject = View->GetRevision();
+    TestTrue(TEXT("Invalid live topology is independently published into the projection"),
+        Collection->TrySetRecords(MoveTemp(MissingPage)).Succeeded);
+    TestFalse(TEXT("Removed tab topology revokes dispatch before a frame tick"), Tabs->GetCanDispatchEvents());
+    Click(Beta.ToSharedRef());
+    TestTrue(TEXT("Changed retained topology rejects without callbacks or partial publication"),
+        !View->TryReload(Markup, Css).Succeeded && View->GetRevision() == BeforeTopologyReject && Calls == 1);
+    TestTrue(TEXT("Restoring the fixed tab set restores the existing strip"),
+        Collection->TrySetRecords(MakeRecords(TEXT("99"), true)).Succeeded && Tabs->GetCanDispatchEvents()
+            && FindWidget(Region, TEXT("SCkDebug_UnderlineTabs")) == Tabs);
+    Scope.Window->Resize(FVector2D{190.0f, 220.0f});
+    Tick(Slate);
+    const auto Overflow = StaticCastSharedPtr<SComboButton>(FindTaggedWidget(Tabs.ToSharedRef(), TEXT("CkDebug.Tabs.Overflow")));
+    if (!TestTrue(TEXT("Actual narrow width exposes overflow and keeps active tab on strip"), Overflow.IsValid()
+        && Overflow->GetVisibility() == EVisibility::Visible && FindTaggedWidget(Tabs.ToSharedRef(), TEXT("CkDebug.Tab.Beta")) == Beta
+        && Click(Overflow.ToSharedRef()) && Overflow->IsOpen())) { return false; }
+    const auto Menu = Tabs->GetPopupFocusTarget();
+    const auto Gamma = Menu.IsValid() ? FindTaggedWidget(Menu.ToSharedRef(), TEXT("CkDebug.Tab.Gamma")) : nullptr;
+    if (!TestTrue(TEXT("Physical overflow selection reaches hidden page and closes owned menu"), Gamma.IsValid()
+        && Click(Gamma.ToSharedRef()) && Selected == TEXT("Gamma") && Calls == 2 && !Overflow->IsOpen())) { return false; }
+    TestTrue(TEXT("Overflow-selected page is now visible"), FindTaggedWidget(Tabs.ToSharedRef(), TEXT("CkDebug.Tab.Gamma")).IsValid());
+    if (!TestTrue(TEXT("Overflow reopens before reload"), Click(Overflow.ToSharedRef()) && Overflow->IsOpen())) { return false; }
+    const auto OpenMenu = Tabs->GetPopupFocusTarget();
+    TestTrue(TEXT("Compatible reload retains the open popup"), View->TryReload(Markup, Css).Succeeded
+        && Overflow->IsOpen() && Tabs->GetPopupFocusTarget() == OpenMenu);
+    const auto HeldMenuBeta = OpenMenu.IsValid() ? FindTaggedWidget(OpenMenu.ToSharedRef(), TEXT("CkDebug.Tab.Beta")) : nullptr;
+    if (!TestTrue(TEXT("Held menu entry exists before release"), HeldMenuBeta.IsValid())) { return false; }
+    const TWeakPtr<FCkUiView> Released = View;
+    View.Reset();
+    TestTrue(TEXT("View release revokes strip and closes its popup"), !Released.IsValid() && !Tabs->GetCanDispatchEvents()
+        && !Overflow->IsOpen() && !Tabs->GetPopupFocusTarget().IsValid());
+    Scope.Window->SetContent(SNew(SVerticalBox)
+        + SVerticalBox::Slot().AutoHeight()[Tabs.ToSharedRef()]
+        + SVerticalBox::Slot().AutoHeight()[OpenMenu.ToSharedRef()]);
+    Tick(Slate);
+    Click(HeldMenuBeta.ToSharedRef());
+    const auto HeldStripGamma = FindTaggedWidget(Tabs.ToSharedRef(), TEXT("CkDebug.Tab.Gamma"));
+    if (HeldStripGamma.IsValid()) { Click(HeldStripGamma.ToSharedRef()); }
+    TestTrue(TEXT("Physically remounted held normal/menu controls cannot mutate after owner release"), Calls == 2
+        && Selected == TEXT("Gamma") && !HeldMenuBeta->IsEnabled()
+        && HeldStripGamma.IsValid() && !HeldStripGamma->IsEnabled());
     return true;
 }
 

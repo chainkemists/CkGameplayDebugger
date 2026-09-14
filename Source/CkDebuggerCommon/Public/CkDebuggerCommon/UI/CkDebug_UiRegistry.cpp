@@ -1,4 +1,5 @@
 #include "CkDebug_UiRegistry.h"
+#include "CkDebug_UiTabs.h"
 
 #include "CkSlateLayout/CkUiCheckbox.h"
 #include "CkSlateLayout/CkUiColorPicker.h"
@@ -788,6 +789,8 @@ auto FCkDebug_UiRegistry::TryCreate(TSharedPtr<const FCkUiWidgetRegistrySnapshot
     { return CheckboxResult; }
     if (const FCkUiLoadResult SelectResult = FCkUiSelect::Register(Staging); !SelectResult.Succeeded)
     { return SelectResult; }
+    if (const FCkUiLoadResult TabsResult = FCkDebug_UiTabs::Register(Staging); !TabsResult.Succeeded)
+    { return TabsResult; }
     OutSnapshot = Staging.CreateSnapshot();
     auto Result = FCkUiLoadResult{};
     Result.Succeeded = true;

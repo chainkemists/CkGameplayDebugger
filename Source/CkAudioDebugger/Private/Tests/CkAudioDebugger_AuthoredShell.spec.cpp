@@ -1,5 +1,6 @@
 #include "CkAudioDebugger/Window/SCkAudioDebuggerWindow.h"
 #include "CkAudioDebugger/Window/SCkAudioDebugger_FalloffCurve.h"
+#include "CkAudioDebugger/Window/SCkAudioDebugger_Radar.h"
 #include "../../CkAudioDebugger_Module.h"
 
 #include "CkAudio/AudioTrack/CkAudioTrack_Fragment.h"
@@ -272,6 +273,18 @@ namespace ck_audio_debugger_authored_shell_tests
         return DownHandled;
     }
 
+    auto IsInHitPath(FSlateApplication& InSlate, const TSharedRef<SWidget>& InWidget) -> bool
+    {
+        const TSharedPtr<SWindow> Window = InSlate.FindWidgetWindow(InWidget);
+        if (NOT Window.IsValid() || NOT Window->GetNativeWindow().IsValid()) { return false; }
+        const FGeometry Geometry = InWidget->GetCachedGeometry();
+        if (Geometry.GetLocalSize().X <= 0.0f || Geometry.GetLocalSize().Y <= 0.0f) { return false; }
+        const FVector2D Position = Geometry.LocalToAbsolute(Geometry.GetLocalSize() * 0.5f);
+        const FWidgetPath Path = InSlate.LocateWindowUnderMouse(
+            Position, InSlate.GetInteractiveTopLevelWindows(), false, 0);
+        return WidgetPathContains(Path, InWidget);
+    }
+
     auto ReplaceSearchText(FSlateApplication& InSlate, const TSharedRef<SEditableText>& InEditable,
         const FString& InText) -> bool
     {
@@ -378,6 +391,17 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
     TSharedPtr<FCkUiView> EventsView = DebuggerWindow->_AuthoredEventsToolbarView;
     TSharedPtr<FCkUiView> DirectorsView = DebuggerWindow->_AuthoredDirectorsView;
     TSharedPtr<FCkUiView> TracksView = DebuggerWindow->_AuthoredTracksView;
+    TSharedPtr<FCkUiView> SpatialPageView = DebuggerWindow->_AuthoredSpatialView;
+    if (NOT TestTrue(TEXT("production Audio admits the Spatial page with its exact retained Radar"),
+        SpatialPageView.IsValid() && SpatialPageView->GetLastResult().Succeeded
+            && NOT DebuggerWindow->_UsingNativeSpatialFallback
+            && SpatialPageView->GetRepeat(TEXT("audio-spatial-tracks")).IsValid()
+            && SpatialPageView->GetScroll(TEXT("audio-spatial-selector-scroll")).IsValid()
+            && ContainsWidget(SpatialPageView->GetRegion(TEXT("main")), DebuggerWindow->_Radar.ToSharedRef())))
+    {
+        if (SpatialPageView.IsValid()) { AddError(FString::Join(SpatialPageView->GetLastResult().Errors, TEXT("\n"))); }
+        return false;
+    }
     if (NOT TestTrue(TEXT("production Audio window admits its authored Tracks page and compact plot"),
         TracksView.IsValid() && TracksView->GetLastResult().Succeeded
             && NOT DebuggerWindow->_UsingNativeTracksFallback
@@ -622,13 +646,12 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
     const TSharedPtr<SWidget> EmptySpatialPlots = FindTaggedWidget(
         DebuggerWindow->_PageSwitcher.ToSharedRef(), TEXT("audio-spatial-plots"));
     const TSharedPtr<SWidget> EmptySpatialMessage = FindTaggedWidget(
-        DebuggerWindow->_PageSwitcher.ToSharedRef(), TEXT("audio-spatial-unavailable"));
+        DebuggerWindow->_PageSwitcher.ToSharedRef(), TEXT("audio-spatial-unavailable-wrap"));
     TestTrue(TEXT("unavailable Spatial state hides both plots and explains the missing track"),
         DebuggerWindow->_PageSwitcher->GetActiveWidgetIndex() == 3
             && EmptySpatialPlots.IsValid() && EmptySpatialPlots->GetVisibility() == EVisibility::Collapsed
             && EmptySpatialMessage.IsValid() && EmptySpatialMessage->GetVisibility().IsVisible()
-            && EmptySpatialMessage->GetTypeAsString() == TEXT("STextBlock")
-            && StaticCastSharedPtr<STextBlock>(EmptySpatialMessage)->GetText().ToString().Contains(TEXT("No track to inspect")));
+            && TaggedText(SpatialPageView->GetRegion(TEXT("main")), TEXT("audio-spatial-unavailable")).Contains(TEXT("No track to inspect")));
 
     const TSharedPtr<SButton> CrossfadeTab = FindButtonWithText(
         GetTabs().ToSharedRef(), TEXT("Crossfade"));
@@ -649,6 +672,8 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
     FString DirectorsCss;
     FString TracksMarkup;
     FString TracksCss;
+    FString SpatialMarkup;
+    FString SpatialCss;
     FString EventsCss;
     const FString Directory = Plugin.IsValid()
         ? FPaths::Combine(Plugin->GetBaseDir(), TEXT("Resources/UI"))
@@ -665,7 +690,9 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
         && FFileHelper::LoadFileToString(DirectorsMarkup, *FPaths::Combine(Directory, TEXT("AudioDebuggerDirectors.ui.html")))
         && FFileHelper::LoadFileToString(DirectorsCss, *FPaths::Combine(Directory, TEXT("AudioDebuggerDirectors.ui.css")))
         && FFileHelper::LoadFileToString(TracksMarkup, *FPaths::Combine(Directory, TEXT("AudioDebuggerTracks.ui.html")))
-        && FFileHelper::LoadFileToString(TracksCss, *FPaths::Combine(Directory, TEXT("AudioDebuggerTracks.ui.css")))))
+        && FFileHelper::LoadFileToString(TracksCss, *FPaths::Combine(Directory, TEXT("AudioDebuggerTracks.ui.css")))
+        && FFileHelper::LoadFileToString(SpatialMarkup, *FPaths::Combine(Directory, TEXT("AudioDebuggerSpatial.ui.html")))
+        && FFileHelper::LoadFileToString(SpatialCss, *FPaths::Combine(Directory, TEXT("AudioDebuggerSpatial.ui.css")))))
     { return false; }
 
     TestTrue(TEXT("Audio resource declares typed tabs without the old opaque native tab binding"),
@@ -828,6 +855,7 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
     const TWeakPtr<FCkUiView> ReleasedEventsView = EventsView;
     const TWeakPtr<FCkUiView> ReleasedDirectorsView = DirectorsView;
     const TWeakPtr<FCkUiView> ReleasedTracksView = TracksView;
+    const TWeakPtr<FCkUiView> ReleasedSpatialView = SpatialPageView;
     const TWeakPtr<SCkAudioDebuggerWindow> ReleasedEventsOwner = DebuggerWindow;
     DebuggerWindow.Reset();
     View.Reset();
@@ -836,6 +864,7 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
     EventsView.Reset();
     DirectorsView.Reset();
     TracksView.Reset();
+    SpatialPageView.Reset();
     TestFalse(TEXT("authored Audio view releases with its production window"), ReleasedView.IsValid());
     TestFalse(TEXT("authored Crossfade view releases with its production window"), ReleasedCrossfadeView.IsValid());
     TestFalse(TEXT("authored attenuation view releases with its production window"), ReleasedAttenuationView.IsValid());
@@ -843,6 +872,7 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
     TestFalse(TEXT("authored Events view releases with its production window"), ReleasedEventsView.IsValid());
     TestFalse(TEXT("authored Directors view releases with its production window"), ReleasedDirectorsView.IsValid());
     TestFalse(TEXT("authored Tracks view releases with its production window"), ReleasedTracksView.IsValid());
+    TestFalse(TEXT("authored Spatial view releases with its production window"), ReleasedSpatialView.IsValid());
     TestTrue(TEXT("Audio owner release closes the owned tab popup and revokes retained tab dispatch"),
         NOT OriginalTabs->GetCanDispatchEvents() && NOT Overflow->IsOpen()
             && NOT OriginalTabs->GetPopupFocusTarget().IsValid());
@@ -896,6 +926,8 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
         TEXT("bind=\"audio-directors\""), TEXT("bind=\"missing-audio-directors\""));
     const FString InvalidTracksStartupMarkup = TracksMarkup.Replace(
         TEXT("bind=\"audio-tracks\""), TEXT("bind=\"missing-audio-tracks\""));
+    const FString InvalidSpatialStartupMarkup = SpatialMarkup.Replace(
+        TEXT("bind=\"audio-spatial-attenuation\""), TEXT("bind=\"missing-spatial-attenuation\""));
     if (NOT TestTrue(TEXT("Events startup fixture omits one required native port"), InvalidEventsStartupMarkup != EventsMarkup))
     { return false; }
     bool MarkupRestored = false;
@@ -904,6 +936,7 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
     bool EventsMarkupRestored = false;
     bool DirectorsMarkupRestored = false;
     bool TracksMarkupRestored = false;
+    bool SpatialMarkupRestored = false;
     ON_SCOPE_EXIT
     {
         if (NOT MarkupRestored)
@@ -918,6 +951,8 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
         { FFileHelper::SaveStringToFile(DirectorsMarkup, *FPaths::Combine(Directory, TEXT("AudioDebuggerDirectors.ui.html"))); }
         if (NOT TracksMarkupRestored)
         { FFileHelper::SaveStringToFile(TracksMarkup, *FPaths::Combine(Directory, TEXT("AudioDebuggerTracks.ui.html"))); }
+        if (NOT SpatialMarkupRestored)
+        { FFileHelper::SaveStringToFile(SpatialMarkup, *FPaths::Combine(Directory, TEXT("AudioDebuggerSpatial.ui.html"))); }
     };
     if (NOT TestTrue(TEXT("Audio fixture installs its valid-but-unbound startup candidate"),
         FFileHelper::SaveStringToFile(
@@ -931,7 +966,9 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
             && FFileHelper::SaveStringToFile(InvalidDirectorsStartupMarkup,
                 *FPaths::Combine(Directory, TEXT("AudioDebuggerDirectors.ui.html")))
             && FFileHelper::SaveStringToFile(InvalidTracksStartupMarkup,
-                *FPaths::Combine(Directory, TEXT("AudioDebuggerTracks.ui.html")))))
+                *FPaths::Combine(Directory, TEXT("AudioDebuggerTracks.ui.html")))
+            && FFileHelper::SaveStringToFile(InvalidSpatialStartupMarkup,
+                *FPaths::Combine(Directory, TEXT("AudioDebuggerSpatial.ui.html")))))
     { return false; }
 
     DebuggerWindow = SNew(SCkAudioDebuggerWindow);
@@ -1120,6 +1157,35 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
             && ContainsWidget(TracksView->GetRegion(TEXT("main")), DebuggerWindow->_CompactCrossfadePlot.ToSharedRef())
             && DebuggerWindow->_TrackSlots.IsEmpty()))
     { return false; }
+
+    if (NOT RunFixturePhase([&, this]() -> bool
+    {
+        SpatialPageView = DebuggerWindow->_AuthoredSpatialView;
+        const auto Radar = DebuggerWindow->_Radar;
+        const auto Model = DebuggerWindow->_SpatialView;
+        if (NOT TestTrue(TEXT("invalid Spatial startup keeps the independent native page and exact plot mounts"),
+            SpatialPageView.IsValid() && NOT SpatialPageView->GetLastResult().Succeeded
+                && DebuggerWindow->_UsingNativeSpatialFallback
+                && ContainsWidget(DebuggerWindow->_SpatialPageHost.ToSharedRef(), DebuggerWindow->_NativeSpatialPage.ToSharedRef())
+                && ContainsWidget(DebuggerWindow->_NativeRadarHost.ToSharedRef(), Radar.ToSharedRef())
+                && ContainsWidget(DebuggerWindow->_NativeSpatialAttenuationHost.ToSharedRef(), DebuggerWindow->_AttenuationPanelHost.ToSharedRef())))
+        { return false; }
+        SpatialMarkupRestored = FFileHelper::SaveStringToFile(SpatialMarkup, *FPaths::Combine(Directory, TEXT("AudioDebuggerSpatial.ui.html")));
+        if (NOT TestTrue(TEXT("Spatial fixture restores its authored source"), SpatialMarkupRestored)) { return false; }
+        DebuggerWindow->OnStyleRevisionChanged();
+        TickSlate(Slate);
+        if (NOT TestTrue(TEXT("Spatial polling detaches fallback mounts before retaining the exact Radar and attenuation host"),
+            SpatialPageView->GetLastResult().Succeeded && NOT DebuggerWindow->_UsingNativeSpatialFallback
+                && DebuggerWindow->_Radar == Radar && DebuggerWindow->_SpatialView == Model
+                && ContainsWidget(SpatialPageView->GetRegion(TEXT("main")), Radar.ToSharedRef())
+                && ContainsWidget(SpatialPageView->GetRegion(TEXT("main")), DebuggerWindow->_AttenuationPanelHost.ToSharedRef())
+                && NOT ContainsWidget(DebuggerWindow->_NativeRadarHost.ToSharedRef(), Radar.ToSharedRef())))
+        {
+            AddError(FString::Join(SpatialPageView->GetLastResult().Errors, TEXT("\n")));
+            return false;
+        }
+        return true;
+    })) { return false; }
 
     return RunFixturePhase([&, this]() -> bool
     {
@@ -1598,9 +1664,31 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
         const auto TrackReplacementKey = DebuggerWindow->_TrackRecords->GetRecords()[1]->GetKey();
         const auto TrackReplacementRow = TracksRepeat->GetItemWidget(TrackReplacementKey);
         const auto ReplacementTrackLink = FindTaggedWidget(TrackReplacementRow.ToSharedRef(), TEXT("audio-track-entity"));
-        if (NOT TestTrue(TEXT("replacement track physical action resolves its exact entity"),
-            ReplacementTrackLink.IsValid() && Click(Slate, ReplacementTrackLink.ToSharedRef())
-                && TrackNavigationResults->Num() == 4 && (*TrackNavigationResults)[3] == TrackB.Get_Entity()))
+        const auto ReplacementTrackRef = ReplacementTrackLink.IsValid()
+            ? FindEntityRef(ReplacementTrackLink.ToSharedRef()) : nullptr;
+        if (NOT TestTrue(TEXT("replacement track exposes its exact retained entity action"), ReplacementTrackRef.IsValid()))
+        { return false; }
+        const bool ReplacementInitiallyHitTestable = IsInHitPath(Slate, ReplacementTrackRef.ToSharedRef());
+        if (NOT ReplacementInitiallyHitTestable)
+        {
+            TrackScroll->ScrollDescendantIntoView(
+                ReplacementTrackRef.ToSharedRef(), false, EDescendantScrollDestination::IntoView);
+            TickSlate(Slate);
+        }
+        const bool ReplacementArrangedIntoHitPath = IsInHitPath(Slate, ReplacementTrackRef.ToSharedRef());
+        AddInfo(FString::Printf(TEXT("Replacement Track hit path: before=%s after=%s vertical-offset=%g end=%g."),
+            ReplacementInitiallyHitTestable ? TEXT("true") : TEXT("false"),
+            ReplacementArrangedIntoHitPath ? TEXT("true") : TEXT("false"),
+            TrackScroll->GetScrollOffset(), TrackScroll->GetScrollOffsetOfEnd()));
+        if (NOT TestTrue(TEXT("replacement track action is arranged into the current hit path"), ReplacementArrangedIntoHitPath))
+        { return false; }
+        const bool ReplacementClickHandled = Click(Slate, ReplacementTrackRef.ToSharedRef());
+        const bool ReplacementCountAdvanced = TestEqual(TEXT("replacement track action dispatches exactly once"),
+            TrackNavigationResults->Num(), 4);
+        const bool ReplacementEntityMatches = TestTrue(TEXT("replacement track action resolves its exact entity"),
+            TrackNavigationResults->Num() == 4 && (*TrackNavigationResults)[3] == TrackB.Get_Entity());
+        if (NOT TestTrue(TEXT("replacement track physical action is handled"), ReplacementClickHandled)
+            || NOT ReplacementCountAdvanced || NOT ReplacementEntityMatches)
         { return false; }
         FixtureSnapshot.Directors[0].Tracks = {EqualNameTrack, EqualNameTrack};
         RefreshTracks();
@@ -1816,28 +1904,34 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
         SpatialTab.IsValid() && Click(Slate, SpatialTab.ToSharedRef())))
     { return false; }
     const TSharedPtr<SCheckBox> SpatialTrackToggle = FindCheckBoxWithText(
-        DebuggerWindow->_SpatialSelectorBox.ToSharedRef(), TEXT("Spatial track"));
+        SpatialPageView->GetRegion(TEXT("main")), TEXT("Spatial track"));
     if (NOT TestTrue(TEXT("production Spatial selector physically pins the track before it becomes 2D"),
         SpatialTrackToggle.IsValid() && Click(Slate, SpatialTrackToggle.ToSharedRef())
             && NOT DebuggerWindow->_SelectedSpatialTrackKey.IsEmpty()))
     { return false; }
     const TSharedPtr<FCkAudioDebugger_SpatialView> SpatialModel = DebuggerWindow->_SpatialView;
     const TSharedPtr<SCkAudioDebugger_FalloffCurve> SpatialCurve = DebuggerWindow->_AttenuationCurve;
+    const auto SpatialRadar = DebuggerWindow->_Radar;
+    const auto SpatialRepeat = SpatialPageView->GetRepeat(TEXT("audio-spatial-tracks"));
     const TSharedRef<SWidget> LiveAttenuationMain = AttenuationView->GetRegion(TEXT("main"));
-    const TSharedPtr<SWidget> SpatialPlots = FindTaggedWidget(
+    TSharedPtr<SWidget> SpatialPlots = FindTaggedWidget(
         DebuggerWindow->_PageSwitcher.ToSharedRef(), TEXT("audio-spatial-plots"));
-    const TSharedPtr<SWidget> SpatialMessage = FindTaggedWidget(
-        DebuggerWindow->_PageSwitcher.ToSharedRef(), TEXT("audio-spatial-unavailable"));
-    if (NOT TestTrue(TEXT("production spatial projection mounts the authored arithmetic beside the live native curve"),
-        SpatialModel.IsValid() && SpatialCurve.IsValid()
-            && SpatialPlots.IsValid() && SpatialMessage.IsValid()
-            && SpatialPlots->GetVisibility().IsVisible()
+    TSharedPtr<SWidget> SpatialMessage = FindTaggedWidget(
+        DebuggerWindow->_PageSwitcher.ToSharedRef(), TEXT("audio-spatial-unavailable-wrap"));
+    const bool SpatialProjectionIsMounted = TestTrue(TEXT("production spatial projection mounts its authored and retained widgets"),
+        SpatialModel.IsValid() && SpatialCurve.IsValid() && SpatialPlots.IsValid() && SpatialMessage.IsValid());
+    const bool SpatialProjectionIsVisible = TestTrue(TEXT("production spatial projection exposes plots and hides unavailable state"),
+        SpatialPlots.IsValid() && SpatialMessage.IsValid() && SpatialPlots->GetVisibility().IsVisible()
             && SpatialMessage->GetVisibility() == EVisibility::Collapsed
-            && DebuggerWindow->_PageSwitcher->GetActiveWidgetIndex() == 3
-            && ContainsWidget(DebuggerWindow->_AttenuationPanelHost.ToSharedRef(), LiveAttenuationMain)
-            && ContainsWidget(LiveAttenuationMain, SpatialCurve.ToSharedRef())
-            && SpatialCurve->GetCachedGeometry().GetLocalSize().X > 0.0f
-            && FMath::IsNearlyEqual(SpatialCurve->GetCachedGeometry().GetLocalSize().Y, 110.0f)))
+            && DebuggerWindow->_PageSwitcher->GetActiveWidgetIndex() == 3);
+    const bool SpatialAttenuationIsRetained = TestTrue(TEXT("production spatial projection retains the authored arithmetic and live native curve"),
+        SpatialCurve.IsValid() && ContainsWidget(DebuggerWindow->_AttenuationPanelHost.ToSharedRef(), LiveAttenuationMain)
+            && ContainsWidget(LiveAttenuationMain, SpatialCurve.ToSharedRef()));
+    const bool SpatialCurveIsArranged = TestTrue(TEXT("production spatial projection arranges the live native curve at its authored height"),
+        SpatialCurve.IsValid() && SpatialCurve->GetCachedGeometry().GetLocalSize().X > 0.0f
+            && FMath::IsNearlyEqual(SpatialCurve->GetCachedGeometry().GetLocalSize().Y, 110.0f));
+    if (NOT SpatialProjectionIsMounted || NOT SpatialProjectionIsVisible
+        || NOT SpatialAttenuationIsRetained || NOT SpatialCurveIsArranged)
     { return false; }
     TestTrue(TEXT("collector projection renders all attenuation values and exact volume-times-gain arithmetic"),
         TaggedText(LiveAttenuationMain, TEXT("audio-attenuation-heading")) == TEXT("Why the audible volume is 0.20")
@@ -1848,6 +1942,168 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
             && TaggedText(LiveAttenuationMain, TEXT("audio-attenuation-audible")) == TEXT("0.20")
             && TaggedText(LiveAttenuationMain, TEXT("audio-attenuation-asset")) == TEXT("Spatial attenuation"));
 
+    if (NOT RunFixturePhase([&, this]() -> bool
+    {
+        const auto RefreshSpatial = [&]()
+        {
+            DebuggerWindow->_Collector.Collect(nullptr);
+            DebuggerWindow->DoUpdate_SpatialView();
+            SpatialRepeat->TryRefresh();
+            TickSlate(Slate);
+        };
+        const auto OriginalTrack = TrackInfoA;
+        const auto PinnedKey = DebuggerWindow->_SelectedSpatialTrackKey;
+        const auto PinnedRow = SpatialRepeat->GetItemWidget(PinnedKey);
+        if (NOT TestTrue(TEXT("physical Spatial pin is keyed and owns the exact retained toggle/status leaf"),
+            PinnedRow.IsValid() && SpatialTrackToggle->IsChecked()
+                && FindWidgetType(PinnedRow.ToSharedRef(), TEXT("SCkDebug_StatusPill")).IsValid())) { return false; }
+        const auto StatusText = FindWidgetType(PinnedRow.ToSharedRef(), TEXT("STextBlock"));
+        if (NOT TestTrue(TEXT("retained Spatial status exposes its live name and tone text"), StatusText.IsValid())) { return false; }
+        auto EqualName = OriginalTrack;
+        EqualName.TrackEntity = TrackB;
+        EqualName.IsVirtualized = true;
+        FixtureSnapshot.Directors[0].Tracks = {OriginalTrack, EqualName};
+        RefreshSpatial();
+        TestTrue(TEXT("equal-name Spatial records stay distinct and pinning overrides diagnostic ranking"),
+            SpatialRepeat->GetItemCount() == 2 && SpatialRepeat->GetItemWidget(PinnedKey) == PinnedRow
+                && DebuggerWindow->TryGet_SelectedSpatialTrack() != nullptr
+                && DebuggerWindow->TryGet_SelectedSpatialTrack()->TrackEntity == TrackA);
+        if (NOT TestTrue(TEXT("physical re-click clears the pin and follows the virtualized track"),
+            Click(Slate, SpatialTrackToggle.ToSharedRef()) && DebuggerWindow->_SelectedSpatialTrackKey.IsEmpty()
+                && DebuggerWindow->TryGet_SelectedSpatialTrack() != nullptr
+                && DebuggerWindow->TryGet_SelectedSpatialTrack()->TrackEntity == TrackB)) { return false; }
+        if (NOT TestTrue(TEXT("physical selector can pin the first equal-name entity again"),
+            Click(Slate, SpatialTrackToggle.ToSharedRef()) && DebuggerWindow->_SelectedSpatialTrackKey == PinnedKey)) { return false; }
+        auto ChangedTrack = OriginalTrack;
+        ChangedTrack.TrackName = TEXT("Renamed spatial track");
+        ChangedTrack.IsVirtualized = true;
+        ChangedTrack.InnerRadius = 200.0f;
+        FixtureSnapshot.Directors[0].Tracks = {ChangedTrack, EqualName};
+        RefreshSpatial();
+        TestTrue(TEXT("live name, tone, legend and alert update without rebuilding the selector or Radar"),
+            SpatialRepeat->GetItemWidget(PinnedKey) == PinnedRow && DebuggerWindow->_Radar == SpatialRadar
+                && StaticCastSharedPtr<STextBlock>(StatusText)->GetText().ToString() == ChangedTrack.TrackName
+                && StaticCastSharedPtr<STextBlock>(StatusText)->GetColorAndOpacity().GetSpecifiedColor().Equals(CkStyle::GetToneColor(ECk_Tone::Err))
+                && TaggedText(SpatialPageView->GetRegion(TEXT("main")), TEXT("audio-spatial-legend")) == TEXT("inner 2.0m  ·  falloff 10.0m")
+                && TaggedText(SpatialPageView->GetRegion(TEXT("main")), TEXT("audio-spatial-alert-body")).Contains(TEXT("is virtualized")));
+        const auto SpatialKeyBeforeOverlay = PinnedKey;
+        DebuggerWindow->DoRebuild_OverlayList();
+        const auto FilterBefore = DebuggerWindow->_FilterString;
+        const auto PlayingBefore = DebuggerWindow->_ShowPlaying;
+        DebuggerWindow->_FilterString = TEXT("no matching mixer track");
+        DebuggerWindow->_ShowPlaying = false;
+        RefreshSpatial();
+        TestTrue(TEXT("mixer filters and Overlay rebuilding preserve Spatial records and physical identity"),
+            SpatialRepeat->GetItemCount() == 2 && SpatialRepeat->GetItemWidget(PinnedKey) == PinnedRow
+                && DebuggerWindow->_SpatialRecords->FindRecord(SpatialKeyBeforeOverlay).IsValid());
+        DebuggerWindow->_FilterString = FilterBefore;
+        DebuggerWindow->_ShowPlaying = PlayingBefore;
+
+        const auto Revision = SpatialPageView->GetRevision();
+        const auto Reload = SpatialPageView->TryReload(SpatialMarkup, SpatialCss, TEXT("Audio compatible Spatial candidate"));
+        TickSlate(Slate);
+        if (NOT Reload.Succeeded) { AddError(FString::Join(Reload.Errors, TEXT("\n"))); }
+        TestTrue(TEXT("compatible Spatial reload retains selector, pin, exact Radar, attenuation host and shared model"),
+            Reload.Succeeded && SpatialPageView->GetRevision() > Revision
+                && SpatialRepeat->GetItemWidget(PinnedKey) == PinnedRow && SpatialTrackToggle->IsChecked()
+                && DebuggerWindow->_Radar == SpatialRadar && DebuggerWindow->_SpatialView == SpatialModel
+                && ContainsWidget(SpatialPageView->GetRegion(TEXT("main")), SpatialRadar.ToSharedRef())
+                && ContainsWidget(SpatialPageView->GetRegion(TEXT("main")), SpatialCurve.ToSharedRef()));
+        const auto AcceptedRevision = SpatialPageView->GetRevision();
+        const auto Rejected = SpatialPageView->TryReload(SpatialMarkup.Replace(
+            TEXT("item-action=\"audio-spatial-select\""), TEXT("item-action=\"missing-spatial-action\"")), SpatialCss);
+        TestTrue(TEXT("rejected Spatial candidate leaves all mounted interaction and plot state intact"),
+            NOT Rejected.Succeeded && SpatialPageView->GetRevision() == AcceptedRevision
+                && SpatialRepeat->GetItemWidget(PinnedKey) == PinnedRow
+                && DebuggerWindow->_SelectedSpatialTrackKey == PinnedKey && DebuggerWindow->_Radar == SpatialRadar);
+
+        const auto StyleBefore = StyleSettings->Selection;
+        StyleSettings->Selection.TextScale = ECkDebugAxis_TextScale::Normal;
+        StyleSettings->NotifyChanged();
+        DebuggerWindow->OnStyleRevisionChanged();
+        RefreshSpatial();
+        const auto Footer = FindTaggedWidget(SpatialPageView->GetRegion(TEXT("main")), TEXT("audio-spatial-listener"));
+        if (NOT TestTrue(TEXT("authored Spatial footer is available for style and scroll checks"),
+            Footer.IsValid() && Footer->GetTypeAsString() == TEXT("SCkFlexText"))) { return false; }
+        const auto NormalFont = StaticCastSharedPtr<SCkFlexText>(Footer)->GetFont().Size;
+        StyleSettings->Selection.TextScale = ECkDebugAxis_TextScale::Large;
+        StyleSettings->NotifyChanged();
+        DebuggerWindow->OnStyleRevisionChanged();
+        RefreshSpatial();
+        const auto LargeFooter = FindTaggedWidget(SpatialPageView->GetRegion(TEXT("main")), TEXT("audio-spatial-listener"));
+        TestTrue(TEXT("Spatial style revision updates authored text while retaining selector and Radar identity"),
+            LargeFooter.IsValid() && LargeFooter->GetTypeAsString() == TEXT("SCkFlexText")
+                && StaticCastSharedPtr<SCkFlexText>(LargeFooter)->GetFont().Size > NormalFont
+                && SpatialRepeat->GetItemWidget(PinnedKey) == PinnedRow && DebuggerWindow->_Radar == SpatialRadar);
+        StyleSettings->Selection = StyleBefore;
+        StyleSettings->NotifyChanged();
+        DebuggerWindow->OnStyleRevisionChanged();
+        RefreshSpatial();
+
+        ChangedTrack.TrackName = FString::ChrN(180, TCHAR('W'));
+        FixtureSnapshot.Directors[0].Tracks = {ChangedTrack, EqualName};
+        HostWindow->Resize(FVector2D{460.0f, 520.0f});
+        RefreshSpatial();
+        const auto SelectorScroll = SpatialPageView->GetScroll(TEXT("audio-spatial-selector-scroll"));
+        const auto ShellScroll = View->GetScroll(TEXT("audio-shell-scroll"));
+        if (NOT TestTrue(TEXT("scroll fixture retains its two Spatial records"),
+            SelectorScroll.IsValid() && ShellScroll.IsValid()
+                && DebuggerWindow->_SpatialRecords->GetRecords().Num() == 2)) { return false; }
+        const auto LastKey = DebuggerWindow->_SpatialRecords->GetRecords().Last()->GetKey();
+        const auto LastRow = SpatialRepeat->GetItemWidget(LastKey);
+        if (LastRow.IsValid())
+        {
+            SelectorScroll->SetScrollOffset(SelectorScroll->GetScrollOffsetOfEnd());
+            ShellScroll->ScrollDescendantIntoView(LastRow.ToSharedRef(), false, EDescendantScrollDestination::IntoView);
+            TickSlate(Slate);
+        }
+        const auto LastGeometry = LastRow.IsValid() ? LastRow->GetCachedGeometry() : FGeometry{};
+        const auto HostGeometry = DebuggerWindow->GetCachedGeometry();
+        TestTrue(TEXT("narrow Spatial selector reaches its trailing track through horizontal scroll"),
+            LastRow.IsValid() && ShellScroll->GetScrollOffsetOfEnd() > 0.0f && ShellScroll->GetScrollOffset() > 0.0f
+                && LastGeometry.GetLocalSize().X > 0.0f
+                && LastGeometry.GetAbsolutePosition().X >= HostGeometry.GetAbsolutePosition().X - 1.0f
+                && LastGeometry.GetAbsolutePosition().X + LastGeometry.GetAbsoluteSize().X
+                    <= HostGeometry.GetAbsolutePosition().X + HostGeometry.GetAbsoluteSize().X + 1.0f);
+        SelectorScroll->SetScrollOffset(0.0f);
+        ShellScroll->SetScrollOffset(0.0f);
+        HostWindow->Resize(FVector2D{1100.0f, 720.0f});
+        ChangedTrack.TrackName = OriginalTrack.TrackName;
+        ChangedTrack.State = ECk_AudioTrack_State::Stopped;
+        FixtureSnapshot.Directors[0].Tracks = {ChangedTrack, EqualName};
+        // Dispatch sees the fresh stopped state even before records are reconciled.
+        DebuggerWindow->_Collector.Collect(nullptr);
+        SpatialTrackToggle->ToggleCheckedState();
+        TestEqual(TEXT("held selector rejects a track stopped since its last publication"), DebuggerWindow->_SelectedSpatialTrackKey, PinnedKey);
+        RefreshSpatial();
+        SpatialTrackToggle->ToggleCheckedState();
+        TestTrue(TEXT("stopped or removed selector controls retire and cannot toggle the old pin"),
+            NOT SpatialRepeat->GetItemWidget(PinnedKey).IsValid() && DebuggerWindow->_SelectedSpatialTrackKey == PinnedKey);
+        const auto ReplacementToggle = FindCheckBoxWithText(SpatialPageView->GetRegion(TEXT("main")), EqualName.TrackName);
+        if (NOT TestTrue(TEXT("physical same-name replacement selection resolves the remaining full entity identity"),
+            ReplacementToggle.IsValid() && Click(Slate, ReplacementToggle.ToSharedRef())
+                && DebuggerWindow->_SelectedSpatialTrackKey != PinnedKey
+                && DebuggerWindow->TryGet_SelectedSpatialTrack() != nullptr
+                && DebuggerWindow->TryGet_SelectedSpatialTrack()->TrackEntity == TrackB)) { return false; }
+        FixtureSnapshot.Directors[0].Tracks = {EqualName, EqualName};
+        RefreshSpatial();
+        TestTrue(TEXT("duplicate Spatial identities fail closed with no partially actionable records or plot"),
+            NOT DebuggerWindow->_SpatialRecordsReady && DebuggerWindow->_SpatialRecords->GetRecords().IsEmpty()
+                && SpatialRepeat->GetItemCount() == 0 && NOT SpatialModel->HasSelection);
+        FixtureSnapshot.Directors[0].Tracks = {OriginalTrack};
+        RefreshSpatial();
+        const auto RecoveredToggle = FindCheckBoxWithText(SpatialPageView->GetRegion(TEXT("main")), OriginalTrack.TrackName);
+        if (NOT TestTrue(TEXT("valid Spatial publication recovers a physically selectable full identity after rejection"),
+            DebuggerWindow->_SpatialRecordsReady && SpatialRepeat->GetItemCount() == 1
+                && RecoveredToggle.IsValid() && Click(Slate, RecoveredToggle.ToSharedRef())
+                && SpatialModel->HasSpatialData && DebuggerWindow->_SelectedSpatialTrackKey == PinnedKey)) { return false; }
+        return true;
+    })) { return false; }
+
+    SpatialPlots = FindTaggedWidget(SpatialPageView->GetRegion(TEXT("main")), TEXT("audio-spatial-plots"));
+    SpatialMessage = FindTaggedWidget(SpatialPageView->GetRegion(TEXT("main")), TEXT("audio-spatial-unavailable-wrap"));
+    if (NOT TestTrue(TEXT("accepted Spatial tree retains live plot and unavailable hosts"),
+        SpatialPlots.IsValid() && SpatialMessage.IsValid())) { return false; }
     const int64 AttenuationRevision = AttenuationView->GetRevision();
     const FCkUiLoadResult AttenuationReloaded = AttenuationView->TryReload(
         AttenuationMarkup, AttenuationCss, TEXT("Audio compatible attenuation candidate"));
@@ -1905,8 +2161,7 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
         SpatialModel->HasSelection && NOT SpatialModel->HasSpatialData
             && SpatialPlots->GetVisibility() == EVisibility::Collapsed
             && SpatialMessage->GetVisibility().IsVisible()
-            && SpatialMessage->GetTypeAsString() == TEXT("STextBlock")
-            && StaticCastSharedPtr<STextBlock>(SpatialMessage)->GetText().ToString().Contains(TEXT("has no spatial data"))
+            && TaggedText(SpatialPageView->GetRegion(TEXT("main")), TEXT("audio-spatial-unavailable")).Contains(TEXT("has no spatial data"))
             && TaggedText(LiveAttenuationMain, TEXT("audio-attenuation-audible")).IsEmpty());
     FixtureSnapshot.Directors[0].Tracks.Reset();
     DebuggerWindow->_Collector.Collect(nullptr);
@@ -1921,6 +2176,7 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
     FixtureSnapshot.Directors[0].Tracks = {TrackInfoA};
     DebuggerWindow->_Collector.Collect(nullptr);
     DebuggerWindow->DoUpdate_SpatialView();
+    SpatialRepeat->TryRefresh();
     TestTrue(TEXT("spatial lifecycle assertion begins from populated authored state"),
         SpatialModel->HasSpatialData && NOT SpatialModel->FalloffCurve.IsEmpty()
             && TaggedText(LiveAttenuationMain, TEXT("audio-attenuation-audible")) == TEXT("0.30"));
@@ -1938,6 +2194,10 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
     if (NOT TestTrue(TEXT("Tracks teardown fixture holds a currently published entity link"), LiveTrackRef.IsValid()))
     { return false; }
     const auto SessionFixture = FixtureSnapshot;
+    const auto HeldSpatialToggle = FindCheckBoxWithText(SpatialPageView->GetRegion(TEXT("main")), TrackInfoA.TrackName);
+    const auto HeldSpatialFooter = FindTaggedWidget(SpatialPageView->GetRegion(TEXT("main")), TEXT("audio-spatial-listener"));
+    if (NOT TestTrue(TEXT("Spatial lifecycle fixture holds a published selector and weak listener footer"),
+        HeldSpatialToggle.IsValid() && HeldSpatialFooter.IsValid())) { return false; }
     UWorld* InvalidatedWorld = NewObject<UWorld>();
     UWorld* UnrelatedWorld = NewObject<UWorld>();
     DebuggerWindow->_ObservedWorld = InvalidatedWorld;
@@ -1946,6 +2206,9 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
         DebuggerWindow->_ObservedWorld.Get() == InvalidatedWorld
             && DebuggerWindow->_Collector.Get_Snapshot().HasWorld);
     ck::DebugSessionLifecycle::Get_OnWorldInvalidated().Broadcast(InvalidatedWorld);
+    HeldSpatialToggle->ToggleCheckedState();
+    TestTrue(TEXT("world invalidation clears Spatial records and synchronously revokes a held selector"),
+        DebuggerWindow->_SpatialRecords->GetRecords().IsEmpty() && DebuggerWindow->_SelectedSpatialTrackKey.IsEmpty());
     ProbeRetainedEntityRef(LiveDirectorRef.ToSharedRef());
     ProbeRetainedEntityRef(LiveTrackRef.ToSharedRef());
     TestTrue(TEXT("world invalidation clears Tracks records and synchronously revokes held track actions"),
@@ -1978,6 +2241,9 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
     DebuggerWindow->_Collector._SnapshotOverrideForTests.Emplace(SessionFixture);
     DebuggerWindow->_Collector.Collect(nullptr);
     DebuggerWindow->DoUpdate_SpatialView();
+    HeldSpatialToggle->ToggleCheckedState();
+    TestTrue(TEXT("same-identity next-session records do not revive a prior-session held selector"),
+        DebuggerWindow->_SelectedSpatialTrackKey.IsEmpty() && NOT DebuggerWindow->_SpatialRecords->GetRecords().IsEmpty());
     TestTrue(TEXT("session clearing is independently primed with live attenuation data"),
         SpatialModel->HasSpatialData
             && TaggedText(LiveAttenuationMain, TEXT("audio-attenuation-audible")) == TEXT("0.30"));
@@ -1988,6 +2254,7 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
             && DebuggerWindow->_DirectorRecords->GetRecords().IsEmpty()
             && DebuggerWindow->_InvalidatedWorld.Get() == InvalidatedWorld
             && DebuggerWindow->_TrackRecords->GetRecords().IsEmpty()
+            && DebuggerWindow->_SpatialRecords->GetRecords().IsEmpty()
             && NOT SpatialModel->HasSpatialData && SpatialModel->FalloffCurve.IsEmpty()
             && TaggedText(LiveAttenuationMain, TEXT("audio-attenuation-audible")).IsEmpty());
     ck::DebugSessionLifecycle::Get_OnSessionInvalidated().Broadcast();
@@ -2011,12 +2278,19 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
     const TWeakPtr<SCkAudioDebuggerWindow> ReleasedPopulatedOwner = DebuggerWindow;
     const TWeakPtr<FCkUiView> ReleasedPopulatedDirectors = DirectorsView;
     const TWeakPtr<FCkUiView> ReleasedPopulatedTracks = TracksView;
+    const TWeakPtr<FCkUiView> ReleasedPopulatedSpatial = SpatialPageView;
     Slate.DestroyWindowImmediately(HostWindow.ToSharedRef());
     HostWindow.Reset();
     DebuggerWindow.Reset();
     DirectorsView.Reset();
     ProbeRetainedEntityRef(LiveDirectorRef.ToSharedRef());
     TracksView.Reset();
+    SpatialPageView.Reset();
+    HeldSpatialToggle->ToggleCheckedState();
+    TestTrue(TEXT("held Spatial controls and footer release the owner/view and stay inert after teardown"),
+        NOT ReleasedPopulatedOwner.IsValid() && NOT ReleasedPopulatedSpatial.IsValid()
+            && NOT HeldSpatialToggle->IsChecked()
+            && StaticCastSharedPtr<SCkFlexText>(HeldSpatialFooter)->GetText().IsEmpty());
     ProbeRetainedEntityRef(LiveTrackRef.ToSharedRef());
     TestTrue(TEXT("held Tracks leaves release the owner/view and remain inert after teardown"),
         NOT ReleasedPopulatedOwner.IsValid() && NOT ReleasedPopulatedTracks.IsValid()

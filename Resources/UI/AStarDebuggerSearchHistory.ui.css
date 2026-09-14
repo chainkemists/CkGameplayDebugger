@@ -1,0 +1,13 @@
+.astar-history-header { min-width: 0; gap: 8px; padding: 8px 12px; background-color: var(--astar-history-background); vertical-align: center; }
+.astar-history-title { min-width: 0; flex-grow: 1; font-size: var(--astar-history-heading-font); font-weight: bold; color: var(--astar-history-heading); }
+.astar-history-count { font-size: var(--astar-history-small-font); color: var(--astar-history-muted); horizontal-align: right; }
+.astar-history-scroll { min-width: 0; min-height: 0; flex-grow: 1; }
+.astar-history-body { min-width: 0; }
+.astar-history-empty { min-width: 0; font-size: var(--astar-history-body-font); color: var(--astar-history-muted); text-wrap: wrap; overflow-wrap: anywhere; }
+.astar-history-records { min-width: 0; }
+.astar-history-record { min-width: 0; gap: 3px; padding: var(--astar-history-row-padding) 12px; }
+.astar-history-record-header { min-width: 0; gap: 8px; vertical-align: center; }
+.astar-history-status { min-width: 0; flex-grow: 1; }
+.astar-history-frame { font-size: var(--astar-history-small-font); color: var(--astar-history-muted); horizontal-align: right; }
+.astar-history-meta { min-width: 0; font-size: var(--astar-history-small-font); color: var(--astar-history-muted); text-wrap: wrap; overflow-wrap: anywhere; }
+.astar-history-copy { width: 96px; font-size: var(--astar-history-small-font); color: var(--astar-history-text); -ck-button-padding-x: 6px; -ck-button-padding-y: 3px; -ck-button-radius: 4px; }

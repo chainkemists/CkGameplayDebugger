@@ -1,0 +1,58 @@
+<ui version="1">
+  <region name="main">
+    <column id="audio-tracks-root" class="audio-tracks-root">
+      <scroll id="audio-tracks-scroll" class="audio-tracks-scroll">
+        <repeat id="audio-tracks" bind="audio-tracks" direction="vertical" visible="audio-tracks-ready" class="audio-tracks">
+          <column id="audio-track-record" class="audio-track-record">
+            <row id="audio-track-header" visible-field="is-header" class="audio-track-header">
+              <debug-icon id="audio-track-director-icon" icon-bind="audio-director-icon" meaning-bind="audio-director-meaning" color-bind="audio-director-icon-color" size="16" />
+              <audio-director-name id="audio-track-director-name" text-field="name" highlight-bind="audio-track-highlight" class="audio-track-name" />
+              <debug-entity-ref id="audio-track-director-entity" entity-id-field="entity-id" item-action="audio-track-navigate" />
+              <text id="audio-track-director-active" bind-field="active" class="audio-track-dim" />
+              <column id="audio-track-policy-spacer" class="audio-track-grow" />
+              <text id="audio-track-director-policy" bind-field="policy" class="audio-track-muted" />
+            </row>
+            <column id="audio-track-row" visible-field="is-track" class="audio-track-row">
+              <row id="audio-track-heading" class="audio-track-heading">
+                <column id="audio-track-state-wrap" class="audio-track-state-wrap">
+                  <debug-status id="audio-track-state" label-field="state" foreground-field="state-color" background-field="state-background" show-dot="false" />
+                </column>
+                <audio-director-name id="audio-track-name" text-field="name" highlight-bind="audio-track-highlight" class="audio-track-name" />
+                <debug-entity-ref id="audio-track-entity" entity-id-field="entity-id" item-action="audio-track-navigate" />
+                <text id="audio-track-sound" bind-field="sound" tooltip-field="sound-tooltip" class="audio-track-sound audio-track-muted" />
+                <row id="audio-track-chips" class="audio-track-chips">
+                  <audio-track-chip id="audio-track-virtualized" text-bind="audio-track-virtualized" alert-bind="audio-chip-alert" visible-field="virtualized" />
+                  <audio-track-chip id="audio-track-priority" text-field="priority" alert-bind="audio-chip-neutral" />
+                  <audio-track-chip id="audio-track-loop" text-field="loop" alert-bind="audio-chip-neutral" />
+                  <audio-track-chip id="audio-track-override" text-field="override" alert-bind="audio-chip-neutral" />
+                </row>
+              </row>
+              <row id="audio-track-values" class="audio-track-values">
+                <column id="audio-track-meter-wrap" class="audio-track-meter-wrap">
+                  <debug-meter id="audio-track-meter" fraction-field="fraction" fill-field="state-color" target-visible-field="target-visible" target-fraction-field="target-fraction" target-color-bind="audio-target-color" height="9" />
+                </column>
+                <column id="audio-track-volume-wrap" class="audio-track-volume-wrap"><text id="audio-track-volume" bind-field="volume" class="audio-track-volume" /></column>
+                <column id="audio-track-fade-wrap" class="audio-track-fade-wrap"><text id="audio-track-fade" bind-field="fade" class="audio-track-muted" /></column>
+              </row>
+              <row id="audio-track-alert-row" visible-field="virtualized" class="audio-track-alert-row">
+                <debug-icon id="audio-track-alert-icon" icon-bind="audio-alert-icon" meaning-bind="audio-alert-meaning" color-bind="audio-alert-color" size="16" />
+                <text id="audio-track-alert" bind-field="alert" class="audio-track-alert" />
+              </row>
+            </column>
+          </column>
+        </repeat>
+      </scroll>
+      <column id="audio-track-crossfade" class="audio-track-crossfade">
+        <row id="audio-track-crossfade-divider" class="audio-track-crossfade-divider" />
+        <column id="audio-track-crossfade-content" class="audio-track-crossfade-content">
+          <row id="audio-track-crossfade-header" class="audio-track-heading">
+            <text id="audio-track-crossfade-title" class="audio-track-title">Crossfade lane</text>
+            <text id="audio-track-crossfade-subtitle" class="audio-track-dim">recent history of _CurrentVolume</text>
+          </row>
+          <native id="audio-track-crossfade-plot" bind="compact-crossfade-plot" class="audio-track-crossfade-plot" />
+          <text id="audio-track-crossfade-legend" bind="crossfade-legend" class="audio-track-dim" />
+        </column>
+      </column>
+    </column>
+  </region>
+</ui>

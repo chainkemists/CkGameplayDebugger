@@ -1,0 +1,26 @@
+.audio-tracks-root { min-width: 0; min-height: 0; }
+.audio-tracks-scroll { min-width: 0; min-height: 0; flex-grow: 1; flex-shrink: 1; }
+.audio-tracks { min-width: 0; padding: 4px 12px; }
+.audio-track-record { min-width: 0; }
+.audio-track-header { min-width: 0; padding: 8px 0 2px 0; gap: 8px; vertical-align: center; }
+.audio-track-grow { min-width: 0; flex-grow: 1; }
+.audio-track-row { min-width: 0; padding: 2px 0; gap: 4px; }
+.audio-track-heading { min-width: 0; gap: 8px; vertical-align: center; }
+.audio-track-name { -ck-audio-director-name-color: var(--audio-stat-text); -ck-audio-director-name-size: var(--audio-crossfade-title-size); vertical-align: center; }
+.audio-track-state-wrap { width: 78px; horizontal-align: center; }
+.audio-track-sound { min-width: 0; flex-grow: 1; flex-shrink: 1; text-overflow: ellipsis; }
+.audio-track-chips { gap: 4px; vertical-align: center; }
+.audio-track-values { min-width: 0; gap: 8px; vertical-align: center; }
+.audio-track-meter-wrap { min-width: 0; height: 9px; flex-grow: 1; flex-shrink: 1; }
+.audio-track-volume-wrap { width: 104px; horizontal-align: right; }
+.audio-track-fade-wrap { width: 96px; horizontal-align: right; }
+.audio-track-volume { color: var(--audio-stat-label); font-family: monospace; font-size: var(--audio-track-value-size); text-wrap: nowrap; }
+.audio-track-dim { color: var(--audio-stat-label); font-family: monospace; font-size: var(--audio-events-micro-size); text-wrap: nowrap; }
+.audio-track-muted { color: var(--audio-director-muted); font-family: monospace; font-size: var(--audio-events-micro-size); text-wrap: nowrap; }
+.audio-track-alert-row { min-width: 0; gap: 4px; vertical-align: center; }
+.audio-track-alert { min-width: 0; flex-grow: 1; color: var(--audio-stat-err); font-family: monospace; font-size: var(--audio-events-micro-size); }
+.audio-track-crossfade { min-width: 0; flex-shrink: 0; }
+.audio-track-crossfade-divider { min-height: 1px; max-height: 1px; background-color: var(--audio-crossfade-border); }
+.audio-track-crossfade-content { min-width: 0; gap: 4px; padding: 8px 12px; }
+.audio-track-title { color: var(--audio-stat-text); font-family: sans-serif; font-size: var(--audio-crossfade-title-size); font-weight: bold; text-wrap: nowrap; }
+.audio-track-crossfade-plot { min-width: 0; height: 62px; }

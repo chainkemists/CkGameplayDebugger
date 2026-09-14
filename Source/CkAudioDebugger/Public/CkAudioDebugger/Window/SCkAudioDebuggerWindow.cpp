@@ -153,6 +153,7 @@ namespace ck_audio_debugger_window
             {TEXT("--audio-events-muted"), Color(CkStyle::TextMute())},
             {TEXT("--audio-events-micro-size"), FString::FromInt(Get_MicroFont().Size)},
             {TEXT("--audio-director-muted"), Color(CkStyle::TextMute())},
+            {TEXT("--audio-track-value-size"), FString::FromInt(Get_MonoFont().Size)},
         };
     }
 
@@ -316,6 +317,32 @@ namespace ck_audio_debugger_window
         return ck::Format_UE(TEXT("{}:{}"), InGeneration, Build_EntityKey(InHandle));
     }
 
+    auto Build_TrackRecordKey(const FCk_Handle& InDirector, const FCk_Handle& InTrack, int64 InGeneration) -> FString
+    {
+        return ck::Format_UE(TEXT("{}:track:{}:{}"), InGeneration,
+            Build_EntityKey(InDirector), Build_EntityKey(InTrack));
+    }
+
+    auto Build_TrackHeaderKey(const FCk_Handle& InDirector, int64 InGeneration) -> FString
+    {
+        return ck::Format_UE(TEXT("{}:header:{}"), InGeneration, Build_EntityKey(InDirector));
+    }
+
+    auto Get_TrackRecordSchema() -> TArray<FCkUiFieldSchema>
+    {
+        return {{TEXT("is-header"), ECkUiFieldKind::Bool}, {TEXT("is-track"), ECkUiFieldKind::Bool},
+            {TEXT("name"), ECkUiFieldKind::Text}, {TEXT("entity-id"), ECkUiFieldKind::Text},
+            {TEXT("active"), ECkUiFieldKind::Text}, {TEXT("policy"), ECkUiFieldKind::Text},
+            {TEXT("state"), ECkUiFieldKind::Text}, {TEXT("state-color"), ECkUiFieldKind::Color},
+            {TEXT("state-background"), ECkUiFieldKind::Color}, {TEXT("sound"), ECkUiFieldKind::Text},
+            {TEXT("sound-tooltip"), ECkUiFieldKind::Text}, {TEXT("priority"), ECkUiFieldKind::Text},
+            {TEXT("loop"), ECkUiFieldKind::Text}, {TEXT("override"), ECkUiFieldKind::Text},
+            {TEXT("virtualized"), ECkUiFieldKind::Bool}, {TEXT("fraction"), ECkUiFieldKind::Number},
+            {TEXT("target-visible"), ECkUiFieldKind::Bool}, {TEXT("target-fraction"), ECkUiFieldKind::Number},
+            {TEXT("volume"), ECkUiFieldKind::Text}, {TEXT("fade"), ECkUiFieldKind::Text},
+            {TEXT("alert"), ECkUiFieldKind::Text}};
+    }
+
     auto Build_DirectorPolicy(const FCkAudioDebugger_DirectorInfo& InDirector) -> FText
     {
         const auto Crossfade = InDirector.DefaultCrossfadeSeconds.IsSet()
@@ -413,12 +440,72 @@ namespace ck_audio_debugger_window
         TSharedPtr<STextBlock> Widget;
     };
 
+    // These are the native read-only ChipStyle atoms, not a second chip renderer. Audio owns only the copied
+    // text/alert projection; the shared chip continues to own its live Style Lab treatment.
+    class FTrackChip final : public ICkUiRetainedWidget, public TSharedFromThis<FTrackChip>
+    {
+    public:
+        struct FConfiguration
+        {
+            TAttribute<FText> Text;
+            TAttribute<bool> Alert;
+        };
+        static auto TryConfiguration(const FCkUiCustomWidgetArguments& InArguments,
+            FConfiguration& OutConfiguration, FString& OutFailure) -> bool
+        {
+            const auto* Text = InArguments.TextBindings.Find(TEXT("text"));
+            const auto* Alert = InArguments.BoolBindings.Find(TEXT("alert"));
+            if (Text == nullptr || NOT Text->IsSet() || Alert == nullptr || NOT Alert->IsSet())
+            { OutFailure = TEXT("audio-track-chip requires text and alert bindings."); return false; }
+            OutConfiguration = {*Text, *Alert};
+            return true;
+        }
+        explicit FTrackChip(FConfiguration InConfiguration) : Configuration(MoveTemp(InConfiguration)) {}
+        auto Initialize() -> void
+        {
+            const TWeakPtr<FTrackChip> WeakChip = AsShared();
+            Widget = SNew(SCkDebug_Chip).ShowDot(false)
+                .Text_Lambda([WeakChip]()
+                {
+                    const auto Chip = WeakChip.Pin();
+                    return Chip.IsValid() ? Chip->Configuration.Text.Get(FText::GetEmpty()) : FText::GetEmpty();
+                })
+                .Kind_Lambda([WeakChip]()
+                {
+                    const auto Chip = WeakChip.Pin();
+                    return Chip.IsValid() && Chip->Configuration.Alert.Get(false)
+                        ? ECkDebug_ChipKind::Unsatisfied : ECkDebug_ChipKind::Neutral;
+                });
+        }
+        auto GetWidget() const -> TSharedRef<SWidget> override { return Widget.ToSharedRef(); }
+        auto PrepareReload(const FCkUiCustomWidgetArguments& InArguments, FString& OutFailure) const
+            -> TUniquePtr<ICkUiPreparedWidgetUpdate> override
+        {
+            auto Next = FConfiguration{};
+            if (NOT TryConfiguration(InArguments, Next, OutFailure)) { return {}; }
+            return MakeUnique<FUpdate>(ConstCastSharedRef<FTrackChip>(AsShared()), MoveTemp(Next));
+        }
+    private:
+        class FUpdate final : public ICkUiPreparedWidgetUpdate
+        {
+        public:
+            FUpdate(TSharedRef<FTrackChip> InOwner, FConfiguration InConfiguration)
+                : Owner(MoveTemp(InOwner)), Configuration(MoveTemp(InConfiguration)) {}
+            void Commit() noexcept override { Owner->Configuration = MoveTemp(Configuration); }
+        private:
+            TSharedRef<FTrackChip> Owner;
+            FConfiguration Configuration;
+        };
+        FConfiguration Configuration;
+        TSharedPtr<SCkDebug_Chip> Widget;
+    };
+
     auto TryCreate_DirectorsRegistry(TSharedPtr<const FCkUiWidgetRegistrySnapshot>& OutRegistry) -> bool
     {
         TSharedPtr<const FCkUiWidgetRegistrySnapshot> Common;
         if (NOT FCkDebug_UiRegistry::TryCreate(Common).Succeeded) { return false; }
         auto Staging = FCkUiWidgetRegistry{};
-        for (const auto* Tag : {TEXT("debug-entity-ref"), TEXT("debug-icon")})
+        for (const auto* Tag : {TEXT("debug-entity-ref"), TEXT("debug-icon"), TEXT("debug-status"), TEXT("debug-meter")})
         {
             const auto* Registration = Common->Find(Tag);
             if (Registration == nullptr || NOT Staging.Register(*Registration).Succeeded) { return false; }
@@ -440,6 +527,20 @@ namespace ck_audio_debugger_window
             return Result;
         };
         if (NOT Staging.Register(MoveTemp(Name)).Succeeded) { return false; }
+        auto Chip = FCkUiCustomWidgetRegistration{};
+        Chip.Schema.Tag = TEXT("audio-track-chip");
+        Chip.Schema.Properties = {{TEXT("text"), ECkUiCustomPropertyKind::TextBinding},
+            {TEXT("alert"), ECkUiCustomPropertyKind::BoolBinding}};
+        Chip.RetainedFactory = [](const FCkUiCustomWidgetArguments& InArguments,
+            FString& OutFailure) -> TSharedPtr<ICkUiRetainedWidget>
+        {
+            auto Configuration = FTrackChip::FConfiguration{};
+            if (NOT FTrackChip::TryConfiguration(InArguments, Configuration, OutFailure)) { return {}; }
+            const auto Result = MakeShared<FTrackChip>(MoveTemp(Configuration));
+            Result->Initialize();
+            return Result;
+        };
+        if (NOT Staging.Register(MoveTemp(Chip)).Succeeded) { return false; }
         OutRegistry = Staging.CreateSnapshot();
         return true;
     }
@@ -474,6 +575,8 @@ auto
         {TEXT("entity-id"), ECkUiFieldKind::Text}, {TEXT("active"), ECkUiFieldKind::Text},
         {TEXT("policy"), ECkUiFieldKind::Text}}, _DirectorRecords);
     DoUpdate_DirectorRecords();
+    FCkUiCollection::TryCreate(Get_TrackRecordSchema(), _TrackRecords);
+    DoUpdate_TrackRecords();
     _Tabs = DoCreate_Tabs();
     _StatCards = DoCreate_StatCards();
     DoCreate_FilterControls();
@@ -532,6 +635,7 @@ auto
         BuildAuthoredAttenuationPanel();
         BuildAuthoredEventsToolbar();
         BuildAuthoredDirectorsPage();
+        BuildAuthoredTracksPage();
     }
     DoRebuild_OverlayActions();
     _SessionInvalidatedHandle = ck::DebugSessionLifecycle::Get_OnSessionInvalidated().AddSP(
@@ -559,6 +663,8 @@ SCkAudioDebuggerWindow::~SCkAudioDebuggerWindow()
     _AuthoredEventsToolbarView.Reset();
     if (_DirectorsPageHost.IsValid()) { _DirectorsPageHost->SetContent(SNullWidget::NullWidget); }
     _AuthoredDirectorsView.Reset();
+    if (_TracksPageHost.IsValid()) { _TracksPageHost->SetContent(SNullWidget::NullWidget); }
+    _AuthoredTracksView.Reset();
     _AuthoredShellView.Reset();
     if (_Tabs.IsValid()) { _Tabs->ReleaseOwnerInteraction(); }
 }
@@ -669,6 +775,8 @@ auto SCkAudioDebuggerWindow::PollAuthoredShell(const double InCurrentTime) -> vo
     { BuildAuthoredEventsToolbar(); }
     if (NOT _UsingNativeFallback && NOT _AuthoredDirectorsView.IsValid())
     { BuildAuthoredDirectorsPage(); }
+    if (NOT _UsingNativeFallback && NOT _AuthoredTracksView.IsValid())
+    { BuildAuthoredTracksPage(); }
 }
 
 auto SCkAudioDebuggerWindow::BuildAuthoredDirectorsPage() -> void
@@ -791,6 +899,188 @@ auto SCkAudioDebuggerWindow::DoNavigate_Director(const FString& InKey) -> void
 #endif
             ck::DebugNav::Goto_Entity(Director.DirectorEntity);
             return;
+        }
+    }
+}
+
+auto SCkAudioDebuggerWindow::BuildAuthoredTracksPage() -> void
+{
+    if (NOT _TracksPageHost.IsValid() || NOT _TrackRecords.IsValid() || NOT _CompactCrossfadePlot.IsValid()) { return; }
+    const auto Plugin = IPluginManager::Get().FindPlugin(TEXT("CkDebugger"));
+    TSharedPtr<const FCkUiWidgetRegistrySnapshot> Registry;
+    if (NOT Plugin.IsValid() || NOT ck_audio_debugger_window::TryCreate_DirectorsRegistry(Registry)) { return; }
+
+    auto Data = FCkUiView::FDataBindings{};
+    const TWeakPtr<SCkAudioDebuggerWindow> WeakWindow = SharedThis(this);
+    Data.SlateUserIndex = 0;
+    Data.Collections.Add(TEXT("audio-tracks"), _TrackRecords);
+    Data.CanDispatchEvents = TAttribute<bool>::CreateLambda([WeakWindow]()
+    {
+        const auto Window = WeakWindow.Pin();
+        return Window.IsValid() && Window->_TrackRecordsReady && Window->_Collector.Get_Snapshot().HasWorld;
+    });
+    Data.Visibility.Add(TEXT("audio-tracks-ready"), TAttribute<bool>::CreateLambda([WeakWindow]()
+    {
+        const auto Window = WeakWindow.Pin();
+        return Window.IsValid() && Window->_TrackRecordsReady;
+    }));
+    Data.Visibility.Add(TEXT("audio-chip-neutral"), false);
+    Data.Visibility.Add(TEXT("audio-chip-alert"), true);
+    Data.Text.Add(TEXT("audio-track-virtualized"), FText::FromString(TEXT("Virtualized")));
+    Data.Text.Add(TEXT("audio-track-highlight"), TAttribute<FText>::CreateLambda([WeakWindow]()
+    {
+        const auto Window = WeakWindow.Pin();
+        return Window.IsValid() ? FText::FromString(Window->_HighlightString) : FText::GetEmpty();
+    }));
+    Data.Images.Add(TEXT("audio-director-icon"), TAttribute<const FSlateBrush*>::CreateLambda([]()
+    { return FCkIconStyle::Get_Brush(ECk_Icon::Audio, ECk_Icon_BrushSize::Size_16x16); }));
+    Data.Text.Add(TEXT("audio-director-meaning"), FText::FromString(
+        TEXT("Audio director — owns a concurrency budget and the tracks under it")));
+    Data.Color.Add(TEXT("audio-director-icon-color"), TAttribute<FLinearColor>::CreateLambda([]()
+    { return CkStyle::TextDim(); }));
+    Data.Images.Add(TEXT("audio-alert-icon"), TAttribute<const FSlateBrush*>::CreateLambda([]()
+    { return FCkIconStyle::Get_Brush(ck::debug_axes::Get_ToneIcon(ECk_Tone::Err), ECk_Icon_BrushSize::Size_16x16); }));
+    Data.Text.Add(TEXT("audio-alert-meaning"), FText::FromString(TEXT("This track is playing and cannot be heard")));
+    Data.Color.Add(TEXT("audio-alert-color"), TAttribute<FLinearColor>::CreateLambda([]() { return CkStyle::Err(); }));
+    Data.Color.Add(TEXT("audio-target-color"), TAttribute<FLinearColor>::CreateLambda([]() { return CkStyle::Text(); }));
+    Data.Text.Add(TEXT("crossfade-legend"), TAttribute<FText>::CreateLambda(
+        [Cell = _CrossfadeLegendText]() { return *Cell; }));
+    Data.ItemActions.Add(TEXT("audio-track-navigate"), FCkUiOnItemAction::CreateLambda([WeakWindow](FString InKey)
+    {
+        if (const auto Window = WeakWindow.Pin()) { Window->DoNavigate_TrackRecord(InKey); }
+    }));
+    // The exact plot has one parent. Detach its fallback slot before the authored native port takes ownership.
+    _CompactCrossfadeHost->SetContent(SNullWidget::NullWidget);
+    auto NativeBindings = FCkUiView::FNativeBindings{};
+    NativeBindings.Add(TEXT("compact-crossfade-plot"), _CompactCrossfadePlot.ToSharedRef());
+    const auto View = FCkUiView::Create(MoveTemp(NativeBindings), {}, ck_audio_debugger_window::Get_AuthoredShellStyleTokens(),
+        CkStyle::RegularFont(CkStyle::FontSizeBody()), MoveTemp(Data), Registry);
+    const auto Main = View->GetRegion(TEXT("main"));
+    const auto Directory = FPaths::Combine(Plugin->GetBaseDir(), TEXT("Resources/UI"));
+    _AuthoredTracksMarkupPath = FPaths::Combine(Directory, TEXT("AudioDebuggerTracks.ui.html"));
+    _AuthoredTracksStylesheetPath = FPaths::Combine(Directory, TEXT("AudioDebuggerTracks.ui.css"));
+    View->SetFiles(_AuthoredTracksMarkupPath, _AuthoredTracksStylesheetPath);
+    _AuthoredTracksView = View;
+    View->PollFiles(ck_audio_debugger_window::Get_AuthoredShellStyleTokens());
+    _UsingNativeTracksFallback = NOT View->GetLastResult().Succeeded;
+    if (_UsingNativeTracksFallback)
+    { _CompactCrossfadeHost->SetContent(DoCreate_NativeCrossfadeLane(false, _CompactCrossfadePlot.ToSharedRef())); }
+    _TracksPageHost->SetContent(_UsingNativeTracksFallback ? _NativeTracksPage.ToSharedRef() : Main);
+    if (NOT _UsingNativeTracksFallback)
+    {
+        _DirectorBox->ClearChildren();
+        _TrackSlots.Reset();
+        _DirectorSlots.Reset();
+    }
+}
+
+auto SCkAudioDebuggerWindow::PollAuthoredTracksPage(const double InCurrentTime) -> void
+{
+    if (InCurrentTime < _NextAuthoredTracksPollSeconds || NOT _AuthoredTracksView.IsValid()) { return; }
+    _NextAuthoredTracksPollSeconds = InCurrentTime + 0.5;
+    if (_UsingNativeTracksFallback) { _CompactCrossfadeHost->SetContent(SNullWidget::NullWidget); }
+    _AuthoredTracksView->PollFiles(ck_audio_debugger_window::Get_AuthoredShellStyleTokens());
+    if (_UsingNativeTracksFallback && _AuthoredTracksView->GetLastResult().Succeeded)
+    {
+        _UsingNativeTracksFallback = false;
+        _TracksPageHost->SetContent(_AuthoredTracksView->GetRegion(TEXT("main")));
+        _DirectorBox->ClearChildren();
+        _TrackSlots.Reset();
+        _DirectorSlots.Reset();
+    }
+    else if (_UsingNativeTracksFallback)
+    { _CompactCrossfadeHost->SetContent(DoCreate_NativeCrossfadeLane(false, _CompactCrossfadePlot.ToSharedRef())); }
+}
+
+auto SCkAudioDebuggerWindow::DoUpdate_TrackRecords() -> void
+{
+    using namespace ck_audio_debugger_window;
+    if (NOT _TrackRecords.IsValid()) { _TrackRecordsReady = false; return; }
+    auto Records = TArray<FCkUiRecordData>{};
+    const auto MakeRecord = [this](FString InKey)
+    {
+        auto Record = FCkUiRecordData{};
+        Record.Key = MoveTemp(InKey);
+        for (const auto& Field : _TrackRecords->GetSchema())
+        { Record.Fields.Add(Field.Name, FCkUiFieldValue{.Kind = Field.Kind}); }
+        return Record;
+    };
+    for (const auto& Director : _Collector.Get_Snapshot().Directors)
+    {
+        const auto Visible = DoGet_VisibleTracks(Director);
+        if (Visible.IsEmpty()) { continue; }
+        if (_GroupByDirector)
+        {
+            auto Header = MakeRecord(Build_TrackHeaderKey(Director.DirectorEntity, _DirectorSessionGeneration));
+            Header.Fields[TEXT("is-header")].Bool = true;
+            Header.Fields[TEXT("name")].Text = FText::FromString(Director.DirectorName);
+            Header.Fields[TEXT("entity-id")].Text = ck::IsValid(Director.DirectorEntity)
+                ? FText::FromString(Build_EntityKey(Director.DirectorEntity)) : FText::GetEmpty();
+            Header.Fields[TEXT("active")].Text = FText::FromString(Director.MaxConcurrentTracks > 0
+                ? ck::Format_UE(TEXT("{} / {} active"), Director.Get_ActiveTrackCount(), Director.MaxConcurrentTracks)
+                : ck::Format_UE(TEXT("{} active"), Director.Get_ActiveTrackCount()));
+            Header.Fields[TEXT("policy")].Text = Build_DirectorPolicy(Director);
+            Records.Add(MoveTemp(Header));
+        }
+        for (const auto* Track : Visible)
+        {
+            auto Record = MakeRecord(Build_TrackRecordKey(Director.DirectorEntity, Track->TrackEntity, _DirectorSessionGeneration));
+            const auto IsFading = Track->State == ECk_AudioTrack_State::FadingIn || Track->State == ECk_AudioTrack_State::FadingOut;
+            const auto Tone = DoGet_StateTone(*Track);
+            Record.Fields[TEXT("is-track")].Bool = true;
+            Record.Fields[TEXT("name")].Text = FText::FromString(Track->TrackName);
+            Record.Fields[TEXT("entity-id")].Text = ck::IsValid(Track->TrackEntity)
+                ? FText::FromString(Build_EntityKey(Track->TrackEntity)) : FText::GetEmpty();
+            Record.Fields[TEXT("state")].Text = DoBuild_StateText(*Track);
+            Record.Fields[TEXT("state-color")].Color = CkStyle::GetToneColor(Tone);
+            Record.Fields[TEXT("state-background")].Color = CkStyle::GetToneDimColor(Tone);
+            Record.Fields[TEXT("sound")].Text = FText::FromString(Build_SoundLeaf(Track->SoundPath));
+            Record.Fields[TEXT("sound-tooltip")].Text = FText::FromString(Track->SoundPath.IsEmpty()
+                ? FString{TEXT("This track has no sound asset assigned.")} : Track->SoundPath);
+            Record.Fields[TEXT("priority")].Text = FText::FromString(ck::Format_UE(TEXT("p{}"), Track->Priority));
+            Record.Fields[TEXT("loop")].Text = Build_LoopText(Track->LoopBehavior);
+            Record.Fields[TEXT("override")].Text = Build_OverrideText(Track->OverrideBehavior);
+            Record.Fields[TEXT("virtualized")].Bool = Track->IsVirtualized;
+            Record.Fields[TEXT("fraction")].Number = FMath::IsFinite(Track->CurrentVolume)
+                ? FMath::Clamp(Track->CurrentVolume, 0.0f, 1.0f) : 0.0f;
+            Record.Fields[TEXT("target-visible")].Bool = IsFading && FMath::IsFinite(Track->TargetVolume);
+            Record.Fields[TEXT("target-fraction")].Number = FMath::IsFinite(Track->TargetVolume)
+                ? FMath::Clamp(Track->TargetVolume, 0.0f, 1.0f) : 0.0f;
+            Record.Fields[TEXT("volume")].Text = FText::FromString(ck::Format_UE(TEXT("{} {} {}"),
+                FString::SanitizeFloat(Track->CurrentVolume, 2), IsFading ? TEXT("→") : TEXT("="),
+                FString::SanitizeFloat(Track->TargetVolume, 2)));
+            Record.Fields[TEXT("fade")].Text = FText::FromString(DoBuild_FadeText(*Track));
+            Record.Fields[TEXT("alert")].Text = FText::FromString(DoBuild_AlertText(*Track));
+            Records.Add(MoveTemp(Record));
+        }
+    }
+    _TrackRecordsReady = _TrackRecords->TrySetRecords(MoveTemp(Records)).Succeeded;
+    if (NOT _TrackRecordsReady) { _TrackRecords->TrySetRecords({}); }
+}
+
+auto SCkAudioDebuggerWindow::DoNavigate_TrackRecord(const FString& InKey) -> void
+{
+    using namespace ck_audio_debugger_window;
+    if (NOT _TrackRecordsReady || NOT _Collector.Get_Snapshot().HasWorld
+        || NOT _TrackRecords.IsValid() || NOT _TrackRecords->FindRecord(InKey).IsValid()) { return; }
+    const auto Navigate = [this](const FCk_Handle& InEntity)
+    {
+        if (NOT ck::IsValid(InEntity)) { return; }
+#if WITH_DEV_AUTOMATION_TESTS
+        if (_TrackNavigationForTests) { _TrackNavigationForTests(InEntity); return; }
+#endif
+        ck::DebugNav::Goto_Entity(InEntity);
+    };
+    for (const auto& Director : _Collector.Get_Snapshot().Directors)
+    {
+        const auto Visible = DoGet_VisibleTracks(Director);
+        if (Visible.IsEmpty()) { continue; }
+        if (_GroupByDirector && Build_TrackHeaderKey(Director.DirectorEntity, _DirectorSessionGeneration) == InKey)
+        { Navigate(Director.DirectorEntity); return; }
+        for (const auto* Track : Visible)
+        {
+            if (Build_TrackRecordKey(Director.DirectorEntity, Track->TrackEntity, _DirectorSessionGeneration) == InKey)
+            { Navigate(Track->TrackEntity); return; }
         }
     }
 }
@@ -1131,6 +1421,15 @@ auto
     _NativeDirectorsPage = SNew(SScrollBox)
         + SScrollBox::Slot().Padding(CkStyle::SpaceL, CkStyle::SpaceM)
         [SAssignNew(_DirectorPageBox, SVerticalBox)];
+    _NativeTracksPage = SNew(SVerticalBox)
+        + SVerticalBox::Slot().FillHeight(1.0f)
+        [
+            SNew(SScrollBox)
+            + SScrollBox::Slot().Padding(CkStyle::SpaceL, CkStyle::SpaceS)
+            [SAssignNew(_DirectorBox, SVerticalBox)]
+        ]
+        + SVerticalBox::Slot().AutoHeight()
+        [DoCreate_CrossfadeLane(false)];
     // Slot order MUST match ECkAudioDebugger_Page's declaration order. The switcher is driven by the enum's integer
     // value, so a reordered enum would otherwise silently show the wrong page.
     return SNew(SWidgetSwitcher)
@@ -1143,22 +1442,7 @@ auto
 
         + SWidgetSwitcher::Slot()
         [
-            SNew(SVerticalBox)
-            + SVerticalBox::Slot()
-            .FillHeight(1.0f)
-            [
-                SNew(SScrollBox)
-                + SScrollBox::Slot()
-                .Padding(CkStyle::SpaceL, CkStyle::SpaceS)
-                [
-                    SAssignNew(_DirectorBox, SVerticalBox)
-                ]
-            ]
-            + SVerticalBox::Slot()
-            .AutoHeight()
-            [
-                DoCreate_CrossfadeLane(false)
-            ]
+            SAssignNew(_TracksPageHost, SBox)[_NativeTracksPage.ToSharedRef()]
         ]
 
         + SWidgetSwitcher::Slot()[DoCreate_CrossfadeLane(true)]
@@ -1323,7 +1607,10 @@ auto
         .DesiredSize(FVector2D{320.0f, Height});
 
     if (NOT InIsDedicatedPage)
-    { return DoCreate_NativeCrossfadeLane(false, Plot); }
+    {
+        _CompactCrossfadePlot = Plot;
+        return SAssignNew(_CompactCrossfadeHost, SBox)[DoCreate_NativeCrossfadeLane(false, Plot)];
+    }
 
     _CrossfadePagePlot = Plot;
     return SAssignNew(_CrossfadePageHost, SBox)
@@ -1927,6 +2214,7 @@ auto
     PollAuthoredAttenuationPanel(InCurrentTime);
     PollAuthoredEventsToolbar(InCurrentTime);
     PollAuthoredDirectorsPage(InCurrentTime);
+    PollAuthoredTracksPage(InCurrentTime);
 
     UWorld* World = DoGet_PieWorld();
     if (World == _InvalidatedWorld.Get())
@@ -1995,6 +2283,7 @@ auto
     _NextAuthoredAttenuationPollSeconds = 0.0;
     _NextAuthoredEventsToolbarPollSeconds = 0.0;
     _NextAuthoredDirectorsPollSeconds = 0.0;
+    _NextAuthoredTracksPollSeconds = 0.0;
     // Force the next tick through the structure pass so the rows pick the new palette up; the cells themselves carry
     // no style.
     _LastSignature.Reset();
@@ -2106,47 +2395,51 @@ auto
 
     const auto& Snapshot = _Collector.Get_Snapshot();
 
-    for (const auto& Director : Snapshot.Directors)
+    // Accepted authored rows reconcile by lifecycle identity; the positional native tree exists only in fallback.
+    if (_UsingNativeTracksFallback)
     {
-        const auto Visible = DoGet_VisibleTracks(Director);
-
-        // A director whose every track was filtered out is dropped WITH its header: a heading over nothing tells the
-        // reader the filter failed rather than that it worked.
-        if (Visible.IsEmpty())
-        { continue; }
-
-        auto DirectorSlot = FCkAudioDebugger_DirectorSlot{};
-
-        auto Header = DoMake_DirectorHeader(Director, DirectorSlot);
-
-        if (_GroupByDirector)
+        for (const auto& Director : Snapshot.Directors)
         {
-            _DirectorBox->AddSlot()
-            .AutoHeight()
-            .Padding(0.0f, CkStyle::SpaceM, 0.0f, CkStyle::SpaceXS)
-            [
-                Header
-            ];
-        }
+            const auto Visible = DoGet_VisibleTracks(Director);
 
-        _DirectorSlots.Add(DirectorSlot);
+            // A director whose every track was filtered out is dropped WITH its header: a heading over nothing tells
+            // the reader the filter failed rather than that it worked.
+            if (Visible.IsEmpty())
+            { continue; }
 
-        for (const auto* Track : Visible)
-        {
-            auto TrackSlot = FCkAudioDebugger_TrackSlot{};
+            auto DirectorSlot = FCkAudioDebugger_DirectorSlot{};
+            auto Header = DoMake_DirectorHeader(Director, DirectorSlot);
 
-            _DirectorBox->AddSlot()
-            .AutoHeight()
-            .Padding(0.0f, CkStyle::SpaceXS)
-            [
-                DoMake_TrackRow(*Track, TrackSlot)
-            ];
+            if (_GroupByDirector)
+            {
+                _DirectorBox->AddSlot()
+                .AutoHeight()
+                .Padding(0.0f, CkStyle::SpaceM, 0.0f, CkStyle::SpaceXS)
+                [
+                    Header
+                ];
+            }
 
-            _TrackSlots.Add(TrackSlot);
+            _DirectorSlots.Add(DirectorSlot);
+
+            for (const auto* Track : Visible)
+            {
+                auto TrackSlot = FCkAudioDebugger_TrackSlot{};
+
+                _DirectorBox->AddSlot()
+                .AutoHeight()
+                .Padding(0.0f, CkStyle::SpaceXS)
+                [
+                    DoMake_TrackRow(*Track, TrackSlot)
+                ];
+
+                _TrackSlots.Add(TrackSlot);
+            }
         }
     }
 
     DoUpdate_DirectorRecords();
+    DoUpdate_TrackRecords();
     if (NOT _UsingNativeDirectorsFallback) { return; }
 
     // Native startup fallback only. The authored page owns keyed records rather than positional header cells.
@@ -2695,6 +2988,7 @@ auto
 
     DoUpdate_DirectorRecords();
     auto DirectorPageIndex = 0;
+    DoUpdate_TrackRecords();
 
     for (const auto& Director : Snapshot.Directors)
     {
@@ -3370,6 +3664,7 @@ auto
     _Collector.Reset();
     DoUpdate_TabRecords();
     DoUpdate_DirectorRecords();
+    DoUpdate_TrackRecords();
 
     if (_DirectorBox.IsValid()) { _DirectorBox->ClearChildren(); }
     if (_DirectorPageBox.IsValid()) { _DirectorPageBox->ClearChildren(); }

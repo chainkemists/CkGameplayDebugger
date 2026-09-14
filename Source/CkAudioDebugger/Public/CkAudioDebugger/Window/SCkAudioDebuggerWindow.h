@@ -163,6 +163,11 @@ private:
     auto DoUpdate_DirectorRecords() -> void;
     auto DoNavigate_Director(const FString& InKey) -> void;
 
+    auto BuildAuthoredTracksPage() -> void;
+    auto PollAuthoredTracksPage(double InCurrentTime) -> void;
+    auto DoUpdate_TrackRecords() -> void;
+    auto DoNavigate_TrackRecord(const FString& InKey) -> void;
+
     auto
     PollAuthoredEventsToolbar(
         double InCurrentTime) -> void;
@@ -345,9 +350,21 @@ private:
     double                     _NextAuthoredDirectorsPollSeconds = 0.0;
     bool                       _UsingNativeDirectorsFallback = true;
     bool                       _DirectorRecordsReady = false;
+    TSharedPtr<FCkUiView>       _AuthoredTracksView;
+    TSharedPtr<FCkUiCollection> _TrackRecords;
+    TSharedPtr<SBox>           _TracksPageHost;
+    TSharedPtr<SWidget>        _NativeTracksPage;
+    TSharedPtr<SBox>           _CompactCrossfadeHost;
+    TSharedPtr<SCkDebug_Sparkline> _CompactCrossfadePlot;
+    FString                    _AuthoredTracksMarkupPath;
+    FString                    _AuthoredTracksStylesheetPath;
+    double                     _NextAuthoredTracksPollSeconds = 0.0;
+    bool                       _UsingNativeTracksFallback = true;
+    bool                       _TrackRecordsReady = false;
 #if WITH_DEV_AUTOMATION_TESTS
     /** Terminal navigation observation, after the production row/identity/lifetime guards. */
     TFunction<void(const FCk_Handle&)> _DirectorNavigationForTests;
+    TFunction<void(const FCk_Handle&)> _TrackNavigationForTests;
 #endif
     FString                     _AuthoredMarkupPath;
     FString                     _AuthoredStylesheetPath;
@@ -431,6 +448,7 @@ private:
     FDelegateHandle _SessionInvalidatedHandle;
     FDelegateHandle _WorldInvalidatedHandle;
     int64 _RuntimeGeneration = 0;
+    /** Directors and Tracks share this lifecycle-only identity; Overlay rebuilds advance only _RuntimeGeneration. */
     int64 _DirectorSessionGeneration = 0;
 
     ECkAudioDebugger_Page _ActivePage = ECkAudioDebugger_Page::Tracks;

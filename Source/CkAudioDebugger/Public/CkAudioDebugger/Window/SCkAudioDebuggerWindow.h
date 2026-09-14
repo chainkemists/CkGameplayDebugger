@@ -158,6 +158,11 @@ private:
     auto
     BuildAuthoredEventsToolbar() -> void;
 
+    auto BuildAuthoredDirectorsPage() -> void;
+    auto PollAuthoredDirectorsPage(double InCurrentTime) -> void;
+    auto DoUpdate_DirectorRecords() -> void;
+    auto DoNavigate_Director(const FString& InKey) -> void;
+
     auto
     PollAuthoredEventsToolbar(
         double InCurrentTime) -> void;
@@ -331,6 +336,19 @@ private:
     TSharedPtr<FCkUiView>       _AuthoredCrossfadeView;
     TSharedPtr<FCkUiView>       _AuthoredAttenuationView;
     TSharedPtr<FCkUiView>       _AuthoredEventsToolbarView;
+    TSharedPtr<FCkUiView>       _AuthoredDirectorsView;
+    TSharedPtr<FCkUiCollection> _DirectorRecords;
+    TSharedPtr<SBox>           _DirectorsPageHost;
+    TSharedPtr<SWidget>        _NativeDirectorsPage;
+    FString                    _AuthoredDirectorsMarkupPath;
+    FString                    _AuthoredDirectorsStylesheetPath;
+    double                     _NextAuthoredDirectorsPollSeconds = 0.0;
+    bool                       _UsingNativeDirectorsFallback = true;
+    bool                       _DirectorRecordsReady = false;
+#if WITH_DEV_AUTOMATION_TESTS
+    /** Terminal navigation observation, after the production row/identity/lifetime guards. */
+    TFunction<void(const FCk_Handle&)> _DirectorNavigationForTests;
+#endif
     FString                     _AuthoredMarkupPath;
     FString                     _AuthoredStylesheetPath;
     FString                     _AuthoredCrossfadeMarkupPath;
@@ -413,6 +431,7 @@ private:
     FDelegateHandle _SessionInvalidatedHandle;
     FDelegateHandle _WorldInvalidatedHandle;
     int64 _RuntimeGeneration = 0;
+    int64 _DirectorSessionGeneration = 0;
 
     ECkAudioDebugger_Page _ActivePage = ECkAudioDebugger_Page::Tracks;
 

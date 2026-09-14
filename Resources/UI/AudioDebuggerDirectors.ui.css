@@ -1,0 +1,10 @@
+.audio-directors-scroll { min-width: 0; min-height: 0; }
+.audio-directors { min-width: 0; padding: 8px 12px; gap: 4px; }
+.audio-director-wrap { min-width: 0; padding: var(--audio-stat-outer-extent); }
+.audio-director-card { min-width: 0; vertical-align: center; padding: 8px 11px; background-color: var(--audio-stat-surface); border-color: var(--audio-stat-outline); border-width: var(--audio-stat-ring-width); border-radius: var(--audio-stat-radius); }
+.audio-director-icon-wrap { padding: 0 4px 0 0; vertical-align: center; }
+.audio-director-name { -ck-audio-director-name-color: var(--audio-stat-text); -ck-audio-director-name-size: var(--audio-crossfade-title-size); vertical-align: center; }
+.audio-director-value-wrap { padding: 0 0 0 8px; vertical-align: center; }
+.audio-director-active { color: var(--audio-stat-label); font-family: monospace; font-size: var(--audio-events-micro-size); text-wrap: nowrap; }
+.audio-director-policy-spacer { flex-grow: 1; }
+.audio-director-policy { color: var(--audio-director-muted); font-family: monospace; font-size: var(--audio-events-micro-size); text-wrap: nowrap; vertical-align: center; }

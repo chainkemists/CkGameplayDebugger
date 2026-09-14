@@ -1,0 +1,5 @@
+.astar-shell-main-split { min-width: 760px; min-height: 0; flex-grow: 1; flex-shrink: 1; }
+.astar-shell-grid { min-width: 400px; min-height: 0; flex-grow: 0.7; flex-shrink: 1; }
+.astar-shell-side-split { min-width: 260px; min-height: 0; flex-grow: 0.3; flex-shrink: 1; }
+.astar-shell-stats { min-height: 240px; flex-grow: 0.6; flex-shrink: 1; }
+.astar-shell-history { min-height: 160px; flex-grow: 0.4; flex-shrink: 1; }

@@ -35,11 +35,46 @@ auto
     _SearchInfo = InInfo;
 }
 
+auto SCkAStarDebugger_GridView::SetCanDispatchEvents(TAttribute<bool> InCanDispatchEvents) -> void
+{
+    _CanDispatchEvents = MoveTemp(InCanDispatchEvents);
+}
+
 auto SCkAStarDebugger_GridView::Reset_ForWorldChange() -> void
 {
     _SearchInfo = FCkAStarDebugger_SearchInfo{};
-    _IsPanning = false;
+    CancelTransientInteraction();
     Invalidate(EInvalidateWidgetReason::Paint);
+}
+
+auto SCkAStarDebugger_GridView::CancelTransientInteraction() -> void
+{
+    _IsPanning = false;
+    _PanStartMousePos = FVector2D::ZeroVector;
+    _PanStartOffset = FVector2D::ZeroVector;
+}
+
+auto SCkAStarDebugger_GridView::BeginPointerCaptureTransfer() noexcept -> void
+{
+    _IsPointerCaptureTransfer = true;
+}
+
+auto SCkAStarDebugger_GridView::EndPointerCaptureTransfer(bool InRestored) noexcept -> void
+{
+    _IsPointerCaptureTransfer = false;
+    if (NOT InRestored) { CancelTransientInteraction(); }
+}
+
+auto SCkAStarDebugger_GridView::CanAcceptInput() const -> bool
+{
+    auto Parent = GetParentWidget();
+    while (Parent.IsValid())
+    {
+        if (Parent->GetTag() == AuthoredHostTag) { return _CanDispatchEvents.Get(false); }
+        if (Parent->GetTag() == NativeFallbackHostTag) { return true; }
+        Parent = Parent->GetParentWidget();
+    }
+    return false;
 }
 
 auto
@@ -347,6 +382,7 @@ auto
         const FPointerEvent& InMouseEvent)
     -> FReply
 {
+    if (NOT CanAcceptInput()) { return FReply::Unhandled(); }
     if (InMouseEvent.GetEffectingButton() == EKeys::RightMouseButton)
     {
         _IsPanning = true;
@@ -377,6 +413,11 @@ auto
         const FPointerEvent& InMouseEvent)
     -> FReply
 {
+    if (NOT CanAcceptInput())
+    {
+        CancelTransientInteraction();
+        return FReply::Unhandled();
+    }
     if (InMouseEvent.GetEffectingButton() == EKeys::RightMouseButton && _IsPanning)
     {
         _IsPanning = false;
@@ -393,6 +434,11 @@ auto
         const FPointerEvent& InMouseEvent)
     -> FReply
 {
+    if (NOT CanAcceptInput())
+    {
+        CancelTransientInteraction();
+        return FReply::Unhandled();
+    }
     if (_IsPanning)
     {
         auto Delta = InMouseEvent.GetScreenSpacePosition() - _PanStartMousePos;
@@ -410,6 +456,7 @@ auto
         const FPointerEvent& InMouseEvent)
     -> FReply
 {
+    if (NOT CanAcceptInput()) { return FReply::Unhandled(); }
     auto OldCellSize = _CellSize;
     auto ZoomDelta = (InMouseEvent.GetWheelDelta() > 0.0f) ? 2.0f : -2.0f;
     _CellSize = FMath::Clamp(
@@ -422,6 +469,12 @@ auto
     _PanOffset = LocalMouse - (LocalMouse - _PanOffset) * Scale;
 
     return FReply::Handled();
+}
+
+auto SCkAStarDebugger_GridView::OnMouseCaptureLost(const FCaptureLostEvent& InCaptureLostEvent) -> void
+{
+    if (NOT _IsPointerCaptureTransfer) { CancelTransientInteraction(); }
+    SLeafWidget::OnMouseCaptureLost(InCaptureLostEvent);
 }
 
 // ====================================================================================================================

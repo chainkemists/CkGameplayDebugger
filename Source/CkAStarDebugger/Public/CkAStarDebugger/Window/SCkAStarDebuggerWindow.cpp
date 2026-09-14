@@ -6,6 +6,7 @@
 #include "CkAStarDebugger/GridView/SCkAStarDebugger_GridView.h"
 #include "CkAStarDebugger/Window/SCkAStarDebugger_StatsPanel.h"
 #include "CkAStarDebugger/Window/SCkAStarDebugger_SearchHistory.h"
+#include "CkAStarDebugger/UI/CkAStarDebugger_GridCanvas.h"
 
 #include "CkEditorTools/Style/CkStyle.h"
 
@@ -24,6 +25,8 @@
 #include "CkAStar/CkAStar_Fragment.h"
 #include "CkDebuggerCommon/Window/SCkDebug_WindowChrome.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_PaneHost.h"
+#include "CkSlateLayout/SCkUiSurface.h"
+#include "CkSlateLayout/CkUiWidgetRegistry.h"
 
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/Layout/SBox.h"
@@ -33,6 +36,8 @@
 
 #include "Engine/Engine.h"
 #include "Engine/World.h"
+#include "Interfaces/IPluginManager.h"
+#include "Misc/Paths.h"
 
 // ====================================================================================================================
 // Construction
@@ -101,12 +106,13 @@ auto
     _SessionInvalidatedHandle = ck::DebugSessionLifecycle::Get_OnSessionInvalidated().AddSP(
         this, &SCkAStarDebuggerWindow::HandleSessionInvalidated);
 
-    // Layout:
-    //   Toolbar (auto-height)
-    //   ├─ GridView (left, ~70%)
-    //   └─ Right panel (~30%)
-    //      ├─ StatsPanel (top, ~60%)
-    //      └─ SearchHistory (bottom, ~40%)
+    SAssignNew(_GridView, SCkAStarDebugger_GridView, _ViewModel);
+    SAssignNew(_StatsPanel, SCkAStarDebugger_StatsPanel, _ViewModel);
+    SAssignNew(_SearchHistory, SCkAStarDebugger_SearchHistory, _ViewModel);
+    SAssignNew(_StatsPane, SCkDebug_PaneHost)[_StatsPanel.ToSharedRef()];
+    SAssignNew(_HistoryPane, SCkDebug_PaneHost)[_SearchHistory.ToSharedRef()];
+    SAssignNew(_AuthoredShellHost, SBox);
+    BuildAuthoredShell();
 
     ChildSlot
     [
@@ -135,62 +141,16 @@ auto
                          "Only entities with A* debug state (and their owning NPC) are shown and pickable.")))
              ]
              .ShowRefreshControls(true)
-            .Content()
-            [
-                SNew(SVerticalBox)
-
-            // Main content
-            + SVerticalBox::Slot()
-                .FillHeight(1.0f)
-                [
-                    SNew(SSplitter)
-                        .Orientation(Orient_Horizontal)
-
-                        // Grid view (left, ~70%)
-                        + SSplitter::Slot()
-                            .Value(0.7f)
-                            [
-                                SNew(SCkDebug_PaneHost)
-                                    .ContentMode(ECkDebugPaneContent::OpaqueRenderer)
-                                    [
-                                        SAssignNew(_GridView, SCkAStarDebugger_GridView, _ViewModel)
-                                    ]
-                            ]
-
-                        // Right panel (~30%)
-                        + SSplitter::Slot()
-                            .Value(0.3f)
-                            [
-                                SNew(SSplitter)
-                                    .Orientation(Orient_Vertical)
-
-                                    // Stats panel (top, ~60%)
-                                    + SSplitter::Slot()
-                                        .Value(0.6f)
-                                        [
-                                            SNew(SCkDebug_PaneHost)
-                                                [
-                                                    SAssignNew(_StatsPanel, SCkAStarDebugger_StatsPanel, _ViewModel)
-                                                ]
-                                        ]
-
-                                    // Search history (bottom, ~40%)
-                                    + SSplitter::Slot()
-                                        .Value(0.4f)
-                                        [
-                                            SNew(SCkDebug_PaneHost)
-                                                [
-                                                    SAssignNew(_SearchHistory, SCkAStarDebugger_SearchHistory, _ViewModel)
-                                                ]
-                                        ]
-                            ]
-                ]
-            ]
+             .Content()
+             [
+                 _AuthoredShellHost.ToSharedRef()
+             ]
     ];
 }
 
 SCkAStarDebuggerWindow::~SCkAStarDebuggerWindow()
 {
+    _AuthoredShellView.Reset();
     if (_WorldModel.IsValid() && _WorldChangedHandle.IsValid())
     { _WorldModel->OnWorldChanged.Remove(_WorldChangedHandle); }
 
@@ -247,6 +207,7 @@ auto
     // MUST be the WindowBase super, not SCompoundWidget — the base Tick drives the gated
     // style-revision watch that routes into OnStyleRevisionChanged.
     SCkDebugger_WindowBase::Tick(InAllottedGeometry, InCurrentTime, InDeltaTime);
+    PollAuthoredShell(InCurrentTime);
 
     // Viewport-picker ticks stay ungated so input handling keeps working even
     // when the panel refresh is paused.
@@ -294,6 +255,66 @@ auto
             _StatusBadgeText->SetColorAndOpacity(StatusColor);
         }
     }
+}
+
+auto SCkAStarDebuggerWindow::BuildNativeContent() -> TSharedRef<SWidget>
+{
+    const TSharedRef<SCkDebug_PaneHost> GridPane = SNew(SCkDebug_PaneHost)
+        .Tag(SCkAStarDebugger_GridView::NativeFallbackHostTag)
+        .ContentMode(ECkDebugPaneContent::OpaqueRenderer)
+        [_GridView.ToSharedRef()];
+    return SNew(SSplitter)
+        .Orientation(Orient_Horizontal)
+        + SSplitter::Slot().Value(0.7f)[GridPane]
+        + SSplitter::Slot().Value(0.3f)
+        [
+            SNew(SSplitter)
+            .Orientation(Orient_Vertical)
+            + SSplitter::Slot().Value(0.6f)[_StatsPane.ToSharedRef()]
+            + SSplitter::Slot().Value(0.4f)[_HistoryPane.ToSharedRef()]
+        ];
+}
+
+auto SCkAStarDebuggerWindow::BuildAuthoredShell() -> void
+{
+    auto RegistryBuilder = FCkUiWidgetRegistry{};
+    const FCkUiLoadResult RegistryResult = FCkAStarDebugger_GridCanvas::Register(RegistryBuilder, _GridView);
+    const TSharedPtr<IPlugin> Plugin = IPluginManager::Get().FindPlugin(TEXT("CkDebugger"));
+    if (NOT RegistryResult.Succeeded || NOT Plugin.IsValid())
+    {
+        _AuthoredShellHost->SetContent(BuildNativeContent());
+        return;
+    }
+
+    auto NativeBindings = FCkUiView::FNativeBindings{};
+    NativeBindings.Add(TEXT("astar-grid-canvas"), _GridView.ToSharedRef());
+    NativeBindings.Add(TEXT("astar-stats-pane"), _StatsPane.ToSharedRef());
+    NativeBindings.Add(TEXT("astar-history-pane"), _HistoryPane.ToSharedRef());
+    auto Data = FCkUiView::FDataBindings{};
+    Data.SlateUserIndex = 0;
+    const TSharedRef<FCkUiView> View = FCkUiView::Create(
+        MoveTemp(NativeBindings), {}, {}, CkStyle::RegularFont(CkStyle::FontSizeBody()), MoveTemp(Data),
+        RegistryBuilder.CreateSnapshot());
+    const TSharedRef<SWidget> Main = View->GetRegion(TEXT("main"));
+    const FString Directory = FPaths::Combine(Plugin->GetBaseDir(), TEXT("Resources/UI"));
+    View->SetFiles(
+        FPaths::Combine(Directory, TEXT("AStarDebuggerShell.ui.html")),
+        FPaths::Combine(Directory, TEXT("AStarDebuggerShell.ui.css")));
+    _AuthoredShellView = View;
+    View->PollFiles();
+    _AuthoredShellHost->SetContent(
+        View->GetLastResult().Succeeded ? Main : BuildNativeContent());
+}
+
+auto SCkAStarDebuggerWindow::PollAuthoredShell(const double InCurrentTime) -> void
+{
+    constexpr double PollIntervalSeconds = 0.5;
+    if (InCurrentTime < _NextAuthoredShellPollSeconds || NOT _AuthoredShellView.IsValid()) { return; }
+    _NextAuthoredShellPollSeconds = InCurrentTime + PollIntervalSeconds;
+    const bool WasAccepted = _AuthoredShellView->GetLastResult().Succeeded;
+    _AuthoredShellView->PollFiles();
+    if (NOT WasAccepted && _AuthoredShellView->GetLastResult().Succeeded)
+    { _AuthoredShellHost->SetContent(_AuthoredShellView->GetRegion(TEXT("main"))); }
 }
 
 auto SCkAStarDebuggerWindow::OnStyleRevisionChanged() -> void

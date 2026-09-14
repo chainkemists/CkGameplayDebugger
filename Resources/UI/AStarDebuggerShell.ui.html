@@ -1,0 +1,17 @@
+<ui version="1">
+  <region name="main">
+    <scroll id="astar-shell-scroll" direction="horizontal">
+      <splitter id="astar-shell-main-split" direction="horizontal" class="astar-shell-main-split">
+        <astar-grid id="astar-shell-grid" class="astar-shell-grid">
+          <slot name="canvas">
+            <native id="astar-shell-grid-canvas" bind="astar-grid-canvas" />
+          </slot>
+        </astar-grid>
+        <splitter id="astar-shell-side-split" direction="vertical" class="astar-shell-side-split">
+          <native id="astar-shell-stats" bind="astar-stats-pane" class="astar-shell-stats" />
+          <native id="astar-shell-history" bind="astar-history-pane" class="astar-shell-history" />
+        </splitter>
+      </splitter>
+    </scroll>
+  </region>
+</ui>

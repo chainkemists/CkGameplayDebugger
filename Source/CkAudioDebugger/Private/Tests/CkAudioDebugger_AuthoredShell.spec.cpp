@@ -7,6 +7,8 @@
 #include "CkDebuggerCommon/Lifecycle/CkDebug_SessionLifecycle.h"
 #include "CkDebuggerCommon/Settings/CkDebuggerStyleSettings.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_Sparkline.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_EventLog.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_ToggleSurface.h"
 #include "CkEcs/Registry/CkRegistry.h"
 #include "CkEcs/Registry/CkRegistry_SlotTable.h"
 #include "CkSlateLayout/CkFlexText.h"
@@ -238,6 +240,30 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
         return false;
     }
 
+    TSharedPtr<FCkUiView> EventsView = DebuggerWindow->_AuthoredEventsToolbarView;
+    if (NOT TestTrue(TEXT("production Audio window admits its authored Events toolbar"),
+        EventsView.IsValid() && EventsView->GetLastResult().Succeeded))
+    {
+        if (EventsView.IsValid())
+        { AddError(FString::Join(EventsView->GetLastResult().Errors, TEXT("\n"))); }
+        return false;
+    }
+    const TSharedRef<SWidget> EventsMain = EventsView->GetRegion(TEXT("main"));
+    const TSharedPtr<SCkDebug_EventLog> OriginalEventLog = DebuggerWindow->_EventLog;
+    const TArray<TSharedPtr<SCkDebug_ToggleSurface>> OriginalEventToggles{
+        DebuggerWindow->_EventsStateToggle, DebuggerWindow->_EventsFadesToggle,
+        DebuggerWindow->_EventsVirtualizationToggle, DebuggerWindow->_EventsLifecycleToggle};
+    for (const auto& Toggle : OriginalEventToggles)
+    {
+        TestTrue(TEXT("authored Events toolbar mounts each exact native toggle surface"),
+            Toggle.IsValid() && ContainsWidget(EventsMain, Toggle.ToSharedRef()));
+    }
+    TestEqual(TEXT("Events toolbar authors the sampling caveat"),
+        TaggedText(EventsMain, TEXT("audio-events-caveat")),
+        FString{TEXT("sampled at the refresh rate — sub-tick transitions are not captured")});
+    TestFalse(TEXT("authored Events toolbar does not own the native event log"),
+        ContainsWidget(EventsMain, OriginalEventLog.ToSharedRef()));
+
     const TSharedRef<SWidget> Main = View->GetRegion(TEXT("main"));
     TestTrue(TEXT("authored shell retains three production native boundaries and authors live summary cards"),
         DebuggerWindow->_Tabs.IsValid()
@@ -323,6 +349,12 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
             && SharpCardBrush->OutlineSettings.Width == CkStyle::RingWidth());
 
     const int64 RevisionBeforeTextChange = View->GetRevision();
+    const int64 EventsRevisionBeforeTextChange = EventsView->GetRevision();
+    const TSharedPtr<SWidget> NormalEventsCaveat = FindTaggedWidget(EventsMain, TEXT("audio-events-caveat"));
+    const bool EventsCaveatIsText = NormalEventsCaveat.IsValid()
+        && NormalEventsCaveat->GetTypeAsString() == TEXT("SCkFlexText");
+    const int32 NormalEventsFontSize = EventsCaveatIsText
+        ? StaticCastSharedPtr<SCkFlexText>(NormalEventsCaveat)->GetFont().Size : 0;
     const TSharedPtr<SWidget> NormalAttenuationValue = FindTaggedWidget(
         AttenuationView->GetRegion(TEXT("main")), TEXT("audio-attenuation-audible"));
     const bool AttenuationValueIsText = NormalAttenuationValue.IsValid()
@@ -347,6 +379,46 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
         AttenuationValueIsText && LargeAttenuationValue.IsValid()
             && LargeAttenuationValue->GetTypeAsString() == TEXT("SCkFlexText")
             && StaticCastSharedPtr<SCkFlexText>(LargeAttenuationValue)->GetFont().Size > NormalAttenuationFontSize);
+
+    const TSharedPtr<SWidget> LargeEventsCaveat = FindTaggedWidget(EventsMain, TEXT("audio-events-caveat"));
+    TestTrue(TEXT("live style revision updates the authored Events caveat font"),
+        EventsCaveatIsText && LargeEventsCaveat.IsValid()
+            && LargeEventsCaveat->GetTypeAsString() == TEXT("SCkFlexText")
+            && EventsView->GetRevision() > EventsRevisionBeforeTextChange
+            && StaticCastSharedPtr<SCkFlexText>(LargeEventsCaveat)->GetFont().Size > NormalEventsFontSize);
+
+    const TSharedPtr<SButton> EventsTab = FindButtonWithText(DebuggerWindow->_Tabs.ToSharedRef(), TEXT("Events"));
+    if (NOT TestTrue(TEXT("production Events tab is physically selectable without a world"),
+        EventsTab.IsValid() && Click(Slate, EventsTab.ToSharedRef())
+            && DebuggerWindow->_PageSwitcher->GetActiveWidgetIndex() == 4))
+    { return false; }
+    // SWidgetSwitcher::GetChildren exposes only its active slot; inspect the mounted page after physical selection.
+    TestTrue(TEXT("physically selected Events page retains the original native event log"),
+        ContainsWidget(DebuggerWindow->_PageSwitcher.ToSharedRef(), OriginalEventLog.ToSharedRef()));
+    const TSharedPtr<SCheckBox> HeldEventsStateToggle = FindCheckBoxWithText(EventsMain, TEXT("State"));
+    const TSharedPtr<SCheckBox> EventsFadesToggle = FindCheckBoxWithText(EventsMain, TEXT("Fades"));
+    const TSharedPtr<SCheckBox> EventsVirtualizationToggle = FindCheckBoxWithText(EventsMain, TEXT("Virtualization"));
+    const TSharedPtr<SCheckBox> EventsLifecycleToggle = FindCheckBoxWithText(EventsMain, TEXT("Lifecycle"));
+    if (NOT TestTrue(TEXT("all four Events native controls remain physically usable without a world"),
+        HeldEventsStateToggle.IsValid() && EventsFadesToggle.IsValid()
+            && EventsVirtualizationToggle.IsValid() && EventsLifecycleToggle.IsValid()
+            && Click(Slate, HeldEventsStateToggle.ToSharedRef())
+            && NOT DebuggerWindow->_EventsShowStateChanges && DebuggerWindow->_EventsShowFades
+            && Click(Slate, EventsFadesToggle.ToSharedRef())
+            && NOT DebuggerWindow->_EventsShowFades && DebuggerWindow->_EventsShowVirtualization
+            && Click(Slate, EventsVirtualizationToggle.ToSharedRef())
+            && NOT DebuggerWindow->_EventsShowVirtualization && DebuggerWindow->_EventsShowLifecycle
+            && Click(Slate, EventsLifecycleToggle.ToSharedRef())
+            && NOT DebuggerWindow->_EventsShowLifecycle))
+    { return false; }
+    HeldEventsStateToggle->ToggleCheckedState();
+    TestTrue(TEXT("held Events control dispatch probe changes a live owner preference"),
+        DebuggerWindow->_EventsShowStateChanges && HeldEventsStateToggle->IsChecked());
+    HeldEventsStateToggle->ToggleCheckedState();
+    DebuggerWindow->HandleSessionInvalidated();
+    TestTrue(TEXT("session invalidation preserves the four window recording preferences"),
+        NOT DebuggerWindow->_EventsShowStateChanges && NOT DebuggerWindow->_EventsShowFades
+            && NOT DebuggerWindow->_EventsShowVirtualization && NOT DebuggerWindow->_EventsShowLifecycle);
 
     const TSharedPtr<SButton> EmptySpatialTab = FindButtonWithText(DebuggerWindow->_Tabs.ToSharedRef(), TEXT("Spatial"));
     if (NOT TestTrue(TEXT("production Spatial tab is physically selectable without a session"),
@@ -377,6 +449,8 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
     FString CrossfadeCss;
     FString AttenuationMarkup;
     FString AttenuationCss;
+    FString EventsMarkup;
+    FString EventsCss;
     const FString Directory = Plugin.IsValid()
         ? FPaths::Combine(Plugin->GetBaseDir(), TEXT("Resources/UI"))
         : FString{};
@@ -386,7 +460,9 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
         && FFileHelper::LoadFileToString(CrossfadeMarkup, *FPaths::Combine(Directory, TEXT("AudioDebuggerCrossfade.ui.html")))
         && FFileHelper::LoadFileToString(CrossfadeCss, *FPaths::Combine(Directory, TEXT("AudioDebuggerCrossfade.ui.css")))
         && FFileHelper::LoadFileToString(AttenuationMarkup, *FPaths::Combine(Directory, TEXT("AudioDebuggerAttenuation.ui.html")))
-        && FFileHelper::LoadFileToString(AttenuationCss, *FPaths::Combine(Directory, TEXT("AudioDebuggerAttenuation.ui.css")))))
+        && FFileHelper::LoadFileToString(AttenuationCss, *FPaths::Combine(Directory, TEXT("AudioDebuggerAttenuation.ui.css")))
+        && FFileHelper::LoadFileToString(EventsMarkup, *FPaths::Combine(Directory, TEXT("AudioDebuggerEventsToolbar.ui.html")))
+        && FFileHelper::LoadFileToString(EventsCss, *FPaths::Combine(Directory, TEXT("AudioDebuggerEventsToolbar.ui.css")))))
     { return false; }
 
     const auto Revision = View->GetRevision();
@@ -437,6 +513,35 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
             && ContainsWidget(View->GetRegion(TEXT("main")), DebuggerWindow->_PageSwitcher.ToSharedRef())
             && DebuggerWindow->_PageSwitcher->GetActiveWidgetIndex() == 2);
 
+    const int64 EventsRevision = EventsView->GetRevision();
+    const FCkUiLoadResult EventsReloaded = EventsView->TryReload(
+        EventsMarkup, EventsCss, TEXT("Audio compatible Events toolbar candidate"));
+    TestTrue(TEXT("compatible Events reload retains the toolbar host, event log and recording preferences"),
+        EventsReloaded.Succeeded && EventsView->GetRevision() > EventsRevision
+            && DebuggerWindow->_EventLog == OriginalEventLog
+            && ContainsWidget(DebuggerWindow->_EventsToolbarHost.ToSharedRef(), EventsMain)
+            && NOT DebuggerWindow->_EventsShowStateChanges && NOT DebuggerWindow->_EventsShowFades
+            && NOT DebuggerWindow->_EventsShowVirtualization && NOT DebuggerWindow->_EventsShowLifecycle);
+    for (const auto& Toggle : OriginalEventToggles)
+    { TestTrue(TEXT("compatible Events reload retains every native toggle"), ContainsWidget(EventsMain, Toggle.ToSharedRef())); }
+    const TArray<FString> EventsPortNames{TEXT("state"), TEXT("fades"), TEXT("virtualization"), TEXT("lifecycle")};
+    for (const FString& Port : EventsPortNames)
+    {
+        const FString Native = FString::Printf(TEXT("<native id=\"audio-events-%s\" bind=\"events-%s\" />"), *Port, *Port);
+        const FString MissingPortMarkup = EventsMarkup.Replace(*Native, TEXT(""));
+        if (NOT TestTrue(TEXT("missing Events port candidate actually removes one production port"), MissingPortMarkup != EventsMarkup))
+        { return false; }
+        const int64 BeforeRejection = EventsView->GetRevision();
+        const FCkUiLoadResult PortRejected = EventsView->TryReload(
+            MissingPortMarkup, EventsCss, TEXT("Audio missing Events toolbar port"));
+        TestTrue(TEXT("omitting any Events port rejects the entire candidate before mutation"),
+            NOT PortRejected.Succeeded && EventsView->GetRevision() == BeforeRejection
+                && FString::Join(PortRejected.Errors, TEXT("\n")).Contains(TEXT("events-") + Port)
+                && DebuggerWindow->_EventLog == OriginalEventLog);
+        for (const auto& Toggle : OriginalEventToggles)
+        { TestTrue(TEXT("rejected Events reload keeps all four committed controls"), ContainsWidget(EventsMain, Toggle.ToSharedRef())); }
+    }
+
     HostWindow->Resize(FVector2D{480.0f, 480.0f});
     TickSlate(Slate);
     TestTrue(TEXT("actual narrow Audio shell keeps horizontal overflow reachable"),
@@ -454,13 +559,26 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
     const TWeakPtr<FCkUiView> ReleasedView = View;
     const TWeakPtr<FCkUiView> ReleasedCrossfadeView = CrossfadeView;
     const TWeakPtr<FCkUiView> ReleasedAttenuationView = AttenuationView;
+    const TWeakPtr<FCkUiView> ReleasedEventsView = EventsView;
+    const TWeakPtr<SCkAudioDebuggerWindow> ReleasedEventsOwner = DebuggerWindow;
     DebuggerWindow.Reset();
     View.Reset();
     CrossfadeView.Reset();
     AttenuationView.Reset();
+    EventsView.Reset();
     TestFalse(TEXT("authored Audio view releases with its production window"), ReleasedView.IsValid());
     TestFalse(TEXT("authored Crossfade view releases with its production window"), ReleasedCrossfadeView.IsValid());
     TestFalse(TEXT("authored attenuation view releases with its production window"), ReleasedAttenuationView.IsValid());
+    TestFalse(TEXT("retained Events controls do not retain their production owner"), ReleasedEventsOwner.IsValid());
+    TestFalse(TEXT("authored Events view releases with its production window"), ReleasedEventsView.IsValid());
+    // IsEnabled reads a cached TSlateAttribute, unlike the checkbox's live TAttribute checked binding. This held
+    // control is detached, so refresh its attributes explicitly rather than expecting a destroyed window to prepass it.
+    HeldEventsStateToggle->Invalidate(EInvalidateWidgetReason::Prepass);
+    HeldEventsStateToggle->SlatePrepass(1.0f);
+    TestFalse(TEXT("released Events control becomes disabled when its Slate attributes update"),
+        HeldEventsStateToggle->IsEnabled());
+    HeldEventsStateToggle->ToggleCheckedState();
+    TestFalse(TEXT("held Events dispatch probe remains unchecked after owner release"), HeldEventsStateToggle->IsChecked());
 
     const FString InvalidStartupMarkup =
         TEXT("<ui version=\"1\"><region name=\"main\"><native id=\"missing\" bind=\"missing-audio-port\"/></region></ui>");
@@ -468,9 +586,14 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
         TEXT("<ui version=\"1\"><region name=\"main\"><native id=\"missing\" bind=\"missing-crossfade-plot\"/></region></ui>");
     const FString InvalidAttenuationStartupMarkup =
         TEXT("<ui version=\"1\"><region name=\"main\"><native id=\"missing\" bind=\"missing-attenuation-curve\"/></region></ui>");
+    const FString InvalidEventsStartupMarkup = EventsMarkup.Replace(
+        TEXT("<native id=\"audio-events-lifecycle\" bind=\"events-lifecycle\" />"), TEXT(""));
+    if (NOT TestTrue(TEXT("Events startup fixture omits one required native port"), InvalidEventsStartupMarkup != EventsMarkup))
+    { return false; }
     bool MarkupRestored = false;
     bool CrossfadeMarkupRestored = false;
     bool AttenuationMarkupRestored = false;
+    bool EventsMarkupRestored = false;
     ON_SCOPE_EXIT
     {
         if (NOT MarkupRestored)
@@ -479,6 +602,8 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
         { FFileHelper::SaveStringToFile(CrossfadeMarkup, *FPaths::Combine(Directory, TEXT("AudioDebuggerCrossfade.ui.html"))); }
         if (NOT AttenuationMarkupRestored)
         { FFileHelper::SaveStringToFile(AttenuationMarkup, *FPaths::Combine(Directory, TEXT("AudioDebuggerAttenuation.ui.html"))); }
+        if (NOT EventsMarkupRestored)
+        { FFileHelper::SaveStringToFile(EventsMarkup, *FPaths::Combine(Directory, TEXT("AudioDebuggerEventsToolbar.ui.html"))); }
     };
     if (NOT TestTrue(TEXT("Audio fixture installs its valid-but-unbound startup candidate"),
         FFileHelper::SaveStringToFile(
@@ -486,7 +611,9 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
             && FFileHelper::SaveStringToFile(InvalidCrossfadeStartupMarkup,
                 *FPaths::Combine(Directory, TEXT("AudioDebuggerCrossfade.ui.html")))
             && FFileHelper::SaveStringToFile(InvalidAttenuationStartupMarkup,
-                *FPaths::Combine(Directory, TEXT("AudioDebuggerAttenuation.ui.html")))))
+                *FPaths::Combine(Directory, TEXT("AudioDebuggerAttenuation.ui.html")))
+            && FFileHelper::SaveStringToFile(InvalidEventsStartupMarkup,
+                *FPaths::Combine(Directory, TEXT("AudioDebuggerEventsToolbar.ui.html")))))
     { return false; }
 
     DebuggerWindow = SNew(SCkAudioDebuggerWindow);
@@ -506,6 +633,12 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
             && NOT DebuggerWindow->_AuthoredAttenuationView.IsValid()
             && ContainsWidget(DebuggerWindow->_AttenuationPanelHost.ToSharedRef(),
                 DebuggerWindow->_AttenuationCurve.ToSharedRef()));
+    TestTrue(TEXT("outer startup fallback leaves Events controls mounted without competing child ownership"),
+        NOT DebuggerWindow->_AuthoredEventsToolbarView.IsValid()
+            && ContainsWidget(DebuggerWindow->_EventsToolbarHost.ToSharedRef(), DebuggerWindow->_EventsStateToggle.ToSharedRef())
+            && ContainsWidget(DebuggerWindow->_EventsToolbarHost.ToSharedRef(), DebuggerWindow->_EventsFadesToggle.ToSharedRef())
+            && ContainsWidget(DebuggerWindow->_EventsToolbarHost.ToSharedRef(), DebuggerWindow->_EventsVirtualizationToggle.ToSharedRef())
+            && ContainsWidget(DebuggerWindow->_EventsToolbarHost.ToSharedRef(), DebuggerWindow->_EventsLifecycleToggle.ToSharedRef()));
 
     MarkupRestored = FFileHelper::SaveStringToFile(
         Markup, *FPaths::Combine(Directory, TEXT("AudioDebuggerShell.ui.html")));
@@ -558,6 +691,42 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
             && ContainsWidget(AttenuationView->GetRegion(TEXT("main")), FallbackCurve.ToSharedRef())
             && TaggedText(AttenuationView->GetRegion(TEXT("main")), TEXT("audio-attenuation-audible-label")) == TEXT("Audible")))
     { return false; }
+
+    EventsView = DebuggerWindow->_AuthoredEventsToolbarView;
+    if (NOT TestTrue(TEXT("sibling recovery leaves the invalid Events toolbar in a complete native fallback"),
+        EventsView.IsValid() && NOT EventsView->GetLastResult().Succeeded
+            && DebuggerWindow->_UsingNativeEventsToolbarFallback
+            && FString::Join(EventsView->GetLastResult().Errors, TEXT("\n")).Contains(TEXT("events-lifecycle"))))
+    { return false; }
+    const TArray<TSharedPtr<SCkDebug_ToggleSurface>> LiveEventToggles{
+        DebuggerWindow->_EventsStateToggle, DebuggerWindow->_EventsFadesToggle,
+        DebuggerWindow->_EventsVirtualizationToggle, DebuggerWindow->_EventsLifecycleToggle};
+    const TSharedPtr<SCkDebug_EventLog> LiveEventLog = DebuggerWindow->_EventLog;
+    const TSharedPtr<SButton> FallbackEventsTab = FindButtonWithText(DebuggerWindow->_Tabs.ToSharedRef(), TEXT("Events"));
+    const TSharedPtr<SCheckBox> LiveEventsStateToggle = FindCheckBoxWithText(
+        DebuggerWindow->_EventsToolbarHost.ToSharedRef(), TEXT("State"));
+    if (NOT TestTrue(TEXT("native Events startup fallback accepts physical preference input"),
+        FallbackEventsTab.IsValid() && Click(Slate, FallbackEventsTab.ToSharedRef())
+            && LiveEventsStateToggle.IsValid() && Click(Slate, LiveEventsStateToggle.ToSharedRef())
+            && NOT DebuggerWindow->_EventsShowStateChanges))
+    { return false; }
+    for (const auto& Toggle : LiveEventToggles)
+    { TestTrue(TEXT("Events fallback retains all four controls"), ContainsWidget(DebuggerWindow->_EventsToolbarHost.ToSharedRef(), Toggle.ToSharedRef())); }
+    EventsMarkupRestored = FFileHelper::SaveStringToFile(
+        EventsMarkup, *FPaths::Combine(Directory, TEXT("AudioDebuggerEventsToolbar.ui.html")));
+    if (NOT TestTrue(TEXT("Audio fixture restores the valid Events toolbar resource"), EventsMarkupRestored))
+    { return false; }
+    DebuggerWindow->OnStyleRevisionChanged();
+    TickSlate(Slate);
+    if (NOT TestTrue(TEXT("Events polling recovers authored composition without replacing controls or preferences"),
+        EventsView->GetLastResult().Succeeded && NOT DebuggerWindow->_UsingNativeEventsToolbarFallback
+            && NOT DebuggerWindow->_EventsShowStateChanges && DebuggerWindow->_EventLog == LiveEventLog
+            && DebuggerWindow->_PageSwitcher->GetActiveWidgetIndex() == 4
+            && TaggedText(EventsView->GetRegion(TEXT("main")), TEXT("audio-events-caveat"))
+                == TEXT("sampled at the refresh rate — sub-tick transitions are not captured")))
+    { return false; }
+    for (const auto& Toggle : LiveEventToggles)
+    { TestTrue(TEXT("recovered Events toolbar retains every exact native control"), ContainsWidget(EventsView->GetRegion(TEXT("main")), Toggle.ToSharedRef())); }
 
     using namespace ck::registry_table;
     auto Registry = EnttRegistryType{};
@@ -612,6 +781,55 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
             && DebuggerWindow->_DirectorSlots[0].ActiveText->GetText().ToString() == TEXT("1 / 4 active")
             && DebuggerWindow->_DirectorPageSlots[0].ActiveText->GetText().ToString() == TEXT("1 / 4 active")
             && TaggedText(View->GetRegion(TEXT("main")), TEXT("audio-stat-concurrency")) == TEXT("1 / 4"));
+
+    // Reset only after the physical Events selection: Click ticks Slate, so seeding before it could consume a diff.
+    DebuggerWindow->_TrackWatch.Reset();
+    DebuggerWindow->_HasWatchBaseline = false;
+    LiveEventLog->Clear_Entries();
+    DebuggerWindow->_Collector.Collect(nullptr);
+    DebuggerWindow->DoRecord_Events();
+    TestEqual(TEXT("Events baseline never fabricates an appearance entry"), LiveEventLog->Get_EntryCount(), 0);
+    TrackInfoA.State = ECk_AudioTrack_State::Paused;
+    FixtureSnapshot.Directors[0].Tracks = {TrackInfoA};
+    DebuggerWindow->_Collector.Collect(nullptr);
+    DebuggerWindow->DoRecord_Events();
+    TestEqual(TEXT("disabled State preference suppresses a future state transition"), LiveEventLog->Get_EntryCount(), 0);
+    if (NOT TestTrue(TEXT("recovered authored Events composition physically re-enables state recording"),
+        Click(Slate, LiveEventsStateToggle.ToSharedRef()) && DebuggerWindow->_EventsShowStateChanges))
+    { return false; }
+    TrackInfoA.State = ECk_AudioTrack_State::Playing;
+    FixtureSnapshot.Directors[0].Tracks = {TrackInfoA};
+    DebuggerWindow->_Collector.Collect(nullptr);
+    DebuggerWindow->DoRecord_Events();
+    TestEqual(TEXT("enabled State preference records exactly the next state transition"), LiveEventLog->Get_EntryCount(), 1);
+    TickSlate(Slate);
+    TestTrue(TEXT("recorded State event is physically rendered by the original native event log"),
+        SubtreeHasText(LiveEventLog.ToSharedRef(), TEXT("Same track  Paused → Playing")));
+    if (NOT TestTrue(TEXT("turning State recording off leaves existing events visible"),
+        Click(Slate, LiveEventsStateToggle.ToSharedRef()) && NOT DebuggerWindow->_EventsShowStateChanges
+            && LiveEventLog->Get_EntryCount() == 1
+            && SubtreeHasText(LiveEventLog.ToSharedRef(), TEXT("Same track  Paused → Playing"))))
+    { return false; }
+    const int64 PopulatedEventsRevision = EventsView->GetRevision();
+    const FCkUiLoadResult PopulatedEventsReload = EventsView->TryReload(
+        EventsMarkup, EventsCss, TEXT("Audio populated Events toolbar reload"));
+    TickSlate(Slate);
+    TestTrue(TEXT("toolbar reload preserves the exact populated native log and recording preferences"),
+        PopulatedEventsReload.Succeeded && EventsView->GetRevision() > PopulatedEventsRevision
+            && DebuggerWindow->_EventLog == LiveEventLog && LiveEventLog->Get_EntryCount() == 1
+            && SubtreeHasText(LiveEventLog.ToSharedRef(), TEXT("Same track  Paused → Playing"))
+            && NOT DebuggerWindow->_EventsShowStateChanges && DebuggerWindow->_EventsShowFades
+            && DebuggerWindow->_EventsShowVirtualization && DebuggerWindow->_EventsShowLifecycle);
+    for (const auto& Toggle : LiveEventToggles)
+    { TestTrue(TEXT("populated Events reload retains all four native controls"), ContainsWidget(EventsView->GetRegion(TEXT("main")), Toggle.ToSharedRef())); }
+    const int64 PopulatedEventsRevisionBeforeReject = EventsView->GetRevision();
+    const FCkUiLoadResult PopulatedEventsRejected = EventsView->TryReload(
+        InvalidEventsStartupMarkup, EventsCss, TEXT("Audio populated Events toolbar rejection"));
+    TestTrue(TEXT("rejected toolbar candidate cannot clear the populated log or alter preferences"),
+        NOT PopulatedEventsRejected.Succeeded && EventsView->GetRevision() == PopulatedEventsRevisionBeforeReject
+            && DebuggerWindow->_EventLog == LiveEventLog && LiveEventLog->Get_EntryCount() == 1
+            && SubtreeHasText(LiveEventLog.ToSharedRef(), TEXT("Same track  Paused → Playing"))
+            && NOT DebuggerWindow->_EventsShowStateChanges);
 
     const TSharedPtr<SButton> OverlayTab = FindButtonWithText(DebuggerWindow->_Tabs.ToSharedRef(), TEXT("Overlay"));
     if (NOT TestTrue(TEXT("production Overlay tab is physically selectable"),
@@ -828,6 +1046,10 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
         DebuggerWindow->_ObservedWorld.Get() == InvalidatedWorld
             && DebuggerWindow->_Collector.Get_Snapshot().HasWorld);
     ck::DebugSessionLifecycle::Get_OnWorldInvalidated().Broadcast(InvalidatedWorld);
+    TestTrue(TEXT("world invalidation clears native Events history without resetting toolbar preferences"),
+        LiveEventLog->Get_EntryCount() == 0 && DebuggerWindow->_EventLog == LiveEventLog
+            && NOT DebuggerWindow->_EventsShowStateChanges && DebuggerWindow->_EventsShowFades
+            && DebuggerWindow->_EventsShowVirtualization && DebuggerWindow->_EventsShowLifecycle);
     HeldTrackBToggle->ToggleCheckedState();
     TestTrue(TEXT("matching world invalidation synchronously clears handle-backed Audio state"),
         NOT DebuggerWindow->_Collector.Get_Snapshot().HasWorld
@@ -863,6 +1085,14 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
     ck::DebugSessionLifecycle::Get_OnSessionInvalidated().Broadcast();
     TestTrue(TEXT("repeated session invalidation preserves the blocked-world marker"),
         DebuggerWindow->_InvalidatedWorld.Get() == InvalidatedWorld);
+    if (NOT TestTrue(TEXT("Events controls still accept physical preference input after session invalidation"),
+        Click(Slate, FallbackEventsTab.ToSharedRef())
+            && Click(Slate, LiveEventsStateToggle.ToSharedRef())
+            && DebuggerWindow->_EventsShowStateChanges && DebuggerWindow->_EventsShowFades
+            && DebuggerWindow->_EventsShowVirtualization && DebuggerWindow->_EventsShowLifecycle
+            && NOT DebuggerWindow->_Collector.Get_Snapshot().HasWorld
+            && LiveEventLog->Get_EntryCount() == 0))
+    { return false; }
 
     auto Module = FCkAudioDebuggerModule{};
     Module._DebuggerWindow = DebuggerWindow;

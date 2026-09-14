@@ -13,6 +13,7 @@
 class SCkDebug_EventLog;
 class SCkDebug_MeterBar;
 class SCkDebug_Sparkline;
+class SCkDebug_ToggleSurface;
 class SCkAudioDebugger_FalloffCurve;
 class FCkUiView;
 class SHorizontalBox;
@@ -152,6 +153,13 @@ private:
         double InCurrentTime) -> void;
 
     auto
+    BuildAuthoredEventsToolbar() -> void;
+
+    auto
+    PollAuthoredEventsToolbar(
+        double InCurrentTime) -> void;
+
+    auto
     DoCreate_Tabs() -> TSharedRef<SWidget>;
 
     auto
@@ -183,6 +191,9 @@ private:
 
     auto
     DoCreate_EventsPage() -> TSharedRef<SWidget>;
+
+    auto
+    DoCreate_NativeEventsToolbar() -> TSharedRef<SWidget>;
 
     auto
     DoCreate_OverlayPage() -> TSharedRef<SWidget>;
@@ -304,18 +315,23 @@ private:
     TSharedPtr<FCkUiView>       _AuthoredShellView;
     TSharedPtr<FCkUiView>       _AuthoredCrossfadeView;
     TSharedPtr<FCkUiView>       _AuthoredAttenuationView;
+    TSharedPtr<FCkUiView>       _AuthoredEventsToolbarView;
     FString                     _AuthoredMarkupPath;
     FString                     _AuthoredStylesheetPath;
     FString                     _AuthoredCrossfadeMarkupPath;
     FString                     _AuthoredCrossfadeStylesheetPath;
     FString                     _AuthoredAttenuationMarkupPath;
     FString                     _AuthoredAttenuationStylesheetPath;
+    FString                     _AuthoredEventsToolbarMarkupPath;
+    FString                     _AuthoredEventsToolbarStylesheetPath;
     double                      _NextAuthoredShellPollSeconds = 0.0;
     double                      _NextAuthoredCrossfadePollSeconds = 0.0;
     double                      _NextAuthoredAttenuationPollSeconds = 0.0;
+    double                      _NextAuthoredEventsToolbarPollSeconds = 0.0;
     bool                        _UsingNativeFallback = false;
     bool                        _UsingNativeCrossfadeFallback = false;
     bool                        _UsingNativeAttenuationFallback = false;
+    bool                        _UsingNativeEventsToolbarFallback = true;
     TSharedPtr<SVerticalBox>    _DirectorBox;
     TSharedPtr<SVerticalBox>    _DirectorPageBox;
     TSharedPtr<STextBlock>      _StatusText;
@@ -329,6 +345,11 @@ private:
     TSharedPtr<SHorizontalBox>  _OverlayActionsBox;
     TSharedPtr<SVerticalBox>    _OverlayListBox;
     TSharedPtr<SCkDebug_EventLog> _EventLog;
+    TSharedPtr<SBox>            _EventsToolbarHost;
+    TSharedPtr<SCkDebug_ToggleSurface> _EventsStateToggle;
+    TSharedPtr<SCkDebug_ToggleSurface> _EventsFadesToggle;
+    TSharedPtr<SCkDebug_ToggleSurface> _EventsVirtualizationToggle;
+    TSharedPtr<SCkDebug_ToggleSurface> _EventsLifecycleToggle;
 
     /** Written in place on the refresh gate; the radar and the curve paint straight from it. */
     TSharedPtr<FCkAudioDebugger_SpatialView> _SpatialView;

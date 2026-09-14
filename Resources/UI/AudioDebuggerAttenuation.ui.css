@@ -1,0 +1,13 @@
+.audio-attenuation-root { min-width: 0; }
+.audio-attenuation-heading { color: var(--audio-attenuation-dim); font-family: monospace; font-size: var(--audio-attenuation-micro-size); text-wrap: nowrap; }
+.audio-attenuation-curve-wrap { min-width: 0; padding: 4px 0 0 0; }
+.audio-attenuation-curve { min-width: 0; height: var(--audio-attenuation-curve-height); }
+.audio-attenuation-values { min-width: 0; padding: 8px 0 0 0; }
+.audio-attenuation-row { min-width: 0; padding: 2px 0; vertical-align: center; }
+.audio-attenuation-label { flex-grow: 1; color: var(--audio-attenuation-dim); font-family: monospace; font-size: var(--audio-attenuation-micro-size); text-wrap: nowrap; }
+.audio-attenuation-value { color: var(--audio-attenuation-dim); font-family: monospace; font-size: var(--audio-attenuation-value-size); text-wrap: nowrap; }
+.audio-attenuation-divider-wrap { min-width: 0; padding: 4px 0 0 0; }
+.audio-attenuation-divider { min-height: 1px; max-height: 1px; background-color: var(--audio-attenuation-border); }
+.audio-attenuation-audible-row { min-width: 0; padding: 4px 0; vertical-align: center; }
+.audio-attenuation-emphasis-label { color: var(--audio-attenuation-text); font-family: sans-serif; font-size: var(--audio-attenuation-row-size); font-weight: bold; }
+.audio-attenuation-emphasis-value { color: var(--audio-attenuation-text); }

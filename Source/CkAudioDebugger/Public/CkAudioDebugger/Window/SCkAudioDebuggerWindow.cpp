@@ -140,6 +140,13 @@ namespace ck_audio_debugger_window
             {TEXT("--audio-crossfade-border"), Color(CkStyle::Border())},
             {TEXT("--audio-crossfade-title-size"), FString::FromInt(Get_RowFont().Size)},
             {TEXT("--audio-crossfade-micro-size"), FString::FromInt(Get_MicroFont().Size)},
+            {TEXT("--audio-attenuation-text"), Color(CkStyle::Text())},
+            {TEXT("--audio-attenuation-dim"), Color(CkStyle::TextDim())},
+            {TEXT("--audio-attenuation-border"), Color(CkStyle::Border())},
+            {TEXT("--audio-attenuation-row-size"), FString::FromInt(Get_RowFont().Size)},
+            {TEXT("--audio-attenuation-value-size"), FString::FromInt(Get_MonoFont().Size)},
+            {TEXT("--audio-attenuation-micro-size"), FString::FromInt(Get_MicroFont().Size)},
+            {TEXT("--audio-attenuation-curve-height"), FString::SanitizeFloat(k_CurveHeight)},
         };
     }
 
@@ -241,6 +248,56 @@ namespace ck_audio_debugger_window
     }
 
     auto
+        Get_AttenuationBindings(
+            const TSharedPtr<FCkAudioDebugger_SpatialView>& InView)
+        -> FCkUiView::FDataBindings
+    {
+        auto Data = FCkUiView::FDataBindings{};
+        Data.SlateUserIndex = 0;
+        const auto BindText = [&Data, InView](const TCHAR* InName,
+            TFunction<FText(const FCkAudioDebugger_SpatialView&)> InProject)
+        {
+            Data.Text.Add(InName, TAttribute<FText>::CreateLambda(
+                [InView, Project = MoveTemp(InProject)]()
+                {
+                    return InView.IsValid() && InView->HasSpatialData
+                        ? Project(*InView) : FText::GetEmpty();
+                }));
+        };
+        BindText(TEXT("attenuation-heading"), [](const FCkAudioDebugger_SpatialView& InSpatial)
+        {
+            return FText::FromString(ck::Format_UE(TEXT("Why the audible volume is {}"),
+                FString::SanitizeFloat(InSpatial.AudibleVolume, 2)));
+        });
+        BindText(TEXT("attenuation-distance"), [](const FCkAudioDebugger_SpatialView& InSpatial)
+        {
+            return FText::FromString(ck::Format_UE(TEXT("{} m"),
+                FString::SanitizeFloat(InSpatial.DistanceCm / 100.0f, 1)));
+        });
+        BindText(TEXT("attenuation-bearing"), [](const FCkAudioDebugger_SpatialView& InSpatial)
+        {
+            return FText::FromString(ck::Format_UE(TEXT("{}°  {}"),
+                FMath::RoundToInt(InSpatial.BearingDegrees), Build_BearingText(InSpatial.BearingDegrees)));
+        });
+        BindText(TEXT("attenuation-gain"), [](const FCkAudioDebugger_SpatialView& InSpatial)
+        {
+            return FText::FromString(InSpatial.IsAttenuated
+                ? FString::SanitizeFloat(InSpatial.AttenuationGain, 2)
+                : FString{TEXT("n/a (not attenuated)")});
+        });
+        BindText(TEXT("attenuation-track-volume"), [](const FCkAudioDebugger_SpatialView& InSpatial)
+        { return FText::FromString(FString::SanitizeFloat(InSpatial.TrackVolume, 2)); });
+        BindText(TEXT("attenuation-audible"), [](const FCkAudioDebugger_SpatialView& InSpatial)
+        { return FText::FromString(FString::SanitizeFloat(InSpatial.AudibleVolume, 2)); });
+        BindText(TEXT("attenuation-asset"), [](const FCkAudioDebugger_SpatialView& InSpatial)
+        {
+            return FText::FromString(InSpatial.AttenuationAssetName.IsEmpty()
+                ? FString{TEXT("(none)")} : InSpatial.AttenuationAssetName);
+        });
+        return Data;
+    }
+
+    auto
         Build_EntityKey(
             const FCk_Handle& InHandle)
         -> FString
@@ -323,7 +380,10 @@ auto
 
     BuildAuthoredShell();
     if (NOT _UsingNativeFallback)
-    { BuildAuthoredCrossfadePage(); }
+    {
+        BuildAuthoredCrossfadePage();
+        BuildAuthoredAttenuationPanel();
+    }
     DoRebuild_OverlayActions();
     _SessionInvalidatedHandle = ck::DebugSessionLifecycle::Get_OnSessionInvalidated().AddSP(
         this, &SCkAudioDebuggerWindow::HandleSessionInvalidated);
@@ -342,6 +402,9 @@ SCkAudioDebuggerWindow::~SCkAudioDebuggerWindow()
     if (_CrossfadePageHost.IsValid())
     { _CrossfadePageHost->SetContent(SNullWidget::NullWidget); }
     _AuthoredCrossfadeView.Reset();
+    if (_AttenuationPanelHost.IsValid())
+    { _AttenuationPanelHost->SetContent(SNullWidget::NullWidget); }
+    _AuthoredAttenuationView.Reset();
     _AuthoredShellView.Reset();
 }
 
@@ -413,6 +476,8 @@ auto SCkAudioDebuggerWindow::PollAuthoredShell(const double InCurrentTime) -> vo
         _UsingNativeFallback ? BuildNativeContent() : _AuthoredShellView->GetRegion(TEXT("main")));
     if (NOT _UsingNativeFallback && NOT _AuthoredCrossfadeView.IsValid())
     { BuildAuthoredCrossfadePage(); }
+    if (NOT _UsingNativeFallback && NOT _AuthoredAttenuationView.IsValid())
+    { BuildAuthoredAttenuationPanel(); }
 }
 
 auto SCkAudioDebuggerWindow::BuildAuthoredCrossfadePage() -> void
@@ -460,6 +525,59 @@ auto SCkAudioDebuggerWindow::PollAuthoredCrossfadePage(const double InCurrentTim
     _CrossfadePageHost->SetContent(_UsingNativeCrossfadeFallback
         ? DoCreate_NativeCrossfadeLane(true, _CrossfadePagePlot.ToSharedRef())
         : _AuthoredCrossfadeView->GetRegion(TEXT("main")));
+}
+
+auto
+    SCkAudioDebuggerWindow::
+    BuildAuthoredAttenuationPanel()
+    -> void
+{
+    if (NOT _AttenuationPanelHost.IsValid() || NOT _AttenuationCurve.IsValid())
+    { return; }
+    const TSharedPtr<IPlugin> Plugin = IPluginManager::Get().FindPlugin(TEXT("CkDebugger"));
+    if (NOT Plugin.IsValid())
+    { return; }
+
+    _AttenuationPanelHost->SetContent(SNullWidget::NullWidget);
+    auto NativeBindings = FCkUiView::FNativeBindings{};
+    NativeBindings.Add(TEXT("attenuation-curve"), _AttenuationCurve.ToSharedRef());
+    const TSharedRef<FCkUiView> View = FCkUiView::Create(
+        MoveTemp(NativeBindings), {}, ck_audio_debugger_window::Get_AuthoredShellStyleTokens(),
+        CkStyle::RegularFont(CkStyle::FontSizeBody()),
+        ck_audio_debugger_window::Get_AttenuationBindings(_SpatialView));
+    const TSharedRef<SWidget> Main = View->GetRegion(TEXT("main"));
+    const FString Directory = FPaths::Combine(Plugin->GetBaseDir(), TEXT("Resources/UI"));
+    _AuthoredAttenuationMarkupPath = FPaths::Combine(Directory, TEXT("AudioDebuggerAttenuation.ui.html"));
+    _AuthoredAttenuationStylesheetPath = FPaths::Combine(Directory, TEXT("AudioDebuggerAttenuation.ui.css"));
+    View->SetFiles(_AuthoredAttenuationMarkupPath, _AuthoredAttenuationStylesheetPath);
+    _AuthoredAttenuationView = View;
+    View->PollFiles(ck_audio_debugger_window::Get_AuthoredShellStyleTokens());
+    _UsingNativeAttenuationFallback = NOT View->GetLastResult().Succeeded;
+    _AttenuationPanelHost->SetContent(_UsingNativeAttenuationFallback
+        ? DoCreate_NativeAttenuationPanel() : Main);
+}
+
+auto
+    SCkAudioDebuggerWindow::
+    PollAuthoredAttenuationPanel(
+        const double InCurrentTime)
+    -> void
+{
+    constexpr double PollIntervalSeconds = 0.5;
+    if (InCurrentTime < _NextAuthoredAttenuationPollSeconds || NOT _AuthoredAttenuationView.IsValid())
+    { return; }
+    _NextAuthoredAttenuationPollSeconds = InCurrentTime + PollIntervalSeconds;
+    const FCkUiView::FTokens StyleTokens = ck_audio_debugger_window::Get_AuthoredShellStyleTokens();
+    const bool ContentChanged = _AuthoredAttenuationView->PollFiles(StyleTokens);
+    if (NOT _UsingNativeAttenuationFallback || NOT ContentChanged)
+    { return; }
+
+    _AttenuationPanelHost->SetContent(SNullWidget::NullWidget);
+    _AuthoredAttenuationView->SetFiles(_AuthoredAttenuationMarkupPath, _AuthoredAttenuationStylesheetPath);
+    _AuthoredAttenuationView->PollFiles(StyleTokens);
+    _UsingNativeAttenuationFallback = NOT _AuthoredAttenuationView->GetLastResult().Succeeded;
+    _AttenuationPanelHost->SetContent(_UsingNativeAttenuationFallback
+        ? DoCreate_NativeAttenuationPanel() : _AuthoredAttenuationView->GetRegion(TEXT("main")));
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -905,36 +1023,85 @@ auto
 
 auto
     SCkAudioDebuggerWindow::
-    DoCreate_SpatialPage()
+    DoCreate_AttenuationPanel()
+    -> TSharedRef<SWidget>
+{
+    _AttenuationCurve = SNew(SCkAudioDebugger_FalloffCurve).View(_SpatialView);
+    return SAssignNew(_AttenuationPanelHost, SBox)
+    [
+        DoCreate_NativeAttenuationPanel()
+    ];
+}
+
+auto
+    SCkAudioDebuggerWindow::
+    DoCreate_NativeAttenuationPanel()
     -> TSharedRef<SWidget>
 {
     using namespace ck_audio_debugger_window;
-
-    const auto MakeStatRow = [](const FText& InLabel, TFunction<FText()> InValue, bool InEmphasise)
+    const auto Data = Get_AttenuationBindings(_SpatialView);
+    const auto MakeStatRow = [&Data](const TCHAR* InLabel, const TCHAR* InBinding, const bool InEmphasise)
         -> TSharedRef<SWidget>
     {
         return SNew(SHorizontalBox)
-
-            + SHorizontalBox::Slot()
-            .FillWidth(1.0f)
-            .VAlign(VAlign_Center)
+            + SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)
             [
                 SNew(STextBlock)
                 .Font_Static(InEmphasise ? &Get_RowFont : &Get_MicroFont)
                 .ColorAndOpacity(InEmphasise ? CkStyle::Text() : CkStyle::TextDim())
-                .Text(InLabel)
+                .Text(FText::FromString(InLabel))
             ]
-
-            + SHorizontalBox::Slot()
-            .AutoWidth()
-            .VAlign(VAlign_Center)
+            + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
             [
                 SNew(STextBlock)
                 .Font_Static(&Get_MonoFont)
                 .ColorAndOpacity(InEmphasise ? CkStyle::Text() : CkStyle::TextDim())
-                .Text_Lambda(MoveTemp(InValue))
+                .Text(Data.Text.FindRef(InBinding))
             ];
     };
+    constexpr auto OrdinaryRow = false;
+    constexpr auto EmphasisedRow = true;
+    return SNew(SVerticalBox)
+        + SVerticalBox::Slot().AutoHeight()
+        [
+            SNew(STextBlock)
+            .Font_Static(&Get_MicroFont)
+            .ColorAndOpacity(CkStyle::TextDim())
+            .Text(Data.Text.FindRef(TEXT("attenuation-heading")))
+        ]
+        + SVerticalBox::Slot().AutoHeight().Padding(0.0f, CkStyle::SpaceS, 0.0f, 0.0f)
+        [
+            SNew(SBox).HeightOverride(k_CurveHeight)
+            [_AttenuationCurve.ToSharedRef()]
+        ]
+        + SVerticalBox::Slot().AutoHeight().Padding(0.0f, CkStyle::SpaceM, 0.0f, 0.0f)
+        [
+            SNew(SVerticalBox)
+            + SVerticalBox::Slot().AutoHeight().Padding(0.0f, CkStyle::SpaceXS)
+            [MakeStatRow(TEXT("Distance"), TEXT("attenuation-distance"), OrdinaryRow)]
+            + SVerticalBox::Slot().AutoHeight().Padding(0.0f, CkStyle::SpaceXS)
+            [MakeStatRow(TEXT("Bearing"), TEXT("attenuation-bearing"), OrdinaryRow)]
+            + SVerticalBox::Slot().AutoHeight().Padding(0.0f, CkStyle::SpaceXS)
+            [MakeStatRow(TEXT("Attenuation gain"), TEXT("attenuation-gain"), OrdinaryRow)]
+            + SVerticalBox::Slot().AutoHeight().Padding(0.0f, CkStyle::SpaceXS)
+            [MakeStatRow(TEXT("Track volume"), TEXT("attenuation-track-volume"), OrdinaryRow)]
+            + SVerticalBox::Slot().AutoHeight().Padding(0.0f, CkStyle::SpaceS, 0.0f, 0.0f)
+            [SNew(SSeparator).Thickness(1.0f).ColorAndOpacity(FSlateColor{CkStyle::Border()})]
+            + SVerticalBox::Slot().AutoHeight().Padding(0.0f, CkStyle::SpaceS)
+            [MakeStatRow(TEXT("Audible"), TEXT("attenuation-audible"), EmphasisedRow)]
+            + SVerticalBox::Slot().AutoHeight().Padding(0.0f, CkStyle::SpaceXS)
+            [MakeStatRow(TEXT("Attenuation asset"), TEXT("attenuation-asset"), OrdinaryRow)]
+        ];
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkAudioDebuggerWindow::
+    DoCreate_SpatialPage()
+    -> TSharedRef<SWidget>
+{
+    using namespace ck_audio_debugger_window;
 
     const auto View = _SpatialView;
 
@@ -972,6 +1139,7 @@ auto
                     .Font_Static(&Get_MicroFont)
                     .ColorAndOpacity(CkStyle::TextMute())
                     .AutoWrapText(true)
+                    .Tag(FName{TEXT("audio-spatial-unavailable")})
                     .Visibility_Lambda([View]()
                     {
                         return View.IsValid() && View->HasSpatialData
@@ -998,6 +1166,7 @@ auto
                 .AutoHeight()
                 [
                     SNew(SHorizontalBox)
+                    .Tag(FName{TEXT("audio-spatial-plots")})
                     .Visibility_Lambda([View]()
                     {
                         return View.IsValid() && View->HasSpatialData
@@ -1048,135 +1217,7 @@ auto
                     .FillWidth(1.0f)
                     .Padding(CkStyle::SpaceXL, 0.0f, 0.0f, 0.0f)
                     [
-                        SNew(SVerticalBox)
-
-                        + SVerticalBox::Slot()
-                        .AutoHeight()
-                        [
-                            SNew(STextBlock)
-                            .Font_Static(&Get_MicroFont)
-                            .ColorAndOpacity(CkStyle::TextDim())
-                            .Text_Lambda([View]()
-                            {
-                                if (NOT View.IsValid())
-                                { return FText::GetEmpty(); }
-
-                                return FText::FromString(ck::Format_UE(TEXT("Why the audible volume is {}"),
-                                    FString::SanitizeFloat(View->AudibleVolume, 2)));
-                            })
-                        ]
-
-                        + SVerticalBox::Slot()
-                        .AutoHeight()
-                        .Padding(0.0f, CkStyle::SpaceS, 0.0f, 0.0f)
-                        [
-                            SNew(SBox)
-                            .HeightOverride(k_CurveHeight)
-                            [
-                                SNew(SCkAudioDebugger_FalloffCurve)
-                                .View(_SpatialView)
-                            ]
-                        ]
-
-                        + SVerticalBox::Slot()
-                        .AutoHeight()
-                        .Padding(0.0f, CkStyle::SpaceM, 0.0f, 0.0f)
-                        [
-                            SNew(SVerticalBox)
-
-                            + SVerticalBox::Slot()
-                            .AutoHeight()
-                            .Padding(0.0f, CkStyle::SpaceXS)
-                            [
-                                MakeStatRow(FText::FromString(TEXT("Distance")), [View]()
-                                {
-                                    return View.IsValid()
-                                        ? FText::FromString(ck::Format_UE(TEXT("{} m"),
-                                            FString::SanitizeFloat(View->DistanceCm / 100.0f, 1)))
-                                        : FText::GetEmpty();
-                                }, false)
-                            ]
-
-                            + SVerticalBox::Slot()
-                            .AutoHeight()
-                            .Padding(0.0f, CkStyle::SpaceXS)
-                            [
-                                MakeStatRow(FText::FromString(TEXT("Bearing")), [View]()
-                                {
-                                    if (NOT View.IsValid())
-                                    { return FText::GetEmpty(); }
-
-                                    return FText::FromString(ck::Format_UE(TEXT("{}°  {}"),
-                                        FMath::RoundToInt(View->BearingDegrees),
-                                        Build_BearingText(View->BearingDegrees)));
-                                }, false)
-                            ]
-
-                            + SVerticalBox::Slot()
-                            .AutoHeight()
-                            .Padding(0.0f, CkStyle::SpaceXS)
-                            [
-                                MakeStatRow(FText::FromString(TEXT("Attenuation gain")), [View]()
-                                {
-                                    if (NOT View.IsValid())
-                                    { return FText::GetEmpty(); }
-
-                                    return FText::FromString(View->IsAttenuated
-                                        ? FString::SanitizeFloat(View->AttenuationGain, 2)
-                                        : FString{TEXT("n/a (not attenuated)")});
-                                }, false)
-                            ]
-
-                            + SVerticalBox::Slot()
-                            .AutoHeight()
-                            .Padding(0.0f, CkStyle::SpaceXS)
-                            [
-                                MakeStatRow(FText::FromString(TEXT("Track volume")), [View]()
-                                {
-                                    return View.IsValid()
-                                        ? FText::FromString(FString::SanitizeFloat(View->TrackVolume, 2))
-                                        : FText::GetEmpty();
-                                }, false)
-                            ]
-
-                            + SVerticalBox::Slot()
-                            .AutoHeight()
-                            .Padding(0.0f, CkStyle::SpaceS, 0.0f, 0.0f)
-                            [
-                                SNew(SSeparator)
-                                .Thickness(1.0f)
-                                .ColorAndOpacity(FSlateColor{CkStyle::Border()})
-                            ]
-
-                            // The product, stated as its own row. A reader who takes only one number off this page
-                            // must take this one — it is the only one that says whether the sound is heard.
-                            + SVerticalBox::Slot()
-                            .AutoHeight()
-                            .Padding(0.0f, CkStyle::SpaceS)
-                            [
-                                MakeStatRow(FText::FromString(TEXT("Audible")), [View]()
-                                {
-                                    return View.IsValid()
-                                        ? FText::FromString(FString::SanitizeFloat(View->AudibleVolume, 2))
-                                        : FText::GetEmpty();
-                                }, true)
-                            ]
-
-                            + SVerticalBox::Slot()
-                            .AutoHeight()
-                            .Padding(0.0f, CkStyle::SpaceXS)
-                            [
-                                MakeStatRow(FText::FromString(TEXT("Attenuation asset")), [View]()
-                                {
-                                    if (NOT View.IsValid())
-                                    { return FText::GetEmpty(); }
-
-                                    return FText::FromString(View->AttenuationAssetName.IsEmpty()
-                                        ? FString{TEXT("(none)")}
-                                        : View->AttenuationAssetName);
-                                }, false)
-                            ]
-                        ]
+                        DoCreate_AttenuationPanel()
                     ]
                 ]
 
@@ -1382,6 +1423,7 @@ auto
     SCkDebugger_WindowBase::Tick(InAllottedGeometry, InCurrentTime, InDeltaTime);
     PollAuthoredShell(InCurrentTime);
     PollAuthoredCrossfadePage(InCurrentTime);
+    PollAuthoredAttenuationPanel(InCurrentTime);
 
     UWorld* World = DoGet_PieWorld();
     if (World == _InvalidatedWorld.Get())
@@ -1447,6 +1489,7 @@ auto
     // detachment. Polling here could consume a restored-file change while the fallback still owns those ports.
     _NextAuthoredShellPollSeconds = 0.0;
     _NextAuthoredCrossfadePollSeconds = 0.0;
+    _NextAuthoredAttenuationPollSeconds = 0.0;
     // Force the next tick through the structure pass so the rows pick the new palette up; the cells themselves carry
     // no style.
     _LastSignature.Reset();

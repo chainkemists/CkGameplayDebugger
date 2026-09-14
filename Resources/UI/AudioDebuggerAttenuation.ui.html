@@ -1,0 +1,39 @@
+<ui version="1">
+  <region name="main">
+    <column id="audio-attenuation-root" class="audio-attenuation-root">
+      <text id="audio-attenuation-heading" bind="attenuation-heading" class="audio-attenuation-heading" />
+      <column id="audio-attenuation-curve-wrap" class="audio-attenuation-curve-wrap">
+        <native id="audio-attenuation-curve" bind="attenuation-curve" class="audio-attenuation-curve" />
+      </column>
+      <column id="audio-attenuation-values" class="audio-attenuation-values">
+        <row id="audio-attenuation-distance-row" class="audio-attenuation-row">
+          <text id="audio-attenuation-distance-label" class="audio-attenuation-label">Distance</text>
+          <text id="audio-attenuation-distance" bind="attenuation-distance" class="audio-attenuation-value" />
+        </row>
+        <row id="audio-attenuation-bearing-row" class="audio-attenuation-row">
+          <text id="audio-attenuation-bearing-label" class="audio-attenuation-label">Bearing</text>
+          <text id="audio-attenuation-bearing" bind="attenuation-bearing" class="audio-attenuation-value" />
+        </row>
+        <row id="audio-attenuation-gain-row" class="audio-attenuation-row">
+          <text id="audio-attenuation-gain-label" class="audio-attenuation-label">Attenuation gain</text>
+          <text id="audio-attenuation-gain" bind="attenuation-gain" class="audio-attenuation-value" />
+        </row>
+        <row id="audio-attenuation-track-volume-row" class="audio-attenuation-row">
+          <text id="audio-attenuation-track-volume-label" class="audio-attenuation-label">Track volume</text>
+          <text id="audio-attenuation-track-volume" bind="attenuation-track-volume" class="audio-attenuation-value" />
+        </row>
+        <column id="audio-attenuation-divider-wrap" class="audio-attenuation-divider-wrap">
+          <row id="audio-attenuation-divider" class="audio-attenuation-divider" />
+        </column>
+        <row id="audio-attenuation-audible-row" class="audio-attenuation-audible-row">
+          <text id="audio-attenuation-audible-label" class="audio-attenuation-label audio-attenuation-emphasis-label">Audible</text>
+          <text id="audio-attenuation-audible" bind="attenuation-audible" class="audio-attenuation-value audio-attenuation-emphasis-value" />
+        </row>
+        <row id="audio-attenuation-asset-row" class="audio-attenuation-row">
+          <text id="audio-attenuation-asset-label" class="audio-attenuation-label">Attenuation asset</text>
+          <text id="audio-attenuation-asset" bind="attenuation-asset" class="audio-attenuation-value" />
+        </row>
+      </column>
+    </column>
+  </region>
+</ui>

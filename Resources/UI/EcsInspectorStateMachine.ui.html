@@ -1,0 +1,59 @@
+<ui version="1">
+  <region name="main">
+    <column id="sm-inspector" class="sm-inspector">
+      <column id="sm-root" visible="sm-root" class="sm-section">
+        <text id="sm-root-heading" class="sm-heading">State Machine</text>
+        <row id="sm-status-row" class="sm-row"><text id="sm-status-label" color-bind="sm-status-diff" class="sm-label">Status:</text><debug-status id="sm-status" label-bind="sm-status" foreground-bind="sm-status-foreground" background-bind="sm-status-background" show-dot="true" /></row>
+        <row id="sm-current-state-row" class="sm-row"><text id="sm-current-state-label" color-bind="sm-current-state-diff" class="sm-label">Current State:</text><debug-status id="sm-current-state" label-bind="sm-current-state" foreground-bind="sm-current-state-foreground" background-bind="sm-current-state-background" show-dot="true" /></row>
+        <row id="sm-control-row" visible="sm-controls-visible" class="sm-row">
+          <text id="sm-control-label" color-bind="sm-control-diff" class="sm-label">Control:</text>
+          <row id="sm-actions" class="sm-actions">
+            <debug-inspector-action id="sm-start" label-bind="sm-start-label" action="sm-start" enabled-bind="sm-can-request" tooltip-bind="sm-start-tooltip" disabled-reason-bind="sm-disabled-reason" />
+            <debug-inspector-action id="sm-stop" label-bind="sm-stop-label" action="sm-stop" enabled-bind="sm-can-request" tooltip-bind="sm-stop-tooltip" disabled-reason-bind="sm-disabled-reason" />
+            <debug-inspector-action id="sm-pause" label-bind="sm-pause-label" action="sm-pause" enabled-bind="sm-can-request" tooltip-bind="sm-pause-tooltip" disabled-reason-bind="sm-disabled-reason" />
+            <debug-inspector-action id="sm-resume" label-bind="sm-resume-label" action="sm-resume" enabled-bind="sm-can-request" tooltip-bind="sm-resume-tooltip" disabled-reason-bind="sm-disabled-reason" />
+          </row>
+        </row>
+      </column>
+      <column id="sm-pending" visible="sm-pending" class="sm-section">
+        <text id="sm-pending-heading" class="sm-heading">Pending Transition</text>
+        <row id="sm-pending-from-row" class="sm-row"><text id="sm-pending-from-label" color-bind="sm-pending-from-diff" class="sm-label">From:</text><text id="sm-pending-from" bind="sm-pending-from" color-bind="sm-object-color" /></row>
+        <row id="sm-pending-to-row" class="sm-row"><text id="sm-pending-to-label" color-bind="sm-pending-to-diff" class="sm-label">To:</text><text id="sm-pending-to" bind="sm-pending-to" color-bind="sm-object-color" /></row>
+      </column>
+      <column id="sm-debug" visible="sm-debug" class="sm-section">
+        <text id="sm-debug-heading" class="sm-heading">Debug</text>
+        <row id="sm-run-row" class="sm-row"><text id="sm-run-label" color-bind="sm-run-diff" class="sm-label">Run #:</text><text id="sm-run" bind="sm-run" color-bind="sm-numeric-color" /></row>
+        <row id="sm-entered-at-row" class="sm-row"><text id="sm-entered-at-label" color-bind="sm-entered-at-diff" class="sm-label">State Entered At:</text><text id="sm-entered-at" bind="sm-entered-at" color-bind="sm-numeric-color" /></row>
+        <text id="sm-history-heading" bind="sm-history-title" class="sm-heading" />
+        <row id="sm-history-empty" visible="sm-history-empty" class="sm-row"><text id="sm-empty-label" color-bind="sm-empty-diff" class="sm-label">(empty)</text><text id="sm-empty-value" class="sm-muted">--</text></row>
+        <row id="sm-timeline-row" visible="sm-history-populated" class="sm-row"><text id="sm-timeline-label" color-bind="sm-timeline-diff" class="sm-label">Timeline:</text><native id="sm-timeline" bind="sm-timeline-port" class="sm-timeline" /></row>
+        <repeat id="sm-history" bind="sm-history" direction="vertical" class="sm-history">
+          <row id="sm-history-row" class="sm-row"><text id="sm-history-label" bind-field="label" color-field="diff-color" class="sm-label" /><text id="sm-history-value" bind-field="value" color-bind="sm-object-color" /></row>
+        </repeat>
+      </column>
+      <column id="sm-state" visible="sm-state" class="sm-section">
+        <text id="sm-state-heading" class="sm-heading">State</text>
+        <row id="sm-state-class-row" class="sm-row"><text id="sm-state-class-label" color-bind="sm-class-diff" class="sm-label">Class:</text><text id="sm-state-class" bind="sm-state-class" color-bind="sm-object-color" /></row>
+        <row id="sm-state-requested-row" visible="sm-state-requested" class="sm-row"><text id="sm-state-requested-label" color-bind="sm-requested-diff" class="sm-label">Requested:</text><text id="sm-state-requested" bind="sm-state-requested" color-bind="sm-object-color" /></row>
+        <row id="sm-state-hierarchy-row" visible="sm-state-hierarchy" class="sm-row"><text id="sm-state-hierarchy-label" color-bind="sm-hierarchy-diff" class="sm-label">Hierarchy:</text><text id="sm-state-hierarchy" bind="sm-state-hierarchy" color-bind="sm-tag-color" /></row>
+      </column>
+      <column id="sm-task" visible="sm-task" class="sm-section">
+        <text id="sm-task-heading" class="sm-heading">Task</text>
+        <row id="sm-task-class-row" visible="sm-task-class" class="sm-row"><text id="sm-task-class-label" color-bind="sm-class-diff" class="sm-label">Class:</text><text id="sm-task-class" bind="sm-task-class" color-bind="sm-object-color" /></row>
+        <row id="sm-task-result-row" visible="sm-task-result" class="sm-row"><text id="sm-task-result-label" color-bind="sm-result-diff" class="sm-label">Result:</text><debug-status id="sm-task-result" label-bind="sm-task-result" foreground-bind="sm-task-result-foreground" background-bind="sm-task-result-background" show-dot="true" /></row>
+        <row id="sm-sub-sm-row" visible="sm-sub-sm" class="sm-row"><text id="sm-sub-sm-label" color-bind="sm-sub-sm-diff" class="sm-label">Sub SM:</text><debug-entity-ref id="sm-sub-sm" entity-id-bind="sm-sub-sm-id" name-bind="sm-sub-sm-name" action="sm-sub-sm-navigate" show-name="true" /></row>
+      </column>
+      <column id="sm-transition" visible="sm-transition" class="sm-section">
+        <text id="sm-transition-heading" class="sm-heading">Transition</text>
+        <row id="sm-transition-target-row" visible="sm-transition-target" class="sm-row"><text id="sm-transition-target-label" color-bind="sm-target-diff" class="sm-label">Target:</text><text id="sm-transition-target" bind="sm-transition-target" color-bind="sm-object-color" /></row>
+        <row id="sm-transition-result-row" visible="sm-transition-result" class="sm-row"><text id="sm-transition-result-label" color-bind="sm-result-diff" class="sm-label">Result:</text><debug-status id="sm-transition-result" label-bind="sm-transition-result" foreground-bind="sm-transition-result-foreground" background-bind="sm-transition-result-background" show-dot="true" /></row>
+      </column>
+      <column id="sm-condition" visible="sm-condition" class="sm-section">
+        <text id="sm-condition-heading" class="sm-heading">Condition</text>
+        <row id="sm-condition-class-row" visible="sm-condition-class" class="sm-row"><text id="sm-condition-class-label" color-bind="sm-class-diff" class="sm-label">Class:</text><text id="sm-condition-class" bind="sm-condition-class" color-bind="sm-object-color" /></row>
+        <row id="sm-condition-result-row" visible="sm-condition-result" class="sm-row"><text id="sm-condition-result-label" color-bind="sm-result-diff" class="sm-label">Result:</text><debug-status id="sm-condition-result" label-bind="sm-condition-result" foreground-bind="sm-condition-result-foreground" background-bind="sm-condition-result-background" show-dot="true" /></row>
+      </column>
+      <text id="sm-unavailable" visible="sm-unavailable" class="sm-muted">State Machine unavailable.</text>
+    </column>
+  </region>
+</ui>

@@ -147,6 +147,8 @@ namespace ck_audio_debugger_window
             {TEXT("--audio-attenuation-value-size"), FString::FromInt(Get_MonoFont().Size)},
             {TEXT("--audio-attenuation-micro-size"), FString::FromInt(Get_MicroFont().Size)},
             {TEXT("--audio-attenuation-curve-height"), FString::SanitizeFloat(k_CurveHeight)},
+            {TEXT("--audio-events-muted"), Color(CkStyle::TextMute())},
+            {TEXT("--audio-events-micro-size"), FString::FromInt(Get_MicroFont().Size)},
         };
     }
 
@@ -383,6 +385,7 @@ auto
     {
         BuildAuthoredCrossfadePage();
         BuildAuthoredAttenuationPanel();
+        BuildAuthoredEventsToolbar();
     }
     DoRebuild_OverlayActions();
     _SessionInvalidatedHandle = ck::DebugSessionLifecycle::Get_OnSessionInvalidated().AddSP(
@@ -405,6 +408,9 @@ SCkAudioDebuggerWindow::~SCkAudioDebuggerWindow()
     if (_AttenuationPanelHost.IsValid())
     { _AttenuationPanelHost->SetContent(SNullWidget::NullWidget); }
     _AuthoredAttenuationView.Reset();
+    if (_EventsToolbarHost.IsValid())
+    { _EventsToolbarHost->SetContent(SNullWidget::NullWidget); }
+    _AuthoredEventsToolbarView.Reset();
     _AuthoredShellView.Reset();
 }
 
@@ -478,6 +484,8 @@ auto SCkAudioDebuggerWindow::PollAuthoredShell(const double InCurrentTime) -> vo
     { BuildAuthoredCrossfadePage(); }
     if (NOT _UsingNativeFallback && NOT _AuthoredAttenuationView.IsValid())
     { BuildAuthoredAttenuationPanel(); }
+    if (NOT _UsingNativeFallback && NOT _AuthoredEventsToolbarView.IsValid())
+    { BuildAuthoredEventsToolbar(); }
 }
 
 auto SCkAudioDebuggerWindow::BuildAuthoredCrossfadePage() -> void
@@ -1291,30 +1299,145 @@ auto
 
 auto
     SCkAudioDebuggerWindow::
+    BuildAuthoredEventsToolbar()
+    -> void
+{
+    if (NOT _EventsToolbarHost.IsValid() || NOT _EventsStateToggle.IsValid()
+        || NOT _EventsFadesToggle.IsValid() || NOT _EventsVirtualizationToggle.IsValid()
+        || NOT _EventsLifecycleToggle.IsValid())
+    { return; }
+    const TSharedPtr<IPlugin> Plugin = IPluginManager::Get().FindPlugin(TEXT("CkDebugger"));
+    if (NOT Plugin.IsValid())
+    { return; }
+
+    _EventsToolbarHost->SetContent(SNullWidget::NullWidget);
+    auto NativeBindings = FCkUiView::FNativeBindings{};
+    NativeBindings.Add(TEXT("events-state"), _EventsStateToggle.ToSharedRef());
+    NativeBindings.Add(TEXT("events-fades"), _EventsFadesToggle.ToSharedRef());
+    NativeBindings.Add(TEXT("events-virtualization"), _EventsVirtualizationToggle.ToSharedRef());
+    NativeBindings.Add(TEXT("events-lifecycle"), _EventsLifecycleToggle.ToSharedRef());
+    auto Data = FCkUiView::FDataBindings{};
+    Data.SlateUserIndex = 0;
+    const TWeakPtr<SCkAudioDebuggerWindow> WeakWindow = SharedThis(this);
+    Data.CanDispatchEvents = TAttribute<bool>::CreateLambda([WeakWindow]() { return WeakWindow.IsValid(); });
+    const TSharedRef<FCkUiView> View = FCkUiView::Create(
+        MoveTemp(NativeBindings), {}, ck_audio_debugger_window::Get_AuthoredShellStyleTokens(),
+        CkStyle::RegularFont(CkStyle::FontSizeBody()), MoveTemp(Data));
+    const TSharedRef<SWidget> Main = View->GetRegion(TEXT("main"));
+    const FString Directory = FPaths::Combine(Plugin->GetBaseDir(), TEXT("Resources/UI"));
+    _AuthoredEventsToolbarMarkupPath = FPaths::Combine(Directory, TEXT("AudioDebuggerEventsToolbar.ui.html"));
+    _AuthoredEventsToolbarStylesheetPath = FPaths::Combine(Directory, TEXT("AudioDebuggerEventsToolbar.ui.css"));
+    View->SetFiles(_AuthoredEventsToolbarMarkupPath, _AuthoredEventsToolbarStylesheetPath);
+    _AuthoredEventsToolbarView = View;
+    View->PollFiles(ck_audio_debugger_window::Get_AuthoredShellStyleTokens());
+    _UsingNativeEventsToolbarFallback = NOT View->GetLastResult().Succeeded;
+    _EventsToolbarHost->SetContent(_UsingNativeEventsToolbarFallback ? DoCreate_NativeEventsToolbar() : Main);
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkAudioDebuggerWindow::
+    PollAuthoredEventsToolbar(
+        const double InCurrentTime)
+    -> void
+{
+    constexpr double PollIntervalSeconds = 0.5;
+    if (InCurrentTime < _NextAuthoredEventsToolbarPollSeconds || NOT _AuthoredEventsToolbarView.IsValid())
+    { return; }
+    _NextAuthoredEventsToolbarPollSeconds = InCurrentTime + PollIntervalSeconds;
+    const FCkUiView::FTokens StyleTokens = ck_audio_debugger_window::Get_AuthoredShellStyleTokens();
+    const bool ContentChanged = _AuthoredEventsToolbarView->PollFiles(StyleTokens);
+    if (NOT _UsingNativeEventsToolbarFallback || NOT ContentChanged)
+    { return; }
+
+    // The fallback owns all four ports. Release it before the bounded retry so admission cannot steal children.
+    _EventsToolbarHost->SetContent(SNullWidget::NullWidget);
+    _AuthoredEventsToolbarView->SetFiles(_AuthoredEventsToolbarMarkupPath, _AuthoredEventsToolbarStylesheetPath);
+    _AuthoredEventsToolbarView->PollFiles(StyleTokens);
+    _UsingNativeEventsToolbarFallback = NOT _AuthoredEventsToolbarView->GetLastResult().Succeeded;
+    _EventsToolbarHost->SetContent(_UsingNativeEventsToolbarFallback
+        ? DoCreate_NativeEventsToolbar() : _AuthoredEventsToolbarView->GetRegion(TEXT("main")));
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkAudioDebuggerWindow::
     DoCreate_EventsPage()
     -> TSharedRef<SWidget>
 {
     using namespace ck_audio_debugger_window;
 
-    const auto MakeKindToggle = [this](const FText& InLabel, ECk_Tone InTone, bool* InFlag) -> TSharedRef<SWidget>
+    const TWeakPtr<SCkAudioDebuggerWindow> WeakWindow = SharedThis(this);
+    const auto MakeKindToggle = [WeakWindow](const FText& InLabel, ECk_Tone InTone,
+        bool SCkAudioDebuggerWindow::* InFlag) -> TSharedRef<SCkDebug_ToggleSurface>
     {
         return SNew(SCkDebug_ToggleSurface)
-            .IsOn_Lambda([InFlag]() { return *InFlag; })
+            .IsOn_Lambda([WeakWindow, InFlag]()
+            {
+                const TSharedPtr<SCkAudioDebuggerWindow> Window = WeakWindow.Pin();
+                return Window.IsValid() && Window.Get()->*InFlag;
+            })
+            .IsEnabled_Lambda([WeakWindow]() { return WeakWindow.IsValid(); })
             .AccessibleText(InLabel)
             .ToolTipText(FText::Format(FText::FromString(TEXT("Log {0} events")), InLabel))
-            .OnStateChanged_Lambda([InFlag](const bool InOn) { *InFlag = InOn; })
+            .OnStateChanged_Lambda([WeakWindow, InFlag](const bool InOn)
+            {
+                // These are window preferences, not world actions: no session-generation or HasWorld gate.
+                if (const TSharedPtr<SCkAudioDebuggerWindow> Window = WeakWindow.Pin())
+                { Window.Get()->*InFlag = InOn; }
+            })
             [
                 SNew(SCkDebug_StatusPill)
                 .Text(InLabel)
-                .Tone_Lambda([InFlag, InTone]() { return *InFlag ? InTone : ECk_Tone::Neutral; })
+                .Tone_Lambda([WeakWindow, InFlag, InTone]()
+                {
+                    const TSharedPtr<SCkAudioDebuggerWindow> Window = WeakWindow.Pin();
+                    return Window.IsValid() && Window.Get()->*InFlag ? InTone : ECk_Tone::Neutral;
+                })
                 .ShowDot(false)
             ];
     };
 
-    return SNew(SVerticalBox)
+    _EventsStateToggle = MakeKindToggle(FText::FromString(TEXT("State")), ECk_Tone::Ok,
+        &SCkAudioDebuggerWindow::_EventsShowStateChanges);
+    _EventsFadesToggle = MakeKindToggle(FText::FromString(TEXT("Fades")), ECk_Tone::Warn,
+        &SCkAudioDebuggerWindow::_EventsShowFades);
+    _EventsVirtualizationToggle = MakeKindToggle(FText::FromString(TEXT("Virtualization")), ECk_Tone::Err,
+        &SCkAudioDebuggerWindow::_EventsShowVirtualization);
+    _EventsLifecycleToggle = MakeKindToggle(FText::FromString(TEXT("Lifecycle")), ECk_Tone::Accent,
+        &SCkAudioDebuggerWindow::_EventsShowLifecycle);
 
+    return SNew(SVerticalBox)
         + SVerticalBox::Slot()
         .AutoHeight()
+        [
+            SAssignNew(_EventsToolbarHost, SBox)
+            [
+                DoCreate_NativeEventsToolbar()
+            ]
+        ]
+        + SVerticalBox::Slot()
+        .FillHeight(1.0f)
+        .Padding(CkStyle::SpaceL, 0.0f, CkStyle::SpaceL, CkStyle::SpaceM)
+        [
+            SAssignNew(_EventLog, SCkDebug_EventLog)
+            .MaxEntries(k_EventLogCapacity)
+            .EmptyText(FText::FromString(TEXT("Nothing has changed since this window opened.")))
+        ];
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkAudioDebuggerWindow::
+    DoCreate_NativeEventsToolbar()
+    -> TSharedRef<SWidget>
+{
+    using namespace ck_audio_debugger_window;
+
+    return SNew(SBox)
         .Padding(CkStyle::SpaceL, CkStyle::SpaceM, CkStyle::SpaceL, CkStyle::SpaceS)
         [
             SNew(SHorizontalBox)
@@ -1324,7 +1447,7 @@ auto
             .VAlign(VAlign_Center)
             .Padding(0.0f, 0.0f, CkStyle::SpaceS, 0.0f)
             [
-                MakeKindToggle(FText::FromString(TEXT("State")), ECk_Tone::Ok, &_EventsShowStateChanges)
+                _EventsStateToggle.ToSharedRef()
             ]
 
             + SHorizontalBox::Slot()
@@ -1332,7 +1455,7 @@ auto
             .VAlign(VAlign_Center)
             .Padding(0.0f, 0.0f, CkStyle::SpaceS, 0.0f)
             [
-                MakeKindToggle(FText::FromString(TEXT("Fades")), ECk_Tone::Warn, &_EventsShowFades)
+                _EventsFadesToggle.ToSharedRef()
             ]
 
             + SHorizontalBox::Slot()
@@ -1340,14 +1463,14 @@ auto
             .VAlign(VAlign_Center)
             .Padding(0.0f, 0.0f, CkStyle::SpaceS, 0.0f)
             [
-                MakeKindToggle(FText::FromString(TEXT("Virtualization")), ECk_Tone::Err, &_EventsShowVirtualization)
+                _EventsVirtualizationToggle.ToSharedRef()
             ]
 
             + SHorizontalBox::Slot()
             .AutoWidth()
             .VAlign(VAlign_Center)
             [
-                MakeKindToggle(FText::FromString(TEXT("Lifecycle")), ECk_Tone::Accent, &_EventsShowLifecycle)
+                _EventsLifecycleToggle.ToSharedRef()
             ]
 
             // Said on the page, not buried in a header comment. The log is derived by diffing successive refreshes
@@ -1364,15 +1487,6 @@ auto
                 .ColorAndOpacity(CkStyle::TextMute())
                 .Text(FText::FromString(TEXT("sampled at the refresh rate — sub-tick transitions are not captured")))
             ]
-        ]
-
-        + SVerticalBox::Slot()
-        .FillHeight(1.0f)
-        .Padding(CkStyle::SpaceL, 0.0f, CkStyle::SpaceL, CkStyle::SpaceM)
-        [
-            SAssignNew(_EventLog, SCkDebug_EventLog)
-            .MaxEntries(k_EventLogCapacity)
-            .EmptyText(FText::FromString(TEXT("Nothing has changed since this window opened.")))
         ];
 }
 
@@ -1424,6 +1538,7 @@ auto
     PollAuthoredShell(InCurrentTime);
     PollAuthoredCrossfadePage(InCurrentTime);
     PollAuthoredAttenuationPanel(InCurrentTime);
+    PollAuthoredEventsToolbar(InCurrentTime);
 
     UWorld* World = DoGet_PieWorld();
     if (World == _InvalidatedWorld.Get())
@@ -1490,6 +1605,7 @@ auto
     _NextAuthoredShellPollSeconds = 0.0;
     _NextAuthoredCrossfadePollSeconds = 0.0;
     _NextAuthoredAttenuationPollSeconds = 0.0;
+    _NextAuthoredEventsToolbarPollSeconds = 0.0;
     // Force the next tick through the structure pass so the rows pick the new palette up; the cells themselves carry
     // no style.
     _LastSignature.Reset();

@@ -46,6 +46,7 @@ struct FCkAudioDebugger_TrackWatch
     bool IsVirtualized = false;
     bool WasFading = false;
 
+    FString TrackName;
     FString DirectorName;
 };
 
@@ -174,8 +175,26 @@ private:
     DoRebuild_OverlayList() -> void;
 
     auto
+    DoRebuild_OverlayActions() -> void;
+
+    auto
     DoSet_DebugDrawOnAll(
-        bool InEnabled) -> void;
+        bool InEnabled,
+        int64 InGeneration) -> void;
+
+    auto
+    CanDispatch_RuntimeAction(
+        int64 InGeneration) const -> bool;
+
+    auto
+    DoInvalidate_RuntimeState() -> void;
+
+    auto
+    HandleSessionInvalidated() -> void;
+
+    auto
+    HandleWorldInvalidated(
+        UWorld* InWorld) -> void;
 
     /** The track the Spatial page is inspecting. Falls back to the most diagnostic one — virtualized, then
      *  out-of-range, then loudest — because a page that opened on an arbitrary track would bury the reason the reader
@@ -266,6 +285,7 @@ private:
     TSharedPtr<STextBlock>      _CrossfadeLegendText;
 
     TSharedPtr<SHorizontalBox>  _SpatialSelectorBox;
+    TSharedPtr<SHorizontalBox>  _OverlayActionsBox;
     TSharedPtr<SVerticalBox>    _OverlayListBox;
     TSharedPtr<SCkDebug_EventLog> _EventLog;
 
@@ -281,8 +301,9 @@ private:
     // that correspondence: any change to the set rebuilds before the value pass runs.
     TArray<FCkAudioDebugger_TrackSlot>    _TrackSlots;
     TArray<FCkAudioDebugger_DirectorSlot> _DirectorSlots;
+    TArray<FCkAudioDebugger_DirectorSlot> _DirectorPageSlots;
 
-    /** Ring per track name, oldest first. Shared so the sparkline reads the same array the refresh mutates in place —
+    /** Ring per track entity identity, oldest first. Shared so the sparkline reads the same array the refresh mutates in place —
      *  the widget is volatile and follows without invalidation plumbing. */
     TMap<FString, TSharedPtr<TArray<float>>> _VolumeHistory;
 
@@ -294,7 +315,7 @@ private:
 
     TArray<FString> _CrossfadeSeriesNames;
 
-    /** Previous refresh's per-track state, keyed by track name — the Events page's entire memory. */
+    /** Previous refresh's per-track state, keyed by track entity identity — the Events page's entire memory. */
     TMap<FString, FCkAudioDebugger_TrackWatch> _TrackWatch;
 
     /** Guards the very first diff. Without it every track present at open would be reported as having just started,
@@ -308,7 +329,13 @@ private:
     FString _HighlightString;
 
     /** Empty means "follow the most diagnostic track"; set by the Spatial page's selector. */
-    FString _SelectedSpatialTrack;
+    FString _SelectedSpatialTrackKey;
+
+    TWeakObjectPtr<UWorld> _ObservedWorld;
+    TWeakObjectPtr<UWorld> _InvalidatedWorld;
+    FDelegateHandle _SessionInvalidatedHandle;
+    FDelegateHandle _WorldInvalidatedHandle;
+    int64 _RuntimeGeneration = 0;
 
     ECkAudioDebugger_Page _ActivePage = ECkAudioDebugger_Page::Tracks;
 

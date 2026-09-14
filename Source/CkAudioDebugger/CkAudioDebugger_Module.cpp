@@ -66,10 +66,19 @@ auto FCkAudioDebuggerModule::StartupModule() -> void
         40}
         .Set_TabFactory(FCkDebuggerToolTabFactory::CreateLambda([this]
         { return OnSpawnDebuggerTab(FSpawnTabArgs{TSharedPtr<SWindow>{}, FTabId{_DebuggerTabName}}); })));
+
+    _EnginePreExitHandle = FCoreDelegates::OnEnginePreExit.AddRaw(
+        this, &FCkAudioDebuggerModule::HandleEnginePreExit);
 }
 
 auto FCkAudioDebuggerModule::ShutdownModule() -> void
 {
+    if (_EnginePreExitHandle.IsValid())
+    {
+        FCoreDelegates::OnEnginePreExit.Remove(_EnginePreExitHandle);
+        _EnginePreExitHandle.Reset();
+    }
+
     FCkDebuggerToolRegistry::Get().Unregister(_DebuggerTabName, _DebuggerToolRegistrationId);
     _DebuggerToolRegistrationId = 0;
 
@@ -80,6 +89,14 @@ auto FCkAudioDebuggerModule::ShutdownModule() -> void
 
     _DebuggerWindow.Reset();
     _DebuggerTab.Reset();
+}
+
+auto FCkAudioDebuggerModule::HandleEnginePreExit() -> void
+{
+    // Slate may already have torn down the native tab. Dropping ownership here releases the debugger tree without
+    // asking the tab to close itself during engine exit.
+    _DebuggerTab.Reset();
+    _DebuggerWindow.Reset();
 }
 
 auto FCkAudioDebuggerModule::Get() -> FCkAudioDebuggerModule&

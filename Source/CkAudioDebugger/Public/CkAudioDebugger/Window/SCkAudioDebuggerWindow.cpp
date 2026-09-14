@@ -11,6 +11,7 @@
 #include "CkCore/Validation/CkIsValid.h"
 
 #include "CkDebuggerCommon/Search/SCkDebug_SearchBar.h"
+#include "CkDebuggerCommon/Lifecycle/CkDebug_SessionLifecycle.h"
 #include "CkDebuggerCommon/Styles/CkDebuggerAxes.h"
 #include "CkDebuggerCommon/Styles/CkDebuggerCommonStyle.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_AlertRow.h"
@@ -198,6 +199,14 @@ namespace ck_audio_debugger_window
             ? Leaf
             : InPath;
     }
+
+    auto
+        Build_EntityKey(
+            const FCk_Handle& InHandle)
+        -> FString
+    {
+        return ck::Format_UE(TEXT("{}"), InHandle.Get_Entity());
+    }
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -272,11 +281,21 @@ auto
     ];
 
     BuildAuthoredShell();
+    DoRebuild_OverlayActions();
+    _SessionInvalidatedHandle = ck::DebugSessionLifecycle::Get_OnSessionInvalidated().AddSP(
+        this, &SCkAudioDebuggerWindow::HandleSessionInvalidated);
+    _WorldInvalidatedHandle = ck::DebugSessionLifecycle::Get_OnWorldInvalidated().AddSP(
+        this, &SCkAudioDebuggerWindow::HandleWorldInvalidated);
     Register_WithGate();
 }
 
 SCkAudioDebuggerWindow::~SCkAudioDebuggerWindow()
 {
+    if (_SessionInvalidatedHandle.IsValid())
+    { ck::DebugSessionLifecycle::Get_OnSessionInvalidated().Remove(_SessionInvalidatedHandle); }
+    if (_WorldInvalidatedHandle.IsValid())
+    { ck::DebugSessionLifecycle::Get_OnWorldInvalidated().Remove(_WorldInvalidatedHandle); }
+    DoInvalidate_RuntimeState();
     _AuthoredShellView.Reset();
 }
 
@@ -1204,54 +1223,7 @@ auto
         .AutoHeight()
         .Padding(CkStyle::SpaceL, CkStyle::SpaceM, CkStyle::SpaceL, CkStyle::SpaceS)
         [
-            SNew(SHorizontalBox)
-
-            + SHorizontalBox::Slot()
-            .AutoWidth()
-            .VAlign(VAlign_Center)
-            .Padding(0.0f, 0.0f, CkStyle::SpaceS, 0.0f)
-            [
-                SNew(SCkDebug_ToggleSurface)
-                .IsOn_Lambda([]() { return false; })
-                .AccessibleText(FText::FromString(TEXT("Draw all tracks")))
-                .ToolTipText(FText::FromString(
-                    TEXT("Enable the in-world debug draw for every track in every director.")))
-                .OnStateChanged_Lambda([this](const bool) { DoSet_DebugDrawOnAll(true); })
-                [
-                    SNew(STextBlock)
-                    .Font_Static(&Get_MicroFont)
-                    .ColorAndOpacity(CkStyle::TextDim())
-                    .Text(FText::FromString(TEXT("Draw all")))
-                ]
-            ]
-
-            + SHorizontalBox::Slot()
-            .AutoWidth()
-            .VAlign(VAlign_Center)
-            [
-                SNew(SCkDebug_ToggleSurface)
-                .IsOn_Lambda([]() { return false; })
-                .AccessibleText(FText::FromString(TEXT("Draw none")))
-                .ToolTipText(FText::FromString(TEXT("Disable the in-world debug draw for every track.")))
-                .OnStateChanged_Lambda([this](const bool) { DoSet_DebugDrawOnAll(false); })
-                [
-                    SNew(STextBlock)
-                    .Font_Static(&Get_MicroFont)
-                    .ColorAndOpacity(CkStyle::TextDim())
-                    .Text(FText::FromString(TEXT("Draw none")))
-                ]
-            ]
-
-            + SHorizontalBox::Slot()
-            .FillWidth(1.0f)
-            .VAlign(VAlign_Center)
-            .HAlign(HAlign_Right)
-            [
-                SNew(STextBlock)
-                .Font_Static(&Get_MicroFont)
-                .ColorAndOpacity(CkStyle::Warn())
-                .Text(FText::FromString(TEXT("writes to the running world")))
-            ]
+            SAssignNew(_OverlayActionsBox, SHorizontalBox)
         ]
 
         + SVerticalBox::Slot()
@@ -1281,10 +1253,22 @@ auto
     SCkDebugger_WindowBase::Tick(InAllottedGeometry, InCurrentTime, InDeltaTime);
     PollAuthoredShell(InCurrentTime);
 
+    UWorld* World = DoGet_PieWorld();
+    if (World == _InvalidatedWorld.Get())
+    { World = nullptr; }
+    else if (_InvalidatedWorld.IsValid())
+    { _InvalidatedWorld = nullptr; }
+    if (World != _ObservedWorld.Get())
+    {
+        DoInvalidate_RuntimeState();
+        _ObservedWorld = World;
+        DoRebuild_OverlayActions();
+    }
+
     if (NOT FCkDebuggerRefreshGate::Should_RefreshNow(WindowId))
     { return; }
 
-    _Collector.Collect(DoGet_PieWorld());
+    _Collector.Collect(World);
 
     if (const auto Signature = DoBuild_Signature();
         Signature != _LastSignature)
@@ -1307,18 +1291,19 @@ auto
     // unfiltered track set, so the mixer's filters and state toggles must not empty them.
     const auto AllTracks = DoBuild_AllTracksSignature();
 
-    if (auto SpatialSignature = ck::Format_UE(TEXT("{}|{}"), AllTracks, _SelectedSpatialTrack);
+    if (AllTracks != _OverlaySignature)
+    {
+        _OverlaySignature = AllTracks;
+        DoRebuild_OverlayList();
+    }
+
+    if (auto SpatialSignature = ck::Format_UE(TEXT("{}|{}"), AllTracks, _SelectedSpatialTrackKey);
         SpatialSignature != _SpatialSignature)
     {
         _SpatialSignature = MoveTemp(SpatialSignature);
         DoRebuild_SpatialSelector();
     }
 
-    if (AllTracks != _OverlaySignature)
-    {
-        _OverlaySignature = AllTracks;
-        DoRebuild_OverlayList();
-    }
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -1375,17 +1360,19 @@ auto
     {
         const auto Visible = DoGet_VisibleTracks(Director);
 
+        Signature += ck::Format_UE(TEXT("D:{}:{}|"),
+            ck_audio_debugger_window::Build_EntityKey(Director.DirectorEntity), Director.DirectorName);
+
         if (Visible.IsEmpty())
         { continue; }
 
-        Signature += ck::Format_UE(TEXT("D:{}|"), Director.DirectorName);
-
         for (const auto* Track : Visible)
         {
-            // The track's NAME and nothing that moves. Folding in volume or playback percent would change the
+            // Stable identity and the display name, but nothing that moves. Folding in volume or playback percent
             // signature on nearly every tick of every fade and rebuild the tree instead of writing cells — the exact
             // flicker the structure/value split exists to avoid.
-            Signature += ck::Format_UE(TEXT("T:{}|"), Track->TrackName);
+            Signature += ck::Format_UE(TEXT("T:{}:{}|"),
+                ck_audio_debugger_window::Build_EntityKey(Track->TrackEntity), Track->TrackName);
         }
     }
 
@@ -1403,13 +1390,15 @@ auto
 
     for (const auto& Director : _Collector.Get_Snapshot().Directors)
     {
-        Signature += ck::Format_UE(TEXT("D:{}|"), Director.DirectorName);
+        Signature += ck::Format_UE(TEXT("D:{}:{}|"),
+            ck_audio_debugger_window::Build_EntityKey(Director.DirectorEntity), Director.DirectorName);
 
         for (const auto& Track : Director.Tracks)
         {
             // State is folded in, unlike the mixer's signature: the Spatial selector only lists non-stopped tracks,
             // so a track starting or stopping genuinely changes that list even though the SET is unchanged.
-            Signature += ck::Format_UE(TEXT("T:{}:{}|"),
+            Signature += ck::Format_UE(TEXT("T:{}:{}:{}|"),
+                ck_audio_debugger_window::Build_EntityKey(Track.TrackEntity),
                 Track.TrackName, static_cast<int32>(Track.State));
         }
     }
@@ -1431,6 +1420,7 @@ auto
     _DirectorPageBox->ClearChildren();
     _TrackSlots.Reset();
     _DirectorSlots.Reset();
+    _DirectorPageSlots.Reset();
 
     const auto& Snapshot = _Collector.Get_Snapshot();
 
@@ -1480,7 +1470,7 @@ auto
         if (NOT DoPassesFilter(Director.DirectorName))
         { continue; }
 
-        auto Unused = FCkAudioDebugger_DirectorSlot{};
+        auto DirectorPageSlot = FCkAudioDebugger_DirectorSlot{};
 
         _DirectorPageBox->AddSlot()
         .AutoHeight()
@@ -1488,9 +1478,11 @@ auto
         [
             SNew(SCkDebug_Card)
             [
-                DoMake_DirectorHeader(Director, Unused)
+                DoMake_DirectorHeader(Director, DirectorPageSlot)
             ]
         ];
+
+        _DirectorPageSlots.Add(MoveTemp(DirectorPageSlot));
     }
 }
 
@@ -1814,9 +1806,10 @@ auto
     {
         for (const auto& Track : Director.Tracks)
         {
-            Live.Add(Track.TrackName);
+            const auto TrackKey = ck_audio_debugger_window::Build_EntityKey(Track.TrackEntity);
+            Live.Add(TrackKey);
 
-            auto& Ring = _VolumeHistory.FindOrAdd(Track.TrackName);
+            auto& Ring = _VolumeHistory.FindOrAdd(TrackKey);
 
             if (NOT Ring.IsValid())
             { Ring = MakeShared<TArray<float>>(); }
@@ -1865,7 +1858,11 @@ auto
         if (NOT FMath::IsNearlyEqual(InLhs.CurrentVolume, InRhs.CurrentVolume))
         { return InLhs.CurrentVolume > InRhs.CurrentVolume; }
 
-        return InLhs.TrackName.Compare(InRhs.TrackName, ESearchCase::IgnoreCase) < 0;
+        const auto NameOrder = InLhs.TrackName.Compare(InRhs.TrackName, ESearchCase::IgnoreCase);
+        if (NameOrder != 0)
+        { return NameOrder < 0; }
+
+        return InLhs.TrackEntity.Get_Entity().Get_ID() < InRhs.TrackEntity.Get_Entity().Get_ID();
     });
 
     const auto CopyInto = [this](TSharedPtr<TArray<float>> InTarget, int32 InIndex,
@@ -1880,13 +1877,14 @@ auto
             return FString{};
         }
 
-        const auto& Name = InCandidates[InIndex]->TrackName;
+        const auto& Track = *InCandidates[InIndex];
+        const auto Key = Build_EntityKey(Track.TrackEntity);
 
-        if (const auto* Ring = _VolumeHistory.Find(Name);
+        if (const auto* Ring = _VolumeHistory.Find(Key);
             Ring != nullptr && Ring->IsValid())
         { *InTarget = **Ring; }
 
-        return Name;
+        return Track.TrackName;
     };
 
     _CrossfadeSeriesNames.Reset();
@@ -2011,6 +2009,28 @@ auto
             ++TrackIndex;
         }
     }
+
+    auto DirectorPageIndex = 0;
+
+    for (const auto& Director : Snapshot.Directors)
+    {
+        if (NOT DoPassesFilter(Director.DirectorName))
+        { continue; }
+
+        if (_DirectorPageSlots.IsValidIndex(DirectorPageIndex))
+        {
+            if (const auto& Slot = _DirectorPageSlots[DirectorPageIndex];
+                Slot.ActiveText.IsValid())
+            {
+                Slot.ActiveText->SetText(FText::FromString(Director.MaxConcurrentTracks > 0
+                    ? ck::Format_UE(TEXT("{} / {} active"),
+                        Director.Get_ActiveTrackCount(), Director.MaxConcurrentTracks)
+                    : ck::Format_UE(TEXT("{} active"), Director.Get_ActiveTrackCount())));
+            }
+        }
+
+        ++DirectorPageIndex;
+    }
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -2038,9 +2058,9 @@ auto
     {
         for (const auto& Track : Director.Tracks)
         {
-            if (NOT _SelectedSpatialTrack.IsEmpty())
+            if (NOT _SelectedSpatialTrackKey.IsEmpty())
             {
-                if (Track.TrackName == _SelectedSpatialTrack)
+                if (ck_audio_debugger_window::Build_EntityKey(Track.TrackEntity) == _SelectedSpatialTrackKey)
                 { return &Track; }
 
                 continue;
@@ -2131,7 +2151,7 @@ auto
             Blip.TrackName = Track.TrackName;
             Blip.BearingDegrees = Track.BearingDegrees;
             Blip.DistanceCm = Track.DistanceToListener;
-            Blip.IsSelected = Track.TrackName == Selected->TrackName;
+            Blip.IsSelected = Build_EntityKey(Track.TrackEntity) == Build_EntityKey(Selected->TrackEntity);
             Blip.IsVirtualized = Track.IsVirtualized;
             Blip.IsOutOfRange = Track.Get_IsOutOfRange();
             Blip.IsAudible = Track.Get_AudibleVolume() > KINDA_SMALL_NUMBER;
@@ -2156,7 +2176,9 @@ auto
     _SpatialSelectorBox->ClearChildren();
 
     const auto* Selected = TryGet_SelectedSpatialTrack();
-    const auto SelectedName = Selected != nullptr ? Selected->TrackName : FString{};
+    const auto SelectedKey = Selected != nullptr ? Build_EntityKey(Selected->TrackEntity) : FString{};
+    const TWeakPtr<SCkAudioDebuggerWindow> WeakWindow{SharedThis(this)};
+    const auto Generation = _RuntimeGeneration;
 
     for (const auto& Director : _Collector.Get_Snapshot().Directors)
     {
@@ -2166,6 +2188,7 @@ auto
             { continue; }
 
             const auto Name = Track.TrackName;
+            const auto Key = Build_EntityKey(Track.TrackEntity);
 
             const auto Tone = Track.IsVirtualized
                 ? ECk_Tone::Err
@@ -2177,26 +2200,96 @@ auto
             .Padding(0.0f, 0.0f, CkStyle::SpaceS, 0.0f)
             [
                 SNew(SCkDebug_ToggleSurface)
-                .IsOn_Lambda([this, Name]() { return _SelectedSpatialTrack == Name; })
+                .IsOn_Lambda([WeakWindow, Generation, Key]()
+                {
+                    const auto Window = WeakWindow.Pin();
+                    return Window.IsValid()
+                        && Window->CanDispatch_RuntimeAction(Generation)
+                        && Window->_SelectedSpatialTrackKey == Key;
+                })
                 .AccessibleText(FText::FromString(Name))
                 .ToolTipText(FText::FromString(ck::Format_UE(
                     TEXT("Inspect '{}' on the radar"), Name)))
-                .OnStateChanged_Lambda([this, Name](const bool InOn)
+                .OnStateChanged_Lambda([WeakWindow, Generation, Key](const bool InOn)
                 {
+                    const auto Window = WeakWindow.Pin();
+                    if (NOT Window.IsValid() || NOT Window->CanDispatch_RuntimeAction(Generation))
+                    { return; }
+
                     // Re-clicking the current selection clears it, which hands the page back to the
                     // most-diagnostic-track default rather than pinning the reader to a stale choice.
-                    _SelectedSpatialTrack = InOn ? Name : FString{};
-                    _SpatialSignature.Reset();
+                    Window->_SelectedSpatialTrackKey = InOn ? Key : FString{};
+                    Window->_SpatialSignature.Reset();
                 })
                 [
                     SNew(SCkDebug_StatusPill)
                     .Text(FText::FromString(Name))
-                    .Tone(Name == SelectedName ? Tone : ECk_Tone::Neutral)
+                    .Tone(Key == SelectedKey ? Tone : ECk_Tone::Neutral)
                     .ShowDot(false)
                 ]
             ];
         }
     }
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkAudioDebuggerWindow::
+    DoRebuild_OverlayActions()
+    -> void
+{
+    using namespace ck_audio_debugger_window;
+
+    if (NOT _OverlayActionsBox.IsValid())
+    { return; }
+
+    _OverlayActionsBox->ClearChildren();
+    const TWeakPtr<SCkAudioDebuggerWindow> WeakWindow{SharedThis(this)};
+    const auto Generation = _RuntimeGeneration;
+
+    const auto AddAction = [this, WeakWindow, Generation](
+        const TCHAR* InLabel,
+        const TCHAR* InTooltip,
+        bool InEnabled)
+    {
+        _OverlayActionsBox->AddSlot()
+        .AutoWidth()
+        .VAlign(VAlign_Center)
+        .Padding(0.0f, 0.0f, CkStyle::SpaceS, 0.0f)
+        [
+            SNew(SCkDebug_ToggleSurface)
+            .IsOn_Lambda([]() { return false; })
+            .AccessibleText(FText::FromString(InLabel))
+            .ToolTipText(FText::FromString(InTooltip))
+            .OnStateChanged_Lambda([WeakWindow, Generation, InEnabled](const bool)
+            {
+                const auto Window = WeakWindow.Pin();
+                if (Window.IsValid())
+                { Window->DoSet_DebugDrawOnAll(InEnabled, Generation); }
+            })
+            [
+                SNew(STextBlock)
+                .Font_Static(&Get_MicroFont)
+                .ColorAndOpacity(CkStyle::TextDim())
+                .Text(FText::FromString(InLabel))
+            ]
+        ];
+    };
+
+    AddAction(TEXT("Draw all"), TEXT("Enable the in-world debug draw for every track in every director."), true);
+    AddAction(TEXT("Draw none"), TEXT("Disable the in-world debug draw for every track."), false);
+
+    _OverlayActionsBox->AddSlot()
+    .FillWidth(1.0f)
+    .VAlign(VAlign_Center)
+    .HAlign(HAlign_Right)
+    [
+        SNew(STextBlock)
+        .Font_Static(&Get_MicroFont)
+        .ColorAndOpacity(CkStyle::Warn())
+        .Text(FText::FromString(TEXT("writes to the running world")))
+    ];
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -2211,7 +2304,11 @@ auto
     if (NOT _OverlayListBox.IsValid())
     { return; }
 
+    ++_RuntimeGeneration;
+    DoRebuild_OverlayActions();
     _OverlayListBox->ClearChildren();
+    const TWeakPtr<SCkAudioDebuggerWindow> WeakWindow{SharedThis(this)};
+    const auto Generation = _RuntimeGeneration;
 
     for (const auto& Director : _Collector.Get_Snapshot().Directors)
     {
@@ -2243,8 +2340,12 @@ auto
                 .Padding(0.0f, 0.0f, CkStyle::SpaceM, 0.0f)
                 [
                     SNew(SCkDebug_ToggleSurface)
-                    .IsOn_Lambda([TrackEntity]()
+                    .IsOn_Lambda([WeakWindow, Generation, TrackEntity]()
                     {
+                        const auto Window = WeakWindow.Pin();
+                        if (NOT Window.IsValid() || NOT Window->CanDispatch_RuntimeAction(Generation))
+                        { return false; }
+
                         const auto Track = UCk_Utils_AudioTrack_UE::Cast(TrackEntity);
 
                         return ck::IsValid(Track) && UCk_Utils_AudioTrack_UE::Get_IsDebugDrawEnabled(Track);
@@ -2252,8 +2353,12 @@ auto
                     .AccessibleText(FText::FromString(TrackName))
                     .ToolTipText(FText::FromString(
                         TEXT("Draw this track's position and attenuation in the world viewport.")))
-                    .OnStateChanged_Lambda([TrackEntity](const bool InEnabled)
+                    .OnStateChanged_Lambda([WeakWindow, Generation, TrackEntity](const bool InEnabled)
                     {
+                        const auto Window = WeakWindow.Pin();
+                        if (NOT Window.IsValid() || NOT Window->CanDispatch_RuntimeAction(Generation))
+                        { return; }
+
                         // Through the feature's own Utils, never by adding the tag directly: the tag is CkAudio's
                         // internal gate and a debugger writing it would be reaching past the API that owns it.
                         auto Track = UCk_Utils_AudioTrack_UE::Cast(TrackEntity);
@@ -2306,9 +2411,13 @@ auto
 auto
     SCkAudioDebuggerWindow::
     DoSet_DebugDrawOnAll(
-        bool InEnabled)
+        bool InEnabled,
+        int64 InGeneration)
     -> void
 {
+    if (NOT CanDispatch_RuntimeAction(InGeneration))
+    { return; }
+
     for (const auto& Director : _Collector.Get_Snapshot().Directors)
     {
         for (const auto& TrackInfo : Director.Tracks)
@@ -2357,18 +2466,20 @@ auto
     {
         for (const auto& Track : Director.Tracks)
         {
-            Seen.Add(Track.TrackName);
+            const auto TrackKey = ck_audio_debugger_window::Build_EntityKey(Track.TrackEntity);
+            Seen.Add(TrackKey);
 
             const auto IsFading = Track.State == ECk_AudioTrack_State::FadingIn
                 || Track.State == ECk_AudioTrack_State::FadingOut;
 
-            const auto* Previous = _TrackWatch.Find(Track.TrackName);
+            const auto* Previous = _TrackWatch.Find(TrackKey);
 
             auto Watch = FCkAudioDebugger_TrackWatch{};
 
             Watch.State = Track.State;
             Watch.IsVirtualized = Track.IsVirtualized;
             Watch.WasFading = IsFading;
+            Watch.TrackName = Track.TrackName;
             Watch.DirectorName = Director.DirectorName;
 
             // The baseline pass records state and reports nothing. Everything present when the window opened has
@@ -2381,7 +2492,7 @@ auto
                         Track.TrackName, Director.DirectorName), ECk_Tone::Accent);
                 }
 
-                _TrackWatch.Add(Track.TrackName, MoveTemp(Watch));
+                _TrackWatch.Add(TrackKey, MoveTemp(Watch));
                 continue;
             }
 
@@ -2408,7 +2519,7 @@ auto
                     Track.IsVirtualized ? ECk_Tone::Err : ECk_Tone::Ok);
             }
 
-            _TrackWatch.Add(Track.TrackName, MoveTemp(Watch));
+            _TrackWatch.Add(TrackKey, MoveTemp(Watch));
         }
     }
 
@@ -2420,7 +2531,7 @@ auto
         if (_HasWatchBaseline && _EventsShowLifecycle)
         {
             Append(TEXT("TRACK"), ck::Format_UE(TEXT("{} removed from {}"),
-                It.Key(), It.Value().DirectorName), ECk_Tone::Neutral);
+                It.Value().TrackName, It.Value().DirectorName), ECk_Tone::Neutral);
         }
 
         It.RemoveCurrent();
@@ -2549,6 +2660,87 @@ auto
     { return true; }
 
     return InText.Contains(_FilterString, ESearchCase::IgnoreCase);
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkAudioDebuggerWindow::
+    CanDispatch_RuntimeAction(
+        int64 InGeneration) const
+    -> bool
+{
+    return InGeneration == _RuntimeGeneration
+        && _Collector.Get_Snapshot().HasWorld;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkAudioDebuggerWindow::
+    DoInvalidate_RuntimeState()
+    -> void
+{
+    ++_RuntimeGeneration;
+    _Collector.Reset();
+
+    if (_DirectorBox.IsValid()) { _DirectorBox->ClearChildren(); }
+    if (_DirectorPageBox.IsValid()) { _DirectorPageBox->ClearChildren(); }
+    if (_SpatialSelectorBox.IsValid()) { _SpatialSelectorBox->ClearChildren(); }
+    if (_OverlayActionsBox.IsValid()) { _OverlayActionsBox->ClearChildren(); }
+    if (_OverlayListBox.IsValid()) { _OverlayListBox->ClearChildren(); }
+    if (_EventLog.IsValid()) { _EventLog->Clear_Entries(); }
+
+    _TrackSlots.Reset();
+    _DirectorSlots.Reset();
+    _DirectorPageSlots.Reset();
+    _VolumeHistory.Reset();
+    _TrackWatch.Reset();
+    _CrossfadeSeriesA->Reset();
+    _CrossfadeSeriesB->Reset();
+    _CrossfadeSeriesNames.Reset();
+    _HasWatchBaseline = false;
+    _LastSignature.Reset();
+    _SpatialSignature.Reset();
+    _OverlaySignature.Reset();
+    _SelectedSpatialTrackKey.Reset();
+
+    if (_SpatialView.IsValid())
+    { *_SpatialView = FCkAudioDebugger_SpatialView{}; }
+    if (_CrossfadeLegendText.IsValid())
+    { _CrossfadeLegendText->SetText(FText::FromString(TEXT("(nothing playing)"))); }
+
+    *_StatAudible = FText::AsNumber(0);
+    *_StatFading = FText::AsNumber(0);
+    *_StatVirtualized = FText::AsNumber(0);
+    *_StatConcurrency = FText::FromString(TEXT("0 / 0"));
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkAudioDebuggerWindow::
+    HandleSessionInvalidated()
+    -> void
+{
+    if (_ObservedWorld.IsValid())
+    { _InvalidatedWorld = _ObservedWorld; }
+    DoInvalidate_RuntimeState();
+    _ObservedWorld = nullptr;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkAudioDebuggerWindow::
+    HandleWorldInvalidated(
+        UWorld* InWorld)
+    -> void
+{
+    if (ck::IsValid(InWorld) && InWorld != _ObservedWorld.Get())
+    { return; }
+
+    HandleSessionInvalidated();
 }
 
 // --------------------------------------------------------------------------------------------------------------------

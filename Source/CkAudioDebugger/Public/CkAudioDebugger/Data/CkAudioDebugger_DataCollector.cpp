@@ -229,6 +229,14 @@ auto
         UWorld* InWorld)
     -> void
 {
+#if WITH_DEV_AUTOMATION_TESTS
+    if (_SnapshotOverrideForTests.IsSet())
+    {
+        _Snapshot = _SnapshotOverrideForTests.GetValue();
+        return;
+    }
+#endif
+
     _Snapshot = FCkAudioDebugger_Snapshot{};
 
     if (ck::Is_NOT_Valid(InWorld))
@@ -292,7 +300,11 @@ auto
                 if (InLhs.Priority != InRhs.Priority)
                 { return InLhs.Priority > InRhs.Priority; }
 
-                return InLhs.TrackName.Compare(InRhs.TrackName, ESearchCase::IgnoreCase) < 0;
+                const auto NameOrder = InLhs.TrackName.Compare(InRhs.TrackName, ESearchCase::IgnoreCase);
+                if (NameOrder != 0)
+                { return NameOrder < 0; }
+
+                return InLhs.TrackEntity.Get_Entity().Get_ID() < InRhs.TrackEntity.Get_Entity().Get_ID();
             });
 
             _Snapshot.Directors.Add(MoveTemp(Info));
@@ -302,7 +314,11 @@ auto
     _Snapshot.Directors.Sort([](const FCkAudioDebugger_DirectorInfo& InLhs,
                                 const FCkAudioDebugger_DirectorInfo& InRhs)
     {
-        return InLhs.DirectorName.Compare(InRhs.DirectorName, ESearchCase::IgnoreCase) < 0;
+        const auto NameOrder = InLhs.DirectorName.Compare(InRhs.DirectorName, ESearchCase::IgnoreCase);
+        if (NameOrder != 0)
+        { return NameOrder < 0; }
+
+        return InLhs.DirectorEntity.Get_Entity().Get_ID() < InRhs.DirectorEntity.Get_Entity().Get_ID();
     });
 }
 
@@ -314,6 +330,9 @@ auto
     -> void
 {
     _Snapshot = FCkAudioDebugger_Snapshot{};
+#if WITH_DEV_AUTOMATION_TESTS
+    _SnapshotOverrideForTests.Reset();
+#endif
 }
 
 // --------------------------------------------------------------------------------------------------------------------

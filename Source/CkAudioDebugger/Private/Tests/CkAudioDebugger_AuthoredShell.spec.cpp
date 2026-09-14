@@ -1,8 +1,15 @@
 #include "CkAudioDebugger/Window/SCkAudioDebuggerWindow.h"
+#include "../../CkAudioDebugger_Module.h"
 
+#include "CkAudio/AudioTrack/CkAudioTrack_Fragment.h"
+#include "CkAudio/AudioTrack/CkAudioTrack_Utils.h"
+#include "CkDebuggerCommon/Lifecycle/CkDebug_SessionLifecycle.h"
+#include "CkEcs/Registry/CkRegistry.h"
+#include "CkEcs/Registry/CkRegistry_SlotTable.h"
 #include "CkSlateLayout/SCkUiSurface.h"
 
 #include "Framework/Application/SlateApplication.h"
+#include "Engine/World.h"
 #include "HAL/PlatformTime.h"
 #include "Interfaces/IPluginManager.h"
 #include "Misc/AutomationTest.h"
@@ -10,6 +17,8 @@
 #include "Misc/Paths.h"
 #include "Misc/ScopeExit.h"
 #include "Widgets/Input/SButton.h"
+#include "Widgets/Input/SCheckBox.h"
+#include "Widgets/Docking/SDockTab.h"
 #include "Widgets/SWindow.h"
 #include "Widgets/Text/STextBlock.h"
 
@@ -58,6 +67,20 @@ namespace ck_audio_debugger_authored_shell_tests
         for (int32 Index = 0; Children != nullptr && Index < Children->Num(); ++Index)
         {
             if (const TSharedPtr<SButton> Found = FindButtonWithText(
+                ConstCastSharedRef<SWidget>(Children->GetChildAt(Index)), InText); Found.IsValid())
+            { return Found; }
+        }
+        return nullptr;
+    }
+
+    auto FindCheckBoxWithText(const TSharedRef<SWidget>& InRoot, const FString& InText) -> TSharedPtr<SCheckBox>
+    {
+        if (InRoot->GetTypeAsString() == TEXT("SCheckBox") && SubtreeHasText(InRoot, InText))
+        { return StaticCastSharedRef<SCheckBox>(InRoot); }
+        FChildren* Children = InRoot->GetChildren();
+        for (int32 Index = 0; Children != nullptr && Index < Children->Num(); ++Index)
+        {
+            if (const TSharedPtr<SCheckBox> Found = FindCheckBoxWithText(
                 ConstCastSharedRef<SWidget>(Children->GetChildAt(Index)), InText); Found.IsValid())
             { return Found; }
         }
@@ -255,6 +278,145 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
             && ContainsWidget(View->GetRegion(TEXT("main")), DebuggerWindow->_StatCards.ToSharedRef())
             && ContainsWidget(View->GetRegion(TEXT("main")), DebuggerWindow->_FilterRow.ToSharedRef())
             && ContainsWidget(View->GetRegion(TEXT("main")), DebuggerWindow->_PageSwitcher.ToSharedRef()));
+
+    using namespace ck::registry_table;
+    auto Registry = EnttRegistryType{};
+    const auto RegistrySlot = Allocate(&Registry);
+    ON_SCOPE_EXIT
+    {
+        DebuggerWindow->HandleSessionInvalidated();
+        Free(RegistrySlot);
+    };
+
+    const auto DirectorEntity = FCk_Handle{FCk_Entity{Registry.create()}, RegistrySlot};
+    auto TrackA = FCk_Handle{FCk_Entity{Registry.create()}, RegistrySlot};
+    auto TrackB = FCk_Handle{FCk_Entity{Registry.create()}, RegistrySlot};
+    TrackA.Add<ck::FFragment_AudioTrack_Params>();
+    TrackA.Add<ck::FFragment_AudioTrack_Current>();
+    TrackB.Add<ck::FFragment_AudioTrack_Params>();
+    TrackB.Add<ck::FFragment_AudioTrack_Current>();
+
+    auto Director = FCkAudioDebugger_DirectorInfo{};
+    Director.DirectorEntity = DirectorEntity;
+    Director.DirectorName = TEXT("Same director");
+    Director.MaxConcurrentTracks = 4;
+
+    auto& FixtureSnapshot = DebuggerWindow->_Collector._SnapshotOverrideForTests.Emplace();
+    FixtureSnapshot.HasWorld = true;
+    FixtureSnapshot.Directors.Add(Director);
+    DebuggerWindow->_ObservedWorld = DebuggerWindow->DoGet_PieWorld();
+    DebuggerWindow->_Collector.Collect(nullptr);
+    const auto EmptyDirectorSignature = DebuggerWindow->DoBuild_Signature();
+    DebuggerWindow->DoRebuild_Structure();
+    DebuggerWindow->DoUpdate_LiveValues();
+    TestTrue(TEXT("an empty director participates in the structure signature and dedicated page"),
+        NOT EmptyDirectorSignature.IsEmpty()
+            && DebuggerWindow->_DirectorSlots.IsEmpty()
+            && DebuggerWindow->_DirectorPageSlots.Num() == 1
+            && DebuggerWindow->_DirectorPageSlots[0].ActiveText->GetText().ToString() == TEXT("0 / 4 active"));
+
+    auto TrackInfoA = FCkAudioDebugger_TrackInfo{};
+    TrackInfoA.TrackEntity = TrackA;
+    TrackInfoA.TrackName = TEXT("Same track");
+    TrackInfoA.State = ECk_AudioTrack_State::Playing;
+    TrackInfoA.CurrentVolume = 0.5f;
+    FixtureSnapshot.Directors[0].Tracks.Add(TrackInfoA);
+    DebuggerWindow->_Collector.Collect(nullptr);
+    const auto TrackAStructureSignature = DebuggerWindow->DoBuild_Signature();
+    const auto TrackAAllSignature = DebuggerWindow->DoBuild_AllTracksSignature();
+    DebuggerWindow->DoRebuild_Structure();
+    DebuggerWindow->DoUpdate_LiveValues();
+    TestTrue(TEXT("both Audio pages receive the live director concurrency count"),
+        DebuggerWindow->_DirectorSlots.Num() == 1
+            && DebuggerWindow->_DirectorPageSlots.Num() == 1
+            && DebuggerWindow->_DirectorSlots[0].ActiveText->GetText().ToString() == TEXT("1 / 4 active")
+            && DebuggerWindow->_DirectorPageSlots[0].ActiveText->GetText().ToString() == TEXT("1 / 4 active"));
+
+    const TSharedPtr<SButton> OverlayTab = FindButtonWithText(DebuggerWindow->_Tabs.ToSharedRef(), TEXT("Overlay"));
+    if (NOT TestTrue(TEXT("production Overlay tab is physically selectable"),
+        OverlayTab.IsValid() && Click(Slate, OverlayTab.ToSharedRef())))
+    { return false; }
+    DebuggerWindow->Tick(DebuggerWindow->GetCachedGeometry(), FPlatformTime::Seconds(), 0.0f);
+    const TSharedPtr<SCheckBox> HeldTrackAToggle = FindCheckBoxWithText(
+        DebuggerWindow->_OverlayListBox.ToSharedRef(), TEXT("draw"));
+    if (NOT TestTrue(TEXT("physical production overlay action targets the first same-name entity"),
+        HeldTrackAToggle.IsValid() && Click(Slate, HeldTrackAToggle.ToSharedRef())
+            && TrackA.Has<ck::FTag_AudioTrack_DebugDraw>()))
+    { return false; }
+    TrackA.Try_Remove<ck::FFragment_AudioTrack_Debug>();
+    TrackA.Try_Remove<ck::FTag_AudioTrack_DebugDraw>();
+    HeldTrackAToggle->ToggleCheckedState();
+    TestTrue(TEXT("held-control probe dispatches while its production generation is current"),
+        TrackA.Has<ck::FTag_AudioTrack_DebugDraw>());
+    TrackA.Try_Remove<ck::FFragment_AudioTrack_Debug>();
+    TrackA.Try_Remove<ck::FTag_AudioTrack_DebugDraw>();
+
+    auto TrackInfoB = TrackInfoA;
+    TrackInfoB.TrackEntity = TrackB;
+    FixtureSnapshot.Directors[0].Tracks = {TrackInfoB};
+    DebuggerWindow->_Collector.Collect(nullptr);
+    const auto TrackBStructureSignature = DebuggerWindow->DoBuild_Signature();
+    const auto TrackBAllSignature = DebuggerWindow->DoBuild_AllTracksSignature();
+    TestTrue(TEXT("same-label entity replacement changes both production structure signatures"),
+        TrackBStructureSignature != TrackAStructureSignature
+            && TrackBAllSignature != TrackAAllSignature);
+    DebuggerWindow->Tick(DebuggerWindow->GetCachedGeometry(), FPlatformTime::Seconds(), 0.0f);
+    HeldTrackAToggle->ToggleCheckedState();
+    TestFalse(TEXT("held same-name predecessor action is revoked when the production list replaces it"),
+        TrackA.Has<ck::FTag_AudioTrack_DebugDraw>());
+
+    const TSharedPtr<SCheckBox> HeldTrackBToggle = FindCheckBoxWithText(
+        DebuggerWindow->_OverlayListBox.ToSharedRef(), TEXT("draw"));
+    if (NOT TestTrue(TEXT("replacement overlay action routes to the new same-name entity"),
+        HeldTrackBToggle.IsValid() && Click(Slate, HeldTrackBToggle.ToSharedRef())
+            && TrackB.Has<ck::FTag_AudioTrack_DebugDraw>()))
+    { return false; }
+    TrackB.Try_Remove<ck::FFragment_AudioTrack_Debug>();
+    TrackB.Try_Remove<ck::FTag_AudioTrack_DebugDraw>();
+
+    DebuggerWindow->DoRecord_VolumeHistory();
+    DebuggerWindow->DoRecord_Events();
+    const auto SessionFixture = FixtureSnapshot;
+    UWorld* InvalidatedWorld = NewObject<UWorld>();
+    UWorld* UnrelatedWorld = NewObject<UWorld>();
+    DebuggerWindow->_ObservedWorld = InvalidatedWorld;
+    ck::DebugSessionLifecycle::Get_OnWorldInvalidated().Broadcast(UnrelatedWorld);
+    TestTrue(TEXT("unrelated world invalidation leaves the observed Audio session intact"),
+        DebuggerWindow->_ObservedWorld.Get() == InvalidatedWorld
+            && DebuggerWindow->_Collector.Get_Snapshot().HasWorld);
+    ck::DebugSessionLifecycle::Get_OnWorldInvalidated().Broadcast(InvalidatedWorld);
+    HeldTrackBToggle->ToggleCheckedState();
+    TestTrue(TEXT("matching world invalidation synchronously clears handle-backed Audio state"),
+        NOT DebuggerWindow->_Collector.Get_Snapshot().HasWorld
+            && DebuggerWindow->_InvalidatedWorld.Get() == InvalidatedWorld
+            && DebuggerWindow->_DirectorSlots.IsEmpty()
+            && DebuggerWindow->_DirectorPageSlots.IsEmpty()
+            && DebuggerWindow->_TrackSlots.IsEmpty()
+            && DebuggerWindow->_VolumeHistory.IsEmpty()
+            && DebuggerWindow->_TrackWatch.IsEmpty()
+            && DebuggerWindow->_OverlayListBox->GetChildren()->Num() == 0
+            && DebuggerWindow->_SpatialSelectorBox->GetChildren()->Num() == 0
+            && DebuggerWindow->_StatConcurrency->ToString() == TEXT("0 / 0"));
+    TestFalse(TEXT("held production overlay action remains inert after world invalidation"),
+        TrackB.Has<ck::FTag_AudioTrack_DebugDraw>());
+
+    DebuggerWindow->_Collector._SnapshotOverrideForTests.Emplace(SessionFixture);
+    DebuggerWindow->_Collector.Collect(nullptr);
+    DebuggerWindow->_ObservedWorld = InvalidatedWorld;
+    ck::DebugSessionLifecycle::Get_OnSessionInvalidated().Broadcast();
+    TestTrue(TEXT("session invalidation independently clears Audio state"),
+        NOT DebuggerWindow->_Collector.Get_Snapshot().HasWorld
+            && DebuggerWindow->_InvalidatedWorld.Get() == InvalidatedWorld);
+    ck::DebugSessionLifecycle::Get_OnSessionInvalidated().Broadcast();
+    TestTrue(TEXT("repeated session invalidation preserves the blocked-world marker"),
+        DebuggerWindow->_InvalidatedWorld.Get() == InvalidatedWorld);
+
+    auto Module = FCkAudioDebuggerModule{};
+    Module._DebuggerWindow = DebuggerWindow;
+    Module._DebuggerTab = SNew(SDockTab);
+    Module.HandleEnginePreExit();
+    TestTrue(TEXT("module pre-exit releases Audio tab and window ownership without a close request"),
+        NOT Module._DebuggerTab.IsValid() && NOT Module._DebuggerWindow.IsValid());
     return true;
 }
 

@@ -13,6 +13,7 @@
 class SCkDebug_EventLog;
 class SCkDebug_MeterBar;
 class SCkDebug_Sparkline;
+class SCkDebug_SearchBar;
 class SCkDebug_ToggleSurface;
 class SCkAudioDebugger_FalloffCurve;
 class FCkUiView;
@@ -166,6 +167,9 @@ private:
     DoCreate_StatCards() -> TSharedRef<SWidget>;
 
     auto
+    DoCreate_FilterControls() -> void;
+
+    auto
     DoCreate_FilterRow() -> TSharedRef<SWidget>;
 
     auto
@@ -309,7 +313,11 @@ private:
 
     TSharedPtr<SWidget>         _Tabs;
     TSharedPtr<SWidget>         _StatCards;
-    TSharedPtr<SWidget>         _FilterRow;
+    TSharedPtr<SCkDebug_SearchBar> _FilterSearchBar;
+    TSharedPtr<SCkDebug_ToggleSurface> _FilterPlayingToggle;
+    TSharedPtr<SCkDebug_ToggleSurface> _FilterFadingToggle;
+    TSharedPtr<SCkDebug_ToggleSurface> _FilterStoppedToggle;
+    TSharedPtr<SCkDebug_ToggleSurface> _FilterGroupToggle;
     TSharedPtr<SWidgetSwitcher> _PageSwitcher;
     TSharedPtr<SBox>            _AuthoredShellHost;
     TSharedPtr<FCkUiView>       _AuthoredShellView;

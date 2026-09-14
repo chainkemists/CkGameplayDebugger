@@ -5,6 +5,7 @@
 #include "CkAudio/AudioTrack/CkAudioTrack_Fragment.h"
 #include "CkAudio/AudioTrack/CkAudioTrack_Utils.h"
 #include "CkDebuggerCommon/Lifecycle/CkDebug_SessionLifecycle.h"
+#include "CkDebuggerCommon/Search/SCkDebug_SearchBar.h"
 #include "CkDebuggerCommon/Settings/CkDebuggerStyleSettings.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_Sparkline.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_EventLog.h"
@@ -26,6 +27,7 @@
 #include "Misc/ScopeExit.h"
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Input/SCheckBox.h"
+#include "Widgets/Input/SEditableText.h"
 #include "Widgets/Docking/SDockTab.h"
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/SWindow.h"
@@ -68,6 +70,20 @@ namespace ck_audio_debugger_authored_shell_tests
         {
             if (const TSharedPtr<SWidget> Found = FindTaggedWidget(
                 ConstCastSharedRef<SWidget>(Children->GetChildAt(Index)), InTag); Found.IsValid())
+            { return Found; }
+        }
+        return nullptr;
+    }
+
+    auto FindEditableText(const TSharedRef<SWidget>& InRoot) -> TSharedPtr<SEditableText>
+    {
+        if (InRoot->GetTypeAsString() == TEXT("SEditableText"))
+        { return StaticCastSharedRef<SEditableText>(InRoot); }
+        FChildren* Children = InRoot->GetChildren();
+        for (int32 Index = 0; Children != nullptr && Index < Children->Num(); ++Index)
+        {
+            if (const TSharedPtr<SEditableText> Found = FindEditableText(
+                ConstCastSharedRef<SWidget>(Children->GetChildAt(Index))); Found.IsValid())
             { return Found; }
         }
         return nullptr;
@@ -175,6 +191,32 @@ namespace ck_audio_debugger_authored_shell_tests
         TickSlate(InSlate);
         return DownHandled;
     }
+
+    auto ReplaceSearchText(FSlateApplication& InSlate, const TSharedRef<SEditableText>& InEditable,
+        const FString& InText) -> bool
+    {
+        if (NOT Click(InSlate, InEditable) || InSlate.GetUserFocusedWidget(0) != InEditable)
+        { return false; }
+        const FModifierKeysState Control{false, false, true, false, false, false, false, false, false};
+        if (NOT InSlate.ProcessKeyDownEvent(FKeyEvent{EKeys::A, Control, 0, false, 0, 0}))
+        { return false; }
+        InSlate.ProcessKeyUpEvent(FKeyEvent{EKeys::A, Control, 0, false, 0, 0});
+        if (NOT InEditable->GetText().IsEmpty())
+        {
+            if (NOT InSlate.ProcessKeyDownEvent(FKeyEvent{EKeys::BackSpace, FModifierKeysState{}, 0, false, 0, 0}))
+            { return false; }
+            InSlate.ProcessKeyUpEvent(FKeyEvent{EKeys::BackSpace, FModifierKeysState{}, 0, false, 0, 0});
+        }
+        for (const TCHAR Character : InText)
+        {
+            if (NOT InSlate.ProcessKeyCharEvent(FCharacterEvent{Character, FModifierKeysState{}, 0, false}))
+            { return false; }
+        }
+        // Enter runs SCkDebug_SearchBar's existing immediate commit path; do not wait out or change its debounce.
+        const bool Committed = InSlate.ProcessKeyDownEvent(FKeyEvent{EKeys::Enter, FModifierKeysState{}, 0, false, 0, 0});
+        InSlate.ProcessKeyUpEvent(FKeyEvent{EKeys::Enter, FModifierKeysState{}, 0, false, 0, 0});
+        return Committed && InEditable->GetText().ToString() == InText;
+    }
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
@@ -265,14 +307,14 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
         ContainsWidget(EventsMain, OriginalEventLog.ToSharedRef()));
 
     const TSharedRef<SWidget> Main = View->GetRegion(TEXT("main"));
-    TestTrue(TEXT("authored shell retains three production native boundaries and authors live summary cards"),
+    TestTrue(TEXT("authored shell retains production tabs and pages and authors filter composition and live summary cards"),
         DebuggerWindow->_Tabs.IsValid()
             && DebuggerWindow->_StatCards.IsValid()
-            && DebuggerWindow->_FilterRow.IsValid()
+            && DebuggerWindow->_FilterSearchBar.IsValid()
             && DebuggerWindow->_PageSwitcher.IsValid()
             && ContainsWidget(Main, DebuggerWindow->_Tabs.ToSharedRef())
             && NOT ContainsWidget(Main, DebuggerWindow->_StatCards.ToSharedRef())
-            && ContainsWidget(Main, DebuggerWindow->_FilterRow.ToSharedRef())
+            && ContainsWidget(Main, DebuggerWindow->_FilterSearchBar.ToSharedRef())
             && ContainsWidget(Main, DebuggerWindow->_PageSwitcher.ToSharedRef())
             && TaggedText(Main, TEXT("audio-stat-concurrency-label")) == TEXT("Active / max")
             && TaggedText(Main, TEXT("audio-stat-audible-label")) == TEXT("Audible")
@@ -285,6 +327,39 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
         DebuggerWindow->_PageSwitcher->GetActiveWidgetIndex(), 1);
     TestTrue(TEXT("authored shell exposes horizontal overflow reachability"),
         View->GetScroll(TEXT("audio-shell-scroll")).IsValid());
+    const TSharedPtr<SCkDebug_SearchBar> HeldFilterSearch = DebuggerWindow->_FilterSearchBar;
+    const TArray<TSharedPtr<SCkDebug_ToggleSurface>> HeldFilterToggles{
+        DebuggerWindow->_FilterPlayingToggle, DebuggerWindow->_FilterFadingToggle,
+        DebuggerWindow->_FilterStoppedToggle, DebuggerWindow->_FilterGroupToggle};
+    const TSharedPtr<SWidget> AuthoredFilters = FindTaggedWidget(Main, TEXT("audio-shell-filters"));
+    if (NOT TestTrue(TEXT("authored filter row contains the exact native search bar"),
+        AuthoredFilters.IsValid() && ContainsWidget(AuthoredFilters.ToSharedRef(), HeldFilterSearch.ToSharedRef())))
+    { return false; }
+    for (const auto& Toggle : HeldFilterToggles)
+    { TestTrue(TEXT("authored filter row mounts each exact native toggle"), ContainsWidget(AuthoredFilters.ToSharedRef(), Toggle.ToSharedRef())); }
+    const TSharedPtr<SEditableText> HeldFilterEditable = FindEditableText(HeldFilterSearch.ToSharedRef());
+    if (NOT TestTrue(TEXT("physical search typing and Enter update both filter and highlight"),
+        HeldFilterEditable.IsValid() && ReplaceSearchText(Slate, HeldFilterEditable.ToSharedRef(), TEXT("audio"))
+            && HeldFilterSearch->Get_SearchText() == TEXT("audio")
+            && DebuggerWindow->_FilterString == TEXT("audio") && DebuggerWindow->_HighlightString == TEXT("audio")
+            && DebuggerWindow->_LastSignature.IsEmpty()))
+    { return false; }
+    const TSharedPtr<SCheckBox> HeldPlayingFilter = FindCheckBoxWithText(HeldFilterToggles[0].ToSharedRef(), TEXT("Playing"));
+    const TSharedPtr<SCheckBox> HeldFadingFilter = FindCheckBoxWithText(HeldFilterToggles[1].ToSharedRef(), TEXT("Fading"));
+    const TSharedPtr<SCheckBox> HeldStoppedFilter = FindCheckBoxWithText(HeldFilterToggles[2].ToSharedRef(), TEXT("Stopped"));
+    const TSharedPtr<SCheckBox> HeldGroupFilter = FindCheckBoxWithText(HeldFilterToggles[3].ToSharedRef(), TEXT("Group by director"));
+    if (NOT TestTrue(TEXT("all four retained filter controls route physical input independently"),
+        HeldPlayingFilter.IsValid() && HeldFadingFilter.IsValid() && HeldStoppedFilter.IsValid() && HeldGroupFilter.IsValid()
+            && Click(Slate, HeldPlayingFilter.ToSharedRef()) && NOT DebuggerWindow->_ShowPlaying && DebuggerWindow->_ShowFading
+            && Click(Slate, HeldFadingFilter.ToSharedRef()) && NOT DebuggerWindow->_ShowFading && DebuggerWindow->_ShowStopped
+            && Click(Slate, HeldStoppedFilter.ToSharedRef()) && NOT DebuggerWindow->_ShowStopped && DebuggerWindow->_GroupByDirector
+            && Click(Slate, HeldGroupFilter.ToSharedRef()) && NOT DebuggerWindow->_GroupByDirector))
+    { return false; }
+    DebuggerWindow->_LastSignature = TEXT("filter callback probe");
+    HeldPlayingFilter->ToggleCheckedState();
+    TestTrue(TEXT("held filter toggle probe dispatches and invalidates the live structure signature"),
+        DebuggerWindow->_ShowPlaying && DebuggerWindow->_LastSignature.IsEmpty());
+    HeldPlayingFilter->ToggleCheckedState();
     const TSharedRef<SWidget> CrossfadeMain = CrossfadeView->GetRegion(TEXT("main"));
     TestTrue(TEXT("dedicated Crossfade page authors its ordinary presentation around the exact dual-series plot"),
         TaggedText(CrossfadeMain, TEXT("audio-crossfade-title")) == TEXT("Crossfade lane")
@@ -474,9 +549,36 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
             && ContainsWidget(View->GetRegion(TEXT("main")), DebuggerWindow->_Tabs.ToSharedRef())
             && NOT ContainsWidget(View->GetRegion(TEXT("main")), DebuggerWindow->_StatCards.ToSharedRef())
             && TaggedText(View->GetRegion(TEXT("main")), TEXT("audio-stat-concurrency-label")) == TEXT("Active / max")
-            && ContainsWidget(View->GetRegion(TEXT("main")), DebuggerWindow->_FilterRow.ToSharedRef())
+            && ContainsWidget(View->GetRegion(TEXT("main")), HeldFilterSearch.ToSharedRef())
             && ContainsWidget(View->GetRegion(TEXT("main")), DebuggerWindow->_PageSwitcher.ToSharedRef())
             && DebuggerWindow->_PageSwitcher->GetActiveWidgetIndex() == 2);
+
+    TestTrue(TEXT("compatible shell reload retains search text, highlight and all filter preferences"),
+        DebuggerWindow->_FilterSearchBar == HeldFilterSearch && HeldFilterSearch->Get_SearchText() == TEXT("audio")
+            && DebuggerWindow->_FilterString == TEXT("audio") && DebuggerWindow->_HighlightString == TEXT("audio")
+            && NOT DebuggerWindow->_ShowPlaying && NOT DebuggerWindow->_ShowFading
+            && NOT DebuggerWindow->_ShowStopped && NOT DebuggerWindow->_GroupByDirector);
+    for (const auto& Toggle : HeldFilterToggles)
+    { TestTrue(TEXT("compatible shell reload retains each filter control"), ContainsWidget(Main, Toggle.ToSharedRef())); }
+    const TArray<FString> FilterPortNames{TEXT("search"), TEXT("playing"), TEXT("fading"), TEXT("stopped"), TEXT("group")};
+    for (const FString& Port : FilterPortNames)
+    {
+        const FString Native = FString::Printf(TEXT("<native id=\"audio-filter-%s\" bind=\"audio-filter-%s\" />"), *Port, *Port);
+        const FString MissingPortMarkup = Markup.Replace(*Native, TEXT(""));
+        if (NOT TestTrue(TEXT("filter rejection fixture actually omits its required port"), MissingPortMarkup != Markup))
+        { return false; }
+        const int64 BeforeRejection = View->GetRevision();
+        const FCkUiLoadResult FilterRejected = View->TryReload(MissingPortMarkup, Css, TEXT("Audio missing filter port"));
+        TestTrue(TEXT("omitting any filter port rejects the entire shell without changing input state"),
+            NOT FilterRejected.Succeeded && View->GetRevision() == BeforeRejection
+                && FString::Join(FilterRejected.Errors, TEXT("\n")).Contains(TEXT("audio-filter-") + Port)
+                && ContainsWidget(Main, HeldFilterSearch.ToSharedRef())
+                && HeldFilterSearch->Get_SearchText() == TEXT("audio") && DebuggerWindow->_FilterString == TEXT("audio")
+                && DebuggerWindow->_HighlightString == TEXT("audio") && NOT DebuggerWindow->_ShowPlaying
+                && NOT DebuggerWindow->_ShowFading && NOT DebuggerWindow->_ShowStopped && NOT DebuggerWindow->_GroupByDirector);
+        for (const auto& Toggle : HeldFilterToggles)
+        { TestTrue(TEXT("rejected shell candidate retains all four filter controls"), ContainsWidget(Main, Toggle.ToSharedRef())); }
+    }
 
     const int64 CrossfadeRevision = CrossfadeView->GetRevision();
     const TSharedPtr<TArray<float>> SeriesA = DebuggerWindow->_CrossfadeSeriesA;
@@ -579,6 +681,21 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
         HeldEventsStateToggle->IsEnabled());
     HeldEventsStateToggle->ToggleCheckedState();
     TestFalse(TEXT("held Events dispatch probe remains unchecked after owner release"), HeldEventsStateToggle->IsChecked());
+    HeldFilterSearch->Set_SearchText(TEXT("released filter probe"));
+    HeldFilterSearch->Invalidate(EInvalidateWidgetReason::Prepass);
+    HeldFilterSearch->SlatePrepass(1.0f);
+    TestTrue(TEXT("held search callback cannot retain or dispatch to the released Audio owner"),
+        NOT ReleasedEventsOwner.IsValid() && NOT ReleasedView.IsValid() && NOT HeldFilterSearch->IsEnabled());
+    const TArray<TSharedPtr<SCheckBox>> HeldFilterChecks{
+        HeldPlayingFilter, HeldFadingFilter, HeldStoppedFilter, HeldGroupFilter};
+    for (const auto& Toggle : HeldFilterChecks)
+    {
+        Toggle->ToggleCheckedState();
+        Toggle->Invalidate(EInvalidateWidgetReason::Prepass);
+        Toggle->SlatePrepass(1.0f);
+        TestTrue(TEXT("held filter toggle is disabled and cannot change state after owner release"),
+            NOT Toggle->IsEnabled() && NOT Toggle->IsChecked());
+    }
 
     const FString InvalidStartupMarkup =
         TEXT("<ui version=\"1\"><region name=\"main\"><native id=\"missing\" bind=\"missing-audio-port\"/></region></ui>");
@@ -640,6 +757,25 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
             && ContainsWidget(DebuggerWindow->_EventsToolbarHost.ToSharedRef(), DebuggerWindow->_EventsVirtualizationToggle.ToSharedRef())
             && ContainsWidget(DebuggerWindow->_EventsToolbarHost.ToSharedRef(), DebuggerWindow->_EventsLifecycleToggle.ToSharedRef()));
 
+    const TSharedPtr<SCkDebug_SearchBar> FallbackFilterSearch = DebuggerWindow->_FilterSearchBar;
+    const TArray<TSharedPtr<SCkDebug_ToggleSurface>> FallbackFilterToggles{
+        DebuggerWindow->_FilterPlayingToggle, DebuggerWindow->_FilterFadingToggle,
+        DebuggerWindow->_FilterStoppedToggle, DebuggerWindow->_FilterGroupToggle};
+    const TWeakPtr<SWidget> FallbackFilterParent = FallbackFilterSearch->GetParentWidget();
+    TestTrue(TEXT("native startup fallback owns the original search control"),
+        FallbackFilterParent.IsValid()
+            && ContainsWidget(DebuggerWindow->_AuthoredShellHost.ToSharedRef(), FallbackFilterSearch.ToSharedRef()));
+    for (const auto& Toggle : FallbackFilterToggles)
+    { TestTrue(TEXT("native startup fallback owns every filter toggle"), ContainsWidget(DebuggerWindow->_AuthoredShellHost.ToSharedRef(), Toggle.ToSharedRef())); }
+    const TSharedPtr<SEditableText> FallbackFilterEditable = FindEditableText(FallbackFilterSearch.ToSharedRef());
+    const TSharedPtr<SCheckBox> FallbackPlayingFilter = FindCheckBoxWithText(FallbackFilterToggles[0].ToSharedRef(), TEXT("Playing"));
+    if (NOT TestTrue(TEXT("native startup fallback preserves physical search and toggle behavior"),
+        FallbackFilterEditable.IsValid() && FallbackPlayingFilter.IsValid()
+            && ReplaceSearchText(Slate, FallbackFilterEditable.ToSharedRef(), TEXT("fallback"))
+            && DebuggerWindow->_FilterString == TEXT("fallback") && DebuggerWindow->_HighlightString == TEXT("fallback")
+            && Click(Slate, FallbackPlayingFilter.ToSharedRef()) && NOT DebuggerWindow->_ShowPlaying))
+    { return false; }
+
     MarkupRestored = FFileHelper::SaveStringToFile(
         Markup, *FPaths::Combine(Directory, TEXT("AudioDebuggerShell.ui.html")));
     TestTrue(TEXT("Audio fixture restores the valid production resource"), MarkupRestored);
@@ -656,8 +792,20 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
             && ContainsWidget(View->GetRegion(TEXT("main")), DebuggerWindow->_Tabs.ToSharedRef())
             && NOT ContainsWidget(View->GetRegion(TEXT("main")), DebuggerWindow->_StatCards.ToSharedRef())
             && TaggedText(View->GetRegion(TEXT("main")), TEXT("audio-stat-concurrency-label")) == TEXT("Active / max")
-            && ContainsWidget(View->GetRegion(TEXT("main")), DebuggerWindow->_FilterRow.ToSharedRef())
+            && ContainsWidget(View->GetRegion(TEXT("main")), FallbackFilterSearch.ToSharedRef())
             && ContainsWidget(View->GetRegion(TEXT("main")), DebuggerWindow->_PageSwitcher.ToSharedRef()));
+    TestTrue(TEXT("shell recovery releases the fallback-only parent and preserves filter identity and state"),
+        NOT FallbackFilterParent.IsValid() && DebuggerWindow->_FilterSearchBar == FallbackFilterSearch
+            && FallbackFilterSearch->Get_SearchText() == TEXT("fallback")
+            && DebuggerWindow->_FilterString == TEXT("fallback") && DebuggerWindow->_HighlightString == TEXT("fallback")
+            && NOT DebuggerWindow->_ShowPlaying);
+    for (const auto& Toggle : FallbackFilterToggles)
+    { TestTrue(TEXT("recovered authored shell owns all original filter controls"), ContainsWidget(View->GetRegion(TEXT("main")), Toggle.ToSharedRef())); }
+    if (NOT TestTrue(TEXT("recovered authored controls physically clear search and restore Playing"),
+        ReplaceSearchText(Slate, FallbackFilterEditable.ToSharedRef(), TEXT(""))
+            && DebuggerWindow->_FilterString.IsEmpty() && DebuggerWindow->_HighlightString.IsEmpty()
+            && Click(Slate, FallbackPlayingFilter.ToSharedRef()) && DebuggerWindow->_ShowPlaying))
+    { return false; }
     AttenuationView = DebuggerWindow->_AuthoredAttenuationView;
     if (NOT TestTrue(TEXT("outer recovery independently leaves invalid attenuation in its native fallback"),
         AttenuationView.IsValid() && NOT AttenuationView->GetLastResult().Succeeded
@@ -781,6 +929,41 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
             && DebuggerWindow->_DirectorSlots[0].ActiveText->GetText().ToString() == TEXT("1 / 4 active")
             && DebuggerWindow->_DirectorPageSlots[0].ActiveText->GetText().ToString() == TEXT("1 / 4 active")
             && TaggedText(View->GetRegion(TEXT("main")), TEXT("audio-stat-concurrency")) == TEXT("1 / 4"));
+
+    // Exercise the same production structure/value pass against the controlled collector snapshot after routed input.
+    const auto RefreshFilteredRows = [&]()
+    {
+        DebuggerWindow->_Collector.Collect(nullptr);
+        DebuggerWindow->DoRebuild_Structure();
+        DebuggerWindow->DoUpdate_LiveValues();
+        TickSlate(Slate);
+    };
+    const TSharedPtr<SButton> FilterTracksTab = FindButtonWithText(DebuggerWindow->_Tabs.ToSharedRef(), TEXT("Tracks"));
+    if (NOT TestTrue(TEXT("filter fixture physically selects the production Tracks page"),
+        FilterTracksTab.IsValid() && Click(Slate, FilterTracksTab.ToSharedRef())))
+    { return false; }
+    if (NOT TestTrue(TEXT("physical search supplies a nonmatching production query"),
+        ReplaceSearchText(Slate, FallbackFilterEditable.ToSharedRef(), TEXT("absent-audio-track"))))
+    { return false; }
+    RefreshFilteredRows();
+    TestTrue(TEXT("nonmatching search removes the controlled production track row"),
+        DebuggerWindow->_TrackSlots.IsEmpty() && DebuggerWindow->_DirectorBox->GetChildren()->Num() == 0);
+    if (NOT TestTrue(TEXT("physical clear restores the production query"),
+        ReplaceSearchText(Slate, FallbackFilterEditable.ToSharedRef(), TEXT(""))))
+    { return false; }
+    RefreshFilteredRows();
+    TestEqual(TEXT("clearing search restores the controlled production track row"), DebuggerWindow->_TrackSlots.Num(), 1);
+    if (NOT TestTrue(TEXT("physical Playing filter hides playing tracks"), Click(Slate, FallbackPlayingFilter.ToSharedRef())))
+    { return false; }
+    RefreshFilteredRows();
+    TestEqual(TEXT("Playing preference removes the controlled playing row"), DebuggerWindow->_TrackSlots.Num(), 0);
+    if (NOT TestTrue(TEXT("physical Playing filter restores playing tracks"), Click(Slate, FallbackPlayingFilter.ToSharedRef())))
+    { return false; }
+    RefreshFilteredRows();
+    TestEqual(TEXT("re-enabling Playing restores the original track count"), DebuggerWindow->_TrackSlots.Num(), 1);
+    if (NOT TestTrue(TEXT("filter fixture physically returns to Events before recording its baseline"),
+        Click(Slate, FallbackEventsTab.ToSharedRef())))
+    { return false; }
 
     // Reset only after the physical Events selection: Click ticks Slate, so seeding before it could consume a diff.
     DebuggerWindow->_TrackWatch.Reset();

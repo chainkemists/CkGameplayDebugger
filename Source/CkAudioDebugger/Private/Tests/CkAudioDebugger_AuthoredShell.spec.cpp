@@ -8,6 +8,7 @@
 #include "CkDebuggerCommon/Search/SCkDebug_SearchBar.h"
 #include "CkDebuggerCommon/Settings/CkDebuggerStyleSettings.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_Sparkline.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_MeterBar.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_EventLog.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_EntityRef.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_ToggleSurface.h"
@@ -35,6 +36,7 @@
 #include "Widgets/Input/SEditableText.h"
 #include "Widgets/Docking/SDockTab.h"
 #include "Widgets/Layout/SBorder.h"
+#include "Widgets/IToolTip.h"
 #include "Widgets/SWindow.h"
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/Text/STextBlock.h"
@@ -141,6 +143,29 @@ namespace ck_audio_debugger_authored_shell_tests
             { return Found; }
         }
         return {};
+    }
+
+    auto FindWidgetType(const TSharedRef<SWidget>& InRoot, const FString& InType) -> TSharedPtr<SWidget>
+    {
+        if (InRoot->GetTypeAsString() == InType) { return InRoot; }
+        auto* Children = InRoot->GetChildren();
+        for (auto Index = 0; Children != nullptr && Index < Children->Num(); ++Index)
+        {
+            if (const auto Found = FindWidgetType(ConstCastSharedRef<SWidget>(Children->GetChildAt(Index)), InType))
+            { return Found; }
+        }
+        return {};
+    }
+
+    auto CountTrackRecords(const TSharedPtr<FCkUiCollection>& InRecords) -> int32
+    {
+        auto Count = 0;
+        if (InRecords.IsValid())
+        {
+            for (const auto& Record : InRecords->GetRecords())
+            { if (const auto* Field = Record->FindField(TEXT("is-track")); Field != nullptr && Field->Bool) { ++Count; } }
+        }
+        return Count;
     }
 
     auto ProbeRetainedEntityRef(const TSharedRef<SCkDebug_EntityRef>& InRef) -> void
@@ -272,6 +297,13 @@ namespace ck_audio_debugger_authored_shell_tests
         InSlate.ProcessKeyUpEvent(FKeyEvent{EKeys::Enter, FModifierKeysState{}, 0, false, 0, 0});
         return Committed && InEditable->GetText().ToString() == InText;
     }
+
+    // Keep Tracks code generation out of RunTest while its closure retains the fixture's friend access.
+    template <typename TFixture>
+    static FORCENOINLINE auto RunFixturePhase(TFixture&& InFixture) -> bool
+    {
+        return InFixture();
+    }
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
@@ -345,6 +377,17 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
 
     TSharedPtr<FCkUiView> EventsView = DebuggerWindow->_AuthoredEventsToolbarView;
     TSharedPtr<FCkUiView> DirectorsView = DebuggerWindow->_AuthoredDirectorsView;
+    TSharedPtr<FCkUiView> TracksView = DebuggerWindow->_AuthoredTracksView;
+    if (NOT TestTrue(TEXT("production Audio window admits its authored Tracks page and compact plot"),
+        TracksView.IsValid() && TracksView->GetLastResult().Succeeded
+            && NOT DebuggerWindow->_UsingNativeTracksFallback
+            && TracksView->GetRepeat(TEXT("audio-tracks")).IsValid()
+            && TracksView->GetScroll(TEXT("audio-tracks-scroll")).IsValid()
+            && ContainsWidget(TracksView->GetRegion(TEXT("main")), DebuggerWindow->_CompactCrossfadePlot.ToSharedRef())))
+    {
+        if (TracksView.IsValid()) { AddError(FString::Join(TracksView->GetLastResult().Errors, TEXT("\n"))); }
+        return false;
+    }
     if (NOT TestTrue(TEXT("production Audio window admits its authored Directors page"),
         DirectorsView.IsValid() && DirectorsView->GetLastResult().Succeeded
             && NOT DebuggerWindow->_UsingNativeDirectorsFallback
@@ -604,6 +647,8 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
     FString EventsMarkup;
     FString DirectorsMarkup;
     FString DirectorsCss;
+    FString TracksMarkup;
+    FString TracksCss;
     FString EventsCss;
     const FString Directory = Plugin.IsValid()
         ? FPaths::Combine(Plugin->GetBaseDir(), TEXT("Resources/UI"))
@@ -618,7 +663,9 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
         && FFileHelper::LoadFileToString(EventsMarkup, *FPaths::Combine(Directory, TEXT("AudioDebuggerEventsToolbar.ui.html")))
         && FFileHelper::LoadFileToString(EventsCss, *FPaths::Combine(Directory, TEXT("AudioDebuggerEventsToolbar.ui.css")))
         && FFileHelper::LoadFileToString(DirectorsMarkup, *FPaths::Combine(Directory, TEXT("AudioDebuggerDirectors.ui.html")))
-        && FFileHelper::LoadFileToString(DirectorsCss, *FPaths::Combine(Directory, TEXT("AudioDebuggerDirectors.ui.css")))))
+        && FFileHelper::LoadFileToString(DirectorsCss, *FPaths::Combine(Directory, TEXT("AudioDebuggerDirectors.ui.css")))
+        && FFileHelper::LoadFileToString(TracksMarkup, *FPaths::Combine(Directory, TEXT("AudioDebuggerTracks.ui.html")))
+        && FFileHelper::LoadFileToString(TracksCss, *FPaths::Combine(Directory, TEXT("AudioDebuggerTracks.ui.css")))))
     { return false; }
 
     TestTrue(TEXT("Audio resource declares typed tabs without the old opaque native tab binding"),
@@ -780,6 +827,7 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
     const TWeakPtr<FCkUiView> ReleasedAttenuationView = AttenuationView;
     const TWeakPtr<FCkUiView> ReleasedEventsView = EventsView;
     const TWeakPtr<FCkUiView> ReleasedDirectorsView = DirectorsView;
+    const TWeakPtr<FCkUiView> ReleasedTracksView = TracksView;
     const TWeakPtr<SCkAudioDebuggerWindow> ReleasedEventsOwner = DebuggerWindow;
     DebuggerWindow.Reset();
     View.Reset();
@@ -787,12 +835,14 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
     AttenuationView.Reset();
     EventsView.Reset();
     DirectorsView.Reset();
+    TracksView.Reset();
     TestFalse(TEXT("authored Audio view releases with its production window"), ReleasedView.IsValid());
     TestFalse(TEXT("authored Crossfade view releases with its production window"), ReleasedCrossfadeView.IsValid());
     TestFalse(TEXT("authored attenuation view releases with its production window"), ReleasedAttenuationView.IsValid());
     TestFalse(TEXT("retained Events controls do not retain their production owner"), ReleasedEventsOwner.IsValid());
     TestFalse(TEXT("authored Events view releases with its production window"), ReleasedEventsView.IsValid());
     TestFalse(TEXT("authored Directors view releases with its production window"), ReleasedDirectorsView.IsValid());
+    TestFalse(TEXT("authored Tracks view releases with its production window"), ReleasedTracksView.IsValid());
     TestTrue(TEXT("Audio owner release closes the owned tab popup and revokes retained tab dispatch"),
         NOT OriginalTabs->GetCanDispatchEvents() && NOT Overflow->IsOpen()
             && NOT OriginalTabs->GetPopupFocusTarget().IsValid());
@@ -844,6 +894,8 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
         TEXT("<native id=\"audio-events-lifecycle\" bind=\"events-lifecycle\" />"), TEXT(""));
     const FString InvalidDirectorsStartupMarkup = DirectorsMarkup.Replace(
         TEXT("bind=\"audio-directors\""), TEXT("bind=\"missing-audio-directors\""));
+    const FString InvalidTracksStartupMarkup = TracksMarkup.Replace(
+        TEXT("bind=\"audio-tracks\""), TEXT("bind=\"missing-audio-tracks\""));
     if (NOT TestTrue(TEXT("Events startup fixture omits one required native port"), InvalidEventsStartupMarkup != EventsMarkup))
     { return false; }
     bool MarkupRestored = false;
@@ -851,6 +903,7 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
     bool AttenuationMarkupRestored = false;
     bool EventsMarkupRestored = false;
     bool DirectorsMarkupRestored = false;
+    bool TracksMarkupRestored = false;
     ON_SCOPE_EXIT
     {
         if (NOT MarkupRestored)
@@ -863,6 +916,8 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
         { FFileHelper::SaveStringToFile(EventsMarkup, *FPaths::Combine(Directory, TEXT("AudioDebuggerEventsToolbar.ui.html"))); }
         if (NOT DirectorsMarkupRestored)
         { FFileHelper::SaveStringToFile(DirectorsMarkup, *FPaths::Combine(Directory, TEXT("AudioDebuggerDirectors.ui.html"))); }
+        if (NOT TracksMarkupRestored)
+        { FFileHelper::SaveStringToFile(TracksMarkup, *FPaths::Combine(Directory, TEXT("AudioDebuggerTracks.ui.html"))); }
     };
     if (NOT TestTrue(TEXT("Audio fixture installs its valid-but-unbound startup candidate"),
         FFileHelper::SaveStringToFile(
@@ -874,7 +929,9 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
             && FFileHelper::SaveStringToFile(InvalidEventsStartupMarkup,
                 *FPaths::Combine(Directory, TEXT("AudioDebuggerEventsToolbar.ui.html")))
             && FFileHelper::SaveStringToFile(InvalidDirectorsStartupMarkup,
-                *FPaths::Combine(Directory, TEXT("AudioDebuggerDirectors.ui.html")))))
+                *FPaths::Combine(Directory, TEXT("AudioDebuggerDirectors.ui.html")))
+            && FFileHelper::SaveStringToFile(InvalidTracksStartupMarkup,
+                *FPaths::Combine(Directory, TEXT("AudioDebuggerTracks.ui.html")))))
     { return false; }
 
     DebuggerWindow = SNew(SCkAudioDebuggerWindow);
@@ -1046,6 +1103,26 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
             && DebuggerWindow->_DirectorPageSlots.IsEmpty()))
     { return false; }
 
+    TracksView = DebuggerWindow->_AuthoredTracksView;
+    if (NOT TestTrue(TEXT("invalid Tracks startup preserves the independent native page and exact compact plot"),
+        TracksView.IsValid() && NOT TracksView->GetLastResult().Succeeded
+            && DebuggerWindow->_UsingNativeTracksFallback
+            && ContainsWidget(DebuggerWindow->_TracksPageHost.ToSharedRef(), DebuggerWindow->_NativeTracksPage.ToSharedRef())
+            && ContainsWidget(DebuggerWindow->_CompactCrossfadeHost.ToSharedRef(), DebuggerWindow->_CompactCrossfadePlot.ToSharedRef())))
+    { return false; }
+    TracksMarkupRestored = FFileHelper::SaveStringToFile(TracksMarkup, *FPaths::Combine(Directory, TEXT("AudioDebuggerTracks.ui.html")));
+    if (NOT TestTrue(TEXT("Tracks fixture restores its resource"), TracksMarkupRestored)) { return false; }
+    DebuggerWindow->OnStyleRevisionChanged();
+    TickSlate(Slate);
+    if (NOT TestTrue(TEXT("bounded Tracks polling recovers and retires native rows"),
+        TracksView->GetLastResult().Succeeded && NOT DebuggerWindow->_UsingNativeTracksFallback
+            && NOT ContainsWidget(DebuggerWindow->_TracksPageHost.ToSharedRef(), DebuggerWindow->_NativeTracksPage.ToSharedRef())
+            && ContainsWidget(TracksView->GetRegion(TEXT("main")), DebuggerWindow->_CompactCrossfadePlot.ToSharedRef())
+            && DebuggerWindow->_TrackSlots.IsEmpty()))
+    { return false; }
+
+    return RunFixturePhase([&, this]() -> bool
+    {
     using namespace ck::registry_table;
     auto Registry = EnttRegistryType{};
     const auto RegistrySlot = Allocate(&Registry);
@@ -1102,10 +1179,20 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
     const auto TrackAAllSignature = DebuggerWindow->DoBuild_AllTracksSignature();
     DebuggerWindow->DoRebuild_Structure();
     DebuggerWindow->DoUpdate_LiveValues();
+    const auto TracksRepeat = TracksView->GetRepeat(TEXT("audio-tracks"));
+    TracksRepeat->TryRefresh();
+    if (NOT TestTrue(TEXT("Tracks projection creates one header and one track with no native positional rows"),
+        DebuggerWindow->_TrackRecordsReady && TracksRepeat->GetItemCount() == 2
+            && CountTrackRecords(DebuggerWindow->_TrackRecords) == 1
+            && DebuggerWindow->_TrackSlots.IsEmpty() && DebuggerWindow->_DirectorSlots.IsEmpty()))
+    { return false; }
+    const auto TrackHeaderKey = DebuggerWindow->_TrackRecords->GetRecords()[0]->GetKey();
+    const auto TrackRecordKey = DebuggerWindow->_TrackRecords->GetRecords()[1]->GetKey();
+    const auto TrackHeaderRow = TracksRepeat->GetItemWidget(TrackHeaderKey);
     TestTrue(TEXT("both Audio pages receive the live director concurrency count"),
-        DebuggerWindow->_DirectorSlots.Num() == 1
-            && DebuggerWindow->_DirectorPageSlots.IsEmpty()
-            && DebuggerWindow->_DirectorSlots[0].ActiveText->GetText().ToString() == TEXT("1 / 4 active")
+        DebuggerWindow->_DirectorPageSlots.IsEmpty()
+            && TrackHeaderRow.IsValid()
+            && TaggedText(TrackHeaderRow.ToSharedRef(), TEXT("audio-track-director-active")) == TEXT("1 / 4 active")
             && TaggedText(DirectorRow.ToSharedRef(), TEXT("audio-director-active")) == TEXT("1 / 4 active")
             && TaggedText(View->GetRegion(TEXT("main")), TEXT("audio-stat-concurrency")) == TEXT("1 / 4"));
 
@@ -1316,6 +1403,220 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
             && NOT TabWarningVisible(TEXT("CkDebug.Tab.Warning.Tracks"))
             && NOT TabWarningVisible(TEXT("CkDebug.Tab.Warning.Spatial")));
 
+    const auto TrackNavigationResults = MakeShared<TArray<FCk_Entity>>();
+    if (NOT RunFixturePhase([&, this]() -> bool
+    {
+        const auto RefreshTracks = [&]()
+        {
+            DebuggerWindow->_Collector.Collect(nullptr);
+            DebuggerWindow->DoUpdate_LiveValues();
+            TracksRepeat->TryRefresh();
+            TickSlate(Slate);
+        };
+        const auto TracksTab = FindButtonWithText(GetTabs().ToSharedRef(), TEXT("Tracks"));
+        if (NOT TestTrue(TEXT("physical Tracks tab selects the authored page with one retained compact plot"),
+            TracksTab.IsValid() && Click(Slate, TracksTab.ToSharedRef())
+                && DebuggerWindow->_PageSwitcher->GetActiveWidgetIndex() == 1
+                && ContainsWidget(DebuggerWindow->_TracksPageHost.ToSharedRef(), TracksView->GetRegion(TEXT("main")))
+                && NOT ContainsWidget(DebuggerWindow->_TracksPageHost.ToSharedRef(), DebuggerWindow->_NativeTracksPage.ToSharedRef())))
+        { return false; }
+        RefreshTracks();
+        const auto TrackRow = TracksRepeat->GetItemWidget(TrackRecordKey);
+        if (NOT TestTrue(TEXT("current Track identity resolves its authored row"), TrackRow.IsValid())) { return false; }
+        const auto TrackMeter = StaticCastSharedPtr<SCkDebug_MeterBar>(FindWidgetType(TrackRow.ToSharedRef(), TEXT("SCkDebug_MeterBar")));
+        const auto TrackEntityLink = FindTaggedWidget(TrackRow.ToSharedRef(), TEXT("audio-track-entity"));
+        const auto TrackEntityRef = TrackEntityLink.IsValid() ? FindEntityRef(TrackEntityLink.ToSharedRef()) : nullptr;
+        const auto TrackNameWrap = FindTaggedWidget(TrackRow.ToSharedRef(), TEXT("audio-track-name"));
+        const auto TrackName = TrackNameWrap.IsValid()
+            ? StaticCastSharedPtr<STextBlock>(FindWidgetType(TrackNameWrap.ToSharedRef(), TEXT("STextBlock"))) : nullptr;
+        if (NOT TestTrue(TEXT("Tracks renders the real meter, exact chip, highlight leaf and entity reference"),
+            TrackMeter.IsValid() && TrackEntityRef.IsValid() && TrackName.IsValid()
+                && FindWidgetType(TrackRow.ToSharedRef(), TEXT("SCkDebug_Chip")).IsValid()
+                && TrackMeter->Get_Fraction() == 0.5f && NOT TrackMeter->Get_TargetFraction().IsSet()))
+        { return false; }
+        DebuggerWindow->_TrackNavigationForTests = [TrackNavigationResults](const FCk_Handle& InEntity)
+        { TrackNavigationResults->Add(InEntity.Get_Entity()); };
+        if (NOT TestTrue(TEXT("physical authored track entity link reaches the exact production identity"),
+            Click(Slate, TrackEntityRef.ToSharedRef()) && TrackNavigationResults->Num() == 1
+                && (*TrackNavigationResults)[0] == TrackA.Get_Entity())) { return false; }
+
+        auto LiveTrack = TrackInfoA;
+        LiveTrack.State = ECk_AudioTrack_State::FadingIn;
+        LiveTrack.CurrentVolume = 0.25f;
+        LiveTrack.TargetVolume = 0.75f;
+        LiveTrack.FadeSpeed = 0.5f;
+        LiveTrack.Priority = 7;
+        LiveTrack.LoopBehavior = ECk_LoopBehavior::PlayOnce;
+        LiveTrack.SoundPath = TEXT("/Game/Audio/TrackCue.TrackCue");
+        LiveTrack.OverrideBehavior = ECk_AudioTrack_OverrideBehavior::Queue;
+        LiveTrack.IsVirtualized = true;
+        FixtureSnapshot.Directors[0].Tracks = {LiveTrack};
+        RefreshTracks();
+        const auto TrackPriority = FindTaggedWidget(TrackRow.ToSharedRef(), TEXT("audio-track-priority"));
+        const auto TrackOverride = FindTaggedWidget(TrackRow.ToSharedRef(), TEXT("audio-track-override"));
+        const auto TrackLoop = FindTaggedWidget(TrackRow.ToSharedRef(), TEXT("audio-track-loop"));
+        const auto TrackState = FindWidgetType(TrackRow.ToSharedRef(), TEXT("SCkDebug_StatusPill"));
+        const auto TrackPriorityChip = TrackPriority.IsValid() ? FindWidgetType(TrackPriority.ToSharedRef(), TEXT("SCkDebug_Chip")) : nullptr;
+        const auto TrackOverrideChip = TrackOverride.IsValid() ? FindWidgetType(TrackOverride.ToSharedRef(), TEXT("SCkDebug_Chip")) : nullptr;
+        if (NOT TestTrue(TEXT("configuration retains exact shared chip leaves"), TrackPriorityChip.IsValid() && TrackOverrideChip.IsValid()))
+        { return false; }
+        TestTrue(TEXT("live Tracks state, current/target marker, alert and configuration update without replacing the row"),
+            TracksRepeat->GetItemWidget(TrackRecordKey) == TrackRow
+                && TrackMeter->Get_Fraction() == 0.25f
+                && TrackMeter->Get_TargetFraction() == TOptional<float>{0.75f}
+                && TrackMeter->Get_TargetColor() == CkStyle::Text()
+                && TrackMeter->Get_FillColor() == CkStyle::Err()
+                && TaggedText(TrackRow.ToSharedRef(), TEXT("audio-track-volume")) == TEXT("0.25 → 0.75")
+                && TaggedText(TrackRow.ToSharedRef(), TEXT("audio-track-fade")) == DebuggerWindow->DoBuild_FadeText(LiveTrack)
+                && TaggedText(TrackRow.ToSharedRef(), TEXT("audio-track-alert")) == DebuggerWindow->DoBuild_AlertText(LiveTrack)
+                && TaggedText(TrackRow.ToSharedRef(), TEXT("audio-track-sound")) == TEXT("TrackCue")
+                && TrackState.IsValid() && SubtreeHasText(TrackState.ToSharedRef(), TEXT("Fading in"))
+                && TrackLoop.IsValid() && SubtreeHasText(TrackLoop.ToSharedRef(), TEXT("Play once"))
+                && TrackPriority.IsValid() && SubtreeHasText(TrackPriority.ToSharedRef(), TEXT("p7"))
+                && TrackOverride.IsValid() && SubtreeHasText(TrackOverride.ToSharedRef(), TEXT("Queue")));
+        const auto SoundWidget = FindTaggedWidget(TrackRow.ToSharedRef(), TEXT("audio-track-sound"));
+        if (SoundWidget.IsValid() && SoundWidget->GetToolTip().IsValid())
+        { SoundWidget->GetToolTip()->GetContentWidget()->SlatePrepass(); }
+        TestTrue(TEXT("sound leaf exposes the full asset path tooltip"), SoundWidget.IsValid()
+            && SoundWidget->GetToolTip().IsValid()
+            && SoundWidget->GetToolTip()->GetContentWidget()->GetAccessibleText().ToString() == LiveTrack.SoundPath);
+        LiveTrack.State = ECk_AudioTrack_State::Playing;
+        LiveTrack.IsVirtualized = false;
+        LiveTrack.CurrentVolume = 0.75f;
+        FixtureSnapshot.Directors[0].Tracks = {LiveTrack};
+        RefreshTracks();
+        TestTrue(TEXT("settled nonvirtualized Tracks remove the target and alert"),
+            NOT TrackMeter->Get_TargetFraction().IsSet()
+                && TrackMeter->Get_Fraction() == 0.75f
+                && TaggedText(TrackRow.ToSharedRef(), TEXT("audio-track-volume")) == TEXT("0.75 = 0.75")
+                && FindTaggedWidget(TrackRow.ToSharedRef(), TEXT("audio-track-alert-row"))->GetVisibility() == EVisibility::Collapsed);
+
+        const auto CompactPlot = DebuggerWindow->_CompactCrossfadePlot;
+        DebuggerWindow->DoRecord_VolumeHistory();
+        TestTrue(TEXT("authored compact lane retains the exact shared pair, legend and 62px plot"),
+            ContainsWidget(TracksView->GetRegion(TEXT("main")), CompactPlot.ToSharedRef())
+                && CompactPlot->Get_Samples() == DebuggerWindow->_CrossfadeSeriesA
+                && CompactPlot->Get_BandSamples() == DebuggerWindow->_CrossfadeSeriesB
+                && CompactPlot->Get_DesiredSize().Y == 62.0f
+                && CompactPlot->Get_BandFillOpacity() == 0.0f
+                && TaggedText(TracksView->GetRegion(TEXT("main")), TEXT("audio-track-crossfade-legend")) == DebuggerWindow->_CrossfadeLegendText->ToString());
+        const auto TrackScroll = TracksView->GetScroll(TEXT("audio-tracks-scroll"));
+        TestTrue(TEXT("compatible Tracks reload retains rows, exact meter, chip, plot and scroll"),
+            TracksView->TryReload(TracksMarkup, TracksCss, TEXT("Audio Tracks compatible reload")).Succeeded
+                && TracksRepeat->GetItemWidget(TrackRecordKey) == TrackRow
+                && FindWidgetType(TrackRow.ToSharedRef(), TEXT("SCkDebug_MeterBar")) == TrackMeter
+                && ContainsWidget(TrackRow.ToSharedRef(), TrackPriorityChip.ToSharedRef())
+                && TracksView->GetScroll(TEXT("audio-tracks-scroll")) == TrackScroll
+                && ContainsWidget(TracksView->GetRegion(TEXT("main")), CompactPlot.ToSharedRef()));
+        const auto TracksRevision = TracksView->GetRevision();
+        TestTrue(TEXT("invalid Tracks field rejects without replacing accepted rows"),
+            NOT TracksView->TryReload(TracksMarkup.Replace(TEXT("target-fraction-field=\"target-fraction\""),
+                TEXT("target-fraction-field=\"missing-target\"")), TracksCss).Succeeded
+                && TracksView->GetRevision() == TracksRevision && TracksRepeat->GetItemWidget(TrackRecordKey) == TrackRow);
+        TestTrue(TEXT("invalid Tracks action rejects without replacing accepted rows"),
+            NOT TracksView->TryReload(TracksMarkup.Replace(TEXT("item-action=\"audio-track-navigate\""),
+                TEXT("item-action=\"missing-track-route\"")), TracksCss).Succeeded
+                && TracksView->GetRevision() == TracksRevision);
+        if (NOT TestTrue(TEXT("Tracks valid candidate remains available after rejection"), TracksView->TryReload(TracksMarkup, TracksCss).Succeeded))
+        { return false; }
+        DebuggerWindow->DoRebuild_OverlayList();
+        RefreshTracks();
+        TestTrue(TEXT("ordinary Overlay rebuild leaves Tracks lifecycle keys, rows and actions current"),
+            TracksRepeat->GetItemWidget(TrackRecordKey) == TrackRow && Click(Slate, TrackEntityRef.ToSharedRef())
+                && TrackNavigationResults->Num() == 2 && (*TrackNavigationResults)[1] == TrackA.Get_Entity());
+        const auto TracksStyleBefore = StyleSettings->Selection;
+        StyleSettings->Selection.TextScale = ECkDebugAxis_TextScale::Normal;
+        StyleSettings->Selection.ChipStyle = ECkDebugAxis_ChipStyle::Tint;
+        StyleSettings->NotifyChanged();
+        DebuggerWindow->OnStyleRevisionChanged();
+        RefreshTracks();
+        const auto NormalTrackFont = TrackName->GetFont().Size;
+        const auto TrackChipBorder = StaticCastSharedPtr<SBorder>(FindWidgetType(TrackPriorityChip.ToSharedRef(), TEXT("SBorder")));
+        StyleSettings->Selection.TextScale = ECkDebugAxis_TextScale::Large;
+        StyleSettings->Selection.ChipStyle = ECkDebugAxis_ChipStyle::TextOnly;
+        StyleSettings->NotifyChanged();
+        DebuggerWindow->OnStyleRevisionChanged();
+        RefreshTracks();
+        TestTrue(TEXT("Tracks style revision retains the row/name/chip and applies live TextScale and ChipStyle"),
+            TracksRepeat->GetItemWidget(TrackRecordKey) == TrackRow && TrackName->GetFont().Size > NormalTrackFont
+                && ContainsWidget(TrackRow.ToSharedRef(), TrackPriorityChip.ToSharedRef())
+                && TrackChipBorder.IsValid() && TrackChipBorder->GetBorderBackgroundColor().GetSpecifiedColor().A == 0.0f);
+        StyleSettings->Selection = TracksStyleBefore;
+        StyleSettings->NotifyChanged();
+        DebuggerWindow->OnStyleRevisionChanged();
+        RefreshTracks();
+        HostWindow->Resize(FVector2D{360.0f, 480.0f});
+        TickSlate(Slate);
+        const auto TracksOuterScroll = View->GetScroll(TEXT("audio-shell-scroll"));
+        const auto TracksScrollEnd = TracksOuterScroll->GetScrollOffsetOfEnd();
+        TracksOuterScroll->SetScrollOffset(TracksScrollEnd);
+        TickSlate(Slate);
+        const auto OverrideGeometry = TrackOverrideChip->GetCachedGeometry();
+        const auto HostGeometry = DebuggerWindow->GetCachedGeometry();
+        TestTrue(TEXT("narrow Tracks keeps the final configuration chip reachable through the shell scroll"),
+            TracksScrollEnd > 0.0f && OverrideGeometry.GetLocalSize().X > 0.0f
+                && OverrideGeometry.GetAbsolutePosition().X >= HostGeometry.GetAbsolutePosition().X - 1.0f
+                && OverrideGeometry.GetAbsolutePosition().X + OverrideGeometry.GetAbsoluteSize().X
+                    <= HostGeometry.GetAbsolutePosition().X + HostGeometry.GetAbsoluteSize().X + 1.0f);
+        HostWindow->Resize(FVector2D{1100.0f, 720.0f});
+        TracksOuterScroll->SetScrollOffset(0.0f);
+        TickSlate(Slate);
+        const auto GroupFilter = FindCheckBoxWithText(DebuggerWindow->_FilterGroupToggle.ToSharedRef(), TEXT("Group by director"));
+        if (NOT TestTrue(TEXT("physical Group filter switches Tracks to flat rows"),
+            GroupFilter.IsValid() && Click(Slate, GroupFilter.ToSharedRef()) && NOT DebuggerWindow->_GroupByDirector))
+        { return false; }
+        RefreshTracks();
+        TestTrue(TEXT("ungrouping removes only headers and keeps the exact track row"),
+            TracksRepeat->GetItemCount() == 1 && TracksRepeat->GetItemWidget(TrackRecordKey) == TrackRow
+                && NOT TracksRepeat->GetItemWidget(TrackHeaderKey).IsValid());
+        if (NOT TestTrue(TEXT("physical Group filter restores Tracks headers"), Click(Slate, GroupFilter.ToSharedRef()) && DebuggerWindow->_GroupByDirector))
+        { return false; }
+        RefreshTracks();
+        TestTrue(TEXT("regrouping preserves existing track row identity"),
+            TracksRepeat->GetItemCount() == 2 && TracksRepeat->GetItemWidget(TrackRecordKey) == TrackRow);
+        const auto GroupedHeader = TracksRepeat->GetItemWidget(TrackHeaderKey);
+        const auto GroupedDirectorLink = GroupedHeader.IsValid()
+            ? FindTaggedWidget(GroupedHeader.ToSharedRef(), TEXT("audio-track-director-entity")) : nullptr;
+        if (NOT TestTrue(TEXT("physical Tracks group-header navigation resolves its exact director"),
+            GroupedDirectorLink.IsValid() && Click(Slate, GroupedDirectorLink.ToSharedRef())
+                && TrackNavigationResults->Num() == 3 && (*TrackNavigationResults)[2] == DirectorEntity.Get_Entity()))
+        { return false; }
+
+        auto EqualNameTrack = LiveTrack;
+        EqualNameTrack.TrackEntity = TrackB;
+        FixtureSnapshot.Directors[0].Tracks = {LiveTrack, EqualNameTrack};
+        RefreshTracks();
+        TestTrue(TEXT("equal track names preserve separate full-identity records"),
+            CountTrackRecords(DebuggerWindow->_TrackRecords) == 2 && TracksRepeat->GetItemCount() == 3
+                && TracksRepeat->GetItemWidget(TrackRecordKey) == TrackRow);
+        FixtureSnapshot.Directors[0].Tracks = {EqualNameTrack};
+        RefreshTracks();
+        ProbeRetainedEntityRef(TrackEntityRef.ToSharedRef());
+        TestTrue(TEXT("same-name replacement retires the old Track identity and its held action"),
+            NOT TracksRepeat->GetItemWidget(TrackRecordKey).IsValid() && CountTrackRecords(DebuggerWindow->_TrackRecords) == 1
+                && TrackNavigationResults->Num() == 3);
+        const auto TrackReplacementKey = DebuggerWindow->_TrackRecords->GetRecords()[1]->GetKey();
+        const auto TrackReplacementRow = TracksRepeat->GetItemWidget(TrackReplacementKey);
+        const auto ReplacementTrackLink = FindTaggedWidget(TrackReplacementRow.ToSharedRef(), TEXT("audio-track-entity"));
+        if (NOT TestTrue(TEXT("replacement track physical action resolves its exact entity"),
+            ReplacementTrackLink.IsValid() && Click(Slate, ReplacementTrackLink.ToSharedRef())
+                && TrackNavigationResults->Num() == 4 && (*TrackNavigationResults)[3] == TrackB.Get_Entity()))
+        { return false; }
+        FixtureSnapshot.Directors[0].Tracks = {EqualNameTrack, EqualNameTrack};
+        RefreshTracks();
+        TestTrue(TEXT("duplicate Track identities fail closed without a partially actionable publication"),
+            NOT DebuggerWindow->_TrackRecordsReady && DebuggerWindow->_TrackRecords->GetRecords().IsEmpty()
+                && TracksRepeat->GetItemCount() == 0);
+        FixtureSnapshot.Directors[0].Tracks.Reset();
+        RefreshTracks();
+        TestTrue(TEXT("empty director emits neither Tracks rows nor an empty group header"),
+            DebuggerWindow->_TrackRecordsReady && TracksRepeat->GetItemCount() == 0);
+        FixtureSnapshot.Directors[0].Tracks = {TrackInfoA};
+        RefreshTracks();
+        return true;
+    }))
+    { return false; }
+
     // Exercise the same production structure/value pass against the controlled collector snapshot after routed input.
     const auto RefreshFilteredRows = [&]()
     {
@@ -1333,7 +1634,7 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
     { return false; }
     RefreshFilteredRows();
     TestTrue(TEXT("nonmatching search removes the controlled production track row"),
-        DebuggerWindow->_TrackSlots.IsEmpty() && DebuggerWindow->_DirectorBox->GetChildren()->Num() == 0);
+        DebuggerWindow->_TrackRecords->GetRecords().IsEmpty() && TracksRepeat->GetItemCount() == 0);
     DirectorsRepeat->TryRefresh();
     TestTrue(TEXT("nonmatching name filter removes authored Directors records"),
         DebuggerWindow->_DirectorRecords->GetRecords().IsEmpty()
@@ -1351,11 +1652,11 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
         ReplaceSearchText(Slate, FallbackFilterEditable.ToSharedRef(), TEXT(""))))
     { return false; }
     RefreshFilteredRows();
-    TestEqual(TEXT("clearing search restores the controlled production track row"), DebuggerWindow->_TrackSlots.Num(), 1);
+    TestEqual(TEXT("clearing search restores the controlled production track row"), CountTrackRecords(DebuggerWindow->_TrackRecords), 1);
     if (NOT TestTrue(TEXT("physical Playing filter hides playing tracks"), Click(Slate, FallbackPlayingFilter.ToSharedRef())))
     { return false; }
     RefreshFilteredRows();
-    TestEqual(TEXT("Playing preference removes the controlled playing row"), DebuggerWindow->_TrackSlots.Num(), 0);
+    TestEqual(TEXT("Playing preference removes the controlled playing row"), CountTrackRecords(DebuggerWindow->_TrackRecords), 0);
     DirectorsRepeat->TryRefresh();
     TestTrue(TEXT("track-state preferences do not remove Directors records"),
         DebuggerWindow->_DirectorRecords->FindRecord(DirectorKey).IsValid()
@@ -1363,7 +1664,7 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
     if (NOT TestTrue(TEXT("physical Playing filter restores playing tracks"), Click(Slate, FallbackPlayingFilter.ToSharedRef())))
     { return false; }
     RefreshFilteredRows();
-    TestEqual(TEXT("re-enabling Playing restores the original track count"), DebuggerWindow->_TrackSlots.Num(), 1);
+    TestEqual(TEXT("re-enabling Playing restores the original track count"), CountTrackRecords(DebuggerWindow->_TrackRecords), 1);
     if (NOT TestTrue(TEXT("filter fixture physically returns to Events before recording its baseline"),
         Click(Slate, FallbackEventsTab.ToSharedRef())))
     { return false; }
@@ -1629,6 +1930,13 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
     const auto LiveDirectorRef = LiveDirectorRow.IsValid() ? FindEntityRef(LiveDirectorRow.ToSharedRef()) : nullptr;
     if (NOT TestTrue(TEXT("director teardown fixture holds a currently published entity link"), LiveDirectorRef.IsValid()))
     { return false; }
+    DebuggerWindow->DoUpdate_TrackRecords();
+    TracksRepeat->TryRefresh();
+    const auto LiveTrackRow = TracksRepeat->GetItemWidget(TrackRecordKey);
+    const auto LiveTrackLink = LiveTrackRow.IsValid() ? FindTaggedWidget(LiveTrackRow.ToSharedRef(), TEXT("audio-track-entity")) : nullptr;
+    const auto LiveTrackRef = LiveTrackLink.IsValid() ? FindEntityRef(LiveTrackLink.ToSharedRef()) : nullptr;
+    if (NOT TestTrue(TEXT("Tracks teardown fixture holds a currently published entity link"), LiveTrackRef.IsValid()))
+    { return false; }
     const auto SessionFixture = FixtureSnapshot;
     UWorld* InvalidatedWorld = NewObject<UWorld>();
     UWorld* UnrelatedWorld = NewObject<UWorld>();
@@ -1639,6 +1947,9 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
             && DebuggerWindow->_Collector.Get_Snapshot().HasWorld);
     ck::DebugSessionLifecycle::Get_OnWorldInvalidated().Broadcast(InvalidatedWorld);
     ProbeRetainedEntityRef(LiveDirectorRef.ToSharedRef());
+    ProbeRetainedEntityRef(LiveTrackRef.ToSharedRef());
+    TestTrue(TEXT("world invalidation clears Tracks records and synchronously revokes held track actions"),
+        DebuggerWindow->_TrackRecords->GetRecords().IsEmpty() && TrackNavigationResults->Num() == 4);
     TestEqual(TEXT("world invalidation revokes held director navigation synchronously"), NavigationResults->Num(), 3);
     TestTrue(TEXT("world invalidation clears native Events history without resetting toolbar preferences"),
         LiveEventLog->Get_EntryCount() == 0 && DebuggerWindow->_EventLog == LiveEventLog
@@ -1676,6 +1987,7 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
         NOT DebuggerWindow->_Collector.Get_Snapshot().HasWorld
             && DebuggerWindow->_DirectorRecords->GetRecords().IsEmpty()
             && DebuggerWindow->_InvalidatedWorld.Get() == InvalidatedWorld
+            && DebuggerWindow->_TrackRecords->GetRecords().IsEmpty()
             && NOT SpatialModel->HasSpatialData && SpatialModel->FalloffCurve.IsEmpty()
             && TaggedText(LiveAttenuationMain, TEXT("audio-attenuation-audible")).IsEmpty());
     ck::DebugSessionLifecycle::Get_OnSessionInvalidated().Broadcast();
@@ -1698,15 +2010,22 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
         NOT Module._DebuggerTab.IsValid() && NOT Module._DebuggerWindow.IsValid());
     const TWeakPtr<SCkAudioDebuggerWindow> ReleasedPopulatedOwner = DebuggerWindow;
     const TWeakPtr<FCkUiView> ReleasedPopulatedDirectors = DirectorsView;
+    const TWeakPtr<FCkUiView> ReleasedPopulatedTracks = TracksView;
     Slate.DestroyWindowImmediately(HostWindow.ToSharedRef());
     HostWindow.Reset();
     DebuggerWindow.Reset();
     DirectorsView.Reset();
     ProbeRetainedEntityRef(LiveDirectorRef.ToSharedRef());
+    TracksView.Reset();
+    ProbeRetainedEntityRef(LiveTrackRef.ToSharedRef());
+    TestTrue(TEXT("held Tracks leaves release the owner/view and remain inert after teardown"),
+        NOT ReleasedPopulatedOwner.IsValid() && NOT ReleasedPopulatedTracks.IsValid()
+            && TrackNavigationResults->Num() == 4);
     TestTrue(TEXT("held director leaves neither retain the released owner/view nor dispatch after teardown"),
         NOT ReleasedPopulatedOwner.IsValid() && NOT ReleasedPopulatedDirectors.IsValid()
             && NavigationResults->Num() == 3);
     return true;
+    });
 }
 
 #endif

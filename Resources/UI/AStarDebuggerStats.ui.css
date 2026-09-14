@@ -1,0 +1,16 @@
+.astar-stats-root { min-width: 260px; gap: var(--space-m); padding: var(--space-l); background-color: var(--astar-stats-panel); }
+.astar-stats-summary { min-width: 0; gap: var(--space-s); }
+.astar-stats-card { min-width: 52px; gap: 2px; padding: var(--space-s); flex-grow: 1; background-color: #1E2530; border-color: #354153; border-width: 1px; border-radius: 5px; }
+.astar-stats-card-value { font-family: monospace; font-size: var(--astar-stats-body-font-size); color: var(--astar-stats-text); horizontal-align: center; text-wrap: nowrap; }
+.astar-stats-card-label { font-family: sans-serif; font-size: var(--astar-stats-small-font-size); color: var(--astar-stats-text-mute); horizontal-align: center; text-wrap: nowrap; }
+.astar-stats-section { min-width: 0; gap: var(--space-s); }
+.astar-stats-heading { min-width: 0; font-family: sans-serif; font-size: var(--astar-stats-body-font-size); font-weight: bold; color: var(--astar-stats-text); }
+.astar-stats-meter-row { min-width: 0; gap: var(--space-s); vertical-align: center; }
+.astar-stats-meter-text { font-family: monospace; font-size: var(--astar-stats-body-font-size); color: var(--astar-stats-text-dim); text-wrap: nowrap; }
+.astar-stats-pair { min-width: 0; gap: var(--space-m); }
+.astar-stats-label { min-width: 78px; flex-grow: 1; font-family: sans-serif; font-size: var(--astar-stats-body-font-size); color: var(--astar-stats-text-dim); }
+.astar-stats-value { font-family: monospace; font-size: var(--astar-stats-body-font-size); color: var(--astar-stats-text); text-wrap: nowrap; horizontal-align: right; }
+.astar-stats-empty { min-width: 0; font-family: sans-serif; font-size: var(--astar-stats-body-font-size); color: var(--astar-stats-text-mute); text-wrap: wrap; overflow-wrap: anywhere; }
+.astar-stats-cell-content { min-width: 0; gap: var(--space-s); }
+.astar-stats-cell-title { min-width: 0; font-family: sans-serif; font-size: var(--astar-stats-body-font-size); font-weight: bold; color: var(--astar-stats-accent); text-wrap: wrap; overflow-wrap: anywhere; }
+.astar-stats-copy { width: 92px; font-size: var(--astar-stats-small-font-size); color: var(--astar-stats-text); -ck-button-padding-x: 6px; -ck-button-padding-y: 3px; -ck-button-radius: 4px; }

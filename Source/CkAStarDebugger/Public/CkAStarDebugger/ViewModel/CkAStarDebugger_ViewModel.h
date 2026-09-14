@@ -92,6 +92,8 @@ public:
     Get_SelectedCellIndex() const -> int32;
 
 private:
+    friend class FCkAStarDebugger_AuthoredShell;
+
     FCkAStarDebugger_DataCollector _DataCollector;
     FCk_Handle _SelectedEntityHandle;
     bool _HasSelectedEntity = false;

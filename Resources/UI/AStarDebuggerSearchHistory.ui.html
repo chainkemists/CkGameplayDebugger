@@ -1,0 +1,25 @@
+<ui version="1">
+  <region name="main">
+    <column id="astar-history-root">
+      <row id="astar-history-header" class="astar-history-header">
+        <text id="astar-history-title" class="astar-history-title">SEARCH HISTORY</text>
+        <text id="astar-history-count" bind="astar-history-count" class="astar-history-count" />
+      </row>
+      <scroll id="astar-history-scroll" class="astar-history-scroll">
+        <column id="astar-history-body" class="astar-history-body">
+          <text id="astar-history-empty" bind="astar-history-empty" visible="astar-history-is-empty" class="astar-history-empty" />
+          <repeat id="astar-history-records" bind="astar-history-records" direction="vertical" class="astar-history-records">
+            <column id="astar-history-record" class="astar-history-record">
+              <row id="astar-history-record-header" class="astar-history-record-header">
+                <debug-status id="astar-history-status" label-field="status" foreground-field="tone" background-field="background" show-dot="true" class="astar-history-status" />
+                <text id="astar-history-frame" bind-field="frame" class="astar-history-frame" />
+              </row>
+              <text id="astar-history-meta" bind-field="meta" class="astar-history-meta" />
+              <button id="astar-history-copy" item-action="astar-history-copy" tooltip-field="copy" class="astar-history-copy">Copy search</button>
+            </column>
+          </repeat>
+        </column>
+      </scroll>
+    </column>
+  </region>
+</ui>

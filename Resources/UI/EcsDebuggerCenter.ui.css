@@ -1,0 +1,4 @@
+.ecs-center-page-tabs-wrap { min-width: 0; min-height: 0; padding: 4px; flex-grow: 0; flex-shrink: 0; }
+.ecs-center-page-tabs { min-width: 0; min-height: 0; flex-grow: 0; flex-shrink: 0; }
+.ecs-center-page-content-wrap { min-width: 0; min-height: 0; padding: 4px; flex-grow: 1; flex-shrink: 1; }
+.ecs-center-page-content { min-width: 0; min-height: 0; flex-grow: 1; flex-shrink: 1; }

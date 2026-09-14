@@ -1,0 +1,4 @@
+.ecs-shell-main-split { min-width: 850px; min-height: 0; flex-grow: 1; flex-shrink: 1; }
+.ecs-shell-entities { min-width: 200px; min-height: 0; flex-grow: 0.2; flex-shrink: 1; }
+.ecs-shell-content { min-width: 400px; min-height: 0; flex-grow: 0.5; flex-shrink: 1; }
+.ecs-shell-inspector { min-width: 250px; min-height: 0; flex-grow: 0.3; flex-shrink: 1; }

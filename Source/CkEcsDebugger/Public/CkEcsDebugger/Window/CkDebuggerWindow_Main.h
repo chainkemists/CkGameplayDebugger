@@ -7,12 +7,14 @@ class FCkDebuggerModel_EntitySelection;
 class FCkDebuggerModel_WorldContext;
 class FCkDebug_ViewportPicker;
 class FCkDebuggerModel_InspectorFilter;
+class FCkUiView;
 class ICkDebuggerPage_Base;
 class SBox;
 class SCkDebuggerPanel_Inspector;
 class SCkDebuggerPanel_EntityList;
 class SHorizontalBox;
 class SMenuAnchor;
+class SCkDebug_UnderlineTabs;
 class SCkDebuggerSelectionGizmo;
 class UGameViewportClient;
 #if WITH_EDITOR
@@ -39,6 +41,14 @@ public:
     auto Get_WorldModel() const -> TSharedPtr<FCkDebuggerModel_WorldContext>;
     auto Get_ViewportPicker() const -> TSharedPtr<FCkDebug_ViewportPicker>;
     auto Get_FilterModel() const -> TSharedPtr<FCkDebuggerModel_InspectorFilter>;
+    auto Get_AuthoredShellView() const -> TSharedPtr<FCkUiView> { return AuthoredShellView; }
+    auto Get_AuthoredCenterView() const -> TSharedPtr<FCkUiView> { return AuthoredCenterView; }
+    auto Get_AuthoredShellLoadFailure() const -> const FString& { return AuthoredShellLoadFailure; }
+    auto Get_PageTabsWidget() const -> TSharedPtr<SWidget>;
+    auto Get_PageContentContainer() const -> TSharedPtr<SBox> { return PageContentContainer; }
+    auto Get_AuthoredLeftPane() const -> TSharedPtr<SWidget> { return AuthoredLeftPane; }
+    auto Get_AuthoredCenterPane() const -> TSharedPtr<SWidget> { return AuthoredCenterPane; }
+    auto Get_AuthoredInspectorPane() const -> TSharedPtr<SWidget> { return AuthoredInspectorPane; }
 
 protected:
     virtual auto OnStyleRevisionChanged() -> void override;
@@ -53,7 +63,9 @@ private:
     auto Build_FilterPopover() -> TSharedRef<SWidget>;
     auto Refresh_FilterBadgeStrip() -> void;
     auto Build_LeftSidebar() -> TSharedRef<SWidget>;
-    auto Build_ContentArea() -> TSharedRef<SWidget>;
+    auto Build_AuthoredShell(TSharedRef<SWidget> InLeftPane, TSharedRef<SWidget> InPageTabs,
+        TSharedRef<SWidget> InPageContent, TSharedRef<SWidget> InInspectorPane) -> TSharedRef<SWidget>;
+    auto Poll_AuthoredShellFiles(double InCurrentTime) -> void;
     auto Build_PageTabs() -> TSharedRef<SWidget>;
     auto Build_PageContent() -> TSharedRef<SWidget>;
     auto Build_InspectorPanel() -> TSharedRef<SWidget>;
@@ -74,8 +86,17 @@ private:
     TArray<FName> PageTabIds;
     int32 ActivePageIndex = 0;
 
-    TSharedPtr<SBox> ContentAreaContainer;
+    TSharedPtr<SBox> AuthoredShellHost;
+    TSharedPtr<SBox> AuthoredCenterHost;
+    TSharedPtr<SWidget> AuthoredLeftPane;
+    TSharedPtr<SWidget> AuthoredCenterPane;
+    TSharedPtr<SWidget> AuthoredInspectorPane;
+    TSharedPtr<FCkUiView> AuthoredShellView;
+    TSharedPtr<FCkUiView> AuthoredCenterView;
+    FString AuthoredShellLoadFailure;
+    double NextAuthoredShellPollSeconds = 0.0;
     /** Only the page BODY is rebuilt on selection; the tab strip is built once and binds its active state. */
+    TSharedPtr<SCkDebug_UnderlineTabs> PageTabsWidget;
     TSharedPtr<SBox> PageContentContainer;
     TSharedPtr<SCkDebuggerPanel_EntityList> EntityListPanel;
     TSharedPtr<SCkDebuggerPanel_Inspector> InspectorPanel;

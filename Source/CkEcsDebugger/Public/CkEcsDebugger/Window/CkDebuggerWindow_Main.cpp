@@ -43,9 +43,12 @@
 #include "CkDebuggerCommon/Widgets/SCkDebug_UnderlineTabs.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_ToggleSurface.h"
 #include "CkDebuggerCommon/Window/SCkDebug_WindowChrome.h"
+#include "CkDebuggerCommon/UI/CkDebug_UiRegistry.h"
 #include "CkEcsDebugger/Panels/CkDebuggerPanel_EntityList.h"
 #include "CkEcsDebugger/Panels/CkDebuggerPanel_Inspector.h"
 #include "CkDebuggerCommon/Styles/CkDebuggerStyle.h"
+
+#include "CkSlateLayout/SCkUiSurface.h"
 
 #include "CkEcsExt/SceneNode/CkSceneNode_Utils.h"
 #include "CkEcsExt/Transform/CkTransform_Utils.h"
@@ -58,6 +61,8 @@
 #include "CkEntityDebugOverlay/Settings/CkDebugOverlay_Settings.h"
 #include "HAL/IConsoleManager.h"
 #include "Engine/GameViewportClient.h"
+#include "Interfaces/IPluginManager.h"
+#include "Misc/Paths.h"
 
 #if WITH_EDITOR
 #include "EditorViewportClient.h"
@@ -189,58 +194,28 @@ auto SCkDebuggerWindow_Main::Construct(const FArguments& InArgs) -> void
         .BorderImage(FCkDebuggerStyle::Get().GetBrush("CkDebugger.Background.Dark"))
         .Padding(0.0f)
         [
-            SNew(SVerticalBox)
-
-            + SVerticalBox::Slot()
-            .FillHeight(1.0f)
-            [
-                SNew(SSplitter)
-                .Orientation(Orient_Horizontal)
-                .PhysicalSplitterHandleSize(3.0f)
-                .HitDetectionSplitterHandleSize(5.0f)
-                .Style(FAppStyle::Get(), "Splitter")
-
-                + SSplitter::Slot()
-                .Value(0.2f)
-                .MinSize(200.0f)
+            Build_AuthoredShell(
+                SNew(SCkDebug_PaneHost)
                 [
-                    SNew(SCkDebug_PaneHost)
+                    SNew(SBox)
+                    .MaxDesiredWidth(500.0f)
                     [
-                        SNew(SBox)
-                        .MaxDesiredWidth(500.0f)
-                        [
-                            Build_LeftSidebar()
-                        ]
+                        Build_LeftSidebar()
                     ]
-                ]
-
-                + SSplitter::Slot()
-                .Value(0.5f)
-                .MinSize(400.0f)
+                ],
+                Build_PageTabs(),
+                SAssignNew(PageContentContainer, SBox)
                 [
-                    SNew(SCkDebug_PaneHost)
-                    [
-                        SAssignNew(ContentAreaContainer, SBox)
-                        [
-                            Build_ContentArea()
-                        ]
-                    ]
-                ]
-
-                + SSplitter::Slot()
-                .Value(0.3f)
-                .MinSize(250.0f)
+                    Build_PageContent()
+                ],
+                SNew(SCkDebug_PaneHost)
                 [
-                    SNew(SCkDebug_PaneHost)
+                    SNew(SBox)
+                    .MaxDesiredWidth(600.0f)
                     [
-                        SNew(SBox)
-                        .MaxDesiredWidth(600.0f)
-                        [
-                            Build_InspectorPanel()
-                        ]
+                        Build_InspectorPanel()
                     ]
-                ]
-            ]
+                ])
         ]
         ]
     ];
@@ -249,6 +224,13 @@ auto SCkDebuggerWindow_Main::Construct(const FArguments& InArgs) -> void
 SCkDebuggerWindow_Main::~SCkDebuggerWindow_Main()
 {
     Reset_SelectionGizmo();
+
+    if (AuthoredShellHost.IsValid())
+    { AuthoredShellHost->SetContent(SNullWidget::NullWidget); }
+    if (AuthoredCenterHost.IsValid())
+    { AuthoredCenterHost->SetContent(SNullWidget::NullWidget); }
+    AuthoredShellView.Reset();
+    AuthoredCenterView.Reset();
 
     if (WorldModel.IsValid() && WorldChangedHandle.IsValid())
     { WorldModel->OnWorldChanged.Remove(WorldChangedHandle); }
@@ -300,6 +282,8 @@ auto SCkDebuggerWindow_Main::Tick(
     // silently kills live-apply for every structural axis in this window.
     SCkDebugger_WindowBase::Tick(InAllottedGeometry, InCurrentTime, InDeltaTime);
 
+    Poll_AuthoredShellFiles(InCurrentTime);
+
     // The selected entity can move even while debugger-page refresh is paused.
     // Keep the screen-space gizmo on the ungated viewport path with the picker.
     Update_SelectionGizmo();
@@ -335,7 +319,7 @@ auto SCkDebuggerWindow_Main::Tick(
 //   3. the entity list's quick-access section (rows composed per pinned entity),
 //   4. the active page, via the page interface's own hook.
 //
-// Deliberately NOT RebuildContentArea(): Build_ContentArea re-invokes the active page's
+// Deliberately do NOT rebuild the authored shell: recreating its page-content port would re-invoke
 // Build_Content, which is not idempotent for every page (Overview roots a fresh UEdGraph and
 // re-binds its model delegates each call). The page hook is the safe route.
 //
@@ -1156,32 +1140,121 @@ auto SCkDebuggerWindow_Main::Build_LeftSidebar() -> TSharedRef<SWidget>
     return SAssignNew(EntityListPanel, SCkDebuggerPanel_EntityList, SelectionModel, WorldModel, FilterModel);
 }
 
-auto SCkDebuggerWindow_Main::Build_ContentArea() -> TSharedRef<SWidget>
+auto SCkDebuggerWindow_Main::Build_AuthoredShell(
+    TSharedRef<SWidget> InLeftPane,
+    TSharedRef<SWidget> InPageTabs,
+    TSharedRef<SWidget> InPageContent,
+    TSharedRef<SWidget> InInspectorPane) -> TSharedRef<SWidget>
 {
-    // Built ONCE. Page selection rebuilds only the body below it: the strip reads the active page
-    // through an ActiveTabId attribute instead of baking it, so a click no longer reconstructs the
-    // whole tab row (and no longer loses the shared widget's measured overflow partition).
-    return SNew(SBorder)
-        .BorderImage(FCkDebuggerStyle::Get().GetBrush("CkDebugger.Background.Dark"))
-        .Padding(0.0f)
+    SAssignNew(AuthoredCenterHost, SBox);
+    const TSharedRef<SWidget> CenterPane = SNew(SCkDebug_PaneHost)[AuthoredCenterHost.ToSharedRef()];
+    AuthoredLeftPane = InLeftPane;
+    AuthoredCenterPane = CenterPane;
+    AuthoredInspectorPane = InInspectorPane;
+    const auto BuildNativeFallback = [InLeftPane, InPageTabs, InPageContent, InInspectorPane,
+        CenterHost = AuthoredCenterHost.ToSharedRef(), CenterPane]() -> TSharedRef<SWidget>
+    {
+        CenterHost->SetContent(
+            SNew(SBorder)
+            .BorderImage(FCkDebuggerStyle::Get().GetBrush("CkDebugger.Background.Dark"))
+            .Padding(0.0f)
         [
             SNew(SVerticalBox)
-            + SVerticalBox::Slot()
-                .AutoHeight()
-                .Padding(FCkDebuggerStyle::Padding_Small)
-                [
-                    Build_PageTabs()
-                ]
-            + SVerticalBox::Slot()
-                .FillHeight(1.0f)
-                .Padding(FCkDebuggerStyle::Padding_Small)
-                [
-                    SAssignNew(PageContentContainer, SBox)
-                    [
-                        Build_PageContent()
-                    ]
-                ]
-        ];
+            + SVerticalBox::Slot().AutoHeight().Padding(FCkDebuggerStyle::Padding_Small)[InPageTabs]
+            + SVerticalBox::Slot().FillHeight(1.0f).Padding(FCkDebuggerStyle::Padding_Small)[InPageContent]
+        ]);
+        return SNew(SSplitter)
+            .Orientation(Orient_Horizontal)
+            .PhysicalSplitterHandleSize(3.0f)
+            .HitDetectionSplitterHandleSize(5.0f)
+            .Style(FAppStyle::Get(), "Splitter")
+            + SSplitter::Slot().Value(0.2f).MinSize(200.0f)[InLeftPane]
+            + SSplitter::Slot().Value(0.5f).MinSize(400.0f)[CenterPane]
+            + SSplitter::Slot().Value(0.3f).MinSize(250.0f)[InInspectorPane];
+    };
+
+    SAssignNew(AuthoredShellHost, SBox);
+
+    TSharedPtr<const FCkUiWidgetRegistrySnapshot> Registry;
+    const auto RegistryResult = FCkDebug_UiRegistry::TryCreate(Registry);
+    const auto Plugin = IPluginManager::Get().FindPlugin(TEXT("CkDebugger"));
+    if (NOT RegistryResult.Succeeded || NOT Registry.IsValid() || NOT Plugin.IsValid())
+    {
+        AuthoredShellLoadFailure = RegistryResult.Succeeded
+            ? TEXT("CkDebugger resources are unavailable.")
+            : FString::Join(RegistryResult.Errors, TEXT("\n"));
+        AuthoredShellHost->SetContent(BuildNativeFallback());
+        return AuthoredShellHost.ToSharedRef();
+    }
+
+    const auto WeakWindow = TWeakPtr<SCkDebuggerWindow_Main>(SharedThis(this));
+    const auto Directory = FPaths::Combine(Plugin->GetBaseDir(), TEXT("Resources/UI"));
+    auto CenterBindings = FCkUiView::FNativeBindings{};
+    CenterBindings.Add(TEXT("ecs-center-page-tabs"), InPageTabs);
+    CenterBindings.Add(TEXT("ecs-center-page-content"), InPageContent);
+    auto CenterData = FCkUiView::FDataBindings{};
+    CenterData.CanDispatchEvents = TAttribute<bool>::CreateLambda([WeakWindow]() { return WeakWindow.IsValid(); });
+    TSharedPtr<FCkUiView> CenterCandidate = FCkUiView::Create(MoveTemp(CenterBindings), {}, {},
+        CkStyle::RegularFont(CkStyle::FontSizeBody()), MoveTemp(CenterData), Registry);
+    TSharedPtr<SWidget> Center = CenterCandidate->GetRegion(TEXT("main"));
+    CenterCandidate->SetFiles(FPaths::Combine(Directory, TEXT("EcsDebuggerCenter.ui.html")),
+        FPaths::Combine(Directory, TEXT("EcsDebuggerCenter.ui.css")));
+    CenterCandidate->PollFiles();
+    if (NOT CenterCandidate->GetLastResult().Succeeded)
+    {
+        AuthoredShellLoadFailure = FString::Join(CenterCandidate->GetLastResult().Errors, TEXT("\n"));
+        AuthoredShellHost->SetContent(BuildNativeFallback());
+        return AuthoredShellHost.ToSharedRef();
+    }
+
+    auto NativeBindings = FCkUiView::FNativeBindings{};
+    NativeBindings.Add(TEXT("ecs-shell-entities"), InLeftPane);
+    NativeBindings.Add(TEXT("ecs-shell-content-pane"), CenterPane);
+    NativeBindings.Add(TEXT("ecs-shell-inspector"), InInspectorPane);
+    auto Data = FCkUiView::FDataBindings{};
+    Data.CanDispatchEvents = TAttribute<bool>::CreateLambda([WeakWindow]() { return WeakWindow.IsValid(); });
+    const TSharedRef<FCkUiView> ShellCandidate = FCkUiView::Create(MoveTemp(NativeBindings), {}, {},
+        CkStyle::RegularFont(CkStyle::FontSizeBody()), MoveTemp(Data), Registry);
+    const TSharedRef<SWidget> Main = ShellCandidate->GetRegion(TEXT("main"));
+    ShellCandidate->SetFiles(FPaths::Combine(Directory, TEXT("EcsDebuggerShell.ui.html")),
+        FPaths::Combine(Directory, TEXT("EcsDebuggerShell.ui.css")));
+    ShellCandidate->PollFiles();
+    if (NOT ShellCandidate->GetLastResult().Succeeded)
+    {
+        AuthoredShellLoadFailure = FString::Join(ShellCandidate->GetLastResult().Errors, TEXT("\n"));
+        Center.Reset();
+        CenterCandidate.Reset();
+        AuthoredShellHost->SetContent(BuildNativeFallback());
+        return AuthoredShellHost.ToSharedRef();
+    }
+
+    AuthoredShellView = ShellCandidate;
+    AuthoredCenterView = CenterCandidate;
+    AuthoredShellLoadFailure.Reset();
+    AuthoredCenterHost->SetContent(Center.ToSharedRef());
+    AuthoredShellHost->SetContent(Main);
+    return AuthoredShellHost.ToSharedRef();
+}
+
+auto SCkDebuggerWindow_Main::Poll_AuthoredShellFiles(const double InCurrentTime) -> void
+{
+    constexpr auto PollIntervalSeconds = 0.5;
+    if (InCurrentTime < NextAuthoredShellPollSeconds
+        || NOT AuthoredShellView.IsValid() || NOT AuthoredCenterView.IsValid()) { return; }
+    NextAuthoredShellPollSeconds = InCurrentTime + PollIntervalSeconds;
+    AuthoredShellView->PollFiles();
+    AuthoredCenterView->PollFiles();
+    auto Errors = TArray<FString>{};
+    if (NOT AuthoredShellView->GetLastResult().Succeeded)
+    { Errors.Append(AuthoredShellView->GetLastResult().Errors); }
+    if (NOT AuthoredCenterView->GetLastResult().Succeeded)
+    { Errors.Append(AuthoredCenterView->GetLastResult().Errors); }
+    if (Errors.Num() > 0)
+    {
+        AuthoredShellLoadFailure = FString::Join(Errors, TEXT("\n"));
+        return;
+    }
+    AuthoredShellLoadFailure.Reset();
 }
 
 auto SCkDebuggerWindow_Main::Build_PageTabs() -> TSharedRef<SWidget>
@@ -1225,7 +1298,7 @@ auto SCkDebuggerWindow_Main::Build_PageTabs() -> TSharedRef<SWidget>
 
     const auto WeakWindow = TWeakPtr<SCkDebuggerWindow_Main>(SharedThis(this));
 
-    return SNew(SCkDebug_UnderlineTabs)
+    return SAssignNew(PageTabsWidget, SCkDebug_UnderlineTabs)
         .Tabs(Tabs)
         .ActiveTabId_Lambda([WeakWindow]() -> FName
         {
@@ -1373,4 +1446,9 @@ auto SCkDebuggerWindow_Main::Get_ViewportPicker() const -> TSharedPtr<FCkDebug_V
 auto SCkDebuggerWindow_Main::Get_FilterModel() const -> TSharedPtr<FCkDebuggerModel_InspectorFilter>
 {
     return FilterModel;
+}
+
+auto SCkDebuggerWindow_Main::Get_PageTabsWidget() const -> TSharedPtr<SWidget>
+{
+    return PageTabsWidget;
 }

@@ -10,9 +10,11 @@
 #include "CkDebuggerCommon/Widgets/SCkDebug_Sparkline.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_EventLog.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_ToggleSurface.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_UnderlineTabs.h"
 #include "CkEcs/Registry/CkRegistry.h"
 #include "CkEcs/Registry/CkRegistry_SlotTable.h"
 #include "CkSlateLayout/CkFlexText.h"
+#include "CkSlateLayout/CkUiCollection.h"
 #include "CkSlateLayout/SCkUiSurface.h"
 
 #include "CkEditorTools/Style/CkStyle.h"
@@ -27,10 +29,12 @@
 #include "Misc/ScopeExit.h"
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Input/SCheckBox.h"
+#include "Widgets/Input/SComboButton.h"
 #include "Widgets/Input/SEditableText.h"
 #include "Widgets/Docking/SDockTab.h"
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/SWindow.h"
+#include "Widgets/SBoxPanel.h"
 #include "Widgets/Text/STextBlock.h"
 
 #if WITH_EDITOR && WITH_DEV_AUTOMATION_TESTS
@@ -84,6 +88,21 @@ namespace ck_audio_debugger_authored_shell_tests
         {
             if (const TSharedPtr<SEditableText> Found = FindEditableText(
                 ConstCastSharedRef<SWidget>(Children->GetChildAt(Index))); Found.IsValid())
+            { return Found; }
+        }
+        return nullptr;
+    }
+
+    auto FindTaggedUnderlineTabs(const TSharedRef<SWidget>& InRoot, const FName InTag)
+        -> TSharedPtr<SCkDebug_UnderlineTabs>
+    {
+        if (InRoot->GetTag() == InTag && InRoot->GetTypeAsString() == TEXT("SCkDebug_UnderlineTabs"))
+        { return StaticCastSharedRef<SCkDebug_UnderlineTabs>(InRoot); }
+        FChildren* Children = InRoot->GetChildren();
+        for (int32 Index = 0; Children != nullptr && Index < Children->Num(); ++Index)
+        {
+            if (const TSharedPtr<SCkDebug_UnderlineTabs> Found = FindTaggedUnderlineTabs(
+                ConstCastSharedRef<SWidget>(Children->GetChildAt(Index)), InTag); Found.IsValid())
             { return Found; }
         }
         return nullptr;
@@ -251,6 +270,12 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
     };
 
     TSharedPtr<SCkAudioDebuggerWindow> DebuggerWindow = SNew(SCkAudioDebuggerWindow);
+    const auto GetTabs = [&DebuggerWindow]() -> TSharedPtr<SCkDebug_UnderlineTabs>
+    {
+        if (DebuggerWindow->_UsingNativeFallback) { return DebuggerWindow->_Tabs; }
+        return FindTaggedUnderlineTabs(DebuggerWindow->_AuthoredShellView->GetRegion(TEXT("main")),
+            TEXT("audio-shell-tabs"));
+    };
     HostWindow = SNew(SWindow)
         .ClientSize(FVector2D{1100.0f, 720.0f})
         .CreateTitleBar(false)
@@ -308,11 +333,11 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
 
     const TSharedRef<SWidget> Main = View->GetRegion(TEXT("main"));
     TestTrue(TEXT("authored shell retains production tabs and pages and authors filter composition and live summary cards"),
-        DebuggerWindow->_Tabs.IsValid()
+        GetTabs().IsValid()
             && DebuggerWindow->_StatCards.IsValid()
             && DebuggerWindow->_FilterSearchBar.IsValid()
             && DebuggerWindow->_PageSwitcher.IsValid()
-            && ContainsWidget(Main, DebuggerWindow->_Tabs.ToSharedRef())
+            && ContainsWidget(Main, GetTabs().ToSharedRef())
             && NOT ContainsWidget(Main, DebuggerWindow->_StatCards.ToSharedRef())
             && ContainsWidget(Main, DebuggerWindow->_FilterSearchBar.ToSharedRef())
             && ContainsWidget(Main, DebuggerWindow->_PageSwitcher.ToSharedRef())
@@ -325,6 +350,12 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
         DebuggerWindow->_PageSwitcher->GetNumWidgets(), 6);
     TestEqual(TEXT("production Audio shell preserves Tracks as its default page"),
         DebuggerWindow->_PageSwitcher->GetActiveWidgetIndex(), 1);
+    const auto OriginalTabs = GetTabs();
+    if (NOT TestTrue(TEXT("authored tabs use the retained semantic adapter and leave the startup strip inert"),
+        OriginalTabs.IsValid() && OriginalTabs != DebuggerWindow->_Tabs
+            && NOT DebuggerWindow->_Tabs->GetCanDispatchEvents()
+            && NOT ContainsWidget(Main, DebuggerWindow->_Tabs.ToSharedRef())))
+    { return false; }
     TestTrue(TEXT("authored shell exposes horizontal overflow reachability"),
         View->GetScroll(TEXT("audio-shell-scroll")).IsValid());
     const TSharedPtr<SCkDebug_SearchBar> HeldFilterSearch = DebuggerWindow->_FilterSearchBar;
@@ -462,7 +493,7 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
             && EventsView->GetRevision() > EventsRevisionBeforeTextChange
             && StaticCastSharedPtr<SCkFlexText>(LargeEventsCaveat)->GetFont().Size > NormalEventsFontSize);
 
-    const TSharedPtr<SButton> EventsTab = FindButtonWithText(DebuggerWindow->_Tabs.ToSharedRef(), TEXT("Events"));
+    const TSharedPtr<SButton> EventsTab = FindButtonWithText(GetTabs().ToSharedRef(), TEXT("Events"));
     if (NOT TestTrue(TEXT("production Events tab is physically selectable without a world"),
         EventsTab.IsValid() && Click(Slate, EventsTab.ToSharedRef())
             && DebuggerWindow->_PageSwitcher->GetActiveWidgetIndex() == 4))
@@ -495,7 +526,7 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
         NOT DebuggerWindow->_EventsShowStateChanges && NOT DebuggerWindow->_EventsShowFades
             && NOT DebuggerWindow->_EventsShowVirtualization && NOT DebuggerWindow->_EventsShowLifecycle);
 
-    const TSharedPtr<SButton> EmptySpatialTab = FindButtonWithText(DebuggerWindow->_Tabs.ToSharedRef(), TEXT("Spatial"));
+    const TSharedPtr<SButton> EmptySpatialTab = FindButtonWithText(GetTabs().ToSharedRef(), TEXT("Spatial"));
     if (NOT TestTrue(TEXT("production Spatial tab is physically selectable without a session"),
         EmptySpatialTab.IsValid() && Click(Slate, EmptySpatialTab.ToSharedRef())))
     { return false; }
@@ -511,7 +542,7 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
             && StaticCastSharedPtr<STextBlock>(EmptySpatialMessage)->GetText().ToString().Contains(TEXT("No track to inspect")));
 
     const TSharedPtr<SButton> CrossfadeTab = FindButtonWithText(
-        DebuggerWindow->_Tabs.ToSharedRef(), TEXT("Crossfade"));
+        GetTabs().ToSharedRef(), TEXT("Crossfade"));
     TestTrue(TEXT("physical nondefault tab selection routes through the production tab strip"),
         CrossfadeTab.IsValid() && Click(Slate, CrossfadeTab.ToSharedRef())
             && DebuggerWindow->_PageSwitcher->GetActiveWidgetIndex() == 2
@@ -540,17 +571,26 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
         && FFileHelper::LoadFileToString(EventsCss, *FPaths::Combine(Directory, TEXT("AudioDebuggerEventsToolbar.ui.css")))))
     { return false; }
 
+    TestTrue(TEXT("Audio resource declares typed tabs without the old opaque native tab binding"),
+        Markup.Contains(TEXT("<debug-tabs id=\"audio-shell-tabs\""))
+            && NOT Markup.Contains(TEXT("<native id=\"audio-shell-tabs\"")));
     const auto Revision = View->GetRevision();
     const FCkUiLoadResult Reloaded = View->TryReload(Markup, Css, TEXT("Audio compatible shell candidate"));
     TickSlate(Slate);
     if (NOT Reloaded.Succeeded) { AddError(FString::Join(Reloaded.Errors, TEXT("\n"))); }
     TestTrue(TEXT("compatible reload retains native boundaries, authored summary ownership and page state"),
-        Reloaded.Succeeded && View->GetRevision() > Revision
-            && ContainsWidget(View->GetRegion(TEXT("main")), DebuggerWindow->_Tabs.ToSharedRef())
+        Reloaded.Succeeded && View->GetRevision() > Revision && GetTabs() == OriginalTabs
+            && ContainsWidget(View->GetRegion(TEXT("main")), GetTabs().ToSharedRef())
             && NOT ContainsWidget(View->GetRegion(TEXT("main")), DebuggerWindow->_StatCards.ToSharedRef())
             && TaggedText(View->GetRegion(TEXT("main")), TEXT("audio-stat-concurrency-label")) == TEXT("Active / max")
             && ContainsWidget(View->GetRegion(TEXT("main")), HeldFilterSearch.ToSharedRef())
             && ContainsWidget(View->GetRegion(TEXT("main")), DebuggerWindow->_PageSwitcher.ToSharedRef())
+            && DebuggerWindow->_PageSwitcher->GetActiveWidgetIndex() == 2);
+    const int64 TabsRevision = View->GetRevision();
+    const auto TabsRejected = View->TryReload(
+        Markup.Replace(TEXT("changed=\"audio-select-page\""), TEXT("changed=\"missing-page-route\"")), Css);
+    TestTrue(TEXT("missing typed tab route rejects the entire shell without losing tab identity or page state"),
+        NOT TabsRejected.Succeeded && View->GetRevision() == TabsRevision && GetTabs() == OriginalTabs
             && DebuggerWindow->_PageSwitcher->GetActiveWidgetIndex() == 2);
 
     TestTrue(TEXT("compatible shell reload retains search text, highlight and all filter preferences"),
@@ -644,16 +684,43 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
         { TestTrue(TEXT("rejected Events reload keeps all four committed controls"), ContainsWidget(EventsMain, Toggle.ToSharedRef())); }
     }
 
-    HostWindow->Resize(FVector2D{480.0f, 480.0f});
+    HostWindow->Resize(FVector2D{360.0f, 480.0f});
     TickSlate(Slate);
     TestTrue(TEXT("actual narrow Audio shell keeps horizontal overflow reachable"),
         View->GetScroll(TEXT("audio-shell-scroll"))->GetScrollOffsetOfEnd() > 0.0f);
+    const auto Overflow = StaticCastSharedPtr<SComboButton>(
+        FindTaggedWidget(OriginalTabs.ToSharedRef(), TEXT("CkDebug.Tabs.Overflow")));
+    if (NOT TestTrue(TEXT("narrow Audio tabs receive window width and expose the actual overflow control"),
+        OriginalTabs->GetCachedGeometry().GetLocalSize().X < 400.0f && Overflow.IsValid()
+            && Overflow->GetVisibility() == EVisibility::Visible && Click(Slate, Overflow.ToSharedRef()) && Overflow->IsOpen()))
+    { return false; }
+    const auto OverflowMenu = OriginalTabs->GetPopupFocusTarget();
+    const auto OverflowOverlay = OverflowMenu.IsValid()
+        ? FindButtonWithText(OverflowMenu.ToSharedRef(), TEXT("Overlay")) : nullptr;
+    if (NOT TestTrue(TEXT("physical overflow selection reaches Overlay and makes it the visible active tab"),
+        OverflowOverlay.IsValid() && Click(Slate, OverflowOverlay.ToSharedRef())
+            && DebuggerWindow->_PageSwitcher->GetActiveWidgetIndex() == 5 && NOT Overflow->IsOpen()
+            && FindButtonWithText(OriginalTabs.ToSharedRef(), TEXT("Overlay")).IsValid()))
+    { return false; }
 
     HostWindow->Resize(FVector2D{1100.0f, 240.0f});
     TickSlate(Slate);
     TestTrue(TEXT("short Audio shell lets its page body shrink without vertical clipping pressure"),
         DebuggerWindow->_PageSwitcher->GetCachedGeometry().GetLocalSize().Y > 0.0f
             && DebuggerWindow->_PageSwitcher->GetCachedGeometry().GetLocalSize().Y < 320.0f);
+
+    HostWindow->Resize(FVector2D{360.0f, 480.0f});
+    TickSlate(Slate);
+    if (NOT TestTrue(TEXT("Audio overflow reopens for retained reload and owner release"),
+        Click(Slate, Overflow.ToSharedRef()) && Overflow->IsOpen())) { return false; }
+    const auto HeldTabsMenu = OriginalTabs->GetPopupFocusTarget();
+    const auto HeldMenuEvents = HeldTabsMenu.IsValid()
+        ? FindButtonWithText(HeldTabsMenu.ToSharedRef(), TEXT("Events")) : nullptr;
+    if (NOT TestTrue(TEXT("open tab menu survives a compatible production shell reload"),
+        HeldMenuEvents.IsValid() && View->TryReload(Markup, Css).Succeeded
+            && GetTabs() == OriginalTabs && Overflow->IsOpen()
+            && OriginalTabs->GetPopupFocusTarget() == HeldTabsMenu
+            && DebuggerWindow->_PageSwitcher->GetActiveWidgetIndex() == 5)) { return false; }
 
     Slate.DestroyWindowImmediately(HostWindow.ToSharedRef());
     HostWindow.Reset();
@@ -673,6 +740,23 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
     TestFalse(TEXT("authored attenuation view releases with its production window"), ReleasedAttenuationView.IsValid());
     TestFalse(TEXT("retained Events controls do not retain their production owner"), ReleasedEventsOwner.IsValid());
     TestFalse(TEXT("authored Events view releases with its production window"), ReleasedEventsView.IsValid());
+    TestTrue(TEXT("Audio owner release closes the owned tab popup and revokes retained tab dispatch"),
+        NOT OriginalTabs->GetCanDispatchEvents() && NOT Overflow->IsOpen()
+            && NOT OriginalTabs->GetPopupFocusTarget().IsValid());
+    HostWindow = SNew(SWindow).ClientSize(FVector2D{1100.0f, 420.0f}).CreateTitleBar(false).HasCloseButton(false)
+        [SNew(SVerticalBox)
+            + SVerticalBox::Slot().AutoHeight()[OriginalTabs.ToSharedRef()]
+            + SVerticalBox::Slot().AutoHeight()[HeldTabsMenu.ToSharedRef()]];
+    Slate.AddWindow(HostWindow.ToSharedRef(), true);
+    TickSlate(Slate);
+    Click(Slate, HeldMenuEvents.ToSharedRef());
+    const auto HeldStripOverlay = FindTaggedWidget(OriginalTabs.ToSharedRef(), TEXT("CkDebug.Tab.Overlay"));
+    if (HeldStripOverlay.IsValid()) { Click(Slate, HeldStripOverlay.ToSharedRef()); }
+    TestTrue(TEXT("physically remounted held Audio strip and menu remain disabled without retaining their owner"),
+        NOT ReleasedEventsOwner.IsValid() && NOT HeldMenuEvents->IsEnabled()
+            && HeldStripOverlay.IsValid() && NOT HeldStripOverlay->IsEnabled());
+    Slate.DestroyWindowImmediately(HostWindow.ToSharedRef());
+    HostWindow.Reset();
     // IsEnabled reads a cached TSlateAttribute, unlike the checkbox's live TAttribute checked binding. This held
     // control is detached, so refresh its attributes explicitly rather than expecting a destroyed window to prepass it.
     HeldEventsStateToggle->Invalidate(EInvalidateWidgetReason::Prepass);
@@ -742,6 +826,7 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
     Slate.AddWindow(HostWindow.ToSharedRef(), true);
     TickSlate(Slate);
     View = DebuggerWindow->_AuthoredShellView;
+    const auto StartupTabs = GetTabs();
     TestTrue(TEXT("invalid startup resource mounts the complete native fallback"),
         View.IsValid() && NOT View->GetLastResult().Succeeded
             && DebuggerWindow->_UsingNativeFallback
@@ -776,6 +861,10 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
             && Click(Slate, FallbackPlayingFilter.ToSharedRef()) && NOT DebuggerWindow->_ShowPlaying))
     { return false; }
 
+    const auto StartupSpatial = FindButtonWithText(StartupTabs.ToSharedRef(), TEXT("Spatial"));
+    if (NOT TestTrue(TEXT("native startup tab fallback physically selects a nondefault page"),
+        StartupSpatial.IsValid() && Click(Slate, StartupSpatial.ToSharedRef())
+            && DebuggerWindow->_PageSwitcher->GetActiveWidgetIndex() == 3)) { return false; }
     MarkupRestored = FFileHelper::SaveStringToFile(
         Markup, *FPaths::Combine(Directory, TEXT("AudioDebuggerShell.ui.html")));
     TestTrue(TEXT("Audio fixture restores the valid production resource"), MarkupRestored);
@@ -789,11 +878,15 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
             && NOT DebuggerWindow->_AuthoredCrossfadeView->GetLastResult().Succeeded
             && DebuggerWindow->_UsingNativeCrossfadeFallback
             && ContainsWidget(DebuggerWindow->_CrossfadePageHost.ToSharedRef(), DebuggerWindow->_CrossfadePagePlot.ToSharedRef())
-            && ContainsWidget(View->GetRegion(TEXT("main")), DebuggerWindow->_Tabs.ToSharedRef())
+            && ContainsWidget(View->GetRegion(TEXT("main")), GetTabs().ToSharedRef())
             && NOT ContainsWidget(View->GetRegion(TEXT("main")), DebuggerWindow->_StatCards.ToSharedRef())
             && TaggedText(View->GetRegion(TEXT("main")), TEXT("audio-stat-concurrency-label")) == TEXT("Active / max")
             && ContainsWidget(View->GetRegion(TEXT("main")), FallbackFilterSearch.ToSharedRef())
             && ContainsWidget(View->GetRegion(TEXT("main")), DebuggerWindow->_PageSwitcher.ToSharedRef()));
+    TestTrue(TEXT("authored recovery takes over page state and revokes the detached native tab strip"),
+        GetTabs() != StartupTabs && NOT StartupTabs->GetCanDispatchEvents()
+            && NOT ContainsWidget(View->GetRegion(TEXT("main")), StartupTabs.ToSharedRef())
+            && DebuggerWindow->_PageSwitcher->GetActiveWidgetIndex() == 3);
     TestTrue(TEXT("shell recovery releases the fallback-only parent and preserves filter identity and state"),
         NOT FallbackFilterParent.IsValid() && DebuggerWindow->_FilterSearchBar == FallbackFilterSearch
             && FallbackFilterSearch->Get_SearchText() == TEXT("fallback")
@@ -850,7 +943,7 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
         DebuggerWindow->_EventsStateToggle, DebuggerWindow->_EventsFadesToggle,
         DebuggerWindow->_EventsVirtualizationToggle, DebuggerWindow->_EventsLifecycleToggle};
     const TSharedPtr<SCkDebug_EventLog> LiveEventLog = DebuggerWindow->_EventLog;
-    const TSharedPtr<SButton> FallbackEventsTab = FindButtonWithText(DebuggerWindow->_Tabs.ToSharedRef(), TEXT("Events"));
+    const TSharedPtr<SButton> FallbackEventsTab = FindButtonWithText(GetTabs().ToSharedRef(), TEXT("Events"));
     const TSharedPtr<SCheckBox> LiveEventsStateToggle = FindCheckBoxWithText(
         DebuggerWindow->_EventsToolbarHost.ToSharedRef(), TEXT("State"));
     if (NOT TestTrue(TEXT("native Events startup fallback accepts physical preference input"),
@@ -930,6 +1023,50 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
             && DebuggerWindow->_DirectorPageSlots[0].ActiveText->GetText().ToString() == TEXT("1 / 4 active")
             && TaggedText(View->GetRegion(TEXT("main")), TEXT("audio-stat-concurrency")) == TEXT("1 / 4"));
 
+    const auto LiveTabs = GetTabs();
+    const auto TabCountText = [&LiveTabs](const TCHAR* InTag) -> FString
+    {
+        const auto Widget = FindTaggedWidget(LiveTabs.ToSharedRef(), FName{InTag});
+        return Widget.IsValid() && Widget->GetTypeAsString() == TEXT("STextBlock")
+            ? StaticCastSharedPtr<STextBlock>(Widget)->GetText().ToString() : FString{};
+    };
+    const auto TabWarningVisible = [&LiveTabs](const TCHAR* InTag) -> bool
+    {
+        const auto Widget = FindTaggedWidget(LiveTabs.ToSharedRef(), FName{InTag});
+        if (NOT Widget.IsValid()) { return false; }
+        Widget->Invalidate(EInvalidateWidgetReason::Prepass);
+        Widget->SlatePrepass(1.0f);
+        return Widget->GetVisibility() == EVisibility::SelfHitTestInvisible;
+    };
+    TestTrue(TEXT("typed tab model projects production director/track counts and empty Crossfade count"),
+        TabCountText(TEXT("CkDebug.Tab.Count.Directors")) == TEXT("1")
+            && TabCountText(TEXT("CkDebug.Tab.Count.Tracks")) == TEXT("1")
+            && TabCountText(TEXT("CkDebug.Tab.Count.Crossfade")).IsEmpty());
+    const auto LiveTracksHeader = FindTaggedWidget(LiveTabs.ToSharedRef(), TEXT("CkDebug.Tab.Tracks"));
+    auto WarningTrack = TrackInfoA;
+    WarningTrack.State = ECk_AudioTrack_State::FadingOut;
+    WarningTrack.IsVirtualized = true;
+    WarningTrack.HasSpatialData = true;
+    WarningTrack.IsAttenuated = true;
+    WarningTrack.MaxFalloffDistance = 100.0f;
+    WarningTrack.DistanceToListener = 200.0f;
+    FixtureSnapshot.Directors[0].Tracks = {WarningTrack};
+    DebuggerWindow->_Collector.Collect(nullptr);
+    DebuggerWindow->DoUpdate_LiveValues();
+    TestTrue(TEXT("production snapshot changes update fading count and both tab warnings without rebuilding headers"),
+        TabCountText(TEXT("CkDebug.Tab.Count.Crossfade")) == TEXT("1")
+            && TabWarningVisible(TEXT("CkDebug.Tab.Warning.Tracks"))
+            && TabWarningVisible(TEXT("CkDebug.Tab.Warning.Spatial"))
+            && GetTabs() == LiveTabs
+            && FindTaggedWidget(LiveTabs.ToSharedRef(), TEXT("CkDebug.Tab.Tracks")) == LiveTracksHeader);
+    FixtureSnapshot.Directors[0].Tracks = {TrackInfoA};
+    DebuggerWindow->_Collector.Collect(nullptr);
+    DebuggerWindow->DoUpdate_LiveValues();
+    TestTrue(TEXT("cleared production conditions remove tab warnings and Crossfade count"),
+        TabCountText(TEXT("CkDebug.Tab.Count.Crossfade")).IsEmpty()
+            && NOT TabWarningVisible(TEXT("CkDebug.Tab.Warning.Tracks"))
+            && NOT TabWarningVisible(TEXT("CkDebug.Tab.Warning.Spatial")));
+
     // Exercise the same production structure/value pass against the controlled collector snapshot after routed input.
     const auto RefreshFilteredRows = [&]()
     {
@@ -938,7 +1075,7 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
         DebuggerWindow->DoUpdate_LiveValues();
         TickSlate(Slate);
     };
-    const TSharedPtr<SButton> FilterTracksTab = FindButtonWithText(DebuggerWindow->_Tabs.ToSharedRef(), TEXT("Tracks"));
+    const TSharedPtr<SButton> FilterTracksTab = FindButtonWithText(GetTabs().ToSharedRef(), TEXT("Tracks"));
     if (NOT TestTrue(TEXT("filter fixture physically selects the production Tracks page"),
         FilterTracksTab.IsValid() && Click(Slate, FilterTracksTab.ToSharedRef())))
     { return false; }
@@ -1014,7 +1151,7 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
             && SubtreeHasText(LiveEventLog.ToSharedRef(), TEXT("Same track  Paused → Playing"))
             && NOT DebuggerWindow->_EventsShowStateChanges);
 
-    const TSharedPtr<SButton> OverlayTab = FindButtonWithText(DebuggerWindow->_Tabs.ToSharedRef(), TEXT("Overlay"));
+    const TSharedPtr<SButton> OverlayTab = FindButtonWithText(GetTabs().ToSharedRef(), TEXT("Overlay"));
     if (NOT TestTrue(TEXT("production Overlay tab is physically selectable"),
         OverlayTab.IsValid() && Click(Slate, OverlayTab.ToSharedRef())))
     { return false; }
@@ -1058,7 +1195,7 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
 
     DebuggerWindow->DoRecord_VolumeHistory();
     DebuggerWindow->DoRecord_Events();
-    const TSharedPtr<SButton> LiveCrossfadeTab = FindButtonWithText(DebuggerWindow->_Tabs.ToSharedRef(), TEXT("Crossfade"));
+    const TSharedPtr<SButton> LiveCrossfadeTab = FindButtonWithText(GetTabs().ToSharedRef(), TEXT("Crossfade"));
     if (NOT TestTrue(TEXT("production Crossfade tab remains physically selectable"),
         LiveCrossfadeTab.IsValid() && Click(Slate, LiveCrossfadeTab.ToSharedRef())))
     { return false; }
@@ -1107,7 +1244,7 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
     FixtureSnapshot.Directors[0].Tracks = {TrackInfoA};
     DebuggerWindow->_Collector.Collect(nullptr);
     DebuggerWindow->DoUpdate_SpatialView();
-    const TSharedPtr<SButton> SpatialTab = FindButtonWithText(DebuggerWindow->_Tabs.ToSharedRef(), TEXT("Spatial"));
+    const TSharedPtr<SButton> SpatialTab = FindButtonWithText(GetTabs().ToSharedRef(), TEXT("Spatial"));
     if (NOT TestTrue(TEXT("populated Spatial page remains physically selectable"),
         SpatialTab.IsValid() && Click(Slate, SpatialTab.ToSharedRef())))
     { return false; }

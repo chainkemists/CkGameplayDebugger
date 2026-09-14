@@ -1,8 +1,9 @@
 <ui version="1">
   <region name="main">
-    <scroll id="audio-shell-scroll" direction="horizontal">
+    <column id="audio-window">
+      <debug-tabs id="audio-shell-tabs" tabs-bind="audio-tabs" value-bind="audio-page" changed="audio-select-page" enabled-bind="audio-tabs-ready" class="audio-shell-fixed audio-tabs" />
+    <scroll id="audio-shell-scroll" direction="horizontal" class="audio-shell-scroll">
       <column id="audio-shell" class="audio-shell">
-        <native id="audio-shell-tabs" bind="audio-tabs" class="audio-shell-fixed" />
         <row id="audio-shell-stats" class="audio-shell-stats audio-shell-fixed">
           <column id="audio-stat-concurrency-wrap" class="audio-stat-wrap"><column id="audio-stat-concurrency-card" class="audio-stat-card"><text id="audio-stat-concurrency-label" class="audio-stat-label">Active / max</text><text id="audio-stat-concurrency" bind="audio-stat-concurrency" class="audio-stat-value" /></column></column>
           <column id="audio-stat-audible-wrap" class="audio-stat-wrap"><column id="audio-stat-audible-card" class="audio-stat-card"><text id="audio-stat-audible-label" class="audio-stat-label">Audible</text><text id="audio-stat-audible" bind="audio-stat-audible" class="audio-stat-value audio-stat-ok" /></column></column>
@@ -29,5 +30,6 @@
         <native id="audio-shell-pages" bind="audio-pages" class="audio-shell-pages" />
       </column>
     </scroll>
+    </column>
   </region>
 </ui>

@@ -36,6 +36,8 @@ struct FCkDebug_UnderlineTabDesc
     TAttribute<FText> CountText;
     TAttribute<bool>  ShowWarnDot = false;
     TAttribute<EVisibility> Visibility = EVisibility::Visible;
+    /** Optional live label used by retained authored projections. Appended to preserve aggregate callers. */
+    TAttribute<FText> LabelText;
 };
 
 // ====================================================================================================================
@@ -78,20 +80,28 @@ public:
     SLATE_BEGIN_ARGS(SCkDebug_UnderlineTabs)
         : _TabPadding(FMargin(14.0f, 8.0f))
         , _FontSize(0)   // 0 -> CkStyle::FontSizeBody()
+        , _CanDispatchEvents(true)
     {}
         SLATE_ARGUMENT(TArray<FCkDebug_UnderlineTabDesc>, Tabs)
         SLATE_ATTRIBUTE(FName, ActiveTabId)
         SLATE_ARGUMENT(FMargin, TabPadding)
         SLATE_ARGUMENT(int32, FontSize)
         SLATE_EVENT(FOnCkDebug_TabSelected, OnTabSelected)
+        SLATE_ATTRIBUTE(bool, CanDispatchEvents)
     SLATE_END_ARGS()
 
     auto Construct(const FArguments& InArgs) -> void;
 
     auto Tick(const FGeometry& InAllottedGeometry, double InCurrentTime, float InDeltaTime) -> void override;
 
+    auto ReleaseTransientInteraction() -> void;
+    auto ReleaseOwnerInteraction() -> void;
+    auto GetPopupFocusTarget() const -> TSharedPtr<SWidget>;
+    auto GetCanDispatchEvents() const -> bool;
+
 private:
-    auto Build_Tab(const FCkDebug_UnderlineTabDesc& InTab) const -> TSharedRef<SWidget>;
+    auto Build_Tab(const FCkDebug_UnderlineTabDesc& InTab) -> TSharedRef<SWidget>;
+    auto DispatchTab(FName InTabId, bool InFromOverflow) -> FReply;
     auto Build_OverflowMenu() -> TSharedRef<SWidget>;
     auto Build_TabDecorations(const TSharedRef<SHorizontalBox>& InRow, const FCkDebug_UnderlineTabDesc& InTab) const -> void;
 
@@ -106,11 +116,14 @@ private:
 
     TAttribute<FName> _ActiveTabId;
     FOnCkDebug_TabSelected _OnTabSelected;
+    TAttribute<bool> _CanDispatchEvents;
+    bool _OwnerReleased = false;
     FMargin _TabPadding;
     int32 _FontSize = 0;
 
     TSharedPtr<SHorizontalBox> _Row;
     TSharedPtr<SComboButton> _OverflowButton;
+    TSharedPtr<SWidget> _OverflowMenuContent;
 
     FCkDebug_UnderlineTabLayout _Layout;
     float _OverflowButtonWidth = 0.0f;

@@ -10,9 +10,12 @@
 
 class FCkAStarDebugger_ViewModel;
 class FCkDebug_ViewportPicker;
+class FCkUiView;
 class SCkAStarDebugger_GridView;
 class SCkAStarDebugger_StatsPanel;
 class SCkAStarDebugger_SearchHistory;
+class SCkDebug_PaneHost;
+class SBox;
 
 // --------------------------------------------------------------------------------------------------------------------
 // Top-level debugger window — placed inside the NomadTab.
@@ -43,7 +46,12 @@ protected:
     virtual auto OnStyleRevisionChanged() -> void override;
 
 private:
+    friend class FCkAStarDebugger_AuthoredShell;
+
     auto BuildToolbar() -> TSharedRef<SWidget>;
+    auto BuildNativeContent() -> TSharedRef<SWidget>;
+    auto BuildAuthoredShell() -> void;
+    auto PollAuthoredShell(double InCurrentTime) -> void;
     auto RefreshEntitySelector() -> void;
     auto HandleWorldChanged(UWorld* InWorld) -> void;
     auto HandleSessionInvalidated() -> void;
@@ -53,6 +61,11 @@ private:
     TSharedPtr<SCkAStarDebugger_GridView> _GridView;
     TSharedPtr<SCkAStarDebugger_StatsPanel> _StatsPanel;
     TSharedPtr<SCkAStarDebugger_SearchHistory> _SearchHistory;
+    TSharedPtr<SCkDebug_PaneHost> _StatsPane;
+    TSharedPtr<SCkDebug_PaneHost> _HistoryPane;
+    TSharedPtr<SBox> _AuthoredShellHost;
+    TSharedPtr<FCkUiView> _AuthoredShellView;
+    double _NextAuthoredShellPollSeconds = 0.0;
 
     TSharedPtr<FCkDebuggerModel_WorldSelector> _WorldModel;
 

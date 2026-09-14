@@ -11,6 +11,7 @@ public class CkAStarDebugger : CkModuleRules
 			"CoreUObject",
 			"Engine",
 			"InputCore",
+			"Projects",
 
 			"Slate",
 			"SlateCore",
@@ -21,6 +22,7 @@ public class CkAStarDebugger : CkModuleRules
 			"CkAStar",
 
 			"CkDebuggerCommon",
+			"CkSlateLayout",
 			"CkEditorTools", // CkStyle:: roles — reached from this module's PUBLIC headers, so declare it directly
 		});
 

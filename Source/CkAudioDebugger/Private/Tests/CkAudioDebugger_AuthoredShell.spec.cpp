@@ -9,12 +9,14 @@
 #include "CkDebuggerCommon/Settings/CkDebuggerStyleSettings.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_Sparkline.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_EventLog.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_EntityRef.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_ToggleSurface.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_UnderlineTabs.h"
 #include "CkEcs/Registry/CkRegistry.h"
 #include "CkEcs/Registry/CkRegistry_SlotTable.h"
 #include "CkSlateLayout/CkFlexText.h"
 #include "CkSlateLayout/CkUiCollection.h"
+#include "CkSlateLayout/SCkUiRepeat.h"
 #include "CkSlateLayout/SCkUiSurface.h"
 
 #include "CkEditorTools/Style/CkStyle.h"
@@ -113,6 +115,40 @@ namespace ck_audio_debugger_authored_shell_tests
         const TSharedPtr<SWidget> Widget = FindTaggedWidget(InRoot, FName{InTag});
         return Widget.IsValid() && Widget->GetTypeAsString() == TEXT("SCkFlexText")
             ? StaticCastSharedPtr<SCkFlexText>(Widget)->GetText().ToString() : FString{};
+    }
+
+    auto FindTaggedTextBlock(const TSharedRef<SWidget>& InRoot, FName InTag) -> TSharedPtr<STextBlock>
+    {
+        if (InRoot->GetTag() == InTag && InRoot->GetTypeAsString() == TEXT("STextBlock"))
+        { return StaticCastSharedRef<STextBlock>(InRoot); }
+        auto* Children = InRoot->GetChildren();
+        for (int32 Index = 0; Children != nullptr && Index < Children->Num(); ++Index)
+        {
+            if (const auto Found = FindTaggedTextBlock(ConstCastSharedRef<SWidget>(Children->GetChildAt(Index)), InTag))
+            { return Found; }
+        }
+        return {};
+    }
+
+    auto FindEntityRef(const TSharedRef<SWidget>& InRoot) -> TSharedPtr<SCkDebug_EntityRef>
+    {
+        if (InRoot->GetTypeAsString() == TEXT("SCkDebug_EntityRef"))
+        { return StaticCastSharedRef<SCkDebug_EntityRef>(InRoot); }
+        auto* Children = InRoot->GetChildren();
+        for (int32 Index = 0; Children != nullptr && Index < Children->Num(); ++Index)
+        {
+            if (const auto Found = FindEntityRef(ConstCastSharedRef<SWidget>(Children->GetChildAt(Index))))
+            { return Found; }
+        }
+        return {};
+    }
+
+    auto ProbeRetainedEntityRef(const TSharedRef<SCkDebug_EntityRef>& InRef) -> void
+    {
+        const auto Position = InRef->GetCachedGeometry().GetAbsolutePosition();
+        const FPointerEvent Event(0, FSlateApplication::CursorPointerIndex, Position, Position,
+            TSet<FKey>{EKeys::LeftMouseButton}, EKeys::LeftMouseButton, 0.0f, FModifierKeysState{});
+        InRef->OnMouseButtonDown(InRef->GetCachedGeometry(), Event);
     }
 
     auto TickSlate(FSlateApplication& InSlate) -> void
@@ -308,6 +344,16 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
     }
 
     TSharedPtr<FCkUiView> EventsView = DebuggerWindow->_AuthoredEventsToolbarView;
+    TSharedPtr<FCkUiView> DirectorsView = DebuggerWindow->_AuthoredDirectorsView;
+    if (NOT TestTrue(TEXT("production Audio window admits its authored Directors page"),
+        DirectorsView.IsValid() && DirectorsView->GetLastResult().Succeeded
+            && NOT DebuggerWindow->_UsingNativeDirectorsFallback
+            && DirectorsView->GetRepeat(TEXT("audio-directors")).IsValid()
+            && DirectorsView->GetScroll(TEXT("audio-directors-scroll")).IsValid()))
+    {
+        if (DirectorsView.IsValid()) { AddError(FString::Join(DirectorsView->GetLastResult().Errors, TEXT("\n"))); }
+        return false;
+    }
     if (NOT TestTrue(TEXT("production Audio window admits its authored Events toolbar"),
         EventsView.IsValid() && EventsView->GetLastResult().Succeeded))
     {
@@ -556,6 +602,8 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
     FString AttenuationMarkup;
     FString AttenuationCss;
     FString EventsMarkup;
+    FString DirectorsMarkup;
+    FString DirectorsCss;
     FString EventsCss;
     const FString Directory = Plugin.IsValid()
         ? FPaths::Combine(Plugin->GetBaseDir(), TEXT("Resources/UI"))
@@ -568,7 +616,9 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
         && FFileHelper::LoadFileToString(AttenuationMarkup, *FPaths::Combine(Directory, TEXT("AudioDebuggerAttenuation.ui.html")))
         && FFileHelper::LoadFileToString(AttenuationCss, *FPaths::Combine(Directory, TEXT("AudioDebuggerAttenuation.ui.css")))
         && FFileHelper::LoadFileToString(EventsMarkup, *FPaths::Combine(Directory, TEXT("AudioDebuggerEventsToolbar.ui.html")))
-        && FFileHelper::LoadFileToString(EventsCss, *FPaths::Combine(Directory, TEXT("AudioDebuggerEventsToolbar.ui.css")))))
+        && FFileHelper::LoadFileToString(EventsCss, *FPaths::Combine(Directory, TEXT("AudioDebuggerEventsToolbar.ui.css")))
+        && FFileHelper::LoadFileToString(DirectorsMarkup, *FPaths::Combine(Directory, TEXT("AudioDebuggerDirectors.ui.html")))
+        && FFileHelper::LoadFileToString(DirectorsCss, *FPaths::Combine(Directory, TEXT("AudioDebuggerDirectors.ui.css")))))
     { return false; }
 
     TestTrue(TEXT("Audio resource declares typed tabs without the old opaque native tab binding"),
@@ -729,17 +779,20 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
     const TWeakPtr<FCkUiView> ReleasedCrossfadeView = CrossfadeView;
     const TWeakPtr<FCkUiView> ReleasedAttenuationView = AttenuationView;
     const TWeakPtr<FCkUiView> ReleasedEventsView = EventsView;
+    const TWeakPtr<FCkUiView> ReleasedDirectorsView = DirectorsView;
     const TWeakPtr<SCkAudioDebuggerWindow> ReleasedEventsOwner = DebuggerWindow;
     DebuggerWindow.Reset();
     View.Reset();
     CrossfadeView.Reset();
     AttenuationView.Reset();
     EventsView.Reset();
+    DirectorsView.Reset();
     TestFalse(TEXT("authored Audio view releases with its production window"), ReleasedView.IsValid());
     TestFalse(TEXT("authored Crossfade view releases with its production window"), ReleasedCrossfadeView.IsValid());
     TestFalse(TEXT("authored attenuation view releases with its production window"), ReleasedAttenuationView.IsValid());
     TestFalse(TEXT("retained Events controls do not retain their production owner"), ReleasedEventsOwner.IsValid());
     TestFalse(TEXT("authored Events view releases with its production window"), ReleasedEventsView.IsValid());
+    TestFalse(TEXT("authored Directors view releases with its production window"), ReleasedDirectorsView.IsValid());
     TestTrue(TEXT("Audio owner release closes the owned tab popup and revokes retained tab dispatch"),
         NOT OriginalTabs->GetCanDispatchEvents() && NOT Overflow->IsOpen()
             && NOT OriginalTabs->GetPopupFocusTarget().IsValid());
@@ -789,12 +842,15 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
         TEXT("<ui version=\"1\"><region name=\"main\"><native id=\"missing\" bind=\"missing-attenuation-curve\"/></region></ui>");
     const FString InvalidEventsStartupMarkup = EventsMarkup.Replace(
         TEXT("<native id=\"audio-events-lifecycle\" bind=\"events-lifecycle\" />"), TEXT(""));
+    const FString InvalidDirectorsStartupMarkup = DirectorsMarkup.Replace(
+        TEXT("bind=\"audio-directors\""), TEXT("bind=\"missing-audio-directors\""));
     if (NOT TestTrue(TEXT("Events startup fixture omits one required native port"), InvalidEventsStartupMarkup != EventsMarkup))
     { return false; }
     bool MarkupRestored = false;
     bool CrossfadeMarkupRestored = false;
     bool AttenuationMarkupRestored = false;
     bool EventsMarkupRestored = false;
+    bool DirectorsMarkupRestored = false;
     ON_SCOPE_EXIT
     {
         if (NOT MarkupRestored)
@@ -805,6 +861,8 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
         { FFileHelper::SaveStringToFile(AttenuationMarkup, *FPaths::Combine(Directory, TEXT("AudioDebuggerAttenuation.ui.html"))); }
         if (NOT EventsMarkupRestored)
         { FFileHelper::SaveStringToFile(EventsMarkup, *FPaths::Combine(Directory, TEXT("AudioDebuggerEventsToolbar.ui.html"))); }
+        if (NOT DirectorsMarkupRestored)
+        { FFileHelper::SaveStringToFile(DirectorsMarkup, *FPaths::Combine(Directory, TEXT("AudioDebuggerDirectors.ui.html"))); }
     };
     if (NOT TestTrue(TEXT("Audio fixture installs its valid-but-unbound startup candidate"),
         FFileHelper::SaveStringToFile(
@@ -814,7 +872,9 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
             && FFileHelper::SaveStringToFile(InvalidAttenuationStartupMarkup,
                 *FPaths::Combine(Directory, TEXT("AudioDebuggerAttenuation.ui.html")))
             && FFileHelper::SaveStringToFile(InvalidEventsStartupMarkup,
-                *FPaths::Combine(Directory, TEXT("AudioDebuggerEventsToolbar.ui.html")))))
+                *FPaths::Combine(Directory, TEXT("AudioDebuggerEventsToolbar.ui.html")))
+            && FFileHelper::SaveStringToFile(InvalidDirectorsStartupMarkup,
+                *FPaths::Combine(Directory, TEXT("AudioDebuggerDirectors.ui.html")))))
     { return false; }
 
     DebuggerWindow = SNew(SCkAudioDebuggerWindow);
@@ -969,16 +1029,34 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
     for (const auto& Toggle : LiveEventToggles)
     { TestTrue(TEXT("recovered Events toolbar retains every exact native control"), ContainsWidget(EventsView->GetRegion(TEXT("main")), Toggle.ToSharedRef())); }
 
+    DirectorsView = DebuggerWindow->_AuthoredDirectorsView;
+    if (NOT TestTrue(TEXT("invalid Directors startup resource preserves the independent native page"),
+        DirectorsView.IsValid() && NOT DirectorsView->GetLastResult().Succeeded
+            && DebuggerWindow->_UsingNativeDirectorsFallback
+            && ContainsWidget(DebuggerWindow->_DirectorsPageHost.ToSharedRef(), DebuggerWindow->_NativeDirectorsPage.ToSharedRef())))
+    { return false; }
+    DirectorsMarkupRestored = FFileHelper::SaveStringToFile(
+        DirectorsMarkup, *FPaths::Combine(Directory, TEXT("AudioDebuggerDirectors.ui.html")));
+    if (NOT TestTrue(TEXT("Directors fixture restores its authored resource"), DirectorsMarkupRestored)) { return false; }
+    DebuggerWindow->OnStyleRevisionChanged();
+    TickSlate(Slate);
+    if (NOT TestTrue(TEXT("bounded Directors polling recovers and retires native page ownership"),
+        DirectorsView->GetLastResult().Succeeded && NOT DebuggerWindow->_UsingNativeDirectorsFallback
+            && NOT ContainsWidget(DebuggerWindow->_DirectorsPageHost.ToSharedRef(), DebuggerWindow->_NativeDirectorsPage.ToSharedRef())
+            && DebuggerWindow->_DirectorPageSlots.IsEmpty()))
+    { return false; }
+
     using namespace ck::registry_table;
     auto Registry = EnttRegistryType{};
     const auto RegistrySlot = Allocate(&Registry);
     ON_SCOPE_EXIT
     {
-        DebuggerWindow->HandleSessionInvalidated();
+        if (DebuggerWindow.IsValid()) { DebuggerWindow->HandleSessionInvalidated(); }
         Free(RegistrySlot);
     };
 
     const auto DirectorEntity = FCk_Handle{FCk_Entity{Registry.create()}, RegistrySlot};
+    const auto OtherDirectorEntity = FCk_Handle{FCk_Entity{Registry.create()}, RegistrySlot};
     auto TrackA = FCk_Handle{FCk_Entity{Registry.create()}, RegistrySlot};
     auto TrackB = FCk_Handle{FCk_Entity{Registry.create()}, RegistrySlot};
     TrackA.Add<ck::FFragment_AudioTrack_Params>();
@@ -999,11 +1077,19 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
     const auto EmptyDirectorSignature = DebuggerWindow->DoBuild_Signature();
     DebuggerWindow->DoRebuild_Structure();
     DebuggerWindow->DoUpdate_LiveValues();
+    const auto DirectorsRepeat = DirectorsView->GetRepeat(TEXT("audio-directors"));
+    if (NOT TestTrue(TEXT("empty director publishes a keyed authored row"),
+        DirectorsRepeat.IsValid() && DirectorsRepeat->TryRefresh() && DirectorsRepeat->GetItemCount() == 1
+            && DebuggerWindow->_DirectorRecords->GetRecords().Num() == 1))
+    { return false; }
+    const auto DirectorKey = DebuggerWindow->_DirectorRecords->GetRecords()[0]->GetKey();
+    const auto DirectorRow = DirectorsRepeat->GetItemWidget(DirectorKey);
+    if (NOT TestTrue(TEXT("authored director repeat supplies its real row subtree"), DirectorRow.IsValid())) { return false; }
     TestTrue(TEXT("an empty director participates in the structure signature and dedicated page"),
         NOT EmptyDirectorSignature.IsEmpty()
             && DebuggerWindow->_DirectorSlots.IsEmpty()
-            && DebuggerWindow->_DirectorPageSlots.Num() == 1
-            && DebuggerWindow->_DirectorPageSlots[0].ActiveText->GetText().ToString() == TEXT("0 / 4 active"));
+            && DebuggerWindow->_DirectorPageSlots.IsEmpty()
+            && TaggedText(DirectorRow.ToSharedRef(), TEXT("audio-director-active")) == TEXT("0 / 4 active"));
 
     auto TrackInfoA = FCkAudioDebugger_TrackInfo{};
     TrackInfoA.TrackEntity = TrackA;
@@ -1018,10 +1104,173 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
     DebuggerWindow->DoUpdate_LiveValues();
     TestTrue(TEXT("both Audio pages receive the live director concurrency count"),
         DebuggerWindow->_DirectorSlots.Num() == 1
-            && DebuggerWindow->_DirectorPageSlots.Num() == 1
+            && DebuggerWindow->_DirectorPageSlots.IsEmpty()
             && DebuggerWindow->_DirectorSlots[0].ActiveText->GetText().ToString() == TEXT("1 / 4 active")
-            && DebuggerWindow->_DirectorPageSlots[0].ActiveText->GetText().ToString() == TEXT("1 / 4 active")
+            && TaggedText(DirectorRow.ToSharedRef(), TEXT("audio-director-active")) == TEXT("1 / 4 active")
             && TaggedText(View->GetRegion(TEXT("main")), TEXT("audio-stat-concurrency")) == TEXT("1 / 4"));
+
+    const auto DirectorName = FindTaggedTextBlock(DirectorRow.ToSharedRef(), TEXT("audio-director-name"));
+    const auto DirectorEntityLink = FindTaggedWidget(DirectorRow.ToSharedRef(), TEXT("audio-director-entity"));
+    if (NOT TestTrue(TEXT("authored director owns its highlighted native text leaf and shared entity link"),
+        DirectorName.IsValid() && DirectorName->GetText().ToString() == TEXT("Same director")
+            && DirectorEntityLink.IsValid()))
+    { return false; }
+    const auto DirectorSignatureBeforePolicy = DebuggerWindow->DoBuild_Signature();
+    FixtureSnapshot.Directors[0].DefaultCrossfadeSeconds = 2.5f;
+    FixtureSnapshot.Directors[0].SamePriorityBehavior = ECk_SamePriorityBehavior::Allow;
+    DebuggerWindow->_Collector.Collect(nullptr);
+    DebuggerWindow->DoUpdate_LiveValues();
+    TestTrue(TEXT("policy-only changes publish without structural rebuild or replacing retained director leaves"),
+        DebuggerWindow->DoBuild_Signature() == DirectorSignatureBeforePolicy
+            && DirectorsRepeat->GetItemWidget(DirectorKey) == DirectorRow
+            && FindTaggedTextBlock(DirectorRow.ToSharedRef(), TEXT("audio-director-name")) == DirectorName
+            && FindTaggedWidget(DirectorRow.ToSharedRef(), TEXT("audio-director-entity")) == DirectorEntityLink
+            && TaggedText(DirectorRow.ToSharedRef(), TEXT("audio-director-policy")) == TEXT("crossfade 2.5s  ·  same-priority: allow"));
+    FixtureSnapshot.Directors[0].DefaultCrossfadeSeconds.Reset();
+    FixtureSnapshot.Directors[0].MaxConcurrentTracks = 0;
+    DebuggerWindow->_Collector.Collect(nullptr);
+    DebuggerWindow->DoUpdate_LiveValues();
+    TestTrue(TEXT("nonpositive director limit and absent crossfade retain native display semantics"),
+        TaggedText(DirectorRow.ToSharedRef(), TEXT("audio-director-active")) == TEXT("1 active")
+            && TaggedText(DirectorRow.ToSharedRef(), TEXT("audio-director-policy")) == TEXT("no default crossfade  ·  same-priority: allow"));
+    FixtureSnapshot.Directors[0].MaxConcurrentTracks = 4;
+    DebuggerWindow->_Collector.Collect(nullptr);
+    DebuggerWindow->DoUpdate_LiveValues();
+
+    DebuggerWindow->DoRebuild_OverlayList();
+    DebuggerWindow->DoUpdate_DirectorRecords();
+    TestTrue(TEXT("ordinary Overlay rebuild preserves the independent Directors session identity"),
+        DebuggerWindow->_DirectorRecords->FindRecord(DirectorKey).IsValid()
+            && DirectorsRepeat->GetItemWidget(DirectorKey) == DirectorRow
+            && FindTaggedTextBlock(DirectorRow.ToSharedRef(), TEXT("audio-director-name")) == DirectorName);
+
+    const auto DirectorsTab = FindButtonWithText(GetTabs().ToSharedRef(), TEXT("Directors"));
+    if (NOT TestTrue(TEXT("physical Directors tab reaches authored cards without the native page subtree"),
+        DirectorsTab.IsValid() && Click(Slate, DirectorsTab.ToSharedRef())
+            && DebuggerWindow->_PageSwitcher->GetActiveWidgetIndex() == 0
+            && ContainsWidget(DebuggerWindow->_PageSwitcher.ToSharedRef(), DirectorsView->GetRegion(TEXT("main")))
+            && NOT ContainsWidget(DebuggerWindow->_PageSwitcher.ToSharedRef(), DebuggerWindow->_NativeDirectorsPage.ToSharedRef())))
+    { return false; }
+    const auto DirectorsStyleBefore = StyleSettings->Selection;
+    StyleSettings->Selection.TextScale = ECkDebugAxis_TextScale::Large;
+    StyleSettings->NotifyChanged();
+    DebuggerWindow->OnStyleRevisionChanged();
+    TickSlate(Slate);
+    const auto LargeDirectorFont = DirectorName->GetFont().Size;
+    StyleSettings->Selection.TextScale = ECkDebugAxis_TextScale::Normal;
+    StyleSettings->Selection.CornerStyle = ECkDebugAxis_CornerStyle::Rounded;
+    StyleSettings->Selection.SurfaceElevation = ECkDebugAxis_SurfaceElevation::Layered;
+    StyleSettings->NotifyChanged();
+    DebuggerWindow->OnStyleRevisionChanged();
+    TickSlate(Slate);
+    const auto RoundedDirectorCard = FindTaggedWidget(DirectorRow.ToSharedRef(), TEXT("audio-director-card"));
+    const auto* RoundedDirectorBrush = RoundedDirectorCard.IsValid() && RoundedDirectorCard->GetTypeAsString() == TEXT("SBorder")
+        ? StaticCastSharedPtr<SBorder>(RoundedDirectorCard)->GetBorderImage() : nullptr;
+    TestTrue(TEXT("live Directors style revision preserves highlighted leaf identity"),
+        FindTaggedTextBlock(DirectorRow.ToSharedRef(), TEXT("audio-director-name")) == DirectorName);
+    TestTrue(TEXT("live Directors style revision applies the authored name font token"),
+        DirectorName->GetFont().Size < LargeDirectorFont);
+    TestTrue(TEXT("live Directors style revision applies the authored card tokens"),
+        RoundedDirectorBrush != nullptr
+            && RoundedDirectorBrush->DrawAs == ESlateBrushDrawType::RoundedBox
+            && RoundedDirectorBrush->OutlineSettings.CornerRadii.X == CkStyle::RadiusL());
+    StyleSettings->Selection = DirectorsStyleBefore;
+    StyleSettings->NotifyChanged();
+    DebuggerWindow->OnStyleRevisionChanged();
+    TickSlate(Slate);
+    const auto DirectorScroll = DirectorsView->GetScroll(TEXT("audio-directors-scroll"));
+    const auto DirectorRevision = DirectorsView->GetRevision();
+    TestTrue(TEXT("compatible Directors reload preserves keyed row, highlighted name, page and scroll"),
+        DirectorsView->TryReload(DirectorsMarkup, DirectorsCss, TEXT("Audio Directors compatible reload")).Succeeded
+            && DirectorsView->GetRevision() > DirectorRevision
+            && DirectorsView->GetScroll(TEXT("audio-directors-scroll")) == DirectorScroll
+            && DirectorsRepeat->GetItemWidget(DirectorKey) == DirectorRow
+            && FindTaggedTextBlock(DirectorRow.ToSharedRef(), TEXT("audio-director-name")) == DirectorName
+            && DebuggerWindow->_PageSwitcher->GetActiveWidgetIndex() == 0);
+    const auto CommittedDirectorRevision = DirectorsView->GetRevision();
+    TestTrue(TEXT("invalid Directors field rejects atomically and retains the prior row"),
+        NOT DirectorsView->TryReload(DirectorsMarkup.Replace(TEXT("text-field=\"name\""),
+            TEXT("text-field=\"missing-name\"")), DirectorsCss, TEXT("Audio Directors invalid field")).Succeeded
+            && DirectorsView->GetRevision() == CommittedDirectorRevision
+            && DirectorsRepeat->GetItemWidget(DirectorKey) == DirectorRow
+            && FindTaggedTextBlock(DirectorRow.ToSharedRef(), TEXT("audio-director-name")) == DirectorName);
+    TestTrue(TEXT("invalid Directors action rejects atomically"),
+        NOT DirectorsView->TryReload(DirectorsMarkup.Replace(TEXT("item-action=\"audio-director-navigate\""),
+            TEXT("item-action=\"missing-director-route\"")), DirectorsCss, TEXT("Audio Directors invalid action")).Succeeded
+            && DirectorsView->GetRevision() == CommittedDirectorRevision);
+    TestTrue(TEXT("Directors valid candidate remains available after rejection"),
+        DirectorsView->TryReload(DirectorsMarkup, DirectorsCss).Succeeded);
+
+    const auto NavigationResults = MakeShared<TArray<FCk_Entity>>();
+    DebuggerWindow->_DirectorNavigationForTests = [NavigationResults](const FCk_Handle& InEntity)
+    { NavigationResults->Add(InEntity.Get_Entity()); };
+    const auto HeldDirectorRef = FindEntityRef(DirectorRow.ToSharedRef());
+    if (NOT TestTrue(TEXT("physical shared director entity-link routes the exact live production entity"),
+        HeldDirectorRef.IsValid() && Click(Slate, HeldDirectorRef.ToSharedRef())
+            && NavigationResults->Num() == 1 && (*NavigationResults)[0] == DirectorEntity.Get_Entity()))
+    { return false; }
+
+    auto OtherDirector = Director;
+    OtherDirector.DirectorEntity = OtherDirectorEntity;
+    FixtureSnapshot.Directors.Add(OtherDirector);
+    DebuggerWindow->_Collector.Collect(nullptr);
+    DebuggerWindow->DoUpdate_LiveValues();
+    if (NOT TestTrue(TEXT("equal-name directors retain distinct identities and rows"),
+        DirectorsRepeat->TryRefresh() && DirectorsRepeat->GetItemCount() == 2
+            && DebuggerWindow->_DirectorRecords->GetRecords().Num() == 2))
+    { return false; }
+    const auto OtherDirectorKey = DebuggerWindow->_DirectorRecords->GetRecords()[1]->GetKey();
+    TestTrue(TEXT("director identity is independent of display name"), OtherDirectorKey != DirectorKey);
+    const auto OtherDirectorRow = DirectorsRepeat->GetItemWidget(OtherDirectorKey);
+    if (NOT TestTrue(TEXT("second same-name director supplies an independent row"), OtherDirectorRow.IsValid())) { return false; }
+    const auto OtherDirectorRef = FindEntityRef(OtherDirectorRow.ToSharedRef());
+    if (NOT TestTrue(TEXT("physical same-name director link routes its own exact entity"),
+        OtherDirectorRef.IsValid() && Click(Slate, OtherDirectorRef.ToSharedRef())
+            && NavigationResults->Num() == 2 && (*NavigationResults)[1] == OtherDirectorEntity.Get_Entity()))
+    { return false; }
+    FixtureSnapshot.Directors.RemoveAt(1);
+    DebuggerWindow->_Collector.Collect(nullptr);
+    DebuggerWindow->DoUpdate_LiveValues();
+    TestTrue(TEXT("director removal retires its keyed row"), DirectorsRepeat->TryRefresh() && DirectorsRepeat->GetItemCount() == 1);
+    ProbeRetainedEntityRef(OtherDirectorRef.ToSharedRef());
+    TestEqual(TEXT("held removed director link cannot dispatch through the retired item scope"), NavigationResults->Num(), 2);
+
+    const auto DuplicateDirector = FixtureSnapshot.Directors[0];
+    FixtureSnapshot.Directors.Add(DuplicateDirector);
+    DebuggerWindow->_Collector.Collect(nullptr);
+    DebuggerWindow->DoUpdate_LiveValues();
+    TestTrue(TEXT("duplicate director identity fails closed and clears the whole projection"),
+        NOT DebuggerWindow->_DirectorRecordsReady && DebuggerWindow->_DirectorRecords->GetRecords().IsEmpty());
+    ProbeRetainedEntityRef(HeldDirectorRef.ToSharedRef());
+    TestEqual(TEXT("rejected director publication cannot leave old navigation active"), NavigationResults->Num(), 2);
+    FixtureSnapshot.Directors.RemoveAt(1);
+    DebuggerWindow->_Collector.Collect(nullptr);
+    DebuggerWindow->DoUpdate_LiveValues();
+    TestTrue(TEXT("valid director publication recovers after atomic rejection"),
+        DebuggerWindow->_DirectorRecordsReady && DirectorsRepeat->TryRefresh() && DirectorsRepeat->GetItemCount() == 1);
+    const auto ReplacementSourceRow = DirectorsRepeat->GetItemWidget(DirectorKey);
+    const auto ReplacementSourceRef = ReplacementSourceRow.IsValid() ? FindEntityRef(ReplacementSourceRow.ToSharedRef()) : nullptr;
+    if (NOT TestTrue(TEXT("replacement fixture holds the currently active director link"), ReplacementSourceRef.IsValid()))
+    { return false; }
+    FixtureSnapshot.Directors[0].DirectorEntity = OtherDirectorEntity;
+    DebuggerWindow->_Collector.Collect(nullptr);
+    DebuggerWindow->DoUpdate_LiveValues();
+    if (NOT TestTrue(TEXT("same-name equal-count replacement changes the stable director identity"),
+        DirectorsRepeat->TryRefresh() && DirectorsRepeat->GetItemCount() == 1
+            && NOT DirectorsRepeat->GetItemWidget(DirectorKey).IsValid()
+            && DirectorsRepeat->GetItemWidget(OtherDirectorKey).IsValid()))
+    { return false; }
+    ProbeRetainedEntityRef(ReplacementSourceRef.ToSharedRef());
+    TestEqual(TEXT("same-name replacement cannot reactivate the held prior entity link"), NavigationResults->Num(), 2);
+    const auto ReplacementRef = FindEntityRef(DirectorsRepeat->GetItemWidget(OtherDirectorKey).ToSharedRef());
+    if (NOT TestTrue(TEXT("physical replacement director link resolves the replacement entity"),
+        ReplacementRef.IsValid() && Click(Slate, ReplacementRef.ToSharedRef())
+            && NavigationResults->Num() == 3 && (*NavigationResults)[2] == OtherDirectorEntity.Get_Entity()))
+    { return false; }
+    FixtureSnapshot.Directors[0].DirectorEntity = DirectorEntity;
+    DebuggerWindow->_Collector.Collect(nullptr);
+    DebuggerWindow->DoUpdate_LiveValues();
+    DirectorsRepeat->TryRefresh();
 
     const auto LiveTabs = GetTabs();
     const auto TabCountText = [&LiveTabs](const TCHAR* InTag) -> FString
@@ -1085,6 +1334,19 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
     RefreshFilteredRows();
     TestTrue(TEXT("nonmatching search removes the controlled production track row"),
         DebuggerWindow->_TrackSlots.IsEmpty() && DebuggerWindow->_DirectorBox->GetChildren()->Num() == 0);
+    DirectorsRepeat->TryRefresh();
+    TestTrue(TEXT("nonmatching name filter removes authored Directors records"),
+        DebuggerWindow->_DirectorRecords->GetRecords().IsEmpty()
+            && DirectorsRepeat->GetItemCount() == 0);
+    if (NOT TestTrue(TEXT("physical substring search retains the director and supplies its highlight binding"),
+        ReplaceSearchText(Slate, FallbackFilterEditable.ToSharedRef(), TEXT("director"))))
+    { return false; }
+    RefreshFilteredRows();
+    DirectorsRepeat->TryRefresh();
+    TestTrue(TEXT("Director search is name-scoped and independent of a track name match"),
+        DebuggerWindow->_HighlightString == TEXT("director")
+            && DirectorsRepeat->GetItemCount() == 1
+            && DebuggerWindow->_DirectorRecords->FindRecord(DirectorKey).IsValid());
     if (NOT TestTrue(TEXT("physical clear restores the production query"),
         ReplaceSearchText(Slate, FallbackFilterEditable.ToSharedRef(), TEXT(""))))
     { return false; }
@@ -1094,6 +1356,10 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
     { return false; }
     RefreshFilteredRows();
     TestEqual(TEXT("Playing preference removes the controlled playing row"), DebuggerWindow->_TrackSlots.Num(), 0);
+    DirectorsRepeat->TryRefresh();
+    TestTrue(TEXT("track-state preferences do not remove Directors records"),
+        DebuggerWindow->_DirectorRecords->FindRecord(DirectorKey).IsValid()
+            && DirectorsRepeat->GetItemCount() == 1);
     if (NOT TestTrue(TEXT("physical Playing filter restores playing tracks"), Click(Slate, FallbackPlayingFilter.ToSharedRef())))
     { return false; }
     RefreshFilteredRows();
@@ -1357,6 +1623,12 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
     TestTrue(TEXT("spatial lifecycle assertion begins from populated authored state"),
         SpatialModel->HasSpatialData && NOT SpatialModel->FalloffCurve.IsEmpty()
             && TaggedText(LiveAttenuationMain, TEXT("audio-attenuation-audible")) == TEXT("0.30"));
+    DebuggerWindow->DoUpdate_DirectorRecords();
+    DirectorsRepeat->TryRefresh();
+    const auto LiveDirectorRow = DirectorsRepeat->GetItemWidget(DirectorKey);
+    const auto LiveDirectorRef = LiveDirectorRow.IsValid() ? FindEntityRef(LiveDirectorRow.ToSharedRef()) : nullptr;
+    if (NOT TestTrue(TEXT("director teardown fixture holds a currently published entity link"), LiveDirectorRef.IsValid()))
+    { return false; }
     const auto SessionFixture = FixtureSnapshot;
     UWorld* InvalidatedWorld = NewObject<UWorld>();
     UWorld* UnrelatedWorld = NewObject<UWorld>();
@@ -1366,6 +1638,8 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
         DebuggerWindow->_ObservedWorld.Get() == InvalidatedWorld
             && DebuggerWindow->_Collector.Get_Snapshot().HasWorld);
     ck::DebugSessionLifecycle::Get_OnWorldInvalidated().Broadcast(InvalidatedWorld);
+    ProbeRetainedEntityRef(LiveDirectorRef.ToSharedRef());
+    TestEqual(TEXT("world invalidation revokes held director navigation synchronously"), NavigationResults->Num(), 3);
     TestTrue(TEXT("world invalidation clears native Events history without resetting toolbar preferences"),
         LiveEventLog->Get_EntryCount() == 0 && DebuggerWindow->_EventLog == LiveEventLog
             && NOT DebuggerWindow->_EventsShowStateChanges && DebuggerWindow->_EventsShowFades
@@ -1376,6 +1650,7 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
             && DebuggerWindow->_InvalidatedWorld.Get() == InvalidatedWorld
             && DebuggerWindow->_DirectorSlots.IsEmpty()
             && DebuggerWindow->_DirectorPageSlots.IsEmpty()
+            && DebuggerWindow->_DirectorRecords->GetRecords().IsEmpty()
             && DebuggerWindow->_TrackSlots.IsEmpty()
             && DebuggerWindow->_VolumeHistory.IsEmpty()
             && DebuggerWindow->_TrackWatch.IsEmpty()
@@ -1399,6 +1674,7 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
     ck::DebugSessionLifecycle::Get_OnSessionInvalidated().Broadcast();
     TestTrue(TEXT("session invalidation independently clears Audio state"),
         NOT DebuggerWindow->_Collector.Get_Snapshot().HasWorld
+            && DebuggerWindow->_DirectorRecords->GetRecords().IsEmpty()
             && DebuggerWindow->_InvalidatedWorld.Get() == InvalidatedWorld
             && NOT SpatialModel->HasSpatialData && SpatialModel->FalloffCurve.IsEmpty()
             && TaggedText(LiveAttenuationMain, TEXT("audio-attenuation-audible")).IsEmpty());
@@ -1420,6 +1696,16 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
     Module.HandleEnginePreExit();
     TestTrue(TEXT("module pre-exit releases Audio tab and window ownership without a close request"),
         NOT Module._DebuggerTab.IsValid() && NOT Module._DebuggerWindow.IsValid());
+    const TWeakPtr<SCkAudioDebuggerWindow> ReleasedPopulatedOwner = DebuggerWindow;
+    const TWeakPtr<FCkUiView> ReleasedPopulatedDirectors = DirectorsView;
+    Slate.DestroyWindowImmediately(HostWindow.ToSharedRef());
+    HostWindow.Reset();
+    DebuggerWindow.Reset();
+    DirectorsView.Reset();
+    ProbeRetainedEntityRef(LiveDirectorRef.ToSharedRef());
+    TestTrue(TEXT("held director leaves neither retain the released owner/view nor dispatch after teardown"),
+        NOT ReleasedPopulatedOwner.IsValid() && NOT ReleasedPopulatedDirectors.IsValid()
+            && NavigationResults->Num() == 3);
     return true;
 }
 

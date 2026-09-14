@@ -12,6 +12,7 @@
 
 #include "CkDebuggerCommon/Search/SCkDebug_SearchBar.h"
 #include "CkDebuggerCommon/Lifecycle/CkDebug_SessionLifecycle.h"
+#include "CkDebuggerCommon/Navigation/CkDebug_Navigator.h"
 #include "CkDebuggerCommon/Settings/CkDebuggerStyleSettings.h"
 #include "CkDebuggerCommon/Styles/CkDebuggerAxes.h"
 #include "CkDebuggerCommon/Styles/CkDebuggerCommonStyle.h"
@@ -151,6 +152,7 @@ namespace ck_audio_debugger_window
             {TEXT("--audio-attenuation-curve-height"), FString::SanitizeFloat(k_CurveHeight)},
             {TEXT("--audio-events-muted"), Color(CkStyle::TextMute())},
             {TEXT("--audio-events-micro-size"), FString::FromInt(Get_MicroFont().Size)},
+            {TEXT("--audio-director-muted"), Color(CkStyle::TextMute())},
         };
     }
 
@@ -308,6 +310,139 @@ namespace ck_audio_debugger_window
     {
         return ck::Format_UE(TEXT("{}"), InHandle.Get_Entity());
     }
+
+    auto Build_DirectorKey(const FCk_Handle& InHandle, int64 InGeneration) -> FString
+    {
+        return ck::Format_UE(TEXT("{}:{}"), InGeneration, Build_EntityKey(InHandle));
+    }
+
+    auto Build_DirectorPolicy(const FCkAudioDebugger_DirectorInfo& InDirector) -> FText
+    {
+        const auto Crossfade = InDirector.DefaultCrossfadeSeconds.IsSet()
+            ? ck::Format_UE(TEXT("crossfade {}s"), FString::SanitizeFloat(InDirector.DefaultCrossfadeSeconds.GetValue(), 1))
+            : FString{TEXT("no default crossfade")};
+        return FText::FromString(ck::Format_UE(TEXT("{}  ·  same-priority: {}"), Crossfade,
+            InDirector.SamePriorityBehavior == ECk_SamePriorityBehavior::Allow ? TEXT("allow") : TEXT("block")));
+    }
+
+    // This passive leaf preserves the native director-name substring highlight. Layout, card decoration and
+    // all other text remain authored; the generic authored text primitive does not support Slate HighlightText.
+    class FDirectorName final : public ICkUiRetainedWidget, public TSharedFromThis<FDirectorName>
+    {
+    public:
+        struct FConfiguration
+        {
+            TAttribute<FText> Text;
+            TAttribute<FText> Highlight;
+            FSlateFontInfo Font;
+            FLinearColor Color = FLinearColor::White;
+        };
+
+        static auto TryConfiguration(const FCkUiCustomWidgetArguments& InArguments,
+            FConfiguration& OutConfiguration, FString& OutFailure) -> bool
+        {
+            const auto* Text = InArguments.TextBindings.Find(TEXT("text"));
+            const auto* Highlight = InArguments.TextBindings.Find(TEXT("highlight"));
+            if (Text == nullptr || NOT Text->IsSet() || Highlight == nullptr || NOT Highlight->IsSet())
+            {
+                OutFailure = TEXT("audio-director-name requires text and highlight bindings.");
+                return false;
+            }
+            OutConfiguration.Text = *Text;
+            OutConfiguration.Highlight = *Highlight;
+            OutConfiguration.Font = InArguments.BaseFont;
+            OutConfiguration.Font.TypefaceFontName = TEXT("Bold");
+            if (const auto* Size = InArguments.Style.CustomProperties.Find(TEXT("-ck-audio-director-name-size")))
+            { OutConfiguration.Font.Size = FMath::RoundToInt(Size->Number); }
+            if (const auto* Color = InArguments.Style.CustomProperties.Find(TEXT("-ck-audio-director-name-color")))
+            { OutConfiguration.Color = Color->Color; }
+            return true;
+        }
+
+        explicit FDirectorName(FConfiguration InConfiguration) : Configuration(MoveTemp(InConfiguration)) {}
+
+        auto Initialize() -> void
+        {
+            const TWeakPtr<FDirectorName> WeakName = AsShared();
+            Widget = SNew(STextBlock)
+                .Font_Lambda([WeakName]()
+                {
+                    const auto Name = WeakName.Pin();
+                    return Name.IsValid() ? Name->Configuration.Font : FSlateFontInfo{};
+                })
+                .ColorAndOpacity_Lambda([WeakName]()
+                {
+                    const auto Name = WeakName.Pin();
+                    return FSlateColor{Name.IsValid() ? Name->Configuration.Color : FLinearColor::Transparent};
+                })
+                .Text_Lambda([WeakName]()
+                {
+                    const auto Name = WeakName.Pin();
+                    return Name.IsValid() ? Name->Configuration.Text.Get(FText::GetEmpty()) : FText::GetEmpty();
+                })
+                .HighlightText_Lambda([WeakName]()
+                {
+                    const auto Name = WeakName.Pin();
+                    return Name.IsValid() ? Name->Configuration.Highlight.Get(FText::GetEmpty()) : FText::GetEmpty();
+                });
+            Widget->SetTag(TEXT("audio-director-name"));
+        }
+
+        auto GetWidget() const -> TSharedRef<SWidget> override { return Widget.ToSharedRef(); }
+
+        auto PrepareReload(const FCkUiCustomWidgetArguments& InArguments, FString& OutFailure) const
+            -> TUniquePtr<ICkUiPreparedWidgetUpdate> override
+        {
+            auto Next = FConfiguration{};
+            if (NOT TryConfiguration(InArguments, Next, OutFailure)) { return {}; }
+            return MakeUnique<FUpdate>(ConstCastSharedRef<FDirectorName>(AsShared()), MoveTemp(Next));
+        }
+
+    private:
+        class FUpdate final : public ICkUiPreparedWidgetUpdate
+        {
+        public:
+            FUpdate(TSharedRef<FDirectorName> InOwner, FConfiguration InConfiguration)
+                : Owner(MoveTemp(InOwner)), Configuration(MoveTemp(InConfiguration)) {}
+            void Commit() noexcept override { Owner->Configuration = MoveTemp(Configuration); }
+        private:
+            TSharedRef<FDirectorName> Owner;
+            FConfiguration Configuration;
+        };
+        FConfiguration Configuration;
+        TSharedPtr<STextBlock> Widget;
+    };
+
+    auto TryCreate_DirectorsRegistry(TSharedPtr<const FCkUiWidgetRegistrySnapshot>& OutRegistry) -> bool
+    {
+        TSharedPtr<const FCkUiWidgetRegistrySnapshot> Common;
+        if (NOT FCkDebug_UiRegistry::TryCreate(Common).Succeeded) { return false; }
+        auto Staging = FCkUiWidgetRegistry{};
+        for (const auto* Tag : {TEXT("debug-entity-ref"), TEXT("debug-icon")})
+        {
+            const auto* Registration = Common->Find(Tag);
+            if (Registration == nullptr || NOT Staging.Register(*Registration).Succeeded) { return false; }
+        }
+        auto Name = FCkUiCustomWidgetRegistration{};
+        Name.Schema.Tag = TEXT("audio-director-name");
+        Name.Schema.Properties = {{TEXT("text"), ECkUiCustomPropertyKind::TextBinding},
+            {TEXT("highlight"), ECkUiCustomPropertyKind::TextBinding}};
+        Name.Schema.StyleProperties = {
+            {TEXT("-ck-audio-director-name-size"), ECkUiCustomStyleKind::Length},
+            {TEXT("-ck-audio-director-name-color"), ECkUiCustomStyleKind::Color}};
+        Name.RetainedFactory = [](const FCkUiCustomWidgetArguments& InArguments,
+            FString& OutFailure) -> TSharedPtr<ICkUiRetainedWidget>
+        {
+            auto Configuration = FDirectorName::FConfiguration{};
+            if (NOT FDirectorName::TryConfiguration(InArguments, Configuration, OutFailure)) { return {}; }
+            const auto Result = MakeShared<FDirectorName>(MoveTemp(Configuration));
+            Result->Initialize();
+            return Result;
+        };
+        if (NOT Staging.Register(MoveTemp(Name)).Succeeded) { return false; }
+        OutRegistry = Staging.CreateSnapshot();
+        return true;
+    }
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -335,6 +470,10 @@ auto
         {TEXT("label"), ECkUiFieldKind::Text}, {TEXT("count"), ECkUiFieldKind::Text},
         {TEXT("warning"), ECkUiFieldKind::Bool}}, _TabRecords);
     if (TabsCreated.Succeeded) { DoUpdate_TabRecords(); }
+    FCkUiCollection::TryCreate({{TEXT("name"), ECkUiFieldKind::Text},
+        {TEXT("entity-id"), ECkUiFieldKind::Text}, {TEXT("active"), ECkUiFieldKind::Text},
+        {TEXT("policy"), ECkUiFieldKind::Text}}, _DirectorRecords);
+    DoUpdate_DirectorRecords();
     _Tabs = DoCreate_Tabs();
     _StatCards = DoCreate_StatCards();
     DoCreate_FilterControls();
@@ -392,6 +531,7 @@ auto
         BuildAuthoredCrossfadePage();
         BuildAuthoredAttenuationPanel();
         BuildAuthoredEventsToolbar();
+        BuildAuthoredDirectorsPage();
     }
     DoRebuild_OverlayActions();
     _SessionInvalidatedHandle = ck::DebugSessionLifecycle::Get_OnSessionInvalidated().AddSP(
@@ -417,6 +557,8 @@ SCkAudioDebuggerWindow::~SCkAudioDebuggerWindow()
     if (_EventsToolbarHost.IsValid())
     { _EventsToolbarHost->SetContent(SNullWidget::NullWidget); }
     _AuthoredEventsToolbarView.Reset();
+    if (_DirectorsPageHost.IsValid()) { _DirectorsPageHost->SetContent(SNullWidget::NullWidget); }
+    _AuthoredDirectorsView.Reset();
     _AuthoredShellView.Reset();
     if (_Tabs.IsValid()) { _Tabs->ReleaseOwnerInteraction(); }
 }
@@ -525,6 +667,132 @@ auto SCkAudioDebuggerWindow::PollAuthoredShell(const double InCurrentTime) -> vo
     { BuildAuthoredAttenuationPanel(); }
     if (NOT _UsingNativeFallback && NOT _AuthoredEventsToolbarView.IsValid())
     { BuildAuthoredEventsToolbar(); }
+    if (NOT _UsingNativeFallback && NOT _AuthoredDirectorsView.IsValid())
+    { BuildAuthoredDirectorsPage(); }
+}
+
+auto SCkAudioDebuggerWindow::BuildAuthoredDirectorsPage() -> void
+{
+    if (NOT _DirectorsPageHost.IsValid() || NOT _DirectorRecords.IsValid()) { return; }
+    const auto Plugin = IPluginManager::Get().FindPlugin(TEXT("CkDebugger"));
+    TSharedPtr<const FCkUiWidgetRegistrySnapshot> Registry;
+    if (NOT Plugin.IsValid() || NOT ck_audio_debugger_window::TryCreate_DirectorsRegistry(Registry)) { return; }
+
+    auto Data = FCkUiView::FDataBindings{};
+    const TWeakPtr<SCkAudioDebuggerWindow> WeakWindow = SharedThis(this);
+    Data.SlateUserIndex = 0;
+    Data.Collections.Add(TEXT("audio-directors"), _DirectorRecords);
+    Data.CanDispatchEvents = TAttribute<bool>::CreateLambda([WeakWindow]()
+    {
+        const auto Window = WeakWindow.Pin();
+        return Window.IsValid() && Window->_DirectorRecordsReady
+            && Window->_Collector.Get_Snapshot().HasWorld;
+    });
+    Data.Visibility.Add(TEXT("audio-directors-ready"), TAttribute<bool>::CreateLambda([WeakWindow]()
+    {
+        const auto Window = WeakWindow.Pin();
+        return Window.IsValid() && Window->_DirectorRecordsReady;
+    }));
+    Data.Text.Add(TEXT("audio-director-highlight"), TAttribute<FText>::CreateLambda([WeakWindow]()
+    {
+        const auto Window = WeakWindow.Pin();
+        return Window.IsValid() ? FText::FromString(Window->_HighlightString) : FText::GetEmpty();
+    }));
+    Data.Images.Add(TEXT("audio-director-icon"), TAttribute<const FSlateBrush*>::CreateLambda([]()
+    { return FCkIconStyle::Get_Brush(ECk_Icon::Audio, ECk_Icon_BrushSize::Size_16x16); }));
+    Data.Text.Add(TEXT("audio-director-meaning"), FText::FromString(
+        TEXT("Audio director — owns a concurrency budget and the tracks under it")));
+    Data.Color.Add(TEXT("audio-director-icon-color"), TAttribute<FLinearColor>::CreateLambda([]()
+    { return CkStyle::TextDim(); }));
+    Data.ItemActions.Add(TEXT("audio-director-navigate"), FCkUiOnItemAction::CreateLambda([WeakWindow](FString InKey)
+    {
+        if (const auto Window = WeakWindow.Pin()) { Window->DoNavigate_Director(InKey); }
+    }));
+    const auto View = FCkUiView::Create({}, {}, ck_audio_debugger_window::Get_AuthoredShellStyleTokens(),
+        CkStyle::RegularFont(CkStyle::FontSizeBody()), MoveTemp(Data), Registry);
+    const auto Main = View->GetRegion(TEXT("main"));
+    const auto Directory = FPaths::Combine(Plugin->GetBaseDir(), TEXT("Resources/UI"));
+    _AuthoredDirectorsMarkupPath = FPaths::Combine(Directory, TEXT("AudioDebuggerDirectors.ui.html"));
+    _AuthoredDirectorsStylesheetPath = FPaths::Combine(Directory, TEXT("AudioDebuggerDirectors.ui.css"));
+    View->SetFiles(_AuthoredDirectorsMarkupPath, _AuthoredDirectorsStylesheetPath);
+    _AuthoredDirectorsView = View;
+    View->PollFiles(ck_audio_debugger_window::Get_AuthoredShellStyleTokens());
+    _UsingNativeDirectorsFallback = NOT View->GetLastResult().Succeeded;
+    _DirectorsPageHost->SetContent(_UsingNativeDirectorsFallback ? _NativeDirectorsPage.ToSharedRef() : Main);
+    if (NOT _UsingNativeDirectorsFallback)
+    {
+        _DirectorPageBox->ClearChildren();
+        _DirectorPageSlots.Reset();
+    }
+}
+
+auto SCkAudioDebuggerWindow::PollAuthoredDirectorsPage(const double InCurrentTime) -> void
+{
+    if (InCurrentTime < _NextAuthoredDirectorsPollSeconds || NOT _AuthoredDirectorsView.IsValid()) { return; }
+    _NextAuthoredDirectorsPollSeconds = InCurrentTime + 0.5;
+    _AuthoredDirectorsView->PollFiles(ck_audio_debugger_window::Get_AuthoredShellStyleTokens());
+    if (_UsingNativeDirectorsFallback && _AuthoredDirectorsView->GetLastResult().Succeeded)
+    {
+        _UsingNativeDirectorsFallback = false;
+        _DirectorsPageHost->SetContent(_AuthoredDirectorsView->GetRegion(TEXT("main")));
+        _DirectorPageBox->ClearChildren();
+        _DirectorPageSlots.Reset();
+    }
+}
+
+auto SCkAudioDebuggerWindow::DoUpdate_DirectorRecords() -> void
+{
+    if (NOT _DirectorRecords.IsValid()) { _DirectorRecordsReady = false; return; }
+    auto Records = TArray<FCkUiRecordData>{};
+    for (const auto& Director : _Collector.Get_Snapshot().Directors)
+    {
+        if (NOT DoPassesFilter(Director.DirectorName)) { continue; }
+        auto Record = FCkUiRecordData{};
+        Record.Key = ck_audio_debugger_window::Build_DirectorKey(Director.DirectorEntity, _DirectorSessionGeneration);
+        const auto AddText = [&Record](const TCHAR* InName, FText InText)
+        {
+            auto Value = FCkUiFieldValue{};
+            Value.Kind = ECkUiFieldKind::Text;
+            Value.Text = MoveTemp(InText);
+            Record.Fields.Add(InName, MoveTemp(Value));
+        };
+        AddText(TEXT("name"), FText::FromString(Director.DirectorName));
+        AddText(TEXT("entity-id"), ck::IsValid(Director.DirectorEntity)
+            ? FText::FromString(ck_audio_debugger_window::Build_EntityKey(Director.DirectorEntity)) : FText::GetEmpty());
+        AddText(TEXT("active"), FText::FromString(Director.MaxConcurrentTracks > 0
+            ? ck::Format_UE(TEXT("{} / {} active"), Director.Get_ActiveTrackCount(), Director.MaxConcurrentTracks)
+            : ck::Format_UE(TEXT("{} active"), Director.Get_ActiveTrackCount())));
+        AddText(TEXT("policy"), ck_audio_debugger_window::Build_DirectorPolicy(Director));
+        Records.Add(MoveTemp(Record));
+    }
+    _DirectorRecordsReady = _DirectorRecords->TrySetRecords(MoveTemp(Records)).Succeeded;
+    if (NOT _DirectorRecordsReady)
+    {
+        // Duplicate identities or malformed publication cannot leave yesterday's interactive rows alive.
+        _DirectorRecords->TrySetRecords({});
+    }
+}
+
+auto SCkAudioDebuggerWindow::DoNavigate_Director(const FString& InKey) -> void
+{
+    if (NOT _DirectorRecordsReady || NOT _Collector.Get_Snapshot().HasWorld
+        || NOT _DirectorRecords.IsValid() || NOT _DirectorRecords->FindRecord(InKey).IsValid()) { return; }
+    for (const auto& Director : _Collector.Get_Snapshot().Directors)
+    {
+        if (ck_audio_debugger_window::Build_DirectorKey(Director.DirectorEntity, _DirectorSessionGeneration) == InKey
+            && DoPassesFilter(Director.DirectorName) && ck::IsValid(Director.DirectorEntity))
+        {
+#if WITH_DEV_AUTOMATION_TESTS
+            if (_DirectorNavigationForTests)
+            {
+                _DirectorNavigationForTests(Director.DirectorEntity);
+                return;
+            }
+#endif
+            ck::DebugNav::Goto_Entity(Director.DirectorEntity);
+            return;
+        }
+    }
 }
 
 auto SCkAudioDebuggerWindow::BuildAuthoredCrossfadePage() -> void
@@ -860,6 +1128,9 @@ auto
     DoCreate_PageSwitcher()
     -> TSharedRef<SWidgetSwitcher>
 {
+    _NativeDirectorsPage = SNew(SScrollBox)
+        + SScrollBox::Slot().Padding(CkStyle::SpaceL, CkStyle::SpaceM)
+        [SAssignNew(_DirectorPageBox, SVerticalBox)];
     // Slot order MUST match ECkAudioDebugger_Page's declaration order. The switcher is driven by the enum's integer
     // value, so a reordered enum would otherwise silently show the wrong page.
     return SNew(SWidgetSwitcher)
@@ -867,12 +1138,7 @@ auto
 
         + SWidgetSwitcher::Slot()
         [
-            SNew(SScrollBox)
-            + SScrollBox::Slot()
-            .Padding(CkStyle::SpaceL, CkStyle::SpaceM)
-            [
-                SAssignNew(_DirectorPageBox, SVerticalBox)
-            ]
+            SAssignNew(_DirectorsPageHost, SBox)[_NativeDirectorsPage.ToSharedRef()]
         ]
 
         + SWidgetSwitcher::Slot()
@@ -1660,6 +1926,7 @@ auto
     PollAuthoredCrossfadePage(InCurrentTime);
     PollAuthoredAttenuationPanel(InCurrentTime);
     PollAuthoredEventsToolbar(InCurrentTime);
+    PollAuthoredDirectorsPage(InCurrentTime);
 
     UWorld* World = DoGet_PieWorld();
     if (World == _InvalidatedWorld.Get())
@@ -1727,6 +1994,7 @@ auto
     _NextAuthoredCrossfadePollSeconds = 0.0;
     _NextAuthoredAttenuationPollSeconds = 0.0;
     _NextAuthoredEventsToolbarPollSeconds = 0.0;
+    _NextAuthoredDirectorsPollSeconds = 0.0;
     // Force the next tick through the structure pass so the rows pick the new palette up; the cells themselves carry
     // no style.
     _LastSignature.Reset();
@@ -1878,7 +2146,10 @@ auto
         }
     }
 
-    // The Directors page is the same headers without the rows — the concurrency/policy view, scoped to one line each.
+    DoUpdate_DirectorRecords();
+    if (NOT _UsingNativeDirectorsFallback) { return; }
+
+    // Native startup fallback only. The authored page owns keyed records rather than positional header cells.
     for (const auto& Director : Snapshot.Directors)
     {
         if (NOT DoPassesFilter(Director.DirectorName))
@@ -2422,6 +2693,7 @@ auto
         }
     }
 
+    DoUpdate_DirectorRecords();
     auto DirectorPageIndex = 0;
 
     for (const auto& Director : Snapshot.Directors)
@@ -3094,8 +3366,10 @@ auto
     -> void
 {
     ++_RuntimeGeneration;
+    ++_DirectorSessionGeneration;
     _Collector.Reset();
     DoUpdate_TabRecords();
+    DoUpdate_DirectorRecords();
 
     if (_DirectorBox.IsValid()) { _DirectorBox->ClearChildren(); }
     if (_DirectorPageBox.IsValid()) { _DirectorPageBox->ClearChildren(); }

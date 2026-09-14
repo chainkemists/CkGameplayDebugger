@@ -1,0 +1,18 @@
+<ui version="1">
+  <region name="main">
+    <scroll id="audio-directors-scroll" class="audio-directors-scroll">
+      <repeat id="audio-directors" bind="audio-directors" direction="vertical" visible="audio-directors-ready" class="audio-directors">
+        <column id="audio-director-wrap" class="audio-director-wrap">
+          <row id="audio-director-card" class="audio-director-card">
+            <column id="audio-director-icon-wrap" class="audio-director-icon-wrap"><debug-icon id="audio-director-icon" icon-bind="audio-director-icon" meaning-bind="audio-director-meaning" color-bind="audio-director-icon-color" size="16" /></column>
+            <audio-director-name id="audio-director-name" text-field="name" highlight-bind="audio-director-highlight" class="audio-director-name" />
+            <column id="audio-director-entity-wrap" class="audio-director-value-wrap"><debug-entity-ref id="audio-director-entity" entity-id-field="entity-id" item-action="audio-director-navigate" /></column>
+            <column id="audio-director-active-wrap" class="audio-director-value-wrap"><text id="audio-director-active" bind-field="active" class="audio-director-active" /></column>
+            <column id="audio-director-policy-spacer" class="audio-director-policy-spacer" />
+            <text id="audio-director-policy" bind-field="policy" class="audio-director-policy" />
+          </row>
+        </column>
+      </repeat>
+    </scroll>
+  </region>
+</ui>

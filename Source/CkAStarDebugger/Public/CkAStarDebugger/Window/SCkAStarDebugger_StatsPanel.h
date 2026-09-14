@@ -6,6 +6,8 @@
 
 class SCkDebug_SelectableLabel;
 class SCkDebug_StatPair;
+class FCkUiView;
+class SBox;
 
 // --------------------------------------------------------------------------------------------------------------------
 
@@ -22,6 +24,7 @@ public:
     SLATE_END_ARGS()
 
     auto Construct(const FArguments& InArgs, TSharedPtr<FCkAStarDebugger_ViewModel> InViewModel) -> void;
+    ~SCkAStarDebugger_StatsPanel() override;
     auto Tick(const FGeometry& InAllottedGeometry, double InCurrentTime, float InDeltaTime) -> void override;
 
     /**
@@ -30,10 +33,30 @@ public:
      */
     auto Rebuild_ForStyleChange() -> void;
 
+    auto Release_AuthoredView() -> void;
+    auto Get_AuthoredView() const -> TSharedPtr<FCkUiView> { return _AuthoredView; }
+
 private:
+    friend class FCkAStarDebugger_AuthoredShell;
+
     auto RefreshFromSearchInfo(const FCkAStarDebugger_SearchInfo& InInfo) -> void;
+    auto TryActivateAuthoredView() -> void;
+    auto ActivateNativeFallback() -> void;
+    auto UpdateAuthoredProjection(const FCkAStarDebugger_SearchInfo* InInfo) -> void;
+    auto CopyAuthoredStats() -> void;
 
     TSharedPtr<FCkAStarDebugger_ViewModel> _ViewModel;
+    TSharedPtr<SBox> _ContentHost;
+    TSharedPtr<SWidget> _NativeContent;
+    TSharedPtr<FCkUiView> _AuthoredView;
+    FString _AuthoredLoadFailure;
+    TMap<FString, FText> _AuthoredText;
+    TMap<FString, float> _AuthoredNumber;
+    TMap<FString, FLinearColor> _AuthoredColor;
+    TMap<FString, bool> _AuthoredVisibility;
+    double _NextAuthoredPollSeconds = 0.0;
+    bool _AuthoredMounted = false;
+    bool _Released = false;
 
     // Stacked stat-cards (top 2x2 grid).
     TSharedPtr<SCkDebug_StatPair> _IterationsStat;
@@ -58,7 +81,7 @@ private:
     float _ExplorationFraction = 0.0f;
 
     TSharedPtr<SVerticalBox> _CellDetailBox;
-    int32 _LastShownCellIndex = -1;
+    uint32 _LastCellDetailSignature = MAX_uint32;
 };
 
 // --------------------------------------------------------------------------------------------------------------------

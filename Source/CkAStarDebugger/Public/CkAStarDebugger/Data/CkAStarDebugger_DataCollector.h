@@ -26,6 +26,8 @@ public:
     Get_SearchHistory() const -> const TMap<uint32, TArray<FCkAStarDebugger_HistoryEntry>>&;
 
 private:
+    friend class FCkAStarDebugger_AuthoredShell;
+
     auto
     CollectSearchEntity(
         const FCk_Handle& InEntityHandle) -> FCkAStarDebugger_SearchInfo;

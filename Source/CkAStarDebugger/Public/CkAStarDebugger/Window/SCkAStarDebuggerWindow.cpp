@@ -151,6 +151,8 @@ auto
 SCkAStarDebuggerWindow::~SCkAStarDebuggerWindow()
 {
     _AuthoredShellView.Reset();
+    if (_StatsPanel.IsValid()) { _StatsPanel->Release_AuthoredView(); }
+    if (_SearchHistory.IsValid()) { _SearchHistory->Release_AuthoredView(); }
     if (_WorldModel.IsValid() && _WorldChangedHandle.IsValid())
     { _WorldModel->OnWorldChanged.Remove(_WorldChangedHandle); }
 

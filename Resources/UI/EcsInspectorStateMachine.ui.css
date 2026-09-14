@@ -1,0 +1,9 @@
+.sm-inspector { min-width: 0; padding: 4px; gap: 6px; }
+.sm-section { min-width: 0; gap: 3px; }
+.sm-heading { color: #f0f3f7; }
+.sm-row { min-width: 0; gap: 8px; vertical-align: center; }
+.sm-label { min-width: 152px; }
+.sm-actions { min-width: 0; gap: 6px; vertical-align: center; }
+.sm-history { min-width: 0; gap: 3px; }
+.sm-timeline { min-width: 0; flex-grow: 1; height: 60px; }
+.sm-muted { color: #7f8b99; }

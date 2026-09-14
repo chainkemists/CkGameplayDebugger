@@ -135,6 +135,11 @@ namespace ck_audio_debugger_window
             {TEXT("--audio-stat-ok"), Color(CkStyle::Ok())},
             {TEXT("--audio-stat-warn"), Color(CkStyle::Warn())},
             {TEXT("--audio-stat-err"), Color(CkStyle::Err())},
+            {TEXT("--audio-crossfade-text"), Color(CkStyle::Text())},
+            {TEXT("--audio-crossfade-dim"), Color(CkStyle::TextDim())},
+            {TEXT("--audio-crossfade-border"), Color(CkStyle::Border())},
+            {TEXT("--audio-crossfade-title-size"), FString::FromInt(Get_RowFont().Size)},
+            {TEXT("--audio-crossfade-micro-size"), FString::FromInt(Get_MicroFont().Size)},
         };
     }
 
@@ -261,6 +266,7 @@ auto
 
     _CrossfadeSeriesA = MakeShared<TArray<float>>();
     _CrossfadeSeriesB = MakeShared<TArray<float>>();
+    _CrossfadeLegendText = MakeShared<FText>(FText::FromString(TEXT("(no fades recorded yet)")));
 
     _SpatialView = MakeShared<FCkAudioDebugger_SpatialView>();
 
@@ -316,6 +322,8 @@ auto
     ];
 
     BuildAuthoredShell();
+    if (NOT _UsingNativeFallback)
+    { BuildAuthoredCrossfadePage(); }
     DoRebuild_OverlayActions();
     _SessionInvalidatedHandle = ck::DebugSessionLifecycle::Get_OnSessionInvalidated().AddSP(
         this, &SCkAudioDebuggerWindow::HandleSessionInvalidated);
@@ -331,6 +339,9 @@ SCkAudioDebuggerWindow::~SCkAudioDebuggerWindow()
     if (_WorldInvalidatedHandle.IsValid())
     { ck::DebugSessionLifecycle::Get_OnWorldInvalidated().Remove(_WorldInvalidatedHandle); }
     DoInvalidate_RuntimeState();
+    if (_CrossfadePageHost.IsValid())
+    { _CrossfadePageHost->SetContent(SNullWidget::NullWidget); }
+    _AuthoredCrossfadeView.Reset();
     _AuthoredShellView.Reset();
 }
 
@@ -400,6 +411,55 @@ auto SCkAudioDebuggerWindow::PollAuthoredShell(const double InCurrentTime) -> vo
     _UsingNativeFallback = NOT Recovery.Succeeded;
     _AuthoredShellHost->SetContent(
         _UsingNativeFallback ? BuildNativeContent() : _AuthoredShellView->GetRegion(TEXT("main")));
+    if (NOT _UsingNativeFallback && NOT _AuthoredCrossfadeView.IsValid())
+    { BuildAuthoredCrossfadePage(); }
+}
+
+auto SCkAudioDebuggerWindow::BuildAuthoredCrossfadePage() -> void
+{
+    if (NOT _CrossfadePageHost.IsValid() || NOT _CrossfadePagePlot.IsValid()) { return; }
+    const TSharedPtr<IPlugin> Plugin = IPluginManager::Get().FindPlugin(TEXT("CkDebugger"));
+    if (NOT Plugin.IsValid()) { return; }
+
+    _CrossfadePageHost->SetContent(SNullWidget::NullWidget);
+    auto NativeBindings = FCkUiView::FNativeBindings{};
+    NativeBindings.Add(TEXT("crossfade-plot"), _CrossfadePagePlot.ToSharedRef());
+    auto Data = FCkUiView::FDataBindings{};
+    Data.SlateUserIndex = 0;
+    Data.Text.Add(TEXT("crossfade-legend"), TAttribute<FText>::CreateLambda(
+        [Cell = _CrossfadeLegendText]() { return *Cell; }));
+    const TSharedRef<FCkUiView> View = FCkUiView::Create(
+        MoveTemp(NativeBindings), {}, ck_audio_debugger_window::Get_AuthoredShellStyleTokens(),
+        CkStyle::RegularFont(CkStyle::FontSizeBody()), MoveTemp(Data));
+    const TSharedRef<SWidget> Main = View->GetRegion(TEXT("main"));
+    const FString Directory = FPaths::Combine(Plugin->GetBaseDir(), TEXT("Resources/UI"));
+    _AuthoredCrossfadeMarkupPath = FPaths::Combine(Directory, TEXT("AudioDebuggerCrossfade.ui.html"));
+    _AuthoredCrossfadeStylesheetPath = FPaths::Combine(Directory, TEXT("AudioDebuggerCrossfade.ui.css"));
+    View->SetFiles(_AuthoredCrossfadeMarkupPath, _AuthoredCrossfadeStylesheetPath);
+    _AuthoredCrossfadeView = View;
+    View->PollFiles(ck_audio_debugger_window::Get_AuthoredShellStyleTokens());
+    _UsingNativeCrossfadeFallback = NOT View->GetLastResult().Succeeded;
+    _CrossfadePageHost->SetContent(_UsingNativeCrossfadeFallback
+        ? DoCreate_NativeCrossfadeLane(true, _CrossfadePagePlot.ToSharedRef())
+        : Main);
+}
+
+auto SCkAudioDebuggerWindow::PollAuthoredCrossfadePage(const double InCurrentTime) -> void
+{
+    constexpr double PollIntervalSeconds = 0.5;
+    if (InCurrentTime < _NextAuthoredCrossfadePollSeconds || NOT _AuthoredCrossfadeView.IsValid()) { return; }
+    _NextAuthoredCrossfadePollSeconds = InCurrentTime + PollIntervalSeconds;
+    const FCkUiView::FTokens StyleTokens = ck_audio_debugger_window::Get_AuthoredShellStyleTokens();
+    const bool ContentChanged = _AuthoredCrossfadeView->PollFiles(StyleTokens);
+    if (NOT _UsingNativeCrossfadeFallback || NOT ContentChanged) { return; }
+
+    _CrossfadePageHost->SetContent(SNullWidget::NullWidget);
+    _AuthoredCrossfadeView->SetFiles(_AuthoredCrossfadeMarkupPath, _AuthoredCrossfadeStylesheetPath);
+    _AuthoredCrossfadeView->PollFiles(StyleTokens);
+    _UsingNativeCrossfadeFallback = NOT _AuthoredCrossfadeView->GetLastResult().Succeeded;
+    _CrossfadePageHost->SetContent(_UsingNativeCrossfadeFallback
+        ? DoCreate_NativeCrossfadeLane(true, _CrossfadePagePlot.ToSharedRef())
+        : _AuthoredCrossfadeView->GetRegion(TEXT("main")));
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -741,6 +801,34 @@ auto
     using namespace ck_audio_debugger_window;
 
     const auto Height = InIsDedicatedPage ? k_LanePageHeight : k_LaneHeight;
+    const TSharedRef<SCkDebug_Sparkline> Plot = SNew(SCkDebug_Sparkline)
+        .Samples(_CrossfadeSeriesA)
+        .BandSamples(_CrossfadeSeriesB)
+        .Color(CkStyle::Ok())
+        .BandColor(CkStyle::Warn())
+        .BandFillOpacity(0.0f)
+        .DesiredSize(FVector2D{320.0f, Height});
+
+    if (NOT InIsDedicatedPage)
+    { return DoCreate_NativeCrossfadeLane(false, Plot); }
+
+    _CrossfadePagePlot = Plot;
+    return SAssignNew(_CrossfadePageHost, SBox)
+    [
+        DoCreate_NativeCrossfadeLane(true, Plot)
+    ];
+}
+
+auto
+    SCkAudioDebuggerWindow::
+    DoCreate_NativeCrossfadeLane(
+        const bool InIsDedicatedPage,
+        const TSharedRef<SCkDebug_Sparkline>& InPlot)
+    -> TSharedRef<SWidget>
+{
+    using namespace ck_audio_debugger_window;
+
+    const auto Height = InIsDedicatedPage ? k_LanePageHeight : k_LaneHeight;
 
     auto Lane =
         SNew(SVerticalBox)
@@ -781,13 +869,7 @@ auto
             [
                 // Two series in ONE widget: the primary line and the band line. The point of the lane is that a real
                 // crossfade is two curves CROSSING, which two stacked sparklines could never show.
-                SNew(SCkDebug_Sparkline)
-                .Samples(_CrossfadeSeriesA)
-                .BandSamples(_CrossfadeSeriesB)
-                .Color(CkStyle::Ok())
-                .BandColor(CkStyle::Warn())
-                .BandFillOpacity(0.0f)
-                .DesiredSize(FVector2D{320.0f, Height})
+                InPlot
             ]
         ]
 
@@ -795,10 +877,10 @@ auto
         .AutoHeight()
         .Padding(0.0f, CkStyle::SpaceXS, 0.0f, 0.0f)
         [
-            SAssignNew(_CrossfadeLegendText, STextBlock)
+            SNew(STextBlock)
             .Font_Static(&Get_MicroFont)
             .ColorAndOpacity(CkStyle::TextDim())
-            .Text(FText::FromString(TEXT("(no fades recorded yet)")))
+            .Text_Lambda([Cell = _CrossfadeLegendText]() { return *Cell; })
         ];
 
     return SNew(SVerticalBox)
@@ -1299,6 +1381,7 @@ auto
     // routes into OnStyleRevisionChanged.
     SCkDebugger_WindowBase::Tick(InAllottedGeometry, InCurrentTime, InDeltaTime);
     PollAuthoredShell(InCurrentTime);
+    PollAuthoredCrossfadePage(InCurrentTime);
 
     UWorld* World = DoGet_PieWorld();
     if (World == _InvalidatedWorld.Get())
@@ -1363,6 +1446,7 @@ auto
     // PollAuthoredShell owns source and token publication together because it also coordinates native-fallback
     // detachment. Polling here could consume a restored-file change while the fallback still owns those ports.
     _NextAuthoredShellPollSeconds = 0.0;
+    _NextAuthoredCrossfadePollSeconds = 0.0;
     // Force the next tick through the structure pass so the rows pick the new palette up; the cells themselves carry
     // no style.
     _LastSignature.Reset();
@@ -1947,12 +2031,9 @@ auto
         NOT NameB.IsEmpty())
     { _CrossfadeSeriesNames.Add(NameB); }
 
-    if (_CrossfadeLegendText.IsValid())
-    {
-        _CrossfadeLegendText->SetText(FText::FromString(_CrossfadeSeriesNames.IsEmpty()
-            ? FString{TEXT("(nothing playing)")}
-            : FString::Join(_CrossfadeSeriesNames, TEXT("   ·   "))));
-    }
+    *_CrossfadeLegendText = FText::FromString(_CrossfadeSeriesNames.IsEmpty()
+        ? FString{TEXT("(nothing playing)")}
+        : FString::Join(_CrossfadeSeriesNames, TEXT("   ·   ")));
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -2758,7 +2839,7 @@ auto
     if (_SpatialView.IsValid())
     { *_SpatialView = FCkAudioDebugger_SpatialView{}; }
     if (_CrossfadeLegendText.IsValid())
-    { _CrossfadeLegendText->SetText(FText::FromString(TEXT("(nothing playing)"))); }
+    { *_CrossfadeLegendText = FText::FromString(TEXT("(nothing playing)")); }
 
     *_StatAudible = FText::AsNumber(0);
     *_StatFading = FText::AsNumber(0);

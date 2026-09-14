@@ -12,6 +12,7 @@
 
 class SCkDebug_EventLog;
 class SCkDebug_MeterBar;
+class SCkDebug_Sparkline;
 class FCkUiView;
 class SHorizontalBox;
 class SBox;
@@ -136,6 +137,13 @@ private:
         double InCurrentTime) -> void;
 
     auto
+    BuildAuthoredCrossfadePage() -> void;
+
+    auto
+    PollAuthoredCrossfadePage(
+        double InCurrentTime) -> void;
+
+    auto
     DoCreate_Tabs() -> TSharedRef<SWidget>;
 
     auto
@@ -150,6 +158,11 @@ private:
     auto
     DoCreate_CrossfadeLane(
         bool InIsDedicatedPage) -> TSharedRef<SWidget>;
+
+    auto
+    DoCreate_NativeCrossfadeLane(
+        bool InIsDedicatedPage,
+        const TSharedRef<SCkDebug_Sparkline>& InPlot) -> TSharedRef<SWidget>;
 
     auto
     DoCreate_SpatialPage() -> TSharedRef<SWidget>;
@@ -275,14 +288,21 @@ private:
     TSharedPtr<SWidgetSwitcher> _PageSwitcher;
     TSharedPtr<SBox>            _AuthoredShellHost;
     TSharedPtr<FCkUiView>       _AuthoredShellView;
+    TSharedPtr<FCkUiView>       _AuthoredCrossfadeView;
     FString                     _AuthoredMarkupPath;
     FString                     _AuthoredStylesheetPath;
+    FString                     _AuthoredCrossfadeMarkupPath;
+    FString                     _AuthoredCrossfadeStylesheetPath;
     double                      _NextAuthoredShellPollSeconds = 0.0;
+    double                      _NextAuthoredCrossfadePollSeconds = 0.0;
     bool                        _UsingNativeFallback = false;
+    bool                        _UsingNativeCrossfadeFallback = false;
     TSharedPtr<SVerticalBox>    _DirectorBox;
     TSharedPtr<SVerticalBox>    _DirectorPageBox;
     TSharedPtr<STextBlock>      _StatusText;
-    TSharedPtr<STextBlock>      _CrossfadeLegendText;
+    TSharedPtr<FText>           _CrossfadeLegendText;
+    TSharedPtr<SBox>            _CrossfadePageHost;
+    TSharedPtr<SCkDebug_Sparkline> _CrossfadePagePlot;
 
     TSharedPtr<SHorizontalBox>  _SpatialSelectorBox;
     TSharedPtr<SHorizontalBox>  _OverlayActionsBox;

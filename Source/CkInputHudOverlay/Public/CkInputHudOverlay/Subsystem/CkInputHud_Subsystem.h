@@ -52,6 +52,9 @@ public:
 
 #if WITH_CK_INPUT_HUD
 
+public:
+    auto Get_RootWidget() const -> TSharedPtr<SCkInputHud_Root> { return _RootWidget; }
+
 private:
     auto DoActivate()   -> void;
     auto DoDeactivate() -> void;

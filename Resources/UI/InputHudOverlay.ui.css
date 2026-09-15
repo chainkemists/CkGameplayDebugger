@@ -1,0 +1,7 @@
+.input-hud-overlay-root { min-width: 0; min-height: 0; padding: var(--input-hud-outline-width); background-color: var(--input-hud-panel-outline); border-radius: var(--input-hud-outline-radius); }
+.input-hud-overlay-panel { min-width: 0; gap: var(--input-hud-small-gap); padding: var(--input-hud-padding-y) var(--input-hud-padding-x); background-color: var(--input-hud-panel-fill); border-radius: var(--input-hud-outline-radius); }
+.input-hud-ribbon { min-width: 0; }
+.input-hud-sticks { min-width: 0; color: var(--input-hud-text-dim); font-family: sans-serif; font-size: var(--input-hud-micro-font-size); text-wrap: nowrap; }
+.input-hud-layer { min-width: 0; vertical-align: center; }
+.input-hud-layer-primary { color: var(--input-hud-text-info); font-family: monospace; font-size: var(--input-hud-micro-font-size); text-wrap: nowrap; }
+.input-hud-layer-remainder { min-width: 0; flex-grow: 1; color: var(--input-hud-text-mute); font-family: monospace; font-size: var(--input-hud-micro-font-size); text-wrap: nowrap; text-overflow: ellipsis; }

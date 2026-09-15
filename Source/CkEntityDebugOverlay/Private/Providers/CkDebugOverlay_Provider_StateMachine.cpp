@@ -7,6 +7,8 @@
 // SM fragments — mirroring CkInspector_StateMachine.cpp includes
 #include "CkStateMachine/StateMachine/CkStateMachine_Fragment.h"
 #include "CkStateMachine/StateMachine/CkStateMachine_Fragment_Data.h"
+#include "CkStateMachine/StateMachine/CkStateMachine_Utils.h"
+#include "CkStateMachine/Task/CkSmTask_Fragment.h"
 #include "CkStateMachine/Debug/CkStateMachine_Debug_Fragment.h"
 
 #include "CkDebuggerCommon/Widgets/SCkDebug_NameLabel.h"
@@ -82,8 +84,9 @@ namespace
     };
 
     // Full-recursive descent into active sub-state-machines. From an SM entity, read its
-    // current state, then find that state's cached tasks (FFragment_Sm_Debug) and recurse
-    // into every task that hosts a live sub-SM (HasSubStateMachine → SubSmHandle).
+    // current state, then its live task record and recurse into every task that hosts a
+    // live sub-SM. This deliberately avoids the global debug cache, which only exists for
+    // debugger tooling and would otherwise require polling every state machine.
     // Clamped by InMaxDepth; guarded by a visited-set so a malformed cycle can't recurse
     // forever.
     auto Collect_SmChain(
@@ -112,29 +115,28 @@ namespace
         Node.RunStatus = Current.Get_RunStatus();
         OutChain.Add(MoveTemp(Node));
 
-        if (InDepth >= InMaxDepth || StateClass.Get() == nullptr)
+        if (InDepth >= InMaxDepth)
         { return; }
 
-        if (NOT InSm.Has<ck::FFragment_Sm_Debug>())
+        const auto CurrentState = Current.Get_CurrentStateHandle();
+        if (ck::Is_NOT_Valid(CurrentState))
         { return; }
 
-        const auto& Debug       = InSm.Get<ck::FFragment_Sm_Debug>();
-        const auto& Cached      = Debug.Get_CachedStates();
-        const auto* CachedState = Cached.Find(StateClass);
-        if (CachedState == nullptr)
-        { return; }
-
-        for (const auto& Task : CachedState->Tasks)
+        UCk_Utils_StateMachine_UE::RecordOfSmTasks_Utils::ForEach_ValidEntry(CurrentState,
+        [&](FCk_Handle_SmTask InTask) -> ECk_Record_ForEachIterationResult
         {
-            if (NOT Task.HasSubStateMachine)
-            { continue; }
+            if (NOT InTask.Has<ck::FFragment_SmTask_SubStateMachine>())
+            { return ECk_Record_ForEachIterationResult::Continue; }
 
-            const auto SubSm = FCk_Handle{ Task.SubSmHandle };
+            const auto SubSm = InTask.Get<ck::FFragment_SmTask_SubStateMachine>()
+                .Get_SubStateMachineHandle();
             if (ck::IsValid(SubSm))
             {
                 Collect_SmChain(SubSm, InDepth + 1, InMaxDepth, InOutVisited, OutChain);
             }
-        }
+
+            return ECk_Record_ForEachIterationResult::Continue;
+        });
     }
 }
 

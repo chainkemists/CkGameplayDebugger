@@ -14,7 +14,7 @@ public class CkEntityDebugOverlay : CkModuleRules
         {
             "Core", "CoreUObject", "Engine", "DeveloperSettings",
             "GameplayTags", "InputCore", "Json",
-            "Slate", "SlateCore", "UMG", "ApplicationCore",
+            "Slate", "SlateCore", "UMG", "ApplicationCore", "CkSlateLayout",
             "CkCore", "CkEcs", "CkEcsExt", "CkEntityExtension", "CkLog", "CkSettings", "CkDebuggerCommon", "CkUsf",
             "CkEditorTools",
             // AI vertical-slice feature deps (more added as providers are ported):
@@ -30,6 +30,8 @@ public class CkEntityDebugOverlay : CkModuleRules
             // B2 — in-world diamond markers:
             "CkPmg"
         });
+
+        PrivateDependencyModuleNames.Add("Projects");
 
         if (Target.bBuildEditor)
         {

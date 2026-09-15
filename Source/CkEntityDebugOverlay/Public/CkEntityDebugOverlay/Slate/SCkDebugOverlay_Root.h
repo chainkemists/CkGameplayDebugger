@@ -17,6 +17,7 @@ class  SConstraintCanvas;
 class  SVerticalBox;
 class  SBorder;
 class  STextBlock;
+class  FCkUiView;
 
 // ====================================================================================================================
 // Viewport root for the on-screen entity debug overlay.
@@ -34,9 +35,28 @@ class CKENTITYDEBUGOVERLAY_API SCkDebugOverlay_Root : public SCompoundWidget
 {
 public:
     SLATE_BEGIN_ARGS(SCkDebugOverlay_Root) {}
+#if WITH_DEV_AUTOMATION_TESTS
+        SLATE_ARGUMENT(FString, AuthoredMarkupPathOverride)
+        SLATE_ARGUMENT(FString, AuthoredStylesheetPathOverride)
+#endif
     SLATE_END_ARGS()
 
     auto Construct(const FArguments& InArgs) -> void;
+    virtual ~SCkDebugOverlay_Root() override;
+
+    /** Polls the retained authored outer shell. Native overlay mechanics remain in one port. */
+    virtual auto Tick(const FGeometry& InAllottedGeometry, double InCurrentTime, float InDeltaTime) -> void override;
+
+    /** Makes externally retained views inert before their viewport owner detaches this root. */
+    auto Release_OwnerInteractions() -> void;
+
+#if WITH_DEV_AUTOMATION_TESTS
+    auto Get_AuthoredView() const -> TSharedPtr<FCkUiView> { return _AuthoredView; }
+    auto Get_UsesNativeFallback() const -> bool { return _UsingNativeFallback; }
+    auto Get_AuthoredFailure() const -> const FString& { return _AuthoredFailure; }
+    auto Get_WorldTagPort() const -> TSharedPtr<SBox> { return _WorldTagPort; }
+    auto Get_CardPort() const -> TSharedPtr<SBox> { return _CardPort; }
+#endif
 
     // Forwards to the primary (auto-following) focus card.
     // bIsLocked: amber ring (focus lock). bIsPinned: cyan ring, which takes precedence.
@@ -96,6 +116,10 @@ public:
 
 private:
     auto DoRebuildLayout() -> void;
+    auto DoBuild_AuthoredPresentation() -> void;
+    auto DoPoll_AuthoredPresentation(double InCurrentTime) -> void;
+    auto Release_AuthoredPresentation() -> void;
+    auto DoMount_NativeFallback() -> void;
 
     // (Re)populates the vertical card strip: primary focus card first, then one card per
     // pinned model. Called from DoRebuildLayout and Set_PinnedCards.
@@ -119,6 +143,28 @@ private:
     // Keyboard-hints strip (opposite corner from the focus card).
     TSharedPtr<SBorder>    _HintsBox;
     TSharedPtr<STextBlock> _HintsText;
+
+    // Two bounded ports preserve behavior/state while authored UI owns ordinary hints.
+    // World-tag projection/paint and focus/pinned card identity are the remaining native work.
+    TSharedPtr<SBox>       _WorldTagPort;
+    TSharedPtr<SBox>       _CardPort;
+    TSharedPtr<SWidget>    _NativeFallback;
+    TSharedPtr<SBox>       _PresentationHost;
+    TSharedPtr<FCkUiView>  _AuthoredView;
+    FString                _AuthoredMarkupPath;
+    FString                _AuthoredStylesheetPath;
+    FString                _AuthoredFailure;
+    double                 _NextAuthoredPollSeconds = 0.0;
+    bool                   _UsingNativeFallback = true;
+    bool                   _AuthoredPresentationReleased = false;
+
+    // The fallback reads these through _HintsBox/_HintsText, but normal presentation uses
+    // authored rows/text. Two static HTML corners use visibility for the dynamic anchor choice.
+    FString                _HintsCompact;
+    FString                _HintsFull;
+    bool                   _ShowFullHints = false;
+    bool                   _HintsVisible = false;
+    bool                   _HintsOnLeft = true;
 
     ECk_DebugOverlay_PlateAnchor _PlateAnchor = ECk_DebugOverlay_PlateAnchor::TopRight;
     float                        _PlateWidth  = 720.0f;

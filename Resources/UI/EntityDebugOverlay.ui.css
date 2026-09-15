@@ -1,0 +1,5 @@
+.entity-debug-overlay-layer { min-width: 0; min-height: 0; flex-grow: 1; flex-shrink: 1; }
+.entity-debug-overlay-hint { padding: 4px 8px; background-color: #101820D1; border-color: #405060B8; border-width: 1px; border-radius: 6px; }
+.entity-debug-overlay-hint-left { horizontal-align: left; vertical-align: top; }
+.entity-debug-overlay-hint-right { horizontal-align: right; vertical-align: top; }
+.entity-debug-overlay-hint-text { color: #B8C2D0; font-family: sans-serif; font-size: 10px; text-wrap: wrap; }

@@ -1,0 +1,7 @@
+.jolt-shell { gap: var(--jolt-space-s); min-height: 0; }
+.jolt-toolbar { gap: var(--jolt-space-s); padding: var(--jolt-space-s); }
+.jolt-status { color: var(--jolt-muted); }
+.jolt-topology { min-height: 0; flex-grow: 1; }
+.jolt-rail { gap: var(--jolt-space-s); min-width: 220px; min-height: 0; }
+.jolt-viewport-rail { gap: var(--jolt-space-s); min-width: 360px; min-height: 0; flex-grow: 1; }
+.jolt-heading { color: var(--jolt-text); font-size: var(--jolt-title-size); font-weight: bold; }

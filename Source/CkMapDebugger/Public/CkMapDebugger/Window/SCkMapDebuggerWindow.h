@@ -16,6 +16,13 @@
 
 class ITableRow;
 class STableViewBase;
+class SBox;
+class SCkDebug_DualSearchBar;
+class SCkDebug_EntityRef;
+class SCkDebug_IconToggle;
+class SCkDebug_WindowChrome;
+class FCkUiView;
+struct FCkMapDebuggerAuthoredTestAccess;
 
 // --------------------------------------------------------------------------------------------------------------------
 // Snapshot of the map stack, rebuilt on the gated Tick and read by TAttribute lambdas + the canvas OnPaint.
@@ -91,6 +98,7 @@ struct FCkMapDebug_PoiRow
     FString Distance;
     bool Enabled = true;
     bool HighlightMatch = true;
+    TSharedPtr<FCkUiView> Presentation;
 };
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -112,6 +120,7 @@ public:
     auto Set_OnPoiPicked(TFunction<void(const FCk_Handle&)> InOnPoiPicked) -> void { _OnPoiPicked = MoveTemp(InOnPoiPicked); }
 
     auto ClearHandles() -> void { _SelectedPoi = {}; _Snapshot.Reset(); }
+    auto Release_Interaction() -> void;
 
 protected:
     auto OnPaint(const FPaintArgs& InArgs, const FGeometry& InAllottedGeometry, const FSlateRect& InCullingRect, FSlateWindowElementList& OutDrawElements, int32 InLayerId, const FWidgetStyle& InWidgetStyle, bool InParentEnabled) const -> int32 override;
@@ -123,6 +132,8 @@ protected:
     auto OnMouseWheel(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent) -> FReply override;
 
 private:
+    friend struct FCkMapDebuggerAuthoredTestAccess;
+
     // World window (center + half-extent, world cm) fitted around everything the snapshot contains
     auto DoCompute_WorldWindow(FVector2D& OutCenter, double& OutHalfExtent) const -> bool;
     auto DoWorldToPanel(const FVector2D& InWorldXY, const FVector2D& InPanelSize, const FVector2D& InWorldCenter, double InScale) const -> FVector2D;
@@ -134,6 +145,7 @@ private:
     float     _Zoom = 1.0f;
     FVector2D _PanOffset = FVector2D::ZeroVector;
     bool      _IsPanning = false;
+    bool      _InteractionReleased = false;
     FVector2D _LastMousePos = FVector2D::ZeroVector;
 };
 
@@ -149,6 +161,7 @@ public:
     static const FName WindowId;
 
     SLATE_BEGIN_ARGS(SCkMapDebuggerWindow) {}
+        SLATE_ARGUMENT(FString, ResourceDirectoryOverride)
     SLATE_END_ARGS()
 
     virtual ~SCkMapDebuggerWindow() override;
@@ -156,13 +169,30 @@ public:
     auto Construct(const FArguments& InArgs) -> void;
     auto Tick(const FGeometry& InAllottedGeometry, double InCurrentTime, float InDeltaTime) -> void override;
 
+    /** Idempotently drops every handle-bearing and authored presentation reference before tab teardown. */
+    auto Release_Presentation() -> void;
+    auto Get_AuthoredShellView() const -> TSharedPtr<FCkUiView> { return _AuthoredShellView; }
+    auto Get_AuthoredShellLoadFailure() const -> const FString& { return _AuthoredShellLoadFailure; }
+    auto IsUsingNativeShellFallback() const -> bool { return _UsingNativeShellFallback; }
+
     virtual auto Get_WindowId() const -> FName override { return WindowId; }
     virtual auto Get_WindowDisplayName() const -> FText override { return FText::FromString(TEXT("CK Map Debugger")); }
 
 private:
+    friend struct FCkMapDebuggerAuthoredTestAccess;
+
+    auto Build_AuthoredShell() -> void;
+    auto Poll_AuthoredShell(double InCurrentTime) -> void;
+    auto Mount_AuthoredShell() -> bool;
+    auto Build_PoiRowPresentation(const TSharedPtr<FCkMapDebug_PoiRow>& InRow) -> TSharedPtr<SWidget>;
+    auto Build_NativeShellFallback(TSharedRef<SWidget> InLeftRail, TSharedRef<SWidget> InRightRail,
+        TSharedRef<SWidget> InStatusBar) -> TSharedRef<SWidget>;
     auto DoRefreshSnapshot() -> void;
     auto DoRefreshRowItems() -> void;
     auto DoClearOnWorldGone() -> void;
+    /** Future authored admission moves only these retained hosts, never a live fallback child. */
+    auto Detach_FallbackPorts() -> void;
+    auto Restore_FallbackPorts() -> void;
 
     auto DoFind_SelectedPoiInfo() const -> const FCkMapDebug_PoiInfo*;
 
@@ -180,6 +210,27 @@ private:
     TArray<TSharedPtr<FCkMapDebug_PoiRow>> _VisibleRows;
     TSharedPtr<SListView<TSharedPtr<FCkMapDebug_PoiRow>>> _PoiList;
     TSharedPtr<SCkMapDebug_Canvas> _Canvas;
+    TSharedPtr<SCkDebug_DualSearchBar> _SearchBar;
+    TSharedPtr<SCkDebug_EntityRef> _SelectedEntity;
+    TSharedPtr<SCkDebug_IconToggle> _EnabledPoisToggle;
+    TSharedPtr<SBox> _FallbackSearchHost;
+    TSharedPtr<SBox> _FallbackListHost;
+    TSharedPtr<SBox> _FallbackCanvasHost;
+    TSharedPtr<SBox> _FallbackSelectedEntityHost;
+    TSharedPtr<SBox> _FallbackEnabledPoisHost;
+    TSharedPtr<SBox> _ShellHost;
+    TSharedPtr<SBox> _ActionsHost;
+    TSharedPtr<SCkDebug_WindowChrome> _Chrome;
+    TSharedPtr<FCkUiView> _AuthoredShellView;
+    FString _AuthoredShellLoadFailure;
+    FString _AuthoredShellMarkupPath;
+    FString _AuthoredShellStylesheetPath;
+    FString _PoiRowMarkupPath;
+    FString _PoiRowStylesheetPath;
+    FString _ResourceDirectoryOverride;
+    double _NextAuthoredShellPollSeconds = 0.0;
+    bool _UsingNativeShellFallback = true;
+    bool _PresentationReleased = false;
 
     FString _FilterString;
     FString _HighlightString;

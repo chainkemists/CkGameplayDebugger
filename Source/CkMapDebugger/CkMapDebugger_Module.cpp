@@ -46,6 +46,8 @@ auto FCkMapDebuggerModule::StartupModule() -> void
     auto& TabSpawner = FGlobalTabmanager::Get()->RegisterNomadTabSpawner(
         _DebuggerTabName,
         FOnSpawnTab::CreateRaw(this, &FCkMapDebuggerModule::OnSpawnDebuggerTab))
+        .SetReuseTabMethod(FOnFindTabToReuse::CreateLambda(
+            [this](const FTabId&) { return _DebuggerTab; }))
         .SetDisplayName(FText::FromString(TEXT("CK Map Debugger")))
         .SetTooltipText(FText::FromString(TEXT("Opens the CK Map Debugger window")));
 #if WITH_EDITOR
@@ -62,10 +64,18 @@ auto FCkMapDebuggerModule::StartupModule() -> void
         30}
         .Set_TabFactory(FCkDebuggerToolTabFactory::CreateLambda([this]
         { return OnSpawnDebuggerTab(FSpawnTabArgs{TSharedPtr<SWindow>{}, FTabId{_DebuggerTabName}}); })));
+
+    _EnginePreExitHandle = FCoreDelegates::OnEnginePreExit.AddRaw(this, &FCkMapDebuggerModule::HandleEnginePreExit);
 }
 
 auto FCkMapDebuggerModule::ShutdownModule() -> void
 {
+    if (_EnginePreExitHandle.IsValid())
+    {
+        FCoreDelegates::OnEnginePreExit.Remove(_EnginePreExitHandle);
+        _EnginePreExitHandle.Reset();
+    }
+
     FCkDebuggerToolRegistry::Get().Unregister(_DebuggerTabName, _DebuggerToolRegistrationId);
     _DebuggerToolRegistrationId = 0;
 
@@ -74,8 +84,9 @@ auto FCkMapDebuggerModule::ShutdownModule() -> void
         FGlobalTabmanager::Get()->UnregisterNomadTabSpawner(_DebuggerTabName);
     }
 
+    if (_DebuggerWindow.IsValid()) { _DebuggerWindow->Release_Presentation(); }
+    ck::debugger_tabs::Release_DebuggerTab(_DebuggerTab, false);
     _DebuggerWindow.Reset();
-    _DebuggerTab.Reset();
 }
 
 auto FCkMapDebuggerModule::Get() -> FCkMapDebuggerModule&
@@ -90,12 +101,8 @@ auto FCkMapDebuggerModule::OpenDebugger() -> void
 
 auto FCkMapDebuggerModule::CloseDebugger() -> void
 {
-    if (_DebuggerTab.IsValid())
-    {
-        _DebuggerTab->RequestCloseTab();
-        _DebuggerTab.Reset();
-    }
-
+    if (_DebuggerWindow.IsValid()) { _DebuggerWindow->Release_Presentation(); }
+    ck::debugger_tabs::Release_DebuggerTab(_DebuggerTab, true);
     _DebuggerWindow.Reset();
 }
 
@@ -116,6 +123,14 @@ auto FCkMapDebuggerModule::IsDebuggerOpen() const -> bool
     return _DebuggerWindow.IsValid() && _DebuggerTab.IsValid();
 }
 
+auto FCkMapDebuggerModule::HandleEnginePreExit() -> void
+{
+    // Slate may already have destroyed the tab's shared backing. Drop content and local refs only.
+    if (_DebuggerWindow.IsValid()) { _DebuggerWindow->Release_Presentation(); }
+    ck::debugger_tabs::Release_DebuggerTab(_DebuggerTab, false);
+    _DebuggerWindow.Reset();
+}
+
 auto FCkMapDebuggerModule::OnSpawnDebuggerTab(const FSpawnTabArgs& InArgs) -> TSharedRef<SDockTab>
 {
     _DebuggerWindow = SNew(SCkMapDebuggerWindow);
@@ -125,6 +140,7 @@ auto FCkMapDebuggerModule::OnSpawnDebuggerTab(const FSpawnTabArgs& InArgs) -> TS
         .Label(FText::FromString(TEXT("CK Map")))
         .OnTabClosed_Lambda([this](TSharedRef<SDockTab>)
         {
+            if (_DebuggerWindow.IsValid()) { _DebuggerWindow->Release_Presentation(); }
             _DebuggerWindow.Reset();
             _DebuggerTab.Reset();
         })

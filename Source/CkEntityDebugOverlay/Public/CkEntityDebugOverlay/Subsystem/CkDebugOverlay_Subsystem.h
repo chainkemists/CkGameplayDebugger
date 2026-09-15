@@ -24,6 +24,23 @@
 
 class APlayerController;
 class UCanvas;
+class UGameViewportClient;
+
+#if WITH_DEV_AUTOMATION_TESTS && WITH_CK_DEBUG_OVERLAY
+struct FCk_DebugOverlay_Subsystem_TestState
+{
+    bool HasRootWidget = false;
+    bool HasAttachedViewport = false;
+    bool HasTicker = false;
+    bool HasHistory = false;
+    bool HasInputProcessor = false;
+    bool HasSelectionUi = false;
+    bool HasSelectionPanel = false;
+    bool HasSessionInvalidationCallback = false;
+    bool HasWorldInvalidationCallback = false;
+    bool HasOwnedConsoleObjects = false;
+};
+#endif
 
 // ====================================================================================================================
 // UCk_DebugOverlay_Subsystem
@@ -56,6 +73,29 @@ public:
     virtual void PlayerControllerChanged(APlayerController* InNewPlayerController) override;
 
 #if WITH_CK_DEBUG_OVERLAY
+
+#if WITH_DEV_AUTOMATION_TESTS
+public:
+    /** Test-only census of resources whose owner is this LocalPlayer subsystem. */
+    auto Get_TestRootWidget() const -> TSharedPtr<class SCkDebugOverlay_Root> { return _RootWidget; }
+
+    auto Get_TestState() const -> FCk_DebugOverlay_Subsystem_TestState
+    {
+        return {
+            _RootWidget.IsValid(),
+            _AttachedViewport.IsValid(),
+            _TickerHandle.IsValid(),
+            _History.IsValid(),
+            _InputProcessor.IsValid(),
+            _SelectionHud.IsValid() || _SelectionPanel.IsValid() || _SelectionPanelHost.IsValid(),
+            _SelectionPanel.IsValid() || _SelectionPanelHost.IsValid(),
+            _SelectionSessionInvalidated.IsValid(),
+            _SelectionWorldInvalidated.IsValid(),
+            _CVar_Master != nullptr || _Cmd_Select.IsValid() || _Cmd_Settings.IsValid() || _Cmd_Family.IsValid() ||
+                _Cmd_Next.IsValid() || _Cmd_Prev.IsValid() || _Cmd_Lock.IsValid() || _Cmd_Layout_Next.IsValid() ||
+                _Cmd_Layout_Prev.IsValid() || _Cmd_UnpinAll.IsValid() || _Cmd_Help.IsValid() || _Cmd_World.IsValid()};
+    }
+#endif
 
 private:
     struct FSelectionEntry
@@ -168,6 +208,9 @@ private:
 
     // Viewport Slate widget.
     TSharedPtr<class SCkDebugOverlay_Root> _RootWidget;
+    // Exact viewport that accepted this local player's widgets. Never remove from a newly
+    // assigned viewport during controller/world transitions.
+    TWeakObjectPtr<UGameViewportClient> _AttachedViewport;
 
     // FTSTicker registration.
     FTSTicker::FDelegateHandle _TickerHandle;

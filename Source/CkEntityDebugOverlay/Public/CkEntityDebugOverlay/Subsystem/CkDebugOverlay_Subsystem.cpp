@@ -221,8 +221,16 @@ auto
         { FSlateApplication::Get().UnregisterInputPreProcessor(_InputProcessor); }
         _InputProcessor.Reset();
     }
-    ck::DebugSessionLifecycle::Get_OnSessionInvalidated().Remove(_SelectionSessionInvalidated);
-    ck::DebugSessionLifecycle::Get_OnWorldInvalidated().Remove(_SelectionWorldInvalidated);
+    if (_SelectionSessionInvalidated.IsValid())
+    {
+        ck::DebugSessionLifecycle::Get_OnSessionInvalidated().Remove(_SelectionSessionInvalidated);
+        _SelectionSessionInvalidated.Reset();
+    }
+    if (_SelectionWorldInvalidated.IsValid())
+    {
+        ck::DebugSessionLifecycle::Get_OnWorldInvalidated().Remove(_SelectionWorldInvalidated);
+        _SelectionWorldInvalidated.Reset();
+    }
     _Cmd_Select.Reset();
     _Cmd_Settings.Reset();
     _Cmd_Family.Reset();
@@ -351,6 +359,7 @@ auto
 
     // BATCH-VERIFY: SNew returns TSharedRef; TSharedPtr assignment compiles but confirm
     // that SCkDebugOverlay_Root::Construct takes FArguments correctly.
+    _AttachedViewport = ViewportClient;
     ViewportClient->AddViewportWidgetContent(_RootWidget.ToSharedRef(), OverlayZOrder);
     _SelectionHud = SNew(SCkDebugOverlay_SelectionHud).Visibility(EVisibility::HitTestInvisible);
     ViewportClient->AddViewportWidgetContent(_SelectionHud.ToSharedRef(), OverlayZOrder + 1);
@@ -411,14 +420,27 @@ auto
     DoDeactivate()
     -> void
 {
+    // Quiesce producers first.  No ticker/input-buffer work may observe a half-detached
+    // Slate hierarchy, especially during PIE world teardown.
+    const auto WasActive = _TickerHandle.IsValid();
+    if (WasActive)
+    {
+        FTSTicker::GetCoreTicker().RemoveTicker(_TickerHandle);
+        _TickerHandle.Reset();
+    }
+    if (_InputProcessor.IsValid())
+    { _InputProcessor->Clear(); }
+
+    // Revoke this overlay's focus/capture/popup owners before either viewport widget moves.
     Close_SelectionSettings();
+    if (_RootWidget.IsValid())
+    { _RootWidget->Release_OwnerInteractions(); }
+
+    auto* AttachedViewport = _AttachedViewport.Get();
     if (_SelectionHud.IsValid())
     {
-        if (const auto* LocalPlayer = GetLocalPlayer(); ck::IsValid(LocalPlayer))
-        {
-            if (auto* Viewport = LocalPlayer->ViewportClient.Get(); ck::IsValid(Viewport))
-            { Viewport->RemoveViewportWidgetContent(_SelectionHud.ToSharedRef()); }
-        }
+        if (ck::IsValid(AttachedViewport))
+        { AttachedViewport->RemoveViewportWidgetContent(_SelectionHud.ToSharedRef()); }
         _SelectionHud.Reset();
     }
     Reset_SelectionSession();
@@ -426,32 +448,20 @@ auto
     // Restore engine on-screen debug text to its pre-activation state. Guarded on the
     // ticker being live so a redundant DoDeactivate (Deinitialize after a cvar-off)
     // doesn't restore twice.
-    if (_bIsPrimaryConsoleOwner && _TickerHandle.IsValid() && ck::IsValid(GEngine))
+    if (_bIsPrimaryConsoleOwner && WasActive && ck::IsValid(GEngine))
     {
         GEngine->bEnableOnScreenDebugMessages = _PriorOnScreenMessagesEnabled;
-    }
-
-    if (_TickerHandle.IsValid())
-    {
-        FTSTicker::GetCoreTicker().RemoveTicker(_TickerHandle);
-        _TickerHandle.Reset();
     }
 
     _PinnedEntities.Reset();
 
     if (_RootWidget.IsValid())
     {
-        const auto* LocalPlayer = GetLocalPlayer();
-        if (ck::IsValid(LocalPlayer))
-        {
-            if (auto* ViewportClient = LocalPlayer->ViewportClient.Get();
-                ck::IsValid(ViewportClient))
-            {
-                ViewportClient->RemoveViewportWidgetContent(_RootWidget.ToSharedRef());
-            }
-        }
+        if (ck::IsValid(AttachedViewport))
+        { AttachedViewport->RemoveViewportWidgetContent(_RootWidget.ToSharedRef()); }
         _RootWidget.Reset();
     }
+    _AttachedViewport.Reset();
 
     _History.Reset();
 

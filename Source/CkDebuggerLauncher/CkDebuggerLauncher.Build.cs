@@ -21,7 +21,13 @@ public class CkDebuggerLauncher : CkModuleRules
             // implementation module explicitly so PCH-emitted symbols link here.
             "CkEcs",
             "CkEditorTools",
+            "CkSlateLayout",
         });
+
+        RuntimeDependencies.Add(Path.Combine(PluginDirectory, "Resources", "UI", "DebuggerLauncherShell.ui.html"), StagedFileType.NonUFS);
+        RuntimeDependencies.Add(Path.Combine(PluginDirectory, "Resources", "UI", "DebuggerLauncherShell.ui.css"), StagedFileType.NonUFS);
+        RuntimeDependencies.Add(Path.Combine(PluginDirectory, "Resources", "UI", "DebuggerSuiteShell.ui.html"), StagedFileType.NonUFS);
+        RuntimeDependencies.Add(Path.Combine(PluginDirectory, "Resources", "UI", "DebuggerSuiteShell.ui.css"), StagedFileType.NonUFS);
 
         if (Target.bBuildEditor)
         {

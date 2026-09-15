@@ -6,6 +6,9 @@
 
 class SCkDebug_SearchBar;
 class SVerticalBox;
+class SBox;
+class SScrollBox;
+class FCkUiView;
 
 // --------------------------------------------------------------------------------------------------------------------
 
@@ -19,6 +22,8 @@ class SCkDebuggerLauncher : public SCompoundWidget
 {
 public:
     SLATE_BEGIN_ARGS(SCkDebuggerLauncher) {}
+        /** Test-only resource root; production resolves Resources/UI from the CkDebugger plugin. */
+        SLATE_ARGUMENT(FString, ResourceDirectoryOverride)
         /**
          * Binding this switches the rail to embedded mode: a click reports the tool id and the
          * active marker follows SelectedToolId instead of the global tab manager. Unbound (the
@@ -42,7 +47,14 @@ public:
         const FGeometry& InAllottedGeometry,
         const FKeyEvent& InKeyEvent) -> FReply override;
 
+    /** Detaches authored interaction dispatch before the owning dock tab releases this rail. */
+    auto Release_Presentation() -> void;
+    auto Get_AuthoredShellView() const -> TSharedPtr<FCkUiView> { return _AuthoredShellView; }
+    auto Get_AuthoredShellLoadFailure() const -> const FString& { return _AuthoredShellLoadFailure; }
+    auto IsUsingNativeShellFallback() const -> bool { return _UsingNativeShellFallback; }
+
 private:
+    friend struct FCkDebuggerLauncherAuthoredTestAccess;
     auto RebuildTools() -> void;
     auto Build_ToolButton(const FCkDebuggerToolDescriptor& InTool) -> TSharedRef<SWidget>;
     auto Build_CategoryHeader(ECkDebuggerToolCategory InCategory, bool InAddSeparator) -> TSharedRef<SWidget>;
@@ -60,11 +72,29 @@ private:
     // The rail is a plain SCompoundWidget — no window id, no refresh gate — so it carries its own
     // copy of SCkDebugger_WindowBase's style-revision watch instead of inheriting one.
     auto Poll_StyleRevision() -> void;
+    auto Build_AuthoredShell() -> void;
+    auto Poll_AuthoredShell(double InCurrentTime) -> void;
+    auto Mount_AuthoredShell() -> bool;
+    auto Build_NativeShellFallback() -> TSharedRef<SWidget>;
+    auto Detach_FallbackPorts() -> void;
+    auto Restore_FallbackPorts() -> void;
+    auto Open_Suite() -> void;
 
     static auto Get_CategoryDisplayName(ECkDebuggerToolCategory InCategory) -> FText;
 
     TSharedPtr<SVerticalBox> _ToolList;
     TSharedPtr<SCkDebug_SearchBar> _SearchBar;
+    TSharedPtr<SScrollBox> _ResultsScroll;
+    TSharedPtr<SBox> _FallbackSearchHost;
+    TSharedPtr<SBox> _FallbackResultsHost;
+    TSharedPtr<SBox> _ShellHost;
+    TSharedPtr<SWidget> _NativeBody;
+    TSharedPtr<FCkUiView> _AuthoredShellView;
+    FString _AuthoredShellLoadFailure;
+    FString _AuthoredShellMarkupPath;
+    FString _AuthoredShellStylesheetPath;
+    FString _ResourceDirectoryOverride;
+    double _NextAuthoredShellPollSeconds = 0.0;
     FDelegateHandle _RegistryChangedHandle;
 
     FCkDebuggerLauncher_OnToolSelected _OnToolSelected;
@@ -79,6 +109,8 @@ private:
 
     // Transient, like the revision itself — resets with the widget, never serialized.
     uint32 _LastSeenStyleRevision = 0;
+    bool _UsingNativeShellFallback = true;
+    bool _PresentationReleased = false;
 };
 
 // --------------------------------------------------------------------------------------------------------------------

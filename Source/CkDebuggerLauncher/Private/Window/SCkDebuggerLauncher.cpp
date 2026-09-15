@@ -10,11 +10,16 @@
 #include "CkDebuggerCommon/Search/SCkDebug_SearchBar.h"
 #include "CkDebuggerCommon/Settings/CkDebuggerStyleSettings.h"
 #include "CkDebuggerCommon/Styles/CkDebuggerAxes.h"
+#include "CkDebuggerCommon/UI/CkDebug_UiRegistry.h"
+
+#include "CkSlateLayout/SCkUiSurface.h"
 
 #include "CkEditorTools/Style/CkStyle.h"
 
 #include "Framework/Application/SlateApplication.h"
 #include "Framework/Docking/TabManager.h"
+#include "Interfaces/IPluginManager.h"
+#include "Misc/Paths.h"
 #include "Styling/AppStyle.h"
 #include "Widgets/Images/SImage.h"
 #include "Widgets/Input/SButton.h"
@@ -22,6 +27,7 @@
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/Layout/SScrollBox.h"
 #include "Widgets/Layout/SSeparator.h"
+#include "Widgets/SNullWidget.h"
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/Text/STextBlock.h"
 
@@ -68,14 +74,39 @@ auto SCkDebuggerLauncher::Construct(const FArguments& InArgs) -> void
 {
     _OnToolSelected = InArgs._OnToolSelected;
     _SelectedToolId = InArgs._SelectedToolId;
+    _ResourceDirectoryOverride = InArgs._ResourceDirectoryOverride;
 
     _RegistryChangedHandle = FCkDebuggerToolRegistry::Get().Get_OnChanged().AddSP(
         this,
         &SCkDebuggerLauncher::RebuildTools);
 
-    ChildSlot
-    [
-        SNew(SBorder)
+    // Stateful mechanics are constructed before either composition. The fallback hosts are their
+    // only initial parents, so authored admission can detach both atomically without dual parenting.
+    SAssignNew(_SearchBar, SCkDebug_SearchBar)
+        .HintText(LOCTEXT("SearchHint", "Find a debugger..."))
+        .Visibility(this, &SCkDebuggerLauncher::Get_SearchVisibility)
+        .OnSearchTextChanged(FCkDebug_OnSearchTextChanged::CreateSP(this, &SCkDebuggerLauncher::Handle_SearchTextChanged))
+        .OnSearchTextCommitted(FCkDebug_OnSearchTextCommitted::CreateSP(this, &SCkDebuggerLauncher::Handle_SearchTextCommitted));
+    SAssignNew(_ResultsScroll, SScrollBox)
+        .Orientation(Orient_Vertical)
+        + SScrollBox::Slot()[SAssignNew(_ToolList, SVerticalBox)];
+    _FallbackSearchHost = SNew(SBox);
+    _FallbackResultsHost = SNew(SBox);
+    Restore_FallbackPorts();
+    _NativeBody = Build_NativeShellFallback();
+    ChildSlot[SAssignNew(_ShellHost, SBox)[_NativeBody.ToSharedRef()]];
+
+    // Seed the baseline so the first tick can only report a change the user actually made.
+    if (const auto* Settings = UCkDebuggerStyleSettings::Get())
+    { _LastSeenStyleRevision = Settings->Get_Revision(); }
+
+    RebuildTools();
+    Build_AuthoredShell();
+}
+
+auto SCkDebuggerLauncher::Build_NativeShellFallback() -> TSharedRef<SWidget>
+{
+    return SNew(SBorder)
         .BorderImage(FCkDebuggerLauncherStyle::Get_BackgroundBrush())
         .Padding(FMargin{4.0f})
         [
@@ -83,93 +114,129 @@ auto SCkDebuggerLauncher::Construct(const FArguments& InArgs) -> void
             .MinDesiredWidth(52.0f)
             [
                 SNew(SVerticalBox)
-
-                // The suite entry sits ABOVE everything and dresses differently from the tool
-                // buttons on purpose: it opens the one-window host, not a 23rd tool. Hidden in
-                // embedded mode -- inside the suite this button would open the window it is in.
-                + SVerticalBox::Slot()
-                .AutoHeight()
-                .Padding(FMargin{0.0f, 0.0f, 0.0f, 6.0f})
+                + SVerticalBox::Slot().AutoHeight().Padding(FMargin{0.0f, 0.0f, 0.0f, 6.0f})
                 [
                     SNew(SBorder)
                     .BorderImage(CkStyle::GetRoundedBrush())
                     .BorderBackgroundColor(FSlateColor{CkStyle::Accent().CopyWithNewOpacity(0.30f)})
                     .Padding(FMargin{2.0f})
-                    .Visibility(Get_IsEmbedded() ? EVisibility::Collapsed : EVisibility::Visible)
+                    .Visibility_Lambda([WeakPanel = TWeakPtr<SCkDebuggerLauncher>{SharedThis(this)}]()
+                    { const auto Panel = WeakPanel.Pin(); return Panel.IsValid() && !Panel->Get_IsEmbedded() ? EVisibility::Visible : EVisibility::Collapsed; })
                     [
                         SNew(SButton)
                         .HAlign(HAlign_Center)
-                        .ToolTipText(LOCTEXT("OpenSuiteTooltip",
-                            "Open the CK Debugger Suite - every tool in one window, this rail on its left"))
-                        .IsEnabled_Lambda([]
-                        {
-                            return FGlobalTabmanager::Get()->HasTabSpawner(
-                                ck::debugger_tabs::SuiteTabId);
-                        })
-                        .OnClicked_Lambda([]
-                        {
-                            FGlobalTabmanager::Get()->TryInvokeTab(
-                                FTabId{ck::debugger_tabs::SuiteTabId});
-                            return FReply::Handled();
-                        })
+                        .ToolTipText(LOCTEXT("OpenSuiteTooltip", "Open the CK Debugger Suite - every tool in one window, this rail on its left"))
+                        .IsEnabled_Lambda([] { return FGlobalTabmanager::Get()->HasTabSpawner(ck::debugger_tabs::SuiteTabId); })
+                        .OnClicked_Lambda([WeakPanel = TWeakPtr<SCkDebuggerLauncher>{SharedThis(this)}]()
+                        { if (const auto Panel = WeakPanel.Pin()) { Panel->Open_Suite(); } return FReply::Handled(); })
                         [
-                            SNew(SHorizontalBox)
-
-                            + SHorizontalBox::Slot()
-                            .AutoWidth()
-                            .VAlign(VAlign_Center)
-                            [
-                                SNew(SImage)
-                                .Image(FCkIconStyle::Get_Brush(ECk_Icon::Catalog, ECk_Icon_BrushSize::Size_16x16))
-                                .ColorAndOpacity(FSlateColor{CkStyle::Accent()})
-                            ]
-
-                            + SHorizontalBox::Slot()
-                            .AutoWidth()
-                            .VAlign(VAlign_Center)
-                            .Padding(FMargin{6.0f, 2.0f, 0.0f, 2.0f})
-                            [
-                                SNew(STextBlock)
-                                .Text(LOCTEXT("OpenSuite", "Debugger Suite"))
-                                .Font(CkStyle::BoldFont(CkStyle::FontSizeSmall()))
-                                .ColorAndOpacity(FSlateColor{CkStyle::Accent()})
-                                .Visibility(this, &SCkDebuggerLauncher::Get_LabelVisibility)
-                            ]
+                            SNew(STextBlock)
+                            .Text(LOCTEXT("OpenSuite", "Debugger Suite"))
+                            .Font(CkStyle::BoldFont(CkStyle::FontSizeSmall()))
+                            .ColorAndOpacity(FSlateColor{CkStyle::Accent()})
+                            .Visibility(this, &SCkDebuggerLauncher::Get_LabelVisibility)
                         ]
                     ]
                 ]
-
-                + SVerticalBox::Slot()
-                .AutoHeight()
-                .Padding(FMargin{0.0f, 0.0f, 0.0f, 4.0f})
-                [
-                    SAssignNew(_SearchBar, SCkDebug_SearchBar)
-                    .HintText(LOCTEXT("SearchHint", "Find a debugger..."))
-                    .Visibility(this, &SCkDebuggerLauncher::Get_SearchVisibility)
-                    .OnSearchTextChanged(FCkDebug_OnSearchTextChanged::CreateSP(
-                        this, &SCkDebuggerLauncher::Handle_SearchTextChanged))
-                    .OnSearchTextCommitted(FCkDebug_OnSearchTextCommitted::CreateSP(
-                        this, &SCkDebuggerLauncher::Handle_SearchTextCommitted))
-                ]
-                + SVerticalBox::Slot()
-                .FillHeight(1.0f)
-                [
-                    SNew(SScrollBox)
-                    .Orientation(Orient_Vertical)
-                    + SScrollBox::Slot()
-                    [
-                        SAssignNew(_ToolList, SVerticalBox)
-                    ]
-                ]
+                + SVerticalBox::Slot().AutoHeight().Padding(FMargin{0.0f, 0.0f, 0.0f, 4.0f})[_FallbackSearchHost.ToSharedRef()]
+                + SVerticalBox::Slot().FillHeight(1.0f)[_FallbackResultsHost.ToSharedRef()]
             ]
-        ]
-    ];
+        ];
+}
 
-    // Seed the baseline so the first tick can only report a change the user actually made.
-    if (const auto* Settings = UCkDebuggerStyleSettings::Get())
-    { _LastSeenStyleRevision = Settings->Get_Revision(); }
+auto SCkDebuggerLauncher::Build_AuthoredShell() -> void
+{
+    TSharedPtr<const FCkUiWidgetRegistrySnapshot> Registry;
+    const FCkUiLoadResult RegistryResult = FCkDebug_UiRegistry::TryCreate(Registry);
+    const TSharedPtr<IPlugin> Plugin = IPluginManager::Get().FindPlugin(TEXT("CkDebugger"));
+    if (!RegistryResult.Succeeded || !Registry.IsValid() || !Plugin.IsValid() || !_ShellHost.IsValid()
+        || !_SearchBar.IsValid() || !_ResultsScroll.IsValid())
+    {
+        _AuthoredShellLoadFailure = TEXT("Debugger launcher authored shell prerequisites are unavailable.");
+        return;
+    }
 
-    RebuildTools();
+    FCkUiView::FNativeBindings Ports;
+    Ports.Add(TEXT("launcher-filter"), _SearchBar);
+    Ports.Add(TEXT("launcher-results"), _ResultsScroll);
+    const TWeakPtr<SCkDebuggerLauncher> WeakPanel = SharedThis(this);
+    FCkUiView::FActions Actions;
+    Actions.Add(TEXT("launcher-open-suite"), FSimpleDelegate::CreateLambda([WeakPanel]()
+    { if (const auto Panel = WeakPanel.Pin(); Panel.IsValid() && !Panel->_PresentationReleased) { Panel->Open_Suite(); } }));
+    FCkUiView::FDataBindings Data;
+    Data.CanDispatchEvents = TAttribute<bool>::CreateLambda([WeakPanel]()
+    { const auto Panel = WeakPanel.Pin(); return Panel.IsValid() && !Panel->_PresentationReleased; });
+    Data.Visibility.Add(TEXT("launcher-suite-visible"), TAttribute<bool>::CreateLambda([WeakPanel]()
+    { const auto Panel = WeakPanel.Pin(); return Panel.IsValid() && !Panel->_PresentationReleased && !Panel->Get_IsEmbedded(); }));
+
+    const TSharedRef<FCkUiView> Candidate = FCkUiView::Create(MoveTemp(Ports), MoveTemp(Actions), {},
+        CkStyle::RegularFont(CkStyle::FontSizeBody()), MoveTemp(Data), Registry);
+    Candidate->GetRegion(TEXT("main"));
+    const FString ResourceDirectory = _ResourceDirectoryOverride.IsEmpty()
+        ? FPaths::Combine(Plugin->GetBaseDir(), TEXT("Resources/UI")) : _ResourceDirectoryOverride;
+    _AuthoredShellMarkupPath = FPaths::Combine(ResourceDirectory, TEXT("DebuggerLauncherShell.ui.html"));
+    _AuthoredShellStylesheetPath = FPaths::Combine(ResourceDirectory, TEXT("DebuggerLauncherShell.ui.css"));
+    Candidate->SetFiles(_AuthoredShellMarkupPath, _AuthoredShellStylesheetPath);
+
+    Detach_FallbackPorts();
+    Candidate->PollFiles();
+    if (!Candidate->GetLastResult().Succeeded)
+    {
+        _AuthoredShellLoadFailure = FString::Join(Candidate->GetLastResult().Errors, TEXT("\n"));
+        _AuthoredShellView = Candidate; // retain the failed same-path candidate for repair polling.
+        Restore_FallbackPorts();
+        return;
+    }
+
+    _AuthoredShellView = Candidate;
+    if (!Mount_AuthoredShell())
+    {
+        _AuthoredShellLoadFailure = TEXT("Debugger launcher authored shell could not mount its accepted region.");
+        _AuthoredShellView.Reset();
+        Restore_FallbackPorts();
+    }
+}
+
+auto SCkDebuggerLauncher::Mount_AuthoredShell() -> bool
+{
+    if (!_AuthoredShellView.IsValid() || !_ShellHost.IsValid()) { return false; }
+    _ShellHost->SetContent(_AuthoredShellView->GetRegion(TEXT("main")));
+    _UsingNativeShellFallback = false;
+    _AuthoredShellLoadFailure.Reset();
+    return true;
+}
+
+auto SCkDebuggerLauncher::Detach_FallbackPorts() -> void
+{
+    if (_FallbackSearchHost.IsValid()) { _FallbackSearchHost->SetContent(SNullWidget::NullWidget); }
+    if (_FallbackResultsHost.IsValid()) { _FallbackResultsHost->SetContent(SNullWidget::NullWidget); }
+}
+
+auto SCkDebuggerLauncher::Restore_FallbackPorts() -> void
+{
+    const auto RestoreIfDetached = [](const TSharedPtr<SBox>& Host, const TSharedPtr<SWidget>& Control)
+    { if (Host.IsValid() && Control.IsValid() && !Control->GetParentWidget().IsValid()) { Host->SetContent(Control.ToSharedRef()); } };
+    RestoreIfDetached(_FallbackSearchHost, _SearchBar);
+    RestoreIfDetached(_FallbackResultsHost, _ResultsScroll);
+}
+
+auto SCkDebuggerLauncher::Poll_AuthoredShell(const double InCurrentTime) -> void
+{
+    if (_PresentationReleased || !_AuthoredShellView.IsValid() || InCurrentTime < _NextAuthoredShellPollSeconds) { return; }
+    _NextAuthoredShellPollSeconds = InCurrentTime + 0.5;
+    if (_UsingNativeShellFallback) { Detach_FallbackPorts(); }
+    const bool Changed = _AuthoredShellView->PollFiles();
+    if (_UsingNativeShellFallback && _AuthoredShellView->GetLastResult().Succeeded)
+    { Mount_AuthoredShell(); return; }
+    if (_UsingNativeShellFallback) { Restore_FallbackPorts(); }
+    if (Changed && !_AuthoredShellView->GetLastResult().Succeeded)
+    { _AuthoredShellLoadFailure = FString::Join(_AuthoredShellView->GetLastResult().Errors, TEXT("\n")); }
+}
+
+auto SCkDebuggerLauncher::Open_Suite() -> void
+{
+    if (_PresentationReleased || Get_IsEmbedded() || !FGlobalTabmanager::Get()->HasTabSpawner(ck::debugger_tabs::SuiteTabId)) { return; }
+    FGlobalTabmanager::Get()->TryInvokeTab(FTabId{ck::debugger_tabs::SuiteTabId});
 }
 
 auto SCkDebuggerLauncher::Poll_StyleRevision() -> void
@@ -193,11 +260,33 @@ auto SCkDebuggerLauncher::Poll_StyleRevision() -> void
 
 SCkDebuggerLauncher::~SCkDebuggerLauncher()
 {
+    Release_Presentation();
+
     if (_RegistryChangedHandle.IsValid())
     {
         FCkDebuggerToolRegistry::Get().Get_OnChanged().Remove(_RegistryChangedHandle);
         _RegistryChangedHandle.Reset();
     }
+}
+
+auto SCkDebuggerLauncher::Release_Presentation() -> void
+{
+    if (_PresentationReleased) { return; }
+    _PresentationReleased = true;
+
+    // A retained authored view may outlive the dock tab in automation and hot-reload paths.
+    // Revoke dispatch before detaching its regions, then empty every host so held controls are inert.
+    if (_AuthoredShellView.IsValid()) { _AuthoredShellView->ReleaseOwnerInteractions(); }
+    if (_ShellHost.IsValid()) { _ShellHost->SetContent(SNullWidget::NullWidget); }
+    Detach_FallbackPorts();
+    _AuthoredShellView.Reset();
+    _NativeBody.Reset();
+    _SearchBar.Reset();
+    _ResultsScroll.Reset();
+    _ToolList.Reset();
+    _FallbackSearchHost.Reset();
+    _FallbackResultsHost.Reset();
+    _ShellHost.Reset();
 }
 
 auto SCkDebuggerLauncher::Tick(
@@ -207,7 +296,10 @@ auto SCkDebuggerLauncher::Tick(
 {
     SCompoundWidget::Tick(InAllottedGeometry, InCurrentTime, InDeltaTime);
 
+    if (_PresentationReleased) { return; }
+
     Poll_StyleRevision();
+    Poll_AuthoredShell(InCurrentTime);
 
     const auto Width = InAllottedGeometry.GetLocalSize().X;
     auto ShowLabels = _ShowLabels;

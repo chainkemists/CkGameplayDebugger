@@ -132,7 +132,14 @@ namespace ck::debugger_tabs
         Tab->SetOnTabClosed(SDockTab::FOnTabClosedCallback{});
 
         if (InRequestClose && NOT IsEngineExitRequested())
-        { Tab->RequestCloseTab(); }
+        {
+            // Programmatic debugger close is a terminal owner operation: callers have already released the
+            // presentation before entering this helper. RequestCloseTab can leave even a successfully closed tab
+            // discoverable until docking cleanup advances, while a locked stack can refuse it outright. Give normal
+            // persistence/close policy its opportunity, then make removal synchronous before a same-frame reopen.
+            Tab->RequestCloseTab();
+            Tab->RemoveTabFromParent();
+        }
 
         // A global docking tree may retain the tab after the module drops its reference. Do not let it retain a
         // module-defined widget tree (or ECS handles owned by that tree) across unload.

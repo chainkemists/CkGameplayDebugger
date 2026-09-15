@@ -8,6 +8,8 @@
 #include "CkEntityDebugOverlay/Style/CkDebugOverlay_RenderStyle.h"
 #include "CkEntityDebugOverlay/History/CkDebugOverlay_History.h"
 
+#include "CkSlateLayout/SCkUiSurface.h"
+
 #include "CkCore/Diagnostics/CkDiagnosticVisibility.h"
 
 #include "CkDebuggerCommon/Settings/CkDebuggerStyleSettings.h"
@@ -17,6 +19,7 @@
 
 #include "Widgets/Layout/SConstraintCanvas.h"
 #include "Widgets/Layout/SBox.h"
+#include "Widgets/SNullWidget.h"
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SWrapBox.h"
 #include "Widgets/Text/STextBlock.h"
@@ -24,6 +27,8 @@
 #include "Widgets/SOverlay.h"
 #include "Styling/CoreStyle.h"
 #include "Rendering/SlateRenderTransform.h"
+#include "Interfaces/IPluginManager.h"
+#include "Misc/Paths.h"
 
 // ====================================================================================================================
 
@@ -31,6 +36,7 @@ namespace OverlayRoot_Constants
 {
     // Pixel margin between the focus card and the viewport edge it anchors to.
     constexpr float FocusCardMargin = 8.0f;
+    constexpr double AuthoredPollIntervalSeconds = 0.5;
 }
 
 namespace ck_debugoverlay_root
@@ -96,7 +102,7 @@ namespace ck_debugoverlay_root
 
 auto
     SCkDebugOverlay_Root::
-    Construct(const FArguments& /*InArgs*/)
+    Construct(const FArguments& InArgs)
     -> void
 {
     SetVisibility(TAttribute<EVisibility>::CreateLambda([]() -> EVisibility
@@ -137,7 +143,61 @@ auto
                 })
         ];
 
+    SAssignNew(_WorldTagPort, SBox)
+    [
+        _TagCanvas.ToSharedRef()
+    ];
+    SAssignNew(_CardPort, SBox)
+        .Clipping(EWidgetClipping::ClipToBounds)
+        .MaxDesiredHeight_Lambda([this]() -> FOptionalSize
+        {
+            const auto ViewportH = GetCachedGeometry().GetLocalSize().Y;
+            if (ViewportH <= KINDA_SMALL_NUMBER)
+            { return FOptionalSize{}; }
+            return FOptionalSize{ViewportH * _PlateMaxHeightFraction - 2.0f * OverlayRoot_Constants::FocusCardMargin};
+        })
+        [
+            _CardStrip.ToSharedRef()
+        ];
+    SAssignNew(_PresentationHost, SBox);
+
+#if WITH_DEV_AUTOMATION_TESTS
+    _AuthoredMarkupPath = InArgs._AuthoredMarkupPathOverride;
+    _AuthoredStylesheetPath = InArgs._AuthoredStylesheetPathOverride;
+#endif
+
+    ChildSlot
+    [
+        _PresentationHost.ToSharedRef()
+    ];
+
     DoRebuildLayout();
+    DoBuild_AuthoredPresentation();
+}
+
+SCkDebugOverlay_Root::~SCkDebugOverlay_Root()
+{
+    Release_AuthoredPresentation();
+}
+
+auto
+    SCkDebugOverlay_Root::
+    Release_OwnerInteractions()
+    -> void
+{
+    Release_AuthoredPresentation();
+}
+
+auto
+    SCkDebugOverlay_Root::
+    Tick(
+        const FGeometry& InAllottedGeometry,
+        const double     InCurrentTime,
+        const float      InDeltaTime)
+    -> void
+{
+    SCompoundWidget::Tick(InAllottedGeometry, InCurrentTime, InDeltaTime);
+    DoPoll_AuthoredPresentation(InCurrentTime);
 }
 
 // ====================================================================================================================
@@ -150,6 +210,9 @@ auto
         float InMaxHeightFraction)
     -> void
 {
+    if (_AuthoredPresentationReleased)
+    { return; }
+
     if (InAnchor == _PlateAnchor &&
         FMath::IsNearlyEqual(InWidth, _PlateWidth) &&
         FMath::IsNearlyEqual(InMaxHeightFraction, _PlateMaxHeightFraction))
@@ -194,59 +257,162 @@ auto
     auto HintsV = VAlign_Bottom;
     Resolve_HintsAnchor(HintsH, HintsV);
 
-    ChildSlot
-    [
-        // Overlay: tag canvas fills the viewport; the card strip (primary + pinned cards)
-        // sits on top anchored to the settings-driven corner/edge; the key-hints strip sits
-        // top-left (top-right if the card is top-left). Child widgets are created once in Construct and re-slotted
-        // here, so re-anchoring at runtime keeps all card/canvas/strip state.
-        SNew(SOverlay)
-
-        // Layer 0: world-anchored tags fill the full viewport area.
-        + SOverlay::Slot()
-        .HAlign(HAlign_Fill)
-        .VAlign(VAlign_Fill)
-        [
-            _TagCanvas.ToSharedRef()
-        ]
-
-        // Layer 1: card strip (primary + pinned) at the configured anchor. Height is
-        // budgeted to a fraction of the viewport (live — tracks resizes) and CLIPS at
-        // the cap: the root is hit-test invisible, so a scrollbar would be
-        // uninteractable.
-        + SOverlay::Slot()
-        .HAlign(HAlign)
-        .VAlign(VAlign)
-        .Padding(FMargin{ OverlayRoot_Constants::FocusCardMargin })
-        [
-            SNew(SBox)
-                .Clipping(EWidgetClipping::ClipToBounds)
-                .MaxDesiredHeight_Lambda([this]() -> FOptionalSize
-                {
-                    const auto ViewportH = GetCachedGeometry().GetLocalSize().Y;
-                    if (ViewportH <= KINDA_SMALL_NUMBER)
-                    { return FOptionalSize{}; }   // no geometry yet — unconstrained
-
-                    return FOptionalSize{
-                        ViewportH * _PlateMaxHeightFraction
-                        - 2.0f * OverlayRoot_Constants::FocusCardMargin };
-                })
-                [
-                    _CardStrip.ToSharedRef()
-                ]
-        ]
-
-        // Layer 2: key-hints strip top-left (top-right when the card is top-left).
-        + SOverlay::Slot()
-        .HAlign(HintsH)
-        .VAlign(HintsV)
-        .Padding(FMargin{ OverlayRoot_Constants::FocusCardMargin })
-        [
-            _HintsBox.ToSharedRef()
-        ]
-    ];
+    // The authored overlay owns the stable stacking order. Native ports retain only projected
+    // paint and stateful cards. Two HTML hint rows use visibility for the dynamic corner.
+    if (_WorldTagPort.IsValid())
+    {
+        _WorldTagPort->SetHAlign(HAlign_Fill);
+        _WorldTagPort->SetVAlign(VAlign_Fill);
+    }
+    if (_CardPort.IsValid())
+    {
+        _CardPort->SetHAlign(HAlign);
+        _CardPort->SetVAlign(VAlign);
+        _CardPort->SetPadding(FMargin{OverlayRoot_Constants::FocusCardMargin});
+    }
+    _HintsOnLeft = HintsH == HAlign_Left;
 
     DoRebuild_CardStrip();
+}
+
+auto
+    SCkDebugOverlay_Root::
+    DoMount_NativeFallback()
+    -> void
+{
+    if (NOT _PresentationHost.IsValid() || NOT _WorldTagPort.IsValid() || NOT _CardPort.IsValid() || NOT _HintsBox.IsValid())
+    { return; }
+
+    // Fallback is error-only. Its ordinary hint border is deliberately not an authored port;
+    // normal presentation uses bound HTML rows below.
+    auto HintsH = HAlign_Left;
+    auto HintsV = VAlign_Top;
+    Resolve_HintsAnchor(HintsH, HintsV);
+    _NativeFallback = SNew(SOverlay)
+        + SOverlay::Slot()[_WorldTagPort.ToSharedRef()]
+        + SOverlay::Slot()[_CardPort.ToSharedRef()]
+        + SOverlay::Slot().HAlign(HintsH).VAlign(HintsV).Padding(FMargin{OverlayRoot_Constants::FocusCardMargin})
+        [ _HintsBox.ToSharedRef() ];
+    _PresentationHost->SetContent(_NativeFallback.ToSharedRef());
+}
+
+auto
+    SCkDebugOverlay_Root::
+    DoBuild_AuthoredPresentation()
+    -> void
+{
+    if (_AuthoredPresentationReleased || NOT _PresentationHost.IsValid() || NOT _WorldTagPort.IsValid() || NOT _CardPort.IsValid())
+    { return; }
+
+    if (_AuthoredMarkupPath.IsEmpty() || _AuthoredStylesheetPath.IsEmpty())
+    {
+        const auto Plugin = IPluginManager::Get().FindPlugin(TEXT("CkDebugger"));
+        if (NOT Plugin.IsValid())
+        {
+            _AuthoredFailure = TEXT("Unable to locate CkDebugger authored Entity Debug Overlay resources.");
+            DoMount_NativeFallback();
+            return;
+        }
+
+        const auto Directory = FPaths::Combine(Plugin->GetBaseDir(), TEXT("Resources/UI"));
+        _AuthoredMarkupPath = FPaths::Combine(Directory, TEXT("EntityDebugOverlay.ui.html"));
+        _AuthoredStylesheetPath = FPaths::Combine(Directory, TEXT("EntityDebugOverlay.ui.css"));
+    }
+
+    // Detach before the candidate claims its sole native port. The view does all later
+    // compatible reload commits atomically; no port is ever parented by both presentations.
+    _PresentationHost->SetContent(SNullWidget::NullWidget);
+    _NativeFallback.Reset();
+    auto NativeBindings = FCkUiView::FNativeBindings{};
+    NativeBindings.Add(TEXT("entity-debug-overlay-world-tags"), _WorldTagPort);
+    NativeBindings.Add(TEXT("entity-debug-overlay-cards"), _CardPort);
+    auto Data = FCkUiView::FDataBindings{};
+    const TWeakPtr<SCkDebugOverlay_Root> WeakRoot = SharedThis(this);
+    Data.Text.Add(TEXT("entity-debug-overlay-hints-text"), TAttribute<FText>::CreateLambda([WeakRoot]() -> FText
+    {
+        const TSharedPtr<SCkDebugOverlay_Root> Root = WeakRoot.Pin();
+        return Root.IsValid() && Root->_HintsVisible
+            ? FText::FromString(Root->_ShowFullHints ? Root->_HintsFull : Root->_HintsCompact)
+            : FText::GetEmpty();
+    }));
+    Data.Visibility.Add(TEXT("entity-debug-overlay-hints-left-visible"), TAttribute<bool>::CreateLambda([WeakRoot]() -> bool
+    {
+        const TSharedPtr<SCkDebugOverlay_Root> Root = WeakRoot.Pin();
+        return Root.IsValid() && Root->_HintsVisible && Root->_HintsOnLeft;
+    }));
+    Data.Visibility.Add(TEXT("entity-debug-overlay-hints-right-visible"), TAttribute<bool>::CreateLambda([WeakRoot]() -> bool
+    {
+        const TSharedPtr<SCkDebugOverlay_Root> Root = WeakRoot.Pin();
+        return Root.IsValid() && Root->_HintsVisible && NOT Root->_HintsOnLeft;
+    }));
+    Data.CanDispatchEvents = TAttribute<bool>(false);
+    const TSharedRef<FCkUiView> View = FCkUiView::Create(MoveTemp(NativeBindings), {}, {},
+        CkStyle::RegularFont(CkStyle::FontSizeMicro()), MoveTemp(Data));
+    View->SetFiles(_AuthoredMarkupPath, _AuthoredStylesheetPath);
+    _AuthoredView = View;
+    View->GetRegion(TEXT("main"));
+    View->PollFiles();
+
+    _UsingNativeFallback = NOT View->GetLastResult().Succeeded;
+    _AuthoredFailure = _UsingNativeFallback ? FString::Join(View->GetLastResult().Errors, TEXT("\n")) : FString{};
+    if (_UsingNativeFallback)
+    { DoMount_NativeFallback(); }
+    else
+    { _PresentationHost->SetContent(View->GetRegion(TEXT("main"))); }
+}
+
+auto
+    SCkDebugOverlay_Root::
+    DoPoll_AuthoredPresentation(
+        const double InCurrentTime)
+    -> void
+{
+    if (_AuthoredPresentationReleased || NOT _AuthoredView.IsValid() || NOT _PresentationHost.IsValid() ||
+        InCurrentTime < _NextAuthoredPollSeconds)
+    { return; }
+
+    _NextAuthoredPollSeconds = InCurrentTime + OverlayRoot_Constants::AuthoredPollIntervalSeconds;
+    if (NOT _UsingNativeFallback)
+    {
+        _AuthoredView->PollFiles();
+        _AuthoredFailure = _AuthoredView->GetLastResult().Succeeded
+            ? FString{}
+            : FString::Join(_AuthoredView->GetLastResult().Errors, TEXT("\n"));
+        return;
+    }
+
+    // Same-path recovery: an invalid startup candidate is retained, but its native port must
+    // be detached from the fallback while PollFiles stages an accepted replacement.
+    _PresentationHost->SetContent(SNullWidget::NullWidget);
+    _NativeFallback.Reset();
+    const auto Changed = _AuthoredView->PollFiles();
+    _UsingNativeFallback = NOT _AuthoredView->GetLastResult().Succeeded;
+    _AuthoredFailure = _UsingNativeFallback
+        ? FString::Join(_AuthoredView->GetLastResult().Errors, TEXT("\n"))
+        : FString{};
+    if (_UsingNativeFallback || NOT Changed)
+    { DoMount_NativeFallback(); return; }
+
+    _PresentationHost->SetContent(_AuthoredView->GetRegion(TEXT("main")));
+}
+
+auto
+    SCkDebugOverlay_Root::
+    Release_AuthoredPresentation()
+    -> void
+{
+    if (_AuthoredPresentationReleased)
+    { return; }
+    _AuthoredPresentationReleased = true;
+
+    if (_AuthoredView.IsValid())
+    { _AuthoredView->ReleaseOwnerInteractions(); }
+    if (_PresentationHost.IsValid())
+    { _PresentationHost->SetContent(SNullWidget::NullWidget); }
+    _AuthoredView.Reset();
+    _NativeFallback.Reset();
+    _WorldTagPort.Reset();
+    _CardPort.Reset();
 }
 
 // ====================================================================================================================
@@ -256,7 +422,7 @@ auto
     DoRebuild_CardStrip()
     -> void
 {
-    if (NOT _CardStrip.IsValid())
+    if (_AuthoredPresentationReleased || NOT _CardStrip.IsValid())
     { return; }
 
     _CardStrip->ClearChildren();
@@ -313,6 +479,9 @@ auto
         const FText&                        InSelectionSummary)
     -> void
 {
+    if (_AuthoredPresentationReleased)
+    { return; }
+
     if (_FocusCard.IsValid())
     {
         _FocusCard->Set_Model(InModel, InStyle, InHistory, InNow, bIsLocked, bIsPinned,
@@ -331,6 +500,9 @@ auto
         double                                      InNow)
     -> void
 {
+    if (_AuthoredPresentationReleased)
+    { return; }
+
     const auto DesiredNum  = InModels.Num();
     const auto CountChanged = _PinnedCards.Num() != DesiredNum;
 
@@ -374,6 +546,16 @@ auto
         bool           bVisible)
     -> void
 {
+    if (_AuthoredPresentationReleased)
+    { return; }
+
+    _HintsCompact = InCompact;
+    _HintsFull = InFull;
+    _ShowFullHints = bShowFull;
+    _HintsVisible = bVisible;
+
+    // The authored rows read the retained state above directly. The native hint widgets exist only for fallback
+    // presentation, so their lifetime must never gate authored visibility publication.
     if (NOT _HintsBox.IsValid() || NOT _HintsText.IsValid())
     { return; }
 
@@ -396,7 +578,7 @@ auto
         double                                      InNow)
     -> void
 {
-    if (NOT _TagCanvas.IsValid())
+    if (_AuthoredPresentationReleased || NOT _TagCanvas.IsValid())
     {
         return;
     }
@@ -505,6 +687,9 @@ auto
     Get_AdmittedWorldTagKeys() const
     -> TSet<uint32>
 {
+    if (_AuthoredPresentationReleased)
+    { return {}; }
+
     auto Result = TSet<uint32>{};
     Result.Reserve(_WorldTagFadeStates.Num());
     for (const auto& Pair : _WorldTagFadeStates)

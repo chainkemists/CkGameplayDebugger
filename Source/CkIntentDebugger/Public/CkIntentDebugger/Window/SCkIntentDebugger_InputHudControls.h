@@ -16,6 +16,7 @@ public:
     SLATE_END_ARGS()
 
     auto Construct(const FArguments& InArgs) -> void;
+    virtual auto Tick(const FGeometry& InAllottedGeometry, double InCurrentTime, float InDeltaTime) -> void override;
 
     auto Get_ControlsView() const -> TSharedPtr<FCkUiView>
     {
@@ -30,6 +31,7 @@ private:
     TSharedPtr<FCkUiView> _ControlsView;
     FString _ControlsPublicationError;
     TAttribute<bool> _CanDispatchEvents;
+    double _NextStylePollSeconds = 0.0;
 };
 
 // ====================================================================================================================

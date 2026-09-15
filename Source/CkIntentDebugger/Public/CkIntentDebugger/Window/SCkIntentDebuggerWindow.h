@@ -17,6 +17,12 @@ class SCkIntentDebugger_NearMissPanel;
 class SCkIntentDebugger_ResolutionPanel;
 class SCkIntentDebugger_TimelineDock;
 class SHorizontalBox;
+class SBox;
+class SComboButton;
+class SCkDebug_WindowChrome;
+class FCkUiView;
+class FCkUiCollection;
+struct FCkIntentDebuggerAuthoredTestAccess;
 
 // --------------------------------------------------------------------------------------------------------------------
 // CK Intent Debugger window.
@@ -35,6 +41,10 @@ public:
     static const FName WindowId;
 
     SLATE_BEGIN_ARGS(SCkIntentDebuggerWindow) {}
+#if WITH_DEV_AUTOMATION_TESTS
+        /** Test-only alternate directory, exercised through the ordinary file-admission path. */
+        SLATE_ARGUMENT(FString, TestResourceDirectory)
+#endif
     SLATE_END_ARGS()
 
     auto Construct(const FArguments& InArgs) -> void;
@@ -63,16 +73,26 @@ public:
 
     auto Set_PendingTarget(int32 InLocalPlayerIndex, int32 InLayerPriority) -> void;
 
+    /** Idempotently release all feature-owned Slate/runtime state before tab/module teardown. */
+    auto Release_Presentation() -> void;
+    auto Get_AuthoredBody() const -> TSharedPtr<FCkUiView> { return _AuthoredBody; }
+    auto IsUsingNativeBodyFallback() const -> bool { return _UsingNativeBodyFallback; }
+
 private:
     auto Build_Toolbar() -> TSharedRef<SWidget>;
     auto Build_Body() -> TSharedRef<SWidget>;
+    auto Build_AuthoredBody() -> void;
+    auto Poll_AuthoredBody(double InCurrentTime) -> void;
 
     auto HandleViewModelChanged() -> void;
     auto Refresh_SourceSelector() -> void;
+    auto Refresh_SourceRecords() -> void;
     auto DoApply_PendingTarget() -> void;
     auto Get_StatusText() const -> FText;
 
 private:
+    friend struct FCkIntentDebuggerAuthoredTestAccess;
+
     TSharedPtr<FCkIntentDebugger_ViewModel> _ViewModel;
 
     // Shared viewport picker (CkDebuggerCommon), specialized to input sources/layers.
@@ -86,6 +106,26 @@ private:
     TSharedPtr<SCkIntentDebugger_DevicesPanel>    _DevicesPanel;
 
     TSharedPtr<SHorizontalBox>  _SourceSelectorBox;
+    TSharedPtr<SCkDebug_WindowChrome> _Chrome;
+    TSharedPtr<SComboButton> _InputHudMenu;
+    TSharedPtr<SBox> _SourceSelectorHost;
+    TSharedPtr<FCkUiCollection> _SourceRecords;
+    TSharedPtr<SBox> _BodyHost;
+    TSharedPtr<SBox> _LayerStackMount;
+    TSharedPtr<SBox> _TimelineMount;
+    TSharedPtr<SBox> _KeyStateMount;
+    TSharedPtr<SBox> _ResolutionMount;
+    TSharedPtr<SBox> _NearMissMount;
+    TSharedPtr<SBox> _DevicesMount;
+    TSharedPtr<FCkUiView> _AuthoredBody;
+    FString _AuthoredBodyMarkupPath;
+    FString _AuthoredBodyStylesheetPath;
+    double _NextAuthoredBodyPollSeconds = 0.0;
+    bool _UsingNativeBodyFallback = true;
+    bool _PresentationReleased = false;
+#if WITH_DEV_AUTOMATION_TESTS
+    FString _TestResourceDirectory;
+#endif
 
     int32 _LastSourceCount = INDEX_NONE;
 

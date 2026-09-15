@@ -1,35 +1,5 @@
-// CkDebugOverlay_Provider_StateMachine — provider unit test.
+// CkDebugOverlay_Provider_StateMachine — provider unit tests.
 //
-// -------------------------------------------------------------------------
-// SCAFFOLD STATUS: incomplete entity setup — marked BATCH-VERIFY below.
-//
-// A robust test needs:
-//   1. A live ECS world (requires PIE or a minimal in-process UWorld).
-//   2. An entity with FFragment_Sm_Current spawned and a current state set.
-//   3. Optionally: FFragment_Sm_Debug with history entries.
-//
-// CkStateMachine net tests (CkStateMachine_Net_*) use ACk_AutoTest_NetSubject
-// with PIE multi-client setup (heavy). That harness is not usable for a
-// simple unit test of Collect().
-//
-// The synchronous entity + SM creation path (if it exists) would look like:
-//   - Get or create a FCk_Registry / world context.
-//   - Spawn an entity via ck::EntityLifetime.
-//   - Call UCk_Utils_StateMachine_UE::Add(entity, params) to attach an SM.
-//   - Drive the SM into a known initial state.
-//   - Tick the registry one frame so fragments settle.
-//   - Call Collect() and assert.
-//
-// BATCH-VERIFY: investigate whether CkStateMachine exposes a synchronous
-// FCk_Handle + Add-SM utility that works without a full PIE world (i.e. a
-// unit-test-friendly factory). If found, complete the entity setup below and
-// remove the #if 0 guard. Reference: CkStateMachine_Utils.h.
-//
-// For now the test is a structural skeleton that verifies the provider's
-// compile-time shape (Get_ProviderTag / Get_FieldTags / CanProvide on an
-// invalid handle) without requiring a live world.
-// -------------------------------------------------------------------------
-
 #include "Misc/AutomationTest.h"
 
 #if WITH_EDITOR && WITH_DEV_AUTOMATION_TESTS
@@ -37,7 +7,14 @@
 #include "CkEntityDebugOverlay/Provider/CkDebugOverlay_Provider.h"
 #include "CkEntityDebugOverlay/Provider/CkDebugOverlay_Registry.h"
 #include "CkEntityDebugOverlay/Model/CkDebugOverlay_Model.h"
+#include "CkEcs/EntityLifetime/CkEntityLifetime_Utils.h"
 #include "CkEcs/Handle/CkHandle.h"
+#include "CkEcs/Registry/CkRegistry.h"
+#include "CkEcs/Registry/CkRegistry_SlotTable.h"
+
+#include "CkStateMachine/Debug/CkStateMachine_Debug_Fragment.h"
+#include "CkStateMachine/State/EntityScripts/CkSmState_EntityScript.h"
+#include "CkStateMachine/StateMachine/CkStateMachine_Fragment.h"
 
 // The provider is in Private — include by relative path from the source root.
 // BATCH-VERIFY: if the unity build merges Private/.cpp files, the provider
@@ -101,30 +78,47 @@ bool FCkDebugOverlay_Provider_StateMachine_Shape::RunTest(const FString&)
 }
 
 // --------------------------------------------------------------------------------------------------------------------
-// BATCH-VERIFY: Complete entity-construction test below.
-//
-// When a synchronous SM construction path is available, implement the
-// following test. The outline is intentionally commented out rather than
-// left as dead #if 0 so the batch-verifier has a clear roadmap.
-//
-// Steps needed:
-//   1. Obtain a UWorld* (minimal or PIE). If PIE is required, wrap in a
-//      PIE latent test using FCk_Latent_* helpers (see CkStateMachine net tests).
-//   2. Create an FCk_Handle via ck::EntityLifetime::Spawn or equivalent.
-//   3. Call UCk_Utils_StateMachine_UE::Add(entity, FStateMachineParams{...})
-//      to attach a state machine with a known initial state class.
-//   4. Tick the registry so the SM enters the initial state (FFragment_Sm_Current
-//      gets Get_CurrentStateClass() != null).
-//   5. Build FCk_DebugOverlay_ProviderConfig with EnabledFields containing
-//      TAG_Ck_OnScreenDebugger_Provider_StateMachine_State.
-//   6. Call Provider.Collect(entity, Cfg, Section).
-//   7. TestTrue(Section.Rows.Num() >= 1).
-//   8. TestEqual(Section.Rows[0].FieldTag, TAG_..._State).
-//   9. TestFalse(Section.Rows[0].Value.IsEmpty()) — should contain the state class name.
-//
-// Expected assertion:
-//   Section.Rows[0].Value contains the leaf name of the initial state class,
-//   matching UCk_Utils_StateMachine_UE::Get_CurrentStateClass(smHandle)->GetName().
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FCkDebugOverlay_Provider_StateMachine_CurrentStateWithoutDebugCache,
+    "Ck.DebugOverlay.Provider.StateMachine.CurrentStateWithoutDebugCache",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCkDebugOverlay_Provider_StateMachine_CurrentStateWithoutDebugCache::RunTest(const FString&)
+{
+    auto EnttRegistry = ck::registry_table::EnttRegistryType{};
+    const auto RegistryHandle = ck::registry_table::Allocate(&EnttRegistry);
+    auto Registry = FCk_Registry{RegistryHandle};
+    ON_SCOPE_EXIT { ck::registry_table::Free(RegistryHandle); };
+
+    const auto TransientEntityId = FCk_Entity{EnttRegistry.create()};
+    Registry.SetContext<ck::FCtx_TransientEntity>(ck::FCtx_TransientEntity{TransientEntityId});
+
+    auto StateMachine = UCk_Utils_EntityLifetime_UE::Request_CreateEntity(Registry);
+    StateMachine.Add<ck::FFragment_Sm_Current>(
+        ECk_SmRunStatus::Running,
+        FCk_Handle_SmState{},
+        UCk_SmState_EntityScript::StaticClass());
+
+    FCk_DebugOverlay_ProviderConfig Config;
+    Config.EnabledFields.AddTag(TestTag_SM_State);
+
+    FCk_DebugOverlay_Section Section;
+    FCk_DebugOverlay_Provider_StateMachine Provider;
+    TestFalse(TEXT("state machine has no debug cache"), StateMachine.Has<ck::FFragment_Sm_Debug>());
+    Provider.Collect(StateMachine, Config, Section);
+
+    TestEqual(TEXT("one current-state row"), Section.Rows.Num(), 1);
+    if (Section.Rows.Num() != 1)
+    { return false; }
+
+    const auto& Row = Section.Rows[0];
+    TestTrue(TEXT("row is State"), Row.FieldTag == TestTag_SM_State);
+    TestFalse(TEXT("row has current-state text"), Row.Value.IsEmpty());
+    TestEqual(TEXT("running state is good"), Row.Severity, ECk_DebugOverlay_Severity::Good);
+    return true;
+}
+
 // --------------------------------------------------------------------------------------------------------------------
 
 #endif // WITH_EDITOR && WITH_DEV_AUTOMATION_TESTS

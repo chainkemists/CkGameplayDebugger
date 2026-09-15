@@ -1,0 +1,15 @@
+<ui version="1">
+  <region name="main">
+    <column id="save-shell"><column id="save-shell-content" class="save-shell">
+      <column id="save-summary-host" class="save-summary"><native id="save-summary" bind="summary" /></column>
+      <splitter id="save-main" direction="vertical" class="save-main">
+        <splitter id="save-columns" direction="horizontal" class="save-columns">
+          <column id="save-nav-pane" class="save-pane"><text id="save-nav-heading" class="save-heading">Ownership</text><column id="save-nav-host" class="save-port"><native id="save-nav" bind="entity-navigation" /></column></column>
+          <column id="save-detail-pane" class="save-pane"><text id="save-detail-heading" class="save-heading">Entity detail</text><column id="save-detail-host" class="save-port"><native id="save-detail" bind="entity-detail" /></column><text id="save-payload-heading" class="save-heading">Payloads</text><column id="save-payload-host" class="save-port save-payload"><native id="save-payload" bind="payload-list" /></column></column>
+          <column id="save-right-pane" class="save-pane"><column id="save-right-host" class="save-port"><native id="save-right" bind="right-column" /></column></column>
+        </splitter>
+        <column id="save-diagnostics-pane" class="save-pane"><column id="save-diagnostics-host" class="save-port"><native id="save-diagnostics" bind="diagnostics" /></column></column>
+      </splitter>
+    </column></column>
+  </region>
+</ui>

@@ -5,6 +5,7 @@
 
 class SCkSaveDebuggerWindow;
 class SDockTab;
+struct FCkSaveDebuggerAuthoredShellTestAccess;
 
 class FCkSaveDebuggerModule : public IModuleInterface
 {
@@ -18,14 +19,17 @@ public:
     auto CloseDebugger() -> void;
     auto ToggleDebugger() -> void;
     auto IsDebuggerOpen() const -> bool;
+    auto HandleEnginePreExit() -> void;
 
 private:
+    friend struct FCkSaveDebuggerAuthoredShellTestAccess;
     auto OnSpawnDebuggerTab(const class FSpawnTabArgs& InArgs) -> TSharedRef<SDockTab>;
 
     TSharedPtr<SCkSaveDebuggerWindow> _DebuggerWindow;
     TSharedPtr<SDockTab> _DebuggerTab;
 
     uint64 _DebuggerToolRegistrationId = 0;
+    FDelegateHandle _EnginePreExitHandle;
 
     static const FName _DebuggerTabName;
 };

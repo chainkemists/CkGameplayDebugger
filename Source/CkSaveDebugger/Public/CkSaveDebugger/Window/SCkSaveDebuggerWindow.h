@@ -16,13 +16,16 @@
 
 class SCkDebug_SelectableLabel;
 class STextBlock;
+class SBox;
 class SVerticalBox;
 class SWidgetSwitcher;
 class FCkUiView;
 class FCkUiTreeCollection;
 class SCkUiTree;
+class IMenu;
 struct FCkUiLoadResult;
 struct FSlateBrush;
+struct FCkSaveDebuggerAuthoredShellTestAccess;
 
 // --------------------------------------------------------------------------------------------------------------------
 
@@ -41,6 +44,9 @@ public:
     static const FName WindowId;
 
     SLATE_BEGIN_ARGS(SCkSaveDebuggerWindow) {}
+#if WITH_DEV_AUTOMATION_TESTS
+        SLATE_ARGUMENT(FString, TestResourceDirectory)
+#endif
     SLATE_END_ARGS()
 
     auto
@@ -63,6 +69,9 @@ public:
     auto Get_EntityFilterStringForTest() const -> const FString&;
     auto Get_EntityHighlightStringForTest() const -> const FString&;
     auto Open_SaveFileForTest(const FString& InAbsolutePath) -> bool;
+    auto Release_Presentation() -> void;
+    auto Get_AuthoredBody() const -> TSharedPtr<FCkUiView> { return _AuthoredBodyView; }
+    auto IsUsingNativeBodyFallback() const -> bool { return _UsingNativeBodyFallback; }
     const FString& Get_LastEntityContextActionKey() const { return _LastEntityContextActionKey; }
     int32 Get_EntityContextActionCount() const { return _EntityContextActionCount; }
 
@@ -70,6 +79,7 @@ protected:
     virtual auto OnStyleRevisionChanged() -> void override;
 
 private:
+    friend struct FCkSaveDebuggerAuthoredShellTestAccess;
     // ---- Chrome construction ----
     auto DoCreate_MenuActions() -> TSharedRef<SWidget>;
     auto DoCreate_FileControls() -> TSharedRef<SWidget>;
@@ -77,6 +87,12 @@ private:
     auto DoCreate_ExportControls() -> TSharedRef<SWidget>;
     auto DoCreate_FileStatus() -> TSharedRef<SWidget>;
     auto DoCreate_Body() -> TSharedRef<SWidget>;
+    auto DoCreate_NativeBody() -> TSharedRef<SWidget>;
+    auto DoInitialize_AuthoredBody() -> void;
+    auto DoPoll_AuthoredBody(double InCurrentTime, float InDeltaTime) -> EActiveTimerReturnType;
+    auto DoMount_AuthoredBody() -> bool;
+    auto DoDetach_NativeBodyPorts() -> void;
+    auto DoRestore_NativeBodyPorts() -> void;
     auto DoCreate_Status() -> TSharedRef<SWidget>;
     auto DoCreate_ProvenanceChips() -> TSharedRef<SWidget>;
     auto DoCreate_BlobColumn() -> TSharedRef<SWidget>;
@@ -161,6 +177,9 @@ private:
         ESelectInfo::Type InSelectInfo) -> void;
 
     auto DoOnDiffGroupContextMenu() -> TSharedPtr<SWidget>;
+    /** Own the native menus opened by the three offline list surfaces. */
+    auto DoOpenOwnedContextMenu(const TSharedPtr<SWidget>& InParent, TSharedPtr<SWidget> InContent) -> TSharedPtr<SWidget>;
+    auto ReleaseContextMenus() -> void;
 
     auto DoGenerate_ValueRow(
         TSharedPtr<FCk_SnapshotInspection_ValueNode> InItem,
@@ -201,6 +220,7 @@ private:
     FString _CurrentPath;
 
     TSharedPtr<FCkUiView> _EntityNavigationView;
+    TSharedPtr<FCkUiView> _AuthoredBodyView;
     TSharedPtr<FCkUiTreeCollection> _EntityNavigationModel;
     TMap<FString, TWeakPtr<FCkSaveDebugger_TreeNode>> _EntityNodesByUiKey;
     /** Own copied style brushes: authored Image fields may outlive the style pointer used to publish a row. */
@@ -226,6 +246,7 @@ private:
     TSharedPtr<SWidgetSwitcher> _RightColumnSwitcher;
 
     TSharedPtr<SListView<TSharedPtr<FCkSaveDebugger_DiffGroupRow>>> _DiffGroupList;
+    TSharedPtr<IMenu> _ContextMenu;
     TArray<TSharedPtr<FCkSaveDebugger_DiffGroupRow>> _DiffGroupRows;
     TMap<FString, TSharedPtr<FCkSaveDebugger_DiffGroupRow>> _DiffGroupRowsByPath;
 
@@ -245,6 +266,27 @@ private:
     TSharedPtr<SVerticalBox> _BlobDetailBox;
     TSharedPtr<SVerticalBox> _DiffHeaderBox;
     TSharedPtr<SVerticalBox> _DiffDetailBox;
+
+    // Ports are persistent native widgets. The fallback hosts own them only while the authored shell is rejected;
+    // the shell otherwise owns exactly the same six widgets, never recreated during an authored reload.
+    TSharedPtr<SBox> _BodyHost;
+    TSharedPtr<SBox> _SummaryMount;
+    TSharedPtr<SBox> _EntityNavigationMount;
+    TSharedPtr<SBox> _EntityDetailMount;
+    TSharedPtr<SBox> _PayloadMount;
+    TSharedPtr<SBox> _RightColumnMount;
+    TSharedPtr<SBox> _DiagnosticsMount;
+    TSharedPtr<SBox> _FallbackSummaryHost;
+    TSharedPtr<SBox> _FallbackEntityNavigationHost;
+    TSharedPtr<SBox> _FallbackEntityDetailHost;
+    TSharedPtr<SBox> _FallbackPayloadHost;
+    TSharedPtr<SBox> _FallbackRightColumnHost;
+    TSharedPtr<SBox> _FallbackDiagnosticsHost;
+    bool _UsingNativeBodyFallback = true;
+    bool _PresentationReleased = false;
+#if WITH_DEV_AUTOMATION_TESTS
+    FString _TestResourceDirectory;
+#endif
 
     // Which group's per-type table the detail panel under the list is showing. Identity paths, not saved ids —
     // ids are not stable across captures, which is the whole reason the diff groups by identity.

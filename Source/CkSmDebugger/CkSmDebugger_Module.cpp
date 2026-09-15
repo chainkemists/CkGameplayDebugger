@@ -12,6 +12,7 @@
 #include "CkDebuggerCommon/Navigation/CkDebug_SelectionSync.h"
 
 #include "Framework/Docking/TabManager.h"
+#include "Misc/CoreDelegates.h"
 #include "Widgets/Docking/SDockTab.h"
 #if WITH_EDITOR
     #include "WorkspaceMenuStructure.h"
@@ -60,6 +61,8 @@ auto FCkSmDebuggerModule::StartupModule() -> void
     auto& TabSpawner = FGlobalTabmanager::Get()->RegisterNomadTabSpawner(
         _DebuggerTabName,
         FOnSpawnTab::CreateRaw(this, &FCkSmDebuggerModule::OnSpawnDebuggerTab))
+        .SetReuseTabMethod(FOnFindTabToReuse::CreateLambda(
+            [this](const FTabId&) { return _DebuggerTab; }))
         .SetDisplayName(FText::FromString(TEXT("CK State Machine Debugger")))
         .SetTooltipText(FText::FromString(TEXT("Opens the CK State Machine Debugger window")));
 #if WITH_EDITOR
@@ -107,10 +110,19 @@ auto FCkSmDebuggerModule::StartupModule() -> void
             const auto Guard = ck::DebugSelectionSync::FApplyGuard{};
             _DebuggerWindow->TargetEntity(Target);
         });
+
+    // The window owns handles and Slate capture. Release both while their producers are still alive;
+    // ShutdownModule is after the registry and Slate teardown boundary.
+    _EnginePreExitHandle = FCoreDelegates::OnEnginePreExit.AddRaw(this, &FCkSmDebuggerModule::HandleEnginePreExit);
 }
 
 auto FCkSmDebuggerModule::ShutdownModule() -> void
 {
+    if (_EnginePreExitHandle.IsValid())
+    {
+        FCoreDelegates::OnEnginePreExit.Remove(_EnginePreExitHandle);
+        _EnginePreExitHandle.Reset();
+    }
     if (_SelectionSyncHandle.IsValid())
     {
         ck::DebugSelectionSync::Get_OnSelection().Remove(_SelectionSyncHandle);
@@ -136,8 +148,9 @@ auto FCkSmDebuggerModule::ShutdownModule() -> void
         FGlobalTabmanager::Get()->UnregisterNomadTabSpawner(_DebuggerTabName);
     }
 
+    if (_DebuggerWindow.IsValid()) { _DebuggerWindow->Release_Presentation(); }
+    ck::debugger_tabs::Release_DebuggerTab(_DebuggerTab, false);
     _DebuggerWindow.Reset();
-    _DebuggerTab.Reset();
 }
 
 auto FCkSmDebuggerModule::Get() -> FCkSmDebuggerModule&
@@ -153,17 +166,17 @@ auto FCkSmDebuggerModule::OpenDebugger() -> void
 auto FCkSmDebuggerModule::CloseDebugger() -> void
 {
     UCk_Utils_StateMachineDebug_UE::Set_IsDebuggerCaptureVisible(false);
+    if (_DebuggerWindow.IsValid()) { _DebuggerWindow->Release_Presentation(); }
+    ck::debugger_tabs::Release_DebuggerTab(_DebuggerTab, NOT IsEngineExitRequested());
+    _DebuggerWindow.Reset();
+}
 
-    if (_DebuggerTab.IsValid())
-    {
-        // Engine shutdown destroys Slate windows BEFORE module unload — by then
-        // the tab's TSharedFromThis backing is gone and RequestCloseTab →
-        // SharedThis(this) trips the AsShared check. Just drop the ref on exit.
-        if (NOT IsEngineExitRequested())
-        { _DebuggerTab->RequestCloseTab(); }
-        _DebuggerTab.Reset();
-    }
-
+auto FCkSmDebuggerModule::HandleEnginePreExit() -> void
+{
+    UCk_Utils_StateMachineDebug_UE::Set_IsDebuggerCaptureVisible(false);
+    if (_DebuggerWindow.IsValid()) { _DebuggerWindow->Release_Presentation(); }
+    // Never request a tab close while the engine is dismantling its weak Slate backing.
+    ck::debugger_tabs::Release_DebuggerTab(_DebuggerTab, false);
     _DebuggerWindow.Reset();
 }
 
@@ -194,6 +207,7 @@ auto FCkSmDebuggerModule::OnSpawnDebuggerTab(const FSpawnTabArgs& InArgs) -> TSh
         .OnTabClosed_Lambda([this](TSharedRef<SDockTab>)
         {
             UCk_Utils_StateMachineDebug_UE::Set_IsDebuggerCaptureVisible(false);
+            if (_DebuggerWindow.IsValid()) { _DebuggerWindow->Release_Presentation(); }
             _DebuggerWindow.Reset();
             _DebuggerTab.Reset();
         })

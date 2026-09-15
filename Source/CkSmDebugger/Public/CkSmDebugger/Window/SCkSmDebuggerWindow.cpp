@@ -18,6 +18,7 @@
 #include "CkStateMachine/Debug/CkStateMachine_Debug_Utils.h"
 
 #include "CkDebuggerCommon/Window/CkDebuggerRefreshGate.h"
+#include "CkDebuggerCommon/UI/CkDebug_UiRegistry.h"
 #include "CkDebuggerCommon/Lifecycle/CkDebug_SessionLifecycle.h"
 #include "CkDebuggerCommon/Settings/CkDebuggerStyleSettings.h"
 #include "CkDebuggerCommon/Styles/CkDebuggerAxes.h"
@@ -33,7 +34,12 @@
 #include "CkDebuggerCommon/Widgets/SCkDebug_ScrubTimeline.h"
 
 #include "CkEditorTools/Style/CkStyle.h"
+#include "CkSlateLayout/SCkUiSurface.h"
 
+#include "Framework/Application/SlateApplication.h"
+#include "Framework/Application/SlateUser.h"
+#include "Interfaces/IPluginManager.h"
+#include "Layout/WidgetPath.h"
 
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/Layout/SBox.h"
@@ -63,6 +69,39 @@
 // helper names (MakePill, MakeSectionHeader, ...) collide with any other file's local versions.
 namespace ck_sm_debugger_window
 {
+    auto AuthoredShellStyleTokens() -> FCkUiView::FTokens
+    {
+        const auto Color = [](const FLinearColor& InColor) { return TEXT("#") + InColor.ToFColorSRGB().ToHex(); };
+        return {{TEXT("--sm-surface"), Color(CkStyle::Bg2())}, {TEXT("--sm-border"), Color(CkStyle::Border())},
+            {TEXT("--sm-text"), Color(CkStyle::Text())}, {TEXT("--sm-muted"), Color(CkStyle::TextMute())},
+            {TEXT("--sm-space-s"), FString::SanitizeFloat(CkStyle::SpaceS)},
+            {TEXT("--sm-heading-size"), FString::FromInt(CkStyle::FontSizeSmall())}};
+    }
+
+    auto ReleaseOwnedSlateInput(const TSharedRef<SWidget>& InRoot) -> void
+    {
+        if (NOT FSlateApplication::IsInitialized()) { return; }
+        FSlateApplication& Slate = FSlateApplication::Get();
+        Slate.ForEachUser([&Slate, &InRoot](FSlateUser& InUser)
+        {
+            const auto IsUnderRoot = [&Slate, &InRoot](const TSharedPtr<SWidget>& InWidget)
+            {
+                FWidgetPath Path;
+                if (!InWidget.IsValid() || !Slate.GeneratePathToWidgetUnchecked(InWidget.ToSharedRef(), Path, EVisibility::All)) { return false; }
+                for (int32 WidgetIndex = 0; WidgetIndex < Path.Widgets.Num(); ++WidgetIndex)
+                { if (Path.Widgets[WidgetIndex].Widget == InRoot) { return true; } }
+                return false;
+            };
+            const int32 UserIndex = InUser.GetUserIndex();
+            if (IsUnderRoot(Slate.GetUserFocusedWidget(UserIndex))) { Slate.ClearUserFocus(UserIndex, EFocusCause::SetDirectly); }
+            if (IsUnderRoot(InUser.GetCursorCaptor())) { InUser.ReleaseCursorCapture(); }
+            TSet<uint32> PointerIndices{FSlateApplication::CursorPointerIndex};
+            for (const auto& Entry : InUser.GetWidgetsUnderPointerLastEventByIndex()) { PointerIndices.Add(Entry.Key); }
+            for (const uint32 PointerIndex : PointerIndices)
+            { if (IsUnderRoot(InUser.GetPointerCaptor(PointerIndex))) { InUser.ReleaseCapture(PointerIndex); } }
+        }, true);
+    }
+
     // Detail-panel roles. Every one of these used to be a hardcoded literal in this block; they are
     // now thin aliases onto CkStyle:: so a palette edit (Editor Preferences -> Ck -> Style) moves the
     // panel, and so the SM panel converges on the rest of the suite.
@@ -332,6 +371,7 @@ namespace ck_sm_debugger_window
 
 SCkSmDebuggerWindow::~SCkSmDebuggerWindow()
 {
+    Release_Presentation();
     UCk_Utils_StateMachineDebug_UE::Set_IsDebuggerCaptureVisible(false);
 
     if (_WorldModel.IsValid() && _WorldChangedHandle.IsValid())
@@ -976,6 +1016,9 @@ auto
         const FArguments& InArgs)
     -> void
 {
+#if WITH_DEV_AUTOMATION_TESTS
+    _TestResourceDirectory = InArgs._TestResourceDirectory;
+#endif
     Register_WithGate();
 
     _ViewModel = MakeShared<FCkSmDebugger_ViewModel>();
@@ -1034,13 +1077,6 @@ auto
             _AutoSelectActiveState = InStateIndex == INDEX_NONE && InTransitionIndex == INDEX_NONE;
         }));
 
-    // Build the full layout
-    //
-    //   Toolbar
-    //   ├─ Graph (full width, resizable)
-    //   ├─ Timeline (full width, auto-height)
-    //   └─ History | Details (side-by-side, resizable)
-
     ChildSlot
     [
         SNew(SCkDebug_WindowChrome)
@@ -1066,151 +1102,14 @@ auto
               ]
               .Content()
              [
-                 SNew(SVerticalBox)
-
-            // Main content area — wrapped in a horizontal splitter so the preview
-            // pane can slide in on the right at 50% width without disturbing the
-            // existing vertical layout on the left.
-            + SVerticalBox::Slot()
-                .FillHeight(1.0f)
+                SAssignNew(_BodyHost, SBox)
                 [
-                    SAssignNew(_RootSplitter, SSplitter)
-                        .Orientation(Orient_Horizontal)
-
-                        + SSplitter::Slot()
-                            .Value(1.0f)
-                            [
-                    SNew(SSplitter)
-                        .Orientation(Orient_Vertical)
-
-                        // Graph canvas (full width, ~65%)
-                        + SSplitter::Slot()
-                            .Value(0.65f)
-                            [
-                                SNew(SCkDebug_PaneHost)
-                                    .ContentMode(ECkDebugPaneContent::OpaqueRenderer)
-                                    [
-                                        _RuntimeGraph.ToSharedRef()
-                                    ]
-                            ]
-
-                        // Bottom area (~35%): timeline + history|details
-                        + SSplitter::Slot()
-                            .Value(0.35f)
-                            [
-                                SNew(SVerticalBox)
-
-                                // Timeline bar (full width, auto-height)
-                                // Timeline toolbar — scrub navigation kept close to the timeline.
-                                + SVerticalBox::Slot()
-                                    .AutoHeight()
-                                    .Padding(4.0f, 2.0f, 4.0f, 0.0f)
-                                    [
-                                        BuildTimelineToolbar()
-                                    ]
-
-                                + SVerticalBox::Slot()
-                                    .AutoHeight()
-                                    [
-                                        SAssignNew(_Timeline, SCkDebug_ScrubTimeline)
-                                            .DesiredHeight(56.0f)
-                                            .InitialViewDuration(_TimelineViewDuration)
-                                            .SegmentHeightFraction(0.5f)
-                                            .RulerLabelCount(5)
-                                            .Mode_Lambda([this]()
-                                            {
-                                                return (_ViewModel.IsValid()
-                                                        && _ViewModel->Get_ViewMode() == ECkSmDebugger_ViewMode::Scrub)
-                                                    ? ECkDebug_ScrubMode::Scrub
-                                                    : ECkDebug_ScrubMode::Live;
-                                            })
-                                            .ScrubTime_Lambda([this]() -> double
-                                            {
-                                                return _ViewModel.IsValid()
-                                                    ? _ViewModel->Get_ScrubState().ScrubTime
-                                                    : 0.0;
-                                            })
-                                            // "Now" for the scrubbed run — also the widget's upper
-                                            // clamp, which is what used to be an explicit
-                                            // FMath::Clamp(ScrubTime, 0, RunDuration).
-                                            .LiveTime_Lambda([this]() -> double
-                                            {
-                                                const auto* Run = Get_ScrubbedRun();
-                                                return Run ? Run->Duration : 0.0;
-                                            })
-                                            // Frame labels carry a [mod 1000] tail so nearby labels
-                                            // stay comparable once the absolute frame runs into the
-                                            // millions; the raw number stays greppable against logs.
-                                            .OnFormatTime_Lambda([this](double InTime) -> FString
-                                            {
-                                                const auto ShowFrames = _ViewModel.IsValid()
-                                                    && _ViewModel->Get_ScrubState().ShowFramesOnTimeline;
-
-                                                if (NOT ShowFrames)
-                                                { return FString::Printf(TEXT("%.1fs"), InTime); }
-
-                                                const auto* Run = Get_ScrubbedRun();
-                                                const auto Frame = Run ? ComputeFrameAtTime(*Run, InTime) : int64{0};
-                                                return FString::Printf(TEXT("f%lld [%03lld]"), Frame, Frame % 1000);
-                                            })
-                                            .OnScrubbed_Lambda([this](double InTime)
-                                            {
-                                                if (NOT _ViewModel.IsValid()) { return; }
-
-                                                _ViewModel->Set_ViewMode(ECkSmDebugger_ViewMode::Scrub);
-
-                                                auto NewScrubState = _ViewModel->Get_ScrubState();
-                                                NewScrubState.ViewMode = ECkSmDebugger_ViewMode::Scrub;
-                                                NewScrubState.ScrubTime = FMath::Max(InTime, 0.0);
-                                                _ViewModel->Set_ScrubState(NewScrubState);
-                                            })
-                                            // The widget owns the window; we only mirror the zoom so
-                                            // a new PIE session can re-anchor to t=0 without losing it.
-                                            .OnViewChanged_Lambda([this](double, double InViewDuration)
-                                            {
-                                                _TimelineViewDuration = InViewDuration;
-                                            })
-                                    ]
-
-                                // History | Details (side-by-side, fills remaining)
-                                + SVerticalBox::Slot()
-                                    .FillHeight(1.0f)
-                                    [
-                                        SNew(SSplitter)
-                                            .Orientation(Orient_Horizontal)
-
-                                            // History list (left, 60%)
-                                            + SSplitter::Slot()
-                                                .Value(0.6f)
-                                                [
-                                                    SNew(SCkDebug_PaneHost)
-                                                        [
-                                                            SAssignNew(
-                                                                _HistoryList,
-                                                                SCkSmDebugger_HistoryList,
-                                                                _ViewModel,
-                                                                TAttribute<int32>::CreateLambda([this]
-                                                                {
-                                                                    return _RuntimeGraphFacade.GetLayoutParams().NameDepth;
-                                                                }))
-                                                        ]
-                                                ]
-
-                                            // Detail panel (right, 40%)
-                                            + SSplitter::Slot()
-                                                .Value(0.4f)
-                                                [
-                                                    SNew(SCkDebug_PaneHost)
-                                                        [
-                                                            BuildDetailPanel()
-                                                        ]
-                                                ]
-                                    ]
-                            ]
-                            ]
+                    BuildNativeBody()
                 ]
             ]
     ];
+
+    InitializeAuthoredShell();
 
     // Bind history selection → detail panel. The list has already moved ScrubTime by the time this
     // fires, so re-centring here is what replaces the old "TimelineScrollX = 0" the list used to do.
@@ -1220,6 +1119,183 @@ auto
         FocusTimelineOnCursor();
     });
 }
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto SCkSmDebuggerWindow::BuildNativeBody() -> TSharedRef<SWidget>
+{
+    const TWeakPtr<SCkSmDebuggerWindow> WeakWindow = SharedThis(this);
+    SAssignNew(_GraphMount, SBox)
+    [
+        SNew(SCkDebug_PaneHost).ContentMode(ECkDebugPaneContent::OpaqueRenderer)
+        [_RuntimeGraph.ToSharedRef()]
+    ];
+    SAssignNew(_TimelineMount, SBox)
+    [
+        SNew(SVerticalBox)
+        + SVerticalBox::Slot().AutoHeight().Padding(4.0f, 2.0f, 4.0f, 0.0f)[BuildTimelineToolbar()]
+        + SVerticalBox::Slot().AutoHeight()
+        [
+            SAssignNew(_Timeline, SCkDebug_ScrubTimeline)
+            .DesiredHeight(56.0f).InitialViewDuration(_TimelineViewDuration).SegmentHeightFraction(0.5f).RulerLabelCount(5)
+            .Mode_Lambda([this]() { return _ViewModel.IsValid() && _ViewModel->Get_ViewMode() == ECkSmDebugger_ViewMode::Scrub ? ECkDebug_ScrubMode::Scrub : ECkDebug_ScrubMode::Live; })
+            .ScrubTime_Lambda([this]() -> double { return _ViewModel.IsValid() ? _ViewModel->Get_ScrubState().ScrubTime : 0.0; })
+            .LiveTime_Lambda([this]() -> double { const auto* Run = Get_ScrubbedRun(); return Run ? Run->Duration : 0.0; })
+            .OnFormatTime_Lambda([this](const double InTime) -> FString
+            {
+                if (NOT _ViewModel.IsValid() || NOT _ViewModel->Get_ScrubState().ShowFramesOnTimeline)
+                { return FString::Printf(TEXT("%.1fs"), InTime); }
+                const auto* Run = Get_ScrubbedRun(); const int64 Frame = Run ? ComputeFrameAtTime(*Run, InTime) : 0;
+                return FString::Printf(TEXT("f%lld [%03lld]"), Frame, Frame % 1000);
+            })
+            .OnScrubbed_Lambda([this](const double InTime)
+            {
+                if (_PresentationReleased || NOT _ViewModel.IsValid()) { return; }
+                _ViewModel->Set_ViewMode(ECkSmDebugger_ViewMode::Scrub);
+                auto State = _ViewModel->Get_ScrubState(); State.ViewMode = ECkSmDebugger_ViewMode::Scrub;
+                State.ScrubTime = FMath::Max(InTime, 0.0); _ViewModel->Set_ScrubState(State);
+            })
+            .OnViewChanged_Lambda([this](double, const double InDuration) { _TimelineViewDuration = InDuration; })
+        ]
+    ];
+    SAssignNew(_HistoryMount, SBox)
+    [
+        SNew(SCkDebug_PaneHost)
+        [SAssignNew(_HistoryList, SCkSmDebugger_HistoryList, _ViewModel, TAttribute<int32>::CreateLambda([this]() { return _RuntimeGraphFacade.GetLayoutParams().NameDepth; }))]
+    ];
+    SAssignNew(_DetailMount, SBox)[SNew(SCkDebug_PaneHost)[BuildDetailPanel()]];
+    SAssignNew(_PreviewMount, SBox)[_PreviewPane.ToSharedRef()];
+    SAssignNew(_PreviewPickerMount, SBox)[BuildPreviewPickerCommands()];
+
+    SAssignNew(_FallbackGraphHost, SBox)[_GraphMount.ToSharedRef()];
+    SAssignNew(_FallbackTimelineHost, SBox)[_TimelineMount.ToSharedRef()];
+    SAssignNew(_FallbackHistoryHost, SBox)[_HistoryMount.ToSharedRef()];
+    SAssignNew(_FallbackDetailHost, SBox)[_DetailMount.ToSharedRef()];
+    SAssignNew(_FallbackPreviewHost, SBox)[_PreviewMount.ToSharedRef()];
+    SAssignNew(_FallbackPreviewPickerHost, SBox)[_PreviewPickerMount.ToSharedRef()];
+
+    return SAssignNew(_RootSplitter, SSplitter).Orientation(Orient_Horizontal)
+        + SSplitter::Slot().Value(1.0f)
+        [
+            SNew(SSplitter).Orientation(Orient_Vertical)
+            + SSplitter::Slot().Value(0.65f)[_FallbackGraphHost.ToSharedRef()]
+            + SSplitter::Slot().Value(0.35f)
+            [
+                SNew(SVerticalBox)
+                + SVerticalBox::Slot().AutoHeight()[_FallbackTimelineHost.ToSharedRef()]
+                + SVerticalBox::Slot().FillHeight(1.0f)
+                [
+                    SNew(SSplitter).Orientation(Orient_Horizontal)
+                    + SSplitter::Slot().Value(0.6f)[_FallbackHistoryHost.ToSharedRef()]
+                    + SSplitter::Slot().Value(0.4f)[_FallbackDetailHost.ToSharedRef()]
+                ]
+            ]
+        ]
+        + SSplitter::Slot().Value(1.0f)
+        [
+            SNew(SVerticalBox).Visibility_Lambda([WeakWindow]()
+            {
+                const TSharedPtr<SCkSmDebuggerWindow> Window = WeakWindow.Pin();
+                return Window.IsValid() && Window->_IsPreviewOpen ? EVisibility::Visible : EVisibility::Collapsed;
+            })
+            + SVerticalBox::Slot().AutoHeight()[_FallbackPreviewPickerHost.ToSharedRef()]
+            + SVerticalBox::Slot().FillHeight(1.0f)[_FallbackPreviewHost.ToSharedRef()]
+        ];
+}
+
+auto SCkSmDebuggerWindow::InitializeAuthoredShell() -> void
+{
+    TSharedPtr<const FCkUiWidgetRegistrySnapshot> Registry;
+    const FCkUiLoadResult RegistryResult = FCkDebug_UiRegistry::TryCreate(Registry);
+    const TSharedPtr<IPlugin> Plugin = IPluginManager::Get().FindPlugin(TEXT("CkDebugger"));
+    if (!RegistryResult.Succeeded || !Registry.IsValid() || !Plugin.IsValid() || !_BodyHost.IsValid()) { return; }
+    auto Ports = FCkUiView::FNativeBindings{};
+    Ports.Add(TEXT("graph"), _GraphMount); Ports.Add(TEXT("timeline"), _TimelineMount);
+    Ports.Add(TEXT("history"), _HistoryMount); Ports.Add(TEXT("details"), _DetailMount);
+    Ports.Add(TEXT("preview"), _PreviewMount); Ports.Add(TEXT("preview-picker"), _PreviewPickerMount);
+    auto Data = FCkUiView::FDataBindings{};
+    Data.CanDispatchEvents = TAttribute<bool>::CreateLambda([Weak = TWeakPtr<SCkSmDebuggerWindow>{SharedThis(this)}]()
+    { const TSharedPtr<SCkSmDebuggerWindow> Window = Weak.Pin(); return Window.IsValid() && !Window->_PresentationReleased; });
+    Data.Visibility.Add(TEXT("sm-preview-open"), TAttribute<bool>::CreateLambda(
+        [Weak = TWeakPtr<SCkSmDebuggerWindow>{SharedThis(this)}]()
+        {
+            const TSharedPtr<SCkSmDebuggerWindow> Window = Weak.Pin();
+            return Window.IsValid() && !Window->_PresentationReleased && Window->_IsPreviewOpen;
+        }));
+    _AuthoredShell = FCkUiView::Create(MoveTemp(Ports), {}, ck_sm_debugger_window::AuthoredShellStyleTokens(),
+        CkStyle::RegularFont(CkStyle::FontSizeBody()), MoveTemp(Data), Registry);
+    FString Directory = FPaths::Combine(Plugin->GetBaseDir(), TEXT("Resources/UI"));
+#if WITH_DEV_AUTOMATION_TESTS
+    if (!_TestResourceDirectory.IsEmpty()) { Directory = _TestResourceDirectory; }
+#endif
+    _AuthoredShell->SetFiles(FPaths::Combine(Directory, TEXT("SmDebuggerShell.ui.html")), FPaths::Combine(Directory, TEXT("SmDebuggerShell.ui.css")));
+    _AuthoredShell->GetRegion(TEXT("main"));
+    DetachNativeShellPorts(); _AuthoredShell->PollFiles(ck_sm_debugger_window::AuthoredShellStyleTokens());
+    if (!MountAuthoredShell()) { RestoreNativeShellPorts(); }
+    RegisterActiveTimer(0.5f, FWidgetActiveTimerDelegate::CreateSP(this, &SCkSmDebuggerWindow::PollAuthoredShell));
+}
+
+auto SCkSmDebuggerWindow::PollAuthoredShell(double, float) -> EActiveTimerReturnType
+{
+    if (_PresentationReleased || !_AuthoredShell.IsValid()) { return EActiveTimerReturnType::Stop; }
+    if (_UsingNativeShellFallback) { DetachNativeShellPorts(); }
+    _AuthoredShell->PollFiles(ck_sm_debugger_window::AuthoredShellStyleTokens());
+    if (_UsingNativeShellFallback && MountAuthoredShell()) { return EActiveTimerReturnType::Continue; }
+    if (_UsingNativeShellFallback) { RestoreNativeShellPorts(); }
+    return EActiveTimerReturnType::Continue;
+}
+
+auto SCkSmDebuggerWindow::MountAuthoredShell() -> bool
+{
+    if (!_AuthoredShell.IsValid() || !_BodyHost.IsValid() || !_AuthoredShell->GetLastResult().Succeeded) { return false; }
+    _BodyHost->SetContent(SNullWidget::NullWidget);
+    _BodyHost->SetContent(_AuthoredShell->GetRegion(TEXT("main")));
+    _UsingNativeShellFallback = false;
+    return true;
+}
+
+auto SCkSmDebuggerWindow::DetachNativeShellPorts() -> void
+{
+    for (const TSharedPtr<SBox>& Host : {_FallbackGraphHost, _FallbackTimelineHost, _FallbackHistoryHost,
+         _FallbackDetailHost, _FallbackPreviewHost, _FallbackPreviewPickerHost})
+    { if (Host.IsValid()) { Host->SetContent(SNullWidget::NullWidget); } }
+}
+
+auto SCkSmDebuggerWindow::RestoreNativeShellPorts() -> void
+{
+    const auto Restore = [](const TSharedPtr<SBox>& Host, const TSharedPtr<SBox>& Port)
+    { if (Host.IsValid() && Port.IsValid() && !Port->GetParentWidget().IsValid()) { Host->SetContent(Port.ToSharedRef()); } };
+    Restore(_FallbackGraphHost, _GraphMount); Restore(_FallbackTimelineHost, _TimelineMount);
+    Restore(_FallbackHistoryHost, _HistoryMount); Restore(_FallbackDetailHost, _DetailMount);
+    Restore(_FallbackPreviewHost, _PreviewMount); Restore(_FallbackPreviewPickerHost, _PreviewPickerMount);
+    if (_BodyHost.IsValid() && _RootSplitter.IsValid()) { _BodyHost->SetContent(_RootSplitter.ToSharedRef()); }
+    _UsingNativeShellFallback = true;
+}
+
+auto SCkSmDebuggerWindow::Release_Presentation() -> void
+{
+    if (_PresentationReleased) { return; }
+    _PresentationReleased = true;
+    if (_ViewportPicker.IsValid()) { _ViewportPicker->Deactivate(); }
+    if (_WorldModel.IsValid() && _WorldChangedHandle.IsValid()) { _WorldModel->OnWorldChanged.Remove(_WorldChangedHandle); _WorldChangedHandle.Reset(); }
+    if (_SessionInvalidatedHandle.IsValid()) { ck::DebugSessionLifecycle::Get_OnSessionInvalidated().Remove(_SessionInvalidatedHandle); _SessionInvalidatedHandle.Reset(); }
+    HandleWorldTornDown();
+    if (_AuthoredShell.IsValid()) { _AuthoredShell->ReleaseOwnerInteractions(); }
+    if (_BodyHost.IsValid()) { ck_sm_debugger_window::ReleaseOwnedSlateInput(_BodyHost.ToSharedRef()); _BodyHost->SetContent(SNullWidget::NullWidget); }
+    for (const TSharedPtr<SBox>& Port : {_GraphMount, _TimelineMount, _HistoryMount, _DetailMount, _PreviewMount, _PreviewPickerMount})
+    { if (Port.IsValid()) { Port->SetContent(SNullWidget::NullWidget); } }
+    ChildSlot[SNullWidget::NullWidget];
+    _AuthoredShell.Reset(); _RuntimeGraph.Reset(); _Timeline.Reset(); _HistoryList.Reset(); _PreviewPane.Reset();
+    _ViewModel.Reset(); _DataCollector.Reset(); _WorldModel.Reset(); _ViewportPicker.Reset();
+}
+
+#if WITH_DEV_AUTOMATION_TESTS
+auto SCkSmDebuggerWindow::TryReload_AuthoredShell(const FString& InMarkup, const FString& InStylesheet) -> FCkUiLoadResult
+{
+    if (_PresentationReleased || !_AuthoredShell.IsValid()) { return {false, {TEXT("State-machine debugger presentation has been released.")}}; }
+    return _AuthoredShell->TryReload(InMarkup, InStylesheet, TEXT("SmDebugger"));
+}
+#endif
 
 // --------------------------------------------------------------------------------------------------------------------
 
@@ -1234,6 +1310,8 @@ auto
     // MUST be the direct base, not SCompoundWidget: the base's Tick is what polls the Layer-B style
     // revision behind the refresh gate. Calling the grandparent kills live style-apply silently.
     SCkDebugger_WindowBase::Tick(InAllottedGeometry, InCurrentTime, InDeltaTime);
+
+    if (_PresentationReleased) { return; }
 
     // Viewport-picker ticks stay ungated so input handling keeps working even
     // when the panel refresh is paused.
@@ -2162,23 +2240,7 @@ auto
                     {
                         _IsPreviewOpen = NOT _IsPreviewOpen;
 
-                        if (NOT _RootSplitter.IsValid())
-                        { return FReply::Handled(); }
-
-                        if (_IsPreviewOpen && _PreviewPane.IsValid())
-                        {
-                            // Even 50/50 split with the live view on the left
-                            _RootSplitter->AddSlot()
-                                .Value(1.0f)
-                                [
-                                    _PreviewPane.ToSharedRef()
-                                ];
-                        }
-                        else if (_RootSplitter->GetChildren()->Num() > 1)
-                        {
-                            _RootSplitter->RemoveAt(_RootSplitter->GetChildren()->Num() - 1);
-                        }
-
+                        // Both shells retain the same preview and picker ports; their bound visibility changes.
                         return FReply::Handled();
                     })
             ]
@@ -2210,13 +2272,6 @@ auto
                         return FReply::Handled();
                     })
             ]
-
-        + SHorizontalBox::Slot()
-        .AutoWidth()
-        .VAlign(VAlign_Center)
-        [
-            BuildPreviewPickerCommands()
-        ]
 
         + SHorizontalBox::Slot()
         .AutoWidth()

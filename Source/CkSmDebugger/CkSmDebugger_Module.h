@@ -20,7 +20,9 @@ public:
     auto IsDebuggerOpen() const -> bool;
 
 private:
+    friend struct FCkSmDebuggerAuthoredShellTestAccess;
     auto OnSpawnDebuggerTab(const class FSpawnTabArgs& InArgs) -> TSharedRef<SDockTab>;
+    auto HandleEnginePreExit() -> void;
     auto OnTabForegrounded(
         TSharedPtr<SDockTab> InNewForegroundTab,
         TSharedPtr<SDockTab>) -> void;
@@ -32,6 +34,7 @@ private:
     uint64 _EntityTargetRouteRegistrationId = 0;
     FDelegateHandle _SelectionSyncHandle;
     FDelegateHandle _TabForegroundedHandle;
+    FDelegateHandle _EnginePreExitHandle;
 
     static const FName _DebuggerTabName;
 };

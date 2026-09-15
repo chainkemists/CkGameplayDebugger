@@ -8,6 +8,7 @@
 class SCkCrowdDebuggerWindow;
 class SDockTab;
 class FSpawnTabArgs;
+struct FCkCrowdDebuggerLifecycleTestAccess;
 
 // --------------------------------------------------------------------------------------------------------------------
 
@@ -28,6 +29,7 @@ public:
 	auto IsDebuggerOpen() const -> bool;
 
 private:
+	friend struct FCkCrowdDebuggerLifecycleTestAccess;
 	auto OnSpawnDebuggerTab(const FSpawnTabArgs& InArgs) -> TSharedRef<SDockTab>;
 	auto HandleEnginePreExit() -> void;
 

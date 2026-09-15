@@ -50,6 +50,10 @@
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/Text/STextBlock.h"
 
+#include "Framework/Application/SlateApplication.h"
+#include "Framework/Application/SlateUser.h"
+#include "Layout/WidgetPath.h"
+
 // --------------------------------------------------------------------------------------------------------------------
 
 const FName SCkAudioDebuggerWindow::WindowId = FName(TEXT("AudioDebugger"));
@@ -67,6 +71,43 @@ namespace ck_audio_debugger_window
     constexpr auto k_RadarSize       = 260.0f;
     constexpr auto k_CurveHeight     = 110.0f;
     constexpr auto k_EventLogCapacity = 300;
+
+    auto ReleaseOwnedSlateInput(const TSharedRef<SWidget>& InRoot) -> void
+    {
+        if (NOT FSlateApplication::IsInitialized()) { return; }
+
+        auto& Slate = FSlateApplication::Get();
+        const auto IsUnderRoot = [&Slate, &InRoot](const TSharedPtr<SWidget>& InWidget)
+        {
+            FWidgetPath Path;
+            if (NOT InWidget.IsValid()
+                || NOT Slate.GeneratePathToWidgetUnchecked(InWidget.ToSharedRef(), Path, EVisibility::All))
+            { return false; }
+
+            for (int32 WidgetIndex = 0; WidgetIndex < Path.Widgets.Num(); ++WidgetIndex)
+            {
+                if (Path.Widgets[WidgetIndex].Widget == InRoot) { return true; }
+            }
+            return false;
+        };
+
+        Slate.ForEachUser([&Slate, &IsUnderRoot](FSlateUser& InUser)
+        {
+            const int32 UserIndex = InUser.GetUserIndex();
+            if (IsUnderRoot(Slate.GetUserFocusedWidget(UserIndex)))
+            { Slate.ClearUserFocus(UserIndex, EFocusCause::SetDirectly); }
+            if (IsUnderRoot(InUser.GetCursorCaptor())) { InUser.ReleaseCursorCapture(); }
+
+            TSet<uint32> PointerIndices{FSlateApplication::CursorPointerIndex};
+            for (const auto& Entry : InUser.GetWidgetsUnderPointerLastEventByIndex())
+            { PointerIndices.Add(Entry.Key); }
+            for (const uint32 PointerIndex : PointerIndices)
+            {
+                if (IsUnderRoot(InUser.GetPointerCaptor(PointerIndex)))
+                { InUser.ReleaseCapture(PointerIndex); }
+            }
+        }, true);
+    }
 
     /** Never smaller than this, so a track sitting on top of the listener still gets rings worth reading rather than
      *  a radar scaled down to a few centimetres. */
@@ -848,15 +889,20 @@ auto
     DoCreate_FilterControls();
     _PageSwitcher = DoCreate_PageSwitcher();
 
+    const TWeakPtr<SCkAudioDebuggerWindow> WeakWindow = SharedThis(this);
     ChildSlot
     [
-        SNew(SCkDebug_WindowChrome)
+        SAssignNew(_Chrome, SCkDebug_WindowChrome)
         .WindowId(WindowId)
         .ToolTabId(TEXT("CkAudioDebugger"))
         .ShowRefreshControls(true)
-        .StatusText_Lambda([this]()
+        .StatusText_Lambda([WeakWindow]()
         {
-            const auto& Snapshot = _Collector.Get_Snapshot();
+            const auto Window = WeakWindow.Pin();
+            if (NOT Window.IsValid() || Window->_PresentationReleased)
+            { return FText::GetEmpty(); }
+
+            const auto& Snapshot = Window->_Collector.Get_Snapshot();
 
             // "No world" and "a world with no audio" are different statements — collapsing them would show a
             // PIE-less editor as a silent game.
@@ -871,21 +917,33 @@ auto
         })
         .CommandGroups({
             FCkDebug_CommandGroup::Primary(TEXT("AudioView"), FText::FromString(TEXT("Audio view controls")),
-            SNew(SCkDebug_IconToggle)
+            SAssignNew(_ActiveOnlyToggle, SCkDebug_IconToggle)
             .IconId(ECk_Icon::Audio)
             .Label(FText::FromString(TEXT("Active tracks only")))
             .ToolTip(FText::FromString(
                 TEXT("Hide stopped tracks. A director legitimately holds configured-but-stopped tracks, and ")
                 TEXT("listing them all buries the ones actually making noise.")))
-            .IsOn_Lambda([this]() { return _ShowActiveOnly; })
-            .OnStateChanged_Lambda([this](const bool InActiveOnly)
+            .IsEnabled_Lambda([WeakWindow]()
             {
-                if (_ShowActiveOnly == InActiveOnly) { return; }
-                _ShowActiveOnly = InActiveOnly;
+                const auto Window = WeakWindow.Pin();
+                return Window.IsValid() && NOT Window->_PresentationReleased;
+            })
+            .IsOn_Lambda([WeakWindow]()
+            {
+                const auto Window = WeakWindow.Pin();
+                return Window.IsValid() && NOT Window->_PresentationReleased && Window->_ShowActiveOnly;
+            })
+            .OnStateChanged_Lambda([WeakWindow](const bool InActiveOnly)
+            {
+                const auto Window = WeakWindow.Pin();
+                if (NOT Window.IsValid() || Window->_PresentationReleased
+                    || Window->_ShowActiveOnly == InActiveOnly)
+                { return; }
+                Window->_ShowActiveOnly = InActiveOnly;
 
                 // Dropping the signature forces the next gated tick through the structure pass — the visible SET
                 // just changed, and the value pass writes cells positionally.
-                _LastSignature.Reset();
+                Window->_LastSignature.Reset();
             }))
         })
         .Content()
@@ -915,12 +973,54 @@ auto
 }
 
 SCkAudioDebuggerWindow::~SCkAudioDebuggerWindow()
+{ Release_Presentation(); }
+
+auto SCkAudioDebuggerWindow::Release_Presentation() -> void
 {
+    if (_PresentationReleased)
+    { return; }
+
+    _PresentationReleased = true;
     if (_SessionInvalidatedHandle.IsValid())
-    { ck::DebugSessionLifecycle::Get_OnSessionInvalidated().Remove(_SessionInvalidatedHandle); }
+    {
+        ck::DebugSessionLifecycle::Get_OnSessionInvalidated().Remove(_SessionInvalidatedHandle);
+        _SessionInvalidatedHandle.Reset();
+    }
     if (_WorldInvalidatedHandle.IsValid())
-    { ck::DebugSessionLifecycle::Get_OnWorldInvalidated().Remove(_WorldInvalidatedHandle); }
+    {
+        ck::DebugSessionLifecycle::Get_OnWorldInvalidated().Remove(_WorldInvalidatedHandle);
+        _WorldInvalidatedHandle.Reset();
+    }
+
     DoInvalidate_RuntimeState();
+    _ObservedWorld = nullptr;
+    _InvalidatedWorld = nullptr;
+    _DirectorRecordsReady = false;
+    _TrackRecordsReady = false;
+    _SpatialRecordsReady = false;
+    _OverlayRecordsReady = false;
+    _TabsProjectionReady = false;
+
+    if (_Tabs.IsValid()) { _Tabs->ReleaseOwnerInteraction(); }
+    if (_Chrome.IsValid()) { ck_audio_debugger_window::ReleaseOwnedSlateInput(_Chrome.ToSharedRef()); }
+
+    const auto ReleaseView = [](const TSharedPtr<FCkUiView>& InView)
+    {
+        if (InView.IsValid())
+        { InView->ReleaseOwnerInteractions(); }
+    };
+    ReleaseView(_AuthoredOverlayView);
+    ReleaseView(_AuthoredSpatialView);
+    ReleaseView(_AuthoredTracksView);
+    ReleaseView(_AuthoredDirectorsView);
+    ReleaseView(_AuthoredEventsPageView);
+    ReleaseView(_AuthoredEventsToolbarView);
+    ReleaseView(_AuthoredAttenuationView);
+    ReleaseView(_AuthoredCrossfadeView);
+    ReleaseView(_AuthoredShellView);
+
+    ChildSlot[SNullWidget::NullWidget];
+    if (_AuthoredShellHost.IsValid()) { _AuthoredShellHost->SetContent(SNullWidget::NullWidget); }
     if (_CrossfadePageHost.IsValid())
     { _CrossfadePageHost->SetContent(SNullWidget::NullWidget); }
     _AuthoredCrossfadeView.Reset();
@@ -941,7 +1041,62 @@ SCkAudioDebuggerWindow::~SCkAudioDebuggerWindow()
     if (_OverlayPageHost.IsValid()) { _OverlayPageHost->SetContent(SNullWidget::NullWidget); }
     _AuthoredOverlayView.Reset();
     _AuthoredShellView.Reset();
-    if (_Tabs.IsValid()) { _Tabs->ReleaseOwnerInteraction(); }
+
+    _TabRecords.Reset();
+    _DirectorRecords.Reset();
+    _TrackRecords.Reset();
+    _SpatialRecords.Reset();
+    _OverlayRecords.Reset();
+    _OverlayActionRecords.Reset();
+    _ActiveOnlyToggle.Reset();
+    _FilterSearchBar.Reset();
+    _FilterPlayingToggle.Reset();
+    _FilterFadingToggle.Reset();
+    _FilterStoppedToggle.Reset();
+    _FilterGroupToggle.Reset();
+    _EventsStateToggle.Reset();
+    _EventsFadesToggle.Reset();
+    _EventsVirtualizationToggle.Reset();
+    _EventsLifecycleToggle.Reset();
+    _Tabs.Reset();
+    _PageSwitcher.Reset();
+    _StatCards.Reset();
+    _StatusText.Reset();
+    _DirectorBox.Reset();
+    _DirectorPageBox.Reset();
+    _NativeDirectorsPage.Reset();
+    _NativeTracksPage.Reset();
+    _NativeSpatialPage.Reset();
+    _NativeOverlayPage.Reset();
+    _SpatialSelectorBox.Reset();
+    _OverlayActionsBox.Reset();
+    _OverlayListBox.Reset();
+    _CompactCrossfadeHost.Reset();
+    _CompactCrossfadePlot.Reset();
+    _CrossfadePageHost.Reset();
+    _CrossfadePagePlot.Reset();
+    _AttenuationPanelHost.Reset();
+    _EventsToolbarHost.Reset();
+    _EventsPageHost.Reset();
+    _DirectorsPageHost.Reset();
+    _TracksPageHost.Reset();
+    _SpatialPageHost.Reset();
+    _NativeRadarHost.Reset();
+    _NativeSpatialAttenuationHost.Reset();
+    _OverlayPageHost.Reset();
+    _AuthoredShellHost.Reset();
+    _Radar.Reset();
+    _AttenuationCurve.Reset();
+    _EventLog.Reset();
+    _SpatialView.Reset();
+    _CrossfadeLegendText.Reset();
+    _CrossfadeSeriesA.Reset();
+    _CrossfadeSeriesB.Reset();
+    _StatAudible.Reset();
+    _StatFading.Reset();
+    _StatVirtualized.Reset();
+    _StatConcurrency.Reset();
+    _Chrome.Reset();
 }
 
 auto SCkAudioDebuggerWindow::BuildNativeContent() -> TSharedRef<SWidget>
@@ -1901,17 +2056,19 @@ auto
         .CanDispatchEvents_Lambda([WeakWindow]()
         {
             const auto Window = WeakWindow.Pin();
-            return Window.IsValid() && Window->_UsingNativeFallback;
+            return Window.IsValid() && NOT Window->_PresentationReleased && Window->_UsingNativeFallback;
         })
         .ActiveTabId_Lambda([WeakWindow]()
         {
             const auto Window = WeakWindow.Pin();
-            return Window.IsValid() ? Get_PageId(Window->_ActivePage) : NAME_None;
+            return Window.IsValid() && NOT Window->_PresentationReleased
+                ? Get_PageId(Window->_ActivePage) : NAME_None;
         })
         .OnTabSelected_Lambda([WeakWindow](FName InPageId)
         {
             const auto Window = WeakWindow.Pin();
-            if (Window.IsValid() && Window->_UsingNativeFallback) { Window->DoSelect_Page(InPageId); }
+            if (Window.IsValid() && NOT Window->_PresentationReleased && Window->_UsingNativeFallback)
+            { Window->DoSelect_Page(InPageId); }
         });
 }
 
@@ -2033,6 +2190,7 @@ auto
     DoCreate_PageSwitcher()
     -> TSharedRef<SWidgetSwitcher>
 {
+    const TWeakPtr<SCkAudioDebuggerWindow> WeakWindow = SharedThis(this);
     _NativeDirectorsPage = SNew(SScrollBox)
         + SScrollBox::Slot().Padding(CkStyle::SpaceL, CkStyle::SpaceM)
         [SAssignNew(_DirectorPageBox, SVerticalBox)];
@@ -2048,7 +2206,12 @@ auto
     // Slot order MUST match ECkAudioDebugger_Page's declaration order. The switcher is driven by the enum's integer
     // value, so a reordered enum would otherwise silently show the wrong page.
     return SNew(SWidgetSwitcher)
-        .WidgetIndex_Lambda([this]() { return static_cast<int32>(_ActivePage); })
+        .WidgetIndex_Lambda([WeakWindow]()
+        {
+            const auto Window = WeakWindow.Pin();
+            return Window.IsValid() && NOT Window->_PresentationReleased
+                ? static_cast<int32>(Window->_ActivePage) : 0;
+        })
 
         + SWidgetSwitcher::Slot()
         [
@@ -2082,7 +2245,8 @@ auto
     {
         return FOnCkDebug_ToggleSurfaceChanged::CreateLambda([WeakWindow, InFlag](const bool InOn)
         {
-            if (const TSharedPtr<SCkAudioDebuggerWindow> Window = WeakWindow.Pin())
+            if (const TSharedPtr<SCkAudioDebuggerWindow> Window = WeakWindow.Pin();
+                Window.IsValid() && NOT Window->_PresentationReleased)
             {
                 if (Window.Get()->*InFlag == InOn) { return; }
                 Window.Get()->*InFlag = InOn;
@@ -2095,7 +2259,7 @@ auto
         return TAttribute<bool>::CreateLambda([WeakWindow, InFlag]()
         {
             const TSharedPtr<SCkAudioDebuggerWindow> Window = WeakWindow.Pin();
-            return Window.IsValid() && Window.Get()->*InFlag;
+            return Window.IsValid() && NOT Window->_PresentationReleased && Window.Get()->*InFlag;
         });
     };
     const auto MakeStateToggle = [WeakWindow, MakeIsOn, MakeOnStateChanged](const FText& InLabel,
@@ -2103,7 +2267,11 @@ auto
     {
         return SNew(SCkDebug_ToggleSurface)
             .IsOn(MakeIsOn(InFlag))
-            .IsEnabled_Lambda([WeakWindow]() { return WeakWindow.IsValid(); })
+            .IsEnabled_Lambda([WeakWindow]()
+            {
+                const auto Window = WeakWindow.Pin();
+                return Window.IsValid() && NOT Window->_PresentationReleased;
+            })
             .ToolTipText(FText::Format(
                 FText::FromString(TEXT("Show {0} tracks")), InLabel))
             .AccessibleText(InLabel)
@@ -2118,10 +2286,15 @@ auto
 
     _FilterSearchBar = SNew(SCkDebug_SearchBar)
         .HintText(FText::FromString(TEXT("Filter tracks")))
-        .IsEnabled_Lambda([WeakWindow]() { return WeakWindow.IsValid(); })
+        .IsEnabled_Lambda([WeakWindow]()
+        {
+            const auto Window = WeakWindow.Pin();
+            return Window.IsValid() && NOT Window->_PresentationReleased;
+        })
         .OnSearchTextChanged_Lambda([WeakWindow](const FString& InText)
         {
-            if (const TSharedPtr<SCkAudioDebuggerWindow> Window = WeakWindow.Pin())
+            if (const TSharedPtr<SCkAudioDebuggerWindow> Window = WeakWindow.Pin();
+                Window.IsValid() && NOT Window->_PresentationReleased)
             {
                 Window->_FilterString = InText;
                 Window->_HighlightString = InText;
@@ -2136,7 +2309,11 @@ auto
         &SCkAudioDebuggerWindow::_ShowStopped);
     _FilterGroupToggle = SNew(SCkDebug_ToggleSurface)
         .IsOn(MakeIsOn(&SCkAudioDebuggerWindow::_GroupByDirector))
-        .IsEnabled_Lambda([WeakWindow]() { return WeakWindow.IsValid(); })
+        .IsEnabled_Lambda([WeakWindow]()
+        {
+            const auto Window = WeakWindow.Pin();
+            return Window.IsValid() && NOT Window->_PresentationReleased;
+        })
         .ToolTipText(FText::FromString(
             TEXT("Group rows under their director. Off flattens every track into one list, which is what you ")
             TEXT("want when comparing volumes across directors.")))
@@ -2705,15 +2882,20 @@ auto
             .IsOn_Lambda([WeakWindow, InFlag]()
             {
                 const TSharedPtr<SCkAudioDebuggerWindow> Window = WeakWindow.Pin();
-                return Window.IsValid() && Window.Get()->*InFlag;
+                return Window.IsValid() && NOT Window->_PresentationReleased && Window.Get()->*InFlag;
             })
-            .IsEnabled_Lambda([WeakWindow]() { return WeakWindow.IsValid(); })
+            .IsEnabled_Lambda([WeakWindow]()
+            {
+                const auto Window = WeakWindow.Pin();
+                return Window.IsValid() && NOT Window->_PresentationReleased;
+            })
             .AccessibleText(InLabel)
             .ToolTipText(FText::Format(FText::FromString(TEXT("Log {0} events")), InLabel))
             .OnStateChanged_Lambda([WeakWindow, InFlag](const bool InOn)
             {
                 // These are window preferences, not world actions: no session-generation or HasWorld gate.
-                if (const TSharedPtr<SCkAudioDebuggerWindow> Window = WeakWindow.Pin())
+                if (const TSharedPtr<SCkAudioDebuggerWindow> Window = WeakWindow.Pin();
+                    Window.IsValid() && NOT Window->_PresentationReleased)
                 { Window.Get()->*InFlag = InOn; }
             })
             [
@@ -2722,7 +2904,8 @@ auto
                 .Tone_Lambda([WeakWindow, InFlag, InTone]()
                 {
                     const TSharedPtr<SCkAudioDebuggerWindow> Window = WeakWindow.Pin();
-                    return Window.IsValid() && Window.Get()->*InFlag ? InTone : ECk_Tone::Neutral;
+                    return Window.IsValid() && NOT Window->_PresentationReleased && Window.Get()->*InFlag
+                        ? InTone : ECk_Tone::Neutral;
                 })
                 .ShowDot(false)
             ];
@@ -2865,6 +3048,7 @@ auto
     // MUST be the WindowBase super, not SCompoundWidget — the base Tick drives the gated style-revision watch that
     // routes into OnStyleRevisionChanged.
     SCkDebugger_WindowBase::Tick(InAllottedGeometry, InCurrentTime, InDeltaTime);
+    if (_PresentationReleased) { return; }
     PollAuthoredShell(InCurrentTime);
     PollAuthoredCrossfadePage(InCurrentTime);
     PollAuthoredAttenuationPanel(InCurrentTime);
@@ -2936,6 +3120,8 @@ auto
     OnStyleRevisionChanged()
     -> void
 {
+    if (_PresentationReleased) { return; }
+
     // PollAuthoredShell owns source and token publication together because it also coordinates native-fallback
     // detachment. Polling here could consume a restored-file change while the fallback still owns those ports.
     _NextAuthoredShellPollSeconds = 0.0;
@@ -3138,6 +3324,7 @@ auto
     -> TSharedRef<SWidget>
 {
     using namespace ck_audio_debugger_window;
+    const TWeakPtr<const SCkAudioDebuggerWindow> WeakWindow = SharedThis(this);
 
     // The policy is stated on the header because it is what decides what happens to the rows underneath it.
     auto Policy = TArray<FString>{};
@@ -3173,7 +3360,12 @@ auto
             .Font_Static(&Get_RowFont)
             .ColorAndOpacity(CkStyle::Text())
             .Text(FText::FromString(InDirector.DirectorName))
-            .HighlightText_Lambda([this]() { return FText::FromString(_HighlightString); })
+            .HighlightText_Lambda([WeakWindow]()
+            {
+                const auto Window = WeakWindow.Pin();
+                return Window.IsValid() && NOT Window->_PresentationReleased
+                    ? FText::FromString(Window->_HighlightString) : FText::GetEmpty();
+            })
         ]
 
         + SHorizontalBox::Slot()
@@ -3218,6 +3410,7 @@ auto
     -> TSharedRef<SWidget>
 {
     using namespace ck_audio_debugger_window;
+    const TWeakPtr<const SCkAudioDebuggerWindow> WeakWindow = SharedThis(this);
 
     OutSlot.VolumeFraction = MakeShared<float>(0.0f);
     OutSlot.TargetFraction = MakeShared<TOptional<float>>();
@@ -3316,7 +3509,12 @@ auto
                 .Font_Static(&Get_RowFont)
                 .ColorAndOpacity(CkStyle::Text())
                 .Text(FText::FromString(InTrack.TrackName))
-                .HighlightText_Lambda([this]() { return FText::FromString(_HighlightString); })
+                .HighlightText_Lambda([WeakWindow]()
+                {
+                    const auto Window = WeakWindow.Pin();
+                    return Window.IsValid() && NOT Window->_PresentationReleased
+                        ? FText::FromString(Window->_HighlightString) : FText::GetEmpty();
+                })
             ]
 
             // The one elastic column, and the one that may be cut: the sound is identified by its leaf, and the full
@@ -4321,7 +4519,7 @@ auto
         int64 InGeneration) const
     -> bool
 {
-    return InGeneration == _DirectorSessionGeneration && _OverlayRecordsReady
+    return NOT _PresentationReleased && InGeneration == _DirectorSessionGeneration && _OverlayRecordsReady
         && _Collector.Get_Snapshot().HasWorld;
 }
 

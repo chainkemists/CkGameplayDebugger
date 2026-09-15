@@ -5,6 +5,7 @@
 
 class SCkAudioDebuggerWindow;
 class SDockTab;
+struct FCkAudioDebuggerLifecycleTestAccess;
 
 class FCkAudioDebuggerModule : public IModuleInterface
 {
@@ -21,6 +22,7 @@ public:
 
 private:
     friend class FCkAudioDebugger_AuthoredShell;
+    friend struct FCkAudioDebuggerLifecycleTestAccess;
 
     auto OnSpawnDebuggerTab(const class FSpawnTabArgs& InArgs) -> TSharedRef<SDockTab>;
     auto HandleEnginePreExit() -> void;

@@ -11,6 +11,7 @@
 // --------------------------------------------------------------------------------------------------------------------
 
 class SCkDebug_EventLog;
+class SCkDebug_IconToggle;
 class SCkDebug_MeterBar;
 class SCkDebug_Sparkline;
 class SCkDebug_SearchBar;
@@ -20,9 +21,11 @@ class SCkAudioDebugger_Radar;
 class FCkUiView;
 class FCkUiCollection;
 class SCkDebug_UnderlineTabs;
+class SCkDebug_WindowChrome;
 class SHorizontalBox;
 class SBox;
 class STextBlock;
+struct FCkAudioDebuggerLifecycleTestAccess;
 class SVerticalBox;
 class SWidgetSwitcher;
 class UWorld;
@@ -117,6 +120,9 @@ public:
 
     ~SCkAudioDebuggerWindow() override;
 
+    /** Idempotently revoke feature-owned interactions and release all presentation state before tab/module teardown. */
+    auto Release_Presentation() -> void;
+
     auto
     Tick(
         const FGeometry& InAllottedGeometry,
@@ -131,6 +137,7 @@ protected:
 
 private:
     friend class FCkAudioDebugger_AuthoredShell;
+    friend struct FCkAudioDebuggerLifecycleTestAccess;
 
     auto
     BuildNativeContent() -> TSharedRef<SWidget>;
@@ -343,6 +350,8 @@ private:
     FCkAudioDebugger_DataCollector _Collector;
 
     TSharedPtr<SCkDebug_UnderlineTabs> _Tabs;
+    TSharedPtr<SCkDebug_WindowChrome> _Chrome;
+    TSharedPtr<SCkDebug_IconToggle> _ActiveOnlyToggle;
     TSharedPtr<FCkUiCollection> _TabRecords;
     bool _TabsProjectionReady = false;
     TSharedPtr<SWidget>         _StatCards;
@@ -512,6 +521,8 @@ private:
     bool _ShowStopped = true;
 
     bool _GroupByDirector = true;
+
+    bool _PresentationReleased = false;
 };
 
 // --------------------------------------------------------------------------------------------------------------------

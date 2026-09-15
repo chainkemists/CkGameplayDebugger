@@ -9,6 +9,7 @@
 
 #include "Framework/Docking/TabManager.h"
 #include "Widgets/Docking/SDockTab.h"
+#include "Widgets/SNullWidget.h"
 #if WITH_EDITOR
     #include "WorkspaceMenuStructure.h"
     #include "WorkspaceMenuStructureModule.h"
@@ -48,6 +49,8 @@ auto FCkAudioDebuggerModule::StartupModule() -> void
     auto& TabSpawner = FGlobalTabmanager::Get()->RegisterNomadTabSpawner(
         _DebuggerTabName,
         FOnSpawnTab::CreateRaw(this, &FCkAudioDebuggerModule::OnSpawnDebuggerTab))
+        .SetReuseTabMethod(FOnFindTabToReuse::CreateLambda(
+            [this](const FTabId&) { return _DebuggerTab; }))
         .SetDisplayName(FText::FromString(TEXT("CK Audio Debugger")))
         .SetTooltipText(FText::FromString(TEXT("Opens the CK Audio Debugger window")));
 #if WITH_EDITOR
@@ -87,15 +90,15 @@ auto FCkAudioDebuggerModule::ShutdownModule() -> void
         FGlobalTabmanager::Get()->UnregisterNomadTabSpawner(_DebuggerTabName);
     }
 
+    if (_DebuggerWindow.IsValid()) { _DebuggerWindow->Release_Presentation(); }
+    ck::debugger_tabs::Release_DebuggerTab(_DebuggerTab, false);
     _DebuggerWindow.Reset();
-    _DebuggerTab.Reset();
 }
 
 auto FCkAudioDebuggerModule::HandleEnginePreExit() -> void
 {
-    // Slate may already have torn down the native tab. Dropping ownership here releases the debugger tree without
-    // asking the tab to close itself during engine exit.
-    _DebuggerTab.Reset();
+    if (_DebuggerWindow.IsValid()) { _DebuggerWindow->Release_Presentation(); }
+    ck::debugger_tabs::Release_DebuggerTab(_DebuggerTab, false);
     _DebuggerWindow.Reset();
 }
 
@@ -106,20 +109,24 @@ auto FCkAudioDebuggerModule::Get() -> FCkAudioDebuggerModule&
 
 auto FCkAudioDebuggerModule::OpenDebugger() -> void
 {
+    // Release_DebuggerTab detaches the feature's content before its close request. A docking layout can retain that
+    // now-empty tab until it processes the removal, but it is not a presentation that may be focused or reused.
+    // Evict only this explicitly detached state; a live Audio window remains the single instance and is focused by
+    // Invoke_DebuggerTab below.
+    if (NOT _DebuggerWindow.IsValid())
+    {
+        if (auto ExistingTab = FGlobalTabmanager::Get()->FindExistingLiveTab(FTabId{_DebuggerTabName});
+            ExistingTab.IsValid() && ExistingTab->GetContent() == SNullWidget::NullWidget)
+        { ck::debugger_tabs::Release_DebuggerTab(ExistingTab, true); }
+    }
+
     ck::debugger_tabs::Invoke_DebuggerTab(_DebuggerTabName);
 }
 
 auto FCkAudioDebuggerModule::CloseDebugger() -> void
 {
-    if (_DebuggerTab.IsValid())
-    {
-        // Engine shutdown destroys Slate windows BEFORE module unload — by then the tab's TSharedFromThis backing is
-        // gone and RequestCloseTab → SharedThis(this) trips the AsShared check. Just drop the ref on exit.
-        if (NOT IsEngineExitRequested())
-        { _DebuggerTab->RequestCloseTab(); }
-        _DebuggerTab.Reset();
-    }
-
+    if (_DebuggerWindow.IsValid()) { _DebuggerWindow->Release_Presentation(); }
+    ck::debugger_tabs::Release_DebuggerTab(_DebuggerTab, true);
     _DebuggerWindow.Reset();
 }
 
@@ -149,6 +156,7 @@ auto FCkAudioDebuggerModule::OnSpawnDebuggerTab(const FSpawnTabArgs& InArgs) -> 
         .Label(FText::FromString(TEXT("CK Audio")))
         .OnTabClosed_Lambda([this](TSharedRef<SDockTab>)
         {
+            if (_DebuggerWindow.IsValid()) { _DebuggerWindow->Release_Presentation(); }
             _DebuggerWindow.Reset();
             _DebuggerTab.Reset();
         })

@@ -1,0 +1,3 @@
+.jolt-bake-legend-source { flex-grow: 1; color: var(--jolt-bake-legend-source); font-size: var(--jolt-bake-legend-font-size); horizontal-align: left; text-wrap: nowrap; }
+.jolt-bake-legend-normalized { flex-grow: 1; color: var(--jolt-bake-legend-normalized); font-size: var(--jolt-bake-legend-font-size); horizontal-align: center; text-wrap: nowrap; }
+.jolt-bake-legend-cooked { flex-grow: 1; color: var(--jolt-bake-legend-cooked); font-size: var(--jolt-bake-legend-font-size); horizontal-align: right; text-wrap: nowrap; }

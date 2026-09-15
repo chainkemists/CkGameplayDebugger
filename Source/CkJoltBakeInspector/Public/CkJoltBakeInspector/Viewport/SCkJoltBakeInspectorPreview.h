@@ -7,7 +7,10 @@
 
 class FCk_DebugScene_Target;
 class FCkJoltBakeInspectorPreviewAdapter;
+struct FCkJoltBakeInspectorAuthoredTestAccess;
+class FCkUiView;
 class SCkDebug_3dPreviewViewport;
+class SBox;
 class STextBlock;
 class UWorld;
 
@@ -24,14 +27,28 @@ public:
     auto Clear() -> void;
     auto Get_PreviewWorld() const -> UWorld*;
     auto Get_RenderedBounds() const -> FBox;
+    auto Teardown() -> void;
+
+    virtual auto Tick(const FGeometry& InAllottedGeometry, double InCurrentTime, float InDeltaTime) -> void override;
 
 private:
-    auto Teardown() -> void;
+    friend struct FCkJoltBakeInspectorAuthoredTestAccess;
+
+    auto Build_AuthoredLegend() -> TSharedRef<SWidget>;
+    auto Build_NativeLegendFallback() -> TSharedRef<SWidget>;
+    auto Refresh_NativeLegendFallback() -> void;
 
     TSharedPtr<SCkDebug_3dPreviewViewport> _Viewport;
     TSharedPtr<FCkJoltBakeInspectorPreviewAdapter> _Adapter;
     TSharedPtr<FCk_DebugScene_Target> _Target;
-    TSharedPtr<STextBlock> _SourceLabel;
-    TSharedPtr<STextBlock> _NormalizedLabel;
-    TSharedPtr<STextBlock> _CookedLabel;
+    TSharedPtr<FCkUiView> _LegendView;
+    TSharedPtr<SBox> _LegendHost;
+    TSharedPtr<STextBlock> _SourceFallbackLabel;
+    TSharedPtr<STextBlock> _NormalizedFallbackLabel;
+    TSharedPtr<STextBlock> _CookedFallbackLabel;
+    FText _SourceLegendText;
+    FText _NormalizedLegendText;
+    FText _CookedLegendText;
+    double _NextLegendPollSeconds{0.0};
+    bool _Released{false};
 };

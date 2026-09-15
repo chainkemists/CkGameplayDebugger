@@ -9,6 +9,7 @@
 class ITableRow;
 class STableViewBase;
 class STextBlock;
+class FCkUiView;
 
 // ====================================================================================================================
 // Event log — a capped, auto-scrolling list of "what just happened" lines with severity tones.
@@ -63,6 +64,7 @@ public:
         , _EmptyText(FText::FromString(TEXT("No events yet.")))
         , _SelectedId(INDEX_NONE)
         , _TimestampColumnWidth(58.0f)
+        , _UseAuthoredPresentation(false)
     {}
         /** Oldest entries are evicted past this count. Clamped to at least 1. */
         SLATE_ARGUMENT(int32, MaxEntries)
@@ -79,10 +81,21 @@ public:
 
         SLATE_ARGUMENT(float, TimestampColumnWidth)
 
+        /** Shared authored shell/row presentation; list, history and selection mechanics stay native. */
+        SLATE_ARGUMENT(bool, UseAuthoredPresentation)
+
         SLATE_EVENT(FOnCkDebug_EventLogEntrySelected, OnEntrySelected)
     SLATE_END_ARGS()
 
     auto Construct(const FArguments& InArgs) -> void;
+    virtual ~SCkDebug_EventLog() override;
+    virtual auto Tick(const FGeometry& InGeometry, double InCurrentTime, float InDeltaTime) -> void override;
+
+    /** Polls the four shared source files once for this log, preserving all last-good views on rejection. */
+    auto Poll_AuthoredPresentation() -> void;
+    auto Get_UsesAuthoredPresentation() const -> bool;
+    auto Get_AuthoredView() const -> TSharedPtr<FCkUiView>;
+    auto Get_AuthoredFailure() const -> FString;
 
     /** Append one line, evicting the oldest if the cap is exceeded. */
     auto Add_Entry(FCkDebug_EventLogEntry InEntry) -> void;
@@ -98,6 +111,13 @@ public:
     auto Get_EntryCount() const -> int32;
 
 private:
+    friend class FCkDebugEventLog_AuthoredPresentation;
+    struct FAuthoredState;
+    auto DoCreate_NativePresentation() -> TSharedRef<SWidget>;
+    auto DoCreate_NativeRow(FEntryPtr InEntry) -> TSharedRef<SWidget>;
+    auto DoCreate_AuthoredRowView(FEntryPtr InEntry) -> TSharedRef<FCkUiView>;
+    auto TryApply_AuthoredSources(const TArray<FString>& InSources) -> bool;
+    auto Get_ContainsEntry(const FEntryPtr& InEntry) const -> bool;
     auto Do_TrimToCap() -> void;
     auto Do_RefreshList(bool InScrollToEnd) -> void;
     auto Do_RestoreSelection() -> void;
@@ -123,6 +143,8 @@ private:
     FOnCkDebug_EventLogEntrySelected _OnEntrySelected;
 
     TSharedPtr<SListView<FEntryPtr>> _ListView;
+    FText _EmptyText;
+    TSharedPtr<FAuthoredState> _Authored;
 };
 
 // ====================================================================================================================

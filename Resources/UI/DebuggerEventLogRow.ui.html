@@ -1,0 +1,15 @@
+<ui version="1">
+  <region name="main">
+    <row id="event-log-row">
+      <row id="event-log-row-content" class="event-log-row">
+        <column id="event-log-timestamp-wrap" visible="event-timestamp" class="event-log-timestamp-wrap">
+          <text id="event-log-timestamp" bind="event-time" class="event-log-timestamp" />
+        </column>
+        <column id="event-log-category-wrap" visible="event-category" class="event-log-category-wrap">
+          <native id="event-log-category" bind="event-category-chip" />
+        </column>
+        <text id="event-log-message" bind="event-message" color-bind="event-foreground" class="event-log-message" />
+      </row>
+    </row>
+  </region>
+</ui>

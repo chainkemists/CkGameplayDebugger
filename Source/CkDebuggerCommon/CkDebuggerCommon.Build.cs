@@ -73,5 +73,9 @@ public class CkDebuggerCommon : CkModuleRules
 
         RuntimeDependencies.Add(Path.Combine(PluginDirectory, "Resources", "UI", "DebuggerWindowChrome.ui.html"), StagedFileType.NonUFS);
         RuntimeDependencies.Add(Path.Combine(PluginDirectory, "Resources", "UI", "DebuggerWindowChrome.ui.css"), StagedFileType.NonUFS);
+        RuntimeDependencies.Add(Path.Combine(PluginDirectory, "Resources", "UI", "DebuggerEventLog.ui.html"), StagedFileType.NonUFS);
+        RuntimeDependencies.Add(Path.Combine(PluginDirectory, "Resources", "UI", "DebuggerEventLog.ui.css"), StagedFileType.NonUFS);
+        RuntimeDependencies.Add(Path.Combine(PluginDirectory, "Resources", "UI", "DebuggerEventLogRow.ui.html"), StagedFileType.NonUFS);
+        RuntimeDependencies.Add(Path.Combine(PluginDirectory, "Resources", "UI", "DebuggerEventLogRow.ui.css"), StagedFileType.NonUFS);
     }
 }

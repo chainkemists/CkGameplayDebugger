@@ -1,0 +1,5 @@
+.event-log-row { min-width: 0; flex-grow: 1; flex-shrink: 1; vertical-align: center; }
+.event-log-timestamp-wrap { padding: 0 var(--event-log-gap) 0 0; }
+.event-log-timestamp { width: var(--event-log-timestamp-width); color: var(--event-log-muted); font-family: monospace; font-size: var(--event-log-micro); text-wrap: nowrap; }
+.event-log-category-wrap { padding: 0 var(--event-log-gap) 0 0; }
+.event-log-message { min-width: 0; flex-grow: 1; flex-shrink: 1; font-family: sans-serif; font-size: var(--event-log-small); text-wrap: nowrap; }

@@ -1,4 +1,5 @@
 using UnrealBuildTool;
+using System.IO;
 
 public class CkJoltDebugger : CkModuleRules
 {
@@ -35,9 +36,14 @@ public class CkJoltDebugger : CkModuleRules
             // that logs: CkJolt re-exports it publicly, but the import lib does not reach a consumer plugin.
             "CkLog",
             "CkEditorTools",  // shared CkStyle:: tokens used directly by the window
+            "CkSlateLayout",
             "CkJolt",
             "CkSpatialQuery", // FFragment_Probe_Current — the sensor population's body key
         });
+
+        PrivateDependencyModuleNames.Add("Projects");
+        RuntimeDependencies.Add(Path.Combine(PluginDirectory, "Resources", "UI", "JoltDebugger.ui.html"), StagedFileType.NonUFS);
+        RuntimeDependencies.Add(Path.Combine(PluginDirectory, "Resources", "UI", "JoltDebugger.ui.css"), StagedFileType.NonUFS);
 
         if (Target.bBuildEditor)
         {

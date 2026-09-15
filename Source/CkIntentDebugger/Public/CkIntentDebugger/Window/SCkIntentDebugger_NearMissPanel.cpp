@@ -10,6 +10,8 @@
 #include "CkEditorTools/Style/CkStyle.h"
 
 #include "Framework/MultiBox/MultiBoxBuilder.h"
+#include "Framework/Application/IMenu.h"
+#include "Framework/Application/SlateApplication.h"
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/Layout/SScrollBox.h"
 #include "Widgets/SBoxPanel.h"
@@ -135,28 +137,10 @@ auto
                 .SelectionMode(ESelectionMode::Single)
                 .OnGenerateRow(this, &SCkIntentDebugger_NearMissPanel::OnGenerateRow)
                 .OnSelectionChanged(this, &SCkIntentDebugger_NearMissPanel::OnSelectionChanged)
-                .OnContextMenuOpening_Lambda([this]() -> TSharedPtr<SWidget>
+                .OnContextMenuOpening_Lambda([WeakPanel]() -> TSharedPtr<SWidget>
                 {
-                    auto Lines = TArray<FString>{};
-                    for (const auto& Selected : _ListView->GetSelectedItems())
-                    {
-                        if (NOT Selected.IsValid())
-                        { continue; }
-
-                        Lines.Add(ck_intent_debugger_nearmiss::Get_CopyText(Selected->Diagnostic));
-                    }
-
-                    if (Lines.IsEmpty())
-                    { return nullptr; }
-
-                    auto MenuBuilder = FMenuBuilder{true, nullptr};
-                    ck::DebugCopyMenu::AddCopyEntry(
-                        MenuBuilder,
-                        FText::FromString(TEXT("Copy Scan(s)")),
-                        FText::FromString(TEXT("Copy the selected scan with every walked step")),
-                        FString::Join(Lines, TEXT("\n")));
-
-                    return MenuBuilder.MakeWidget();
+                    if (const TSharedPtr<SCkIntentDebugger_NearMissPanel> Panel = WeakPanel.Pin()) { return Panel->OpenContextMenu(); }
+                    return nullptr;
                 })
         ]
 
@@ -170,6 +154,30 @@ auto
             ]
         ]
     ];
+}
+
+auto SCkIntentDebugger_NearMissPanel::ReleaseContextMenu() -> void
+{
+    const TSharedPtr<IMenu> Menu = MoveTemp(_ContextMenu);
+    if (Menu.IsValid() && FSlateApplication::IsInitialized()) { FSlateApplication::Get().DismissMenu(Menu); }
+}
+
+auto SCkIntentDebugger_NearMissPanel::OpenContextMenu() -> TSharedPtr<SWidget>
+{
+    if (NOT _ListView.IsValid() || NOT FSlateApplication::IsInitialized()) { return nullptr; }
+    auto Lines = TArray<FString>{};
+    for (const TSharedPtr<FCkIntentDebugger_NearMissRow>& Selected : _ListView->GetSelectedItems())
+    { if (Selected.IsValid()) { Lines.Add(ck_intent_debugger_nearmiss::Get_CopyText(Selected->Diagnostic)); } }
+    if (Lines.IsEmpty()) { return nullptr; }
+    auto Builder = FMenuBuilder{true, nullptr};
+    ck::DebugCopyMenu::AddCopyEntry(Builder, FText::FromString(TEXT("Copy Scan(s)")), FText::FromString(TEXT("Copy the selected scan with every walked step")), FString::Join(Lines, TEXT("\n")));
+    ReleaseContextMenu();
+    _ContextMenu = FSlateApplication::Get().PushMenu(_ListView.ToSharedRef(), FWidgetPath{}, Builder.MakeWidget(), FVector2f{FSlateApplication::Get().GetCursorPos()}, FPopupTransitionEffect{FPopupTransitionEffect::ContextMenu});
+    if (NOT _ContextMenu.IsValid()) { return nullptr; }
+    const TWeakPtr<SCkIntentDebugger_NearMissPanel> WeakPanel = SharedThis(this);
+    _ContextMenu->GetOnMenuDismissed().AddLambda([WeakPanel](const TSharedRef<IMenu>& InDismissedMenu)
+    { if (const TSharedPtr<SCkIntentDebugger_NearMissPanel> Panel = WeakPanel.Pin(); Panel.IsValid() && Panel->_ContextMenu == InDismissedMenu) { Panel->_ContextMenu.Reset(); } });
+    return nullptr;
 }
 
 // --------------------------------------------------------------------------------------------------------------------

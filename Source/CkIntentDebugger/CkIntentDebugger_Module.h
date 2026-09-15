@@ -7,6 +7,7 @@
 
 class SCkIntentDebuggerWindow;
 class SDockTab;
+struct FCkIntentDebuggerAuthoredTestAccess;
 
 // --------------------------------------------------------------------------------------------------------------------
 // CK Intent Debugger module. Registers a nomad tab, the `ck.IntentDebugger` console command, and the launcher
@@ -33,6 +34,8 @@ public:
     static auto Get_TabName() -> FName { return _DebuggerTabName; }
 
 private:
+    friend struct FCkIntentDebuggerAuthoredTestAccess;
+
     auto OnSpawnDebuggerTab(const class FSpawnTabArgs& InArgs) -> TSharedRef<SDockTab>;
     auto HandleEnginePreExit() -> void;
 

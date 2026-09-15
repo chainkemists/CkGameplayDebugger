@@ -11,6 +11,7 @@
 // --------------------------------------------------------------------------------------------------------------------
 
 class FCkIntentDebugger_ViewModel;
+class IMenu;
 
 // --------------------------------------------------------------------------------------------------------------------
 // Near-miss view — the matcher's scan-diagnostic ring, newest first.
@@ -47,6 +48,8 @@ public:
 
     auto RefreshFromViewModel() -> void;
     auto Reset_ForWorldChange() -> void;
+    /** Dismiss only this panel's native copy popup before its Slate root detaches. */
+    auto ReleaseContextMenu() -> void;
 
 private:
     auto OnGenerateRow(
@@ -58,11 +61,15 @@ private:
         ESelectInfo::Type InSelectInfo) -> void;
 
     auto DoRebuild_StepDetail() -> void;
+    auto OpenContextMenu() -> TSharedPtr<SWidget>;
+
+    friend struct FCkIntentDebuggerAuthoredTestAccess;
 
 private:
     TSharedPtr<FCkIntentDebugger_ViewModel> _ViewModel;
 
     TSharedPtr<SListView<TSharedPtr<FCkIntentDebugger_NearMissRow>>> _ListView;
+    TSharedPtr<IMenu> _ContextMenu;
     TArray<TSharedPtr<FCkIntentDebugger_NearMissRow>> _Rows;
 
     TSharedPtr<SVerticalBox> _StepDetail;

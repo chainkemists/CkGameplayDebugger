@@ -17,6 +17,14 @@
 
 namespace ck_intent_debugger_input_hud_controls
 {
+    auto StyleTokens() -> FCkUiView::FTokens
+    {
+        const auto Color = [](const FLinearColor& InColor) { return TEXT("#") + InColor.ToFColorSRGB().ToHex(); };
+        return {{TEXT("--intent-hud-space-s"), FString::SanitizeFloat(CkStyle::SpaceS)},
+            {TEXT("--intent-hud-space-m"), FString::SanitizeFloat(CkStyle::SpaceM)},
+            {TEXT("--intent-hud-heading"), Color(CkStyle::Accent())},
+            {TEXT("--intent-hud-text-muted"), Color(CkStyle::TextMute())}};
+    }
     template <typename TEnum>
     auto Cycle(const TEnum InValue, const int32 InDirection, const int32 InCount) -> TEnum
     {
@@ -99,6 +107,19 @@ auto
 {
     _CanDispatchEvents = InArgs._CanDispatchEvents;
     ChildSlot[Build_Controls()];
+}
+
+auto
+    SCkIntentDebugger_InputHudControls::
+    Tick(const FGeometry& InAllottedGeometry, const double InCurrentTime, const float InDeltaTime)
+    -> void
+{
+    SCompoundWidget::Tick(InAllottedGeometry, InCurrentTime, InDeltaTime);
+    if (_ControlsView.IsValid() && InCurrentTime >= _NextStylePollSeconds)
+    {
+        _NextStylePollSeconds = InCurrentTime + 0.5;
+        _ControlsView->PollFiles(ck_intent_debugger_input_hud_controls::StyleTokens());
+    }
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -225,11 +246,11 @@ auto
         return SNew(STextBlock).Text(Get_ControlsLayoutError());
     }
 
-    const TSharedRef<FCkUiView> View = FCkUiView::Create({}, MoveTemp(Actions), {}, CkStyle::RegularFont(CkStyle::FontSizeBody()), MoveTemp(Data), Registry);
+    const TSharedRef<FCkUiView> View = FCkUiView::Create({}, MoveTemp(Actions), ck_intent_debugger_input_hud_controls::StyleTokens(), CkStyle::RegularFont(CkStyle::FontSizeBody()), MoveTemp(Data), Registry);
     const TSharedRef<SWidget> Region = View->GetRegion(TEXT("main"));
     const FString Directory = FPaths::Combine(Plugin->GetBaseDir(), TEXT("Resources/UI"));
     View->SetFiles(FPaths::Combine(Directory, TEXT("IntentInputHudControls.ui.html")), FPaths::Combine(Directory, TEXT("IntentInputHudControls.ui.css")));
-    View->PollFiles();
+    View->PollFiles(ck_intent_debugger_input_hud_controls::StyleTokens());
     if (NOT View->GetLastResult().Succeeded)
     {
         _ControlsPublicationError = FString::Join(View->GetLastResult().Errors, TEXT("\n"));

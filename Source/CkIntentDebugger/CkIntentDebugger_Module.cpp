@@ -74,6 +74,8 @@ auto
     auto& TabSpawner = FGlobalTabmanager::Get()->RegisterNomadTabSpawner(
         _DebuggerTabName,
         FOnSpawnTab::CreateRaw(this, &FCkIntentDebuggerModule::OnSpawnDebuggerTab))
+        .SetReuseTabMethod(FOnFindTabToReuse::CreateLambda(
+            [this](const FTabId&) { return _DebuggerTab; }))
         .SetDisplayName(FText::FromString(TEXT("CK Intent Debugger")))
         .SetTooltipText(FText::FromString(TEXT("Opens the CK Intent Debugger window")));
 #if WITH_EDITOR
@@ -126,8 +128,9 @@ auto
         FGlobalTabmanager::Get()->UnregisterNomadTabSpawner(_DebuggerTabName);
     }
 
+    if (_DebuggerWindow.IsValid()) { _DebuggerWindow->Release_Presentation(); }
+    ck::debugger_tabs::Release_DebuggerTab(_DebuggerTab, false);
     _DebuggerWindow.Reset();
-    _DebuggerTab.Reset();
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -153,16 +156,8 @@ auto
     CloseDebugger()
     -> void
 {
-    if (_DebuggerTab.IsValid())
-    {
-        // Engine shutdown destroys Slate windows BEFORE module unload — by then the tab's TSharedFromThis backing
-        // is gone and RequestCloseTab -> SharedThis(this) trips the AsShared check. Just drop the ref on exit.
-        if (NOT IsEngineExitRequested())
-        { _DebuggerTab->RequestCloseTab(); }
-
-        _DebuggerTab.Reset();
-    }
-
+    if (_DebuggerWindow.IsValid()) { _DebuggerWindow->Release_Presentation(); }
+    ck::debugger_tabs::Release_DebuggerTab(_DebuggerTab, true);
     _DebuggerWindow.Reset();
 }
 
@@ -194,7 +189,8 @@ auto
 {
     // Deliberately no RequestCloseTab: the editor's window teardown runs before UEngine::PreExit, so the tab's
     // weak-self can already be cleared. Dropping the refs is what releases the handle-bearing tree in time.
-    _DebuggerTab.Reset();
+    if (_DebuggerWindow.IsValid()) { _DebuggerWindow->Release_Presentation(); }
+    ck::debugger_tabs::Release_DebuggerTab(_DebuggerTab, false);
     _DebuggerWindow.Reset();
 }
 
@@ -211,6 +207,7 @@ auto
         .Label(FText::FromString(TEXT("CK Intent")))
         .OnTabClosed_Lambda([this](TSharedRef<SDockTab>)
         {
+            if (_DebuggerWindow.IsValid()) { _DebuggerWindow->Release_Presentation(); }
             _DebuggerWindow.Reset();
             _DebuggerTab.Reset();
         })

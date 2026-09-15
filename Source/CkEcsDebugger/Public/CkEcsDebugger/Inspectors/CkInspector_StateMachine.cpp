@@ -690,7 +690,7 @@ auto SCkInspector_StateMachineAuthored::Get_Text(const FString& InKey) const -> 
         if (ck::Is_NOT_Valid(SubStateMachine))
         { return FString{}; }
         if (InKey == TEXT("sub-sm-id"))
-        { return ck::Format_UE(TEXT("{}"), SubStateMachine.Get_Entity()); }
+        { return ck::Format_UE(TEXT("{}"), SubStateMachine); }
         const auto Name = UCk_Utils_Handle_UE::Get_DebugName(SubStateMachine);
         return Name.IsNone() ? FString{} : ck::DebugNameClean::Get_CleanName(Name.ToString());
     }

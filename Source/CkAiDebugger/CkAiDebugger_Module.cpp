@@ -40,6 +40,8 @@ auto FCkAiDebuggerModule::StartupModule() -> void
 
     auto& TabSpawner = FGlobalTabmanager::Get()->RegisterNomadTabSpawner(
         _DebuggerTabName, FOnSpawnTab::CreateRaw(this, &FCkAiDebuggerModule::OnSpawnDebuggerTab))
+        .SetReuseTabMethod(FOnFindTabToReuse::CreateLambda(
+            [this](const FTabId&) { return _DebuggerTab; }))
         .SetDisplayName(LOCTEXT("AiOverviewTab", "CK AI Overview"))
         .SetTooltipText(LOCTEXT("AiOverviewTooltip", "Inspect the selected NPC's decision, state, crowd, and motion evidence."));
 #if WITH_EDITOR

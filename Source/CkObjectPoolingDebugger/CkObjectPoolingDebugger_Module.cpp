@@ -8,6 +8,7 @@
 #include "CkDebuggerCommon/Launcher/CkDebuggerTabUtils.h"
 
 #include "Framework/Docking/TabManager.h"
+#include "Misc/CoreDelegates.h"
 #include "Widgets/Docking/SDockTab.h"
 #if WITH_EDITOR
     #include "WorkspaceMenuStructure.h"
@@ -64,10 +65,19 @@ auto FCkObjectPoolingDebuggerModule::StartupModule() -> void
         20}
         .Set_TabFactory(FCkDebuggerToolTabFactory::CreateLambda([this]
         { return OnSpawnDebuggerTab(FSpawnTabArgs{TSharedPtr<SWindow>{}, FTabId{_DebuggerTabName}}); })));
+
+    _EnginePreExitHandle = FCoreDelegates::OnEnginePreExit.AddRaw(
+        this, &FCkObjectPoolingDebuggerModule::HandleEnginePreExit);
 }
 
 auto FCkObjectPoolingDebuggerModule::ShutdownModule() -> void
 {
+    if (_EnginePreExitHandle.IsValid())
+    {
+        FCoreDelegates::OnEnginePreExit.Remove(_EnginePreExitHandle);
+        _EnginePreExitHandle.Reset();
+    }
+
     FCkDebuggerToolRegistry::Get().Unregister(_DebuggerTabName, _DebuggerToolRegistrationId);
     _DebuggerToolRegistrationId = 0;
 
@@ -76,8 +86,13 @@ auto FCkObjectPoolingDebuggerModule::ShutdownModule() -> void
         FGlobalTabmanager::Get()->UnregisterNomadTabSpawner(_DebuggerTabName);
     }
 
+    CloseDebugger();
+}
+
+auto FCkObjectPoolingDebuggerModule::HandleEnginePreExit() -> void
+{
     _DebuggerWindow.Reset();
-    _DebuggerTab.Reset();
+    ck::debugger_tabs::Release_DebuggerTab(_DebuggerTab, false);
 }
 
 auto FCkObjectPoolingDebuggerModule::Get() -> FCkObjectPoolingDebuggerModule&
@@ -92,17 +107,8 @@ auto FCkObjectPoolingDebuggerModule::OpenDebugger() -> void
 
 auto FCkObjectPoolingDebuggerModule::CloseDebugger() -> void
 {
-    if (_DebuggerTab.IsValid())
-    {
-        // Engine shutdown destroys Slate windows BEFORE module unload — by then
-        // the tab's TSharedFromThis backing is gone and RequestCloseTab →
-        // SharedThis(this) trips the AsShared check. Just drop the ref on exit.
-        if (NOT IsEngineExitRequested())
-        { _DebuggerTab->RequestCloseTab(); }
-        _DebuggerTab.Reset();
-    }
-
     _DebuggerWindow.Reset();
+    ck::debugger_tabs::Release_DebuggerTab(_DebuggerTab, true);
 }
 
 auto FCkObjectPoolingDebuggerModule::ToggleDebugger() -> void

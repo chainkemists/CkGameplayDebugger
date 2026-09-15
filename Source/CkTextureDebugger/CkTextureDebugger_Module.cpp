@@ -7,6 +7,7 @@
 #include "CkDebuggerCommon/Launcher/CkDebuggerToolRegistry.h"
 
 #include "Framework/Docking/TabManager.h"
+#include "Misc/CoreDelegates.h"
 #include "Widgets/Docking/SDockTab.h"
 #if WITH_EDITOR
     #include "UObject/ICookInfo.h"
@@ -122,6 +123,8 @@ auto
         50}
         .Set_TabFactory(FCkDebuggerToolTabFactory::CreateLambda([this]
         { return OnSpawnDebuggerTab(FSpawnTabArgs{TSharedPtr<SWindow>{}, FTabId{_DebuggerTabName}}); })));
+
+    _EnginePreExitHandle = FCoreDelegates::OnEnginePreExit.AddRaw(this, &FCkTextureDebuggerModule::HandleEnginePreExit);
 }
 
 auto
@@ -129,6 +132,12 @@ auto
     ShutdownModule()
     -> void
 {
+    if (_EnginePreExitHandle.IsValid())
+    {
+        FCoreDelegates::OnEnginePreExit.Remove(_EnginePreExitHandle);
+        _EnginePreExitHandle.Reset();
+    }
+
     FCkDebuggerToolRegistry::Get().Unregister(_DebuggerTabName, _DebuggerToolRegistrationId);
     _DebuggerToolRegistrationId = 0;
 
@@ -170,14 +179,16 @@ auto
     CloseDebugger()
     -> void
 {
-    if (_DebuggerTab.IsValid())
-    {
-        if (NOT IsEngineExitRequested())
-        { _DebuggerTab->RequestCloseTab(); }
+    ck::debugger_tabs::Release_DebuggerTab(_DebuggerTab, true);
+    _DebuggerWindow.Reset();
+}
 
-        _DebuggerTab.Reset();
-    }
-
+auto
+    FCkTextureDebuggerModule::
+    HandleEnginePreExit()
+    -> void
+{
+    ck::debugger_tabs::Release_DebuggerTab(_DebuggerTab, false);
     _DebuggerWindow.Reset();
 }
 

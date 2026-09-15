@@ -5,6 +5,7 @@
 
 class SCkMapDebuggerWindow;
 class SDockTab;
+struct FCkMapDebuggerModuleTestAccess;
 
 class FCkMapDebuggerModule : public IModuleInterface
 {
@@ -20,12 +21,15 @@ public:
     auto IsDebuggerOpen() const -> bool;
 
 private:
+    friend struct FCkMapDebuggerModuleTestAccess;
     auto OnSpawnDebuggerTab(const class FSpawnTabArgs& InArgs) -> TSharedRef<SDockTab>;
+    auto HandleEnginePreExit() -> void;
 
     TSharedPtr<SCkMapDebuggerWindow> _DebuggerWindow;
     TSharedPtr<SDockTab> _DebuggerTab;
 
     uint64 _DebuggerToolRegistrationId = 0;
+    FDelegateHandle _EnginePreExitHandle;
 
     static const FName _DebuggerTabName;
 };

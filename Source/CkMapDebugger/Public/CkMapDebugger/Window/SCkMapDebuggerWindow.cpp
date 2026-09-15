@@ -9,10 +9,12 @@
 #include "CkDebuggerCommon/Widgets/SCkDebug_EntityRef.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_PaneHost.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_IconToggle.h"
+#include "CkDebuggerCommon/UI/CkDebug_UiRegistry.h"
 #include "CkDebuggerCommon/Window/CkDebuggerRefreshGate.h"
 #include "CkDebuggerCommon/Window/SCkDebug_WindowChrome.h"
 
 #include "CkEditorTools/Style/CkStyle.h"
+#include "CkSlateLayout/SCkUiSurface.h"
 
 #include "CkEcs/Handle/CkHandle_Utils.h"
 #include "CkEcs/Subsystem/CkEcsWorld_Subsystem.h"
@@ -35,6 +37,10 @@
 #include "Engine/Engine.h"
 #include "Engine/World.h"
 
+#include "Framework/Application/SlateApplication.h"
+#include "Interfaces/IPluginManager.h"
+#include "Misc/Paths.h"
+
 #include "Styling/AppStyle.h"
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/Images/SImage.h"
@@ -42,6 +48,7 @@
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/Layout/SScrollBox.h"
 #include "Widgets/Layout/SSeparator.h"
+#include "Widgets/SNullWidget.h"
 #include "Widgets/Text/STextBlock.h"
 #include "Widgets/Views/STableRow.h"
 
@@ -57,6 +64,14 @@
 
 namespace ck_map_debugger
 {
+    auto AuthoredStyleTokens() -> FCkUiView::FTokens
+    {
+        const auto Color = [](const FLinearColor& InColor) { return TEXT("#") + InColor.ToFColorSRGB().ToHex(); };
+        return {{TEXT("--map-text"), Color(CkStyle::Text())}, {TEXT("--map-muted"), Color(CkStyle::TextMute())},
+            {TEXT("--map-heading-size"), FString::FromInt(CkStyle::FontSizeSmall())},
+            {TEXT("--map-space-s"), FString::SanitizeFloat(CkStyle::SpaceS)}};
+    }
+
     // The category swatch is half an icon so it reads as a marker, not a glyph — but it still tracks
     // the IconSize axis so a Small/Large flip moves it with every other indicator in the suite.
     static auto Get_CategoryDotSize() -> float
@@ -173,6 +188,17 @@ auto
         const FArguments& InArgs)
     -> void
 {
+}
+
+auto SCkMapDebug_Canvas::Release_Interaction() -> void
+{
+    const bool WasPanning = _IsPanning;
+    _OnPoiPicked = {};
+    _IsPanning = false;
+    _SelectedPoi = {};
+    _Snapshot.Reset();
+    if (WasPanning && FSlateApplication::IsInitialized()) { FSlateApplication::Get().ReleaseAllPointerCapture(); }
+    _InteractionReleased = true;
 }
 
 auto
@@ -443,6 +469,9 @@ auto
         const FPointerEvent& InMouseEvent)
     -> FReply
 {
+    if (_InteractionReleased)
+    { return FReply::Unhandled(); }
+
     if (InMouseEvent.GetEffectingButton() == EKeys::RightMouseButton)
     {
         _IsPanning = true;
@@ -497,6 +526,9 @@ auto
         const FPointerEvent& InMouseEvent)
     -> FReply
 {
+    if (_InteractionReleased)
+    { return FReply::Unhandled(); }
+
     if (_IsPanning && InMouseEvent.GetEffectingButton() == EKeys::RightMouseButton)
     {
         _IsPanning = false;
@@ -513,6 +545,9 @@ auto
         const FPointerEvent& InMouseEvent)
     -> FReply
 {
+    if (_InteractionReleased)
+    { return FReply::Unhandled(); }
+
     if (NOT _IsPanning)
     { return FReply::Unhandled(); }
 
@@ -529,6 +564,9 @@ auto
         const FPointerEvent& InMouseEvent)
     -> FReply
 {
+    if (_InteractionReleased)
+    { return FReply::Unhandled(); }
+
     const auto ZoomFactor = InMouseEvent.GetWheelDelta() > 0.0f ? 1.15f : 1.0f / 1.15f;
     _Zoom = FMath::Clamp(_Zoom * ZoomFactor, 0.2f, 20.0f);
     return FReply::Handled();
@@ -542,6 +580,7 @@ const FName SCkMapDebuggerWindow::WindowId = FName(TEXT("MapDebugger"));
 
 SCkMapDebuggerWindow::~SCkMapDebuggerWindow()
 {
+    Release_Presentation();
 #if WITH_EDITOR
     FEditorDelegates::EndPIE.Remove(_EndPieHandle);
 #endif
@@ -554,8 +593,10 @@ auto
     -> void
 {
     Register_WithGate();
+    _ResourceDirectoryOverride = InArgs._ResourceDirectoryOverride;
 
     _Snapshot = MakeShared<FCkMapDebug_Snapshot>();
+    const TWeakPtr<SCkMapDebuggerWindow> WeakWindow = SharedThis(this);
 
 #if WITH_EDITOR
     _EndPieHandle = FEditorDelegates::EndPIE.AddLambda([WeakThis = TWeakPtr<SCkMapDebuggerWindow>(SharedThis(this))](const bool)
@@ -565,6 +606,64 @@ auto
     });
 #endif
 
+    // Construct all mechanical controls before either native composition. Their SBox hosts are the
+    // only fallback parents, so a future authored shell can atomically empty the hosts first.
+    SAssignNew(_SearchBar, SCkDebug_DualSearchBar)
+        .FilterHintText(FText::FromString(TEXT("Filter POIs…")))
+        .HighlightHintText(FText::FromString(TEXT("Highlight…")))
+        .OnFilterTextChanged_Lambda([WeakWindow](const FString& InText)
+        {
+            const TSharedPtr<SCkMapDebuggerWindow> Window = WeakWindow.Pin();
+            if (!Window.IsValid() || Window->_PresentationReleased || Window->_FilterString == InText) { return; }
+            Window->_FilterString = InText;
+            Window->DoRefreshRowItems();
+        })
+        .OnHighlightTextChanged_Lambda([WeakWindow](const FString& InText)
+        {
+            const TSharedPtr<SCkMapDebuggerWindow> Window = WeakWindow.Pin();
+            if (!Window.IsValid() || Window->_PresentationReleased || Window->_HighlightString == InText) { return; }
+            Window->_HighlightString = InText;
+            Window->DoRefreshRowItems();
+        });
+    SAssignNew(_PoiList, SListView<TSharedPtr<FCkMapDebug_PoiRow>>)
+        .ListItemsSource(&_VisibleRows)
+        .OnGenerateRow_Lambda([WeakWindow](TSharedPtr<FCkMapDebug_PoiRow> InRow, const TSharedRef<STableViewBase>& InOwner)
+        {
+            const TSharedPtr<SCkMapDebuggerWindow> Window = WeakWindow.Pin();
+            return Window.IsValid() && !Window->_PresentationReleased
+                ? Window->OnGenerateRow(MoveTemp(InRow), InOwner)
+                : SNew(STableRow<TSharedPtr<FCkMapDebug_PoiRow>>, InOwner)[SNullWidget::NullWidget];
+        })
+        .OnSelectionChanged_Lambda([WeakWindow](TSharedPtr<FCkMapDebug_PoiRow> InRow, ESelectInfo::Type InSelectInfo)
+        {
+            const TSharedPtr<SCkMapDebuggerWindow> Window = WeakWindow.Pin();
+            if (Window.IsValid() && !Window->_PresentationReleased) { Window->OnRowSelectionChanged(MoveTemp(InRow), InSelectInfo); }
+        })
+        .SelectionMode(ESelectionMode::Single);
+    SAssignNew(_Canvas, SCkMapDebug_Canvas);
+    SAssignNew(_SelectedEntity, SCkDebug_EntityRef)
+        .Entity_Lambda([WeakWindow]() -> FCk_Handle
+        { const TSharedPtr<SCkMapDebuggerWindow> Window = WeakWindow.Pin(); return Window.IsValid() && !Window->_PresentationReleased ? Window->_SelectedPoi : FCk_Handle{}; })
+        .ShowName(true);
+    SAssignNew(_EnabledPoisToggle, SCkDebug_IconToggle)
+        .IconId(ECk_Icon::Target)
+        .Label(FText::FromString(TEXT("Enabled POIs only")))
+        .ToolTip(FText::FromString(TEXT("Hide disabled POIs from the list; the map snapshot remains unchanged.")))
+        .IsOn_Lambda([WeakWindow]() { const TSharedPtr<SCkMapDebuggerWindow> Window = WeakWindow.Pin(); return Window.IsValid() && !Window->_PresentationReleased && Window->_ShowEnabledPoisOnly; })
+        .OnStateChanged_Lambda([WeakWindow](const bool InEnabledOnly)
+        {
+            const TSharedPtr<SCkMapDebuggerWindow> Window = WeakWindow.Pin();
+            if (!Window.IsValid() || Window->_PresentationReleased || Window->_ShowEnabledPoisOnly == InEnabledOnly) { return; }
+            Window->_ShowEnabledPoisOnly = InEnabledOnly;
+            Window->DoRefreshRowItems();
+        });
+    _FallbackSearchHost = SNew(SBox);
+    _FallbackListHost = SNew(SBox);
+    _FallbackCanvasHost = SNew(SBox);
+    _FallbackSelectedEntityHost = SNew(SBox);
+    _FallbackEnabledPoisHost = SNew(SBox);
+    Restore_FallbackPorts();
+
     // ---- Left rail: search + POI list ----
 
     auto LeftRail =
@@ -572,30 +671,12 @@ auto
 
         + SVerticalBox::Slot().AutoHeight().Padding(CkStyle::SpaceS)
             [
-                SNew(SCkDebug_DualSearchBar)
-                .FilterHintText(FText::FromString(TEXT("Filter POIs…")))
-                .HighlightHintText(FText::FromString(TEXT("Highlight…")))
-                .OnFilterTextChanged_Lambda([this](const FString& InText)
-                {
-                    if (_FilterString == InText) { return; }
-                    _FilterString = InText;
-                    DoRefreshRowItems();
-                })
-                .OnHighlightTextChanged_Lambda([this](const FString& InText)
-                {
-                    if (_HighlightString == InText) { return; }
-                    _HighlightString = InText;
-                    DoRefreshRowItems();
-                })
+                _FallbackSearchHost.ToSharedRef()
             ]
 
         + SVerticalBox::Slot().FillHeight(1.0f)
             [
-                SAssignNew(_PoiList, SListView<TSharedPtr<FCkMapDebug_PoiRow>>)
-                .ListItemsSource(&_VisibleRows)
-                .OnGenerateRow(this, &SCkMapDebuggerWindow::OnGenerateRow)
-                .OnSelectionChanged(this, &SCkMapDebuggerWindow::OnRowSelectionChanged)
-                .SelectionMode(ESelectionMode::Single)
+                _FallbackListHost.ToSharedRef()
             ]
 
         + SVerticalBox::Slot().AutoHeight().Padding(CkStyle::SpaceS)
@@ -603,31 +684,34 @@ auto
                 SNew(STextBlock)
                 .Font_Static(&ck_map_debugger::Font_Micro)
                 .ColorAndOpacity(CkStyle::TextMute())
-                .Text_Lambda([this]() -> FText
+                .Text_Lambda([WeakWindow]() -> FText
                 {
+                    const TSharedPtr<SCkMapDebuggerWindow> Window = WeakWindow.Pin();
+                    if (!Window.IsValid() || Window->_PresentationReleased) { return FText::GetEmpty(); }
                     return FText::FromString(ck::Format_UE(TEXT("{} / {} POIs shown"),
-                        _VisibleRows.Num(), _AllRows.Num()));
+                        Window->_VisibleRows.Num(), Window->_AllRows.Num()));
                 })
             ];
 
     // ---- Center: canvas ----
 
-    SAssignNew(_Canvas, SCkMapDebug_Canvas);
-    _Canvas->Set_OnPoiPicked([this](const FCk_Handle& InPoi)
+    _Canvas->Set_OnPoiPicked([WeakWindow](const FCk_Handle& InPoi)
     {
-        _SelectedPoi = InPoi;
-        _Canvas->Set_SelectedPoi(InPoi);
+        const TSharedPtr<SCkMapDebuggerWindow> Window = WeakWindow.Pin();
+        if (!Window.IsValid() || Window->_PresentationReleased || !Window->_Canvas.IsValid()) { return; }
+        Window->_SelectedPoi = InPoi;
+        Window->_Canvas->Set_SelectedPoi(InPoi);
 
-        const auto FoundRow = _VisibleRows.FindByPredicate([&](const TSharedPtr<FCkMapDebug_PoiRow>& InRow)
+        const auto FoundRow = Window->_VisibleRows.FindByPredicate([&](const TSharedPtr<FCkMapDebug_PoiRow>& InRow)
         { return InRow.IsValid() && InRow->Handle == InPoi; });
 
-        if (FoundRow != nullptr && _PoiList.IsValid())
+        if (FoundRow != nullptr && Window->_PoiList.IsValid())
         {
-            const auto Current = _PoiList->GetSelectedItems();
+            const auto Current = Window->_PoiList->GetSelectedItems();
             const auto AlreadySelected = Current.Num() == 1 && Current[0] == *FoundRow;
 
             if (NOT AlreadySelected)
-            { _PoiList->SetItemSelection(*FoundRow, true, ESelectInfo::Direct); }
+            { Window->_PoiList->SetItemSelection(*FoundRow, true, ESelectInfo::Direct); }
         }
     });
 
@@ -650,49 +734,48 @@ auto
                     ]
                 + SHorizontalBox::Slot().FillWidth(0.6f).VAlign(VAlign_Center)
                     [
-                        SNew(SCkDebug_EntityRef)
-                        .Entity_Lambda([this]() -> FCk_Handle { return _SelectedPoi; })
-                        .ShowName(true)
+                        _FallbackSelectedEntityHost.ToSharedRef()
                     ]
             ]
         + SScrollBox::Slot().Padding(CkStyle::SpaceM, 0.0f)
-            [ MakeStatRow(TEXT("Category:"), TAttribute<FText>::CreateLambda([this]()
+            [ MakeStatRow(TEXT("Category:"), TAttribute<FText>::CreateLambda([WeakWindow]()
                 {
-                    const auto* Info = DoFind_SelectedPoiInfo();
+                    const TSharedPtr<SCkMapDebuggerWindow> Window = WeakWindow.Pin();
+                    const auto* Info = Window.IsValid() && !Window->_PresentationReleased ? Window->DoFind_SelectedPoiInfo() : nullptr;
                     return FText::FromString(Info != nullptr ? Info->Category.ToString() : TEXT("--"));
                 })) ]
         + SScrollBox::Slot().Padding(CkStyle::SpaceM, 0.0f)
-            [ MakeStatRow(TEXT("Name:"), TAttribute<FText>::CreateLambda([this]()
+            [ MakeStatRow(TEXT("Name:"), TAttribute<FText>::CreateLambda([WeakWindow]()
                 {
-                    const auto* Info = DoFind_SelectedPoiInfo();
+                    const TSharedPtr<SCkMapDebuggerWindow> Window = WeakWindow.Pin(); const auto* Info = Window.IsValid() && !Window->_PresentationReleased ? Window->DoFind_SelectedPoiInfo() : nullptr;
                     return FText::FromString(Info != nullptr ? Info->DisplayName : TEXT("--"));
                 })) ]
         + SScrollBox::Slot().Padding(CkStyle::SpaceM, 0.0f)
-            [ MakeStatRow(TEXT("State:"), TAttribute<FText>::CreateLambda([this]()
+            [ MakeStatRow(TEXT("State:"), TAttribute<FText>::CreateLambda([WeakWindow]()
                 {
-                    const auto* Info = DoFind_SelectedPoiInfo();
+                    const TSharedPtr<SCkMapDebuggerWindow> Window = WeakWindow.Pin(); const auto* Info = Window.IsValid() && !Window->_PresentationReleased ? Window->DoFind_SelectedPoiInfo() : nullptr;
                     if (Info == nullptr) { return FText::FromString(TEXT("--")); }
                     return FText::FromString(Info->Enabled ? TEXT("Enabled") : TEXT("Disabled"));
                 })) ]
         + SScrollBox::Slot().Padding(CkStyle::SpaceM, 0.0f)
-            [ MakeStatRow(TEXT("World Pos:"), TAttribute<FText>::CreateLambda([this]()
+            [ MakeStatRow(TEXT("World Pos:"), TAttribute<FText>::CreateLambda([WeakWindow]()
                 {
-                    const auto* Info = DoFind_SelectedPoiInfo();
+                    const TSharedPtr<SCkMapDebuggerWindow> Window = WeakWindow.Pin(); const auto* Info = Window.IsValid() && !Window->_PresentationReleased ? Window->DoFind_SelectedPoiInfo() : nullptr;
                     if (Info == nullptr) { return FText::FromString(TEXT("--")); }
                     return FText::FromString(ck::Format_UE(TEXT("X {:.0f}  Y {:.0f}  Z {:.0f}"),
                         Info->WorldPos.X, Info->WorldPos.Y, Info->WorldPos.Z));
                 })) ]
         + SScrollBox::Slot().Padding(CkStyle::SpaceM, 0.0f)
-            [ MakeStatRow(TEXT("State Tags:"), TAttribute<FText>::CreateLambda([this]()
+            [ MakeStatRow(TEXT("State Tags:"), TAttribute<FText>::CreateLambda([WeakWindow]()
                 {
-                    const auto* Info = DoFind_SelectedPoiInfo();
+                    const TSharedPtr<SCkMapDebuggerWindow> Window = WeakWindow.Pin(); const auto* Info = Window.IsValid() && !Window->_PresentationReleased ? Window->DoFind_SelectedPoiInfo() : nullptr;
                     if (Info == nullptr) { return FText::FromString(TEXT("--")); }
                     return FText::FromString(Info->StateTags.IsEmpty() ? TEXT("(none)") : Info->StateTags.ToStringSimple());
                 })) ]
         + SScrollBox::Slot().Padding(CkStyle::SpaceM, 0.0f)
-            [ MakeStatRow(TEXT("Visible On:"), TAttribute<FText>::CreateLambda([this]()
+            [ MakeStatRow(TEXT("Visible On:"), TAttribute<FText>::CreateLambda([WeakWindow]()
                 {
-                    const auto* Info = DoFind_SelectedPoiInfo();
+                    const TSharedPtr<SCkMapDebuggerWindow> Window = WeakWindow.Pin(); const auto* Info = Window.IsValid() && !Window->_PresentationReleased ? Window->DoFind_SelectedPoiInfo() : nullptr;
                     if (Info == nullptr) { return FText::FromString(TEXT("--")); }
                     return FText::FromString(ck::Format_UE(TEXT("{} projector(s)"), Info->VisibleOnCount));
                 })) ]
@@ -700,14 +783,14 @@ auto
         + SScrollBox::Slot().Padding(CkStyle::SpaceM, CkStyle::SpaceS)
             [ MakeSectionHeader(TEXT("Projectors")) ]
         + SScrollBox::Slot().Padding(CkStyle::SpaceM, 0.0f)
-            [ MakeStatRow(TEXT("Compasses:"), TAttribute<FText>::CreateLambda([this]()
-                { return FText::AsNumber(_Snapshot->Compasses.Num()); })) ]
+            [ MakeStatRow(TEXT("Compasses:"), TAttribute<FText>::CreateLambda([WeakWindow]()
+                { const TSharedPtr<SCkMapDebuggerWindow> Window = WeakWindow.Pin(); return FText::AsNumber(Window.IsValid() && !Window->_PresentationReleased && Window->_Snapshot.IsValid() ? Window->_Snapshot->Compasses.Num() : 0); })) ]
         + SScrollBox::Slot().Padding(CkStyle::SpaceM, 0.0f)
-            [ MakeStatRow(TEXT("Minimaps:"), TAttribute<FText>::CreateLambda([this]()
-                { return FText::AsNumber(_Snapshot->Minimaps.Num()); })) ]
+            [ MakeStatRow(TEXT("Minimaps:"), TAttribute<FText>::CreateLambda([WeakWindow]()
+                { const TSharedPtr<SCkMapDebuggerWindow> Window = WeakWindow.Pin(); return FText::AsNumber(Window.IsValid() && !Window->_PresentationReleased && Window->_Snapshot.IsValid() ? Window->_Snapshot->Minimaps.Num() : 0); })) ]
         + SScrollBox::Slot().Padding(CkStyle::SpaceM, 0.0f)
-            [ MakeStatRow(TEXT("Fog Grids:"), TAttribute<FText>::CreateLambda([this]()
-                { return FText::AsNumber(_Snapshot->Fogs.Num()); })) ];
+            [ MakeStatRow(TEXT("Fog Grids:"), TAttribute<FText>::CreateLambda([WeakWindow]()
+                { const TSharedPtr<SCkMapDebuggerWindow> Window = WeakWindow.Pin(); return FText::AsNumber(Window.IsValid() && !Window->_PresentationReleased && Window->_Snapshot.IsValid() ? Window->_Snapshot->Fogs.Num() : 0); })) ];
 
     // ---- Status bar ----
 
@@ -721,90 +804,304 @@ auto
             SNew(STextBlock)
             .Font_Static(&ck_map_debugger::Font_MonoBody)
             .ColorAndOpacity(CkStyle::TextDim())
-            .Text_Lambda([this]() -> FText
+            .Text_Lambda([WeakWindow]() -> FText
             {
-                if (NOT _Snapshot->HasWorld)
+                const TSharedPtr<SCkMapDebuggerWindow> Window = WeakWindow.Pin();
+                if (!Window.IsValid() || Window->_PresentationReleased || !Window->_Snapshot.IsValid() || NOT Window->_Snapshot->HasWorld)
                 { return FText::FromString(TEXT("--")); }
 
                 auto FogPart = FString{TEXT("no fog")};
 
-                if (_Snapshot->Fogs.Num() > 0)
+                if (Window->_Snapshot->Fogs.Num() > 0)
                 {
                     FogPart = ck::Format_UE(TEXT("fog {:.1f}% explored"),
-                        _Snapshot->Fogs[0].ExploredFraction * 100.0f);
+                        Window->_Snapshot->Fogs[0].ExploredFraction * 100.0f);
                 }
 
                 return FText::FromString(ck::Format_UE(TEXT("POIs: {} ({} enabled)   Compasses: {}   Minimaps: {}   {}"),
-                    _Snapshot->Pois.Num(), _Snapshot->NumEnabledPois,
-                    _Snapshot->Compasses.Num(), _Snapshot->Minimaps.Num(), FogPart));
+                    Window->_Snapshot->Pois.Num(), Window->_Snapshot->NumEnabledPois,
+                    Window->_Snapshot->Compasses.Num(), Window->_Snapshot->Minimaps.Num(), FogPart));
             })
         ]
         ];
 
     // ---- Body ----
 
+    _ShellHost = SNew(SBox);
+    _ActionsHost = SNew(SBox);
+    _ShellHost->SetContent(Build_NativeShellFallback(LeftRail, RightRail, StatusBar));
+
     ChildSlot
     [
-        SNew(SCkDebug_WindowChrome).WindowId(Get_WindowId()).ToolTabId(TEXT("CkMapDebugger"))
+        SAssignNew(_Chrome, SCkDebug_WindowChrome).WindowId(Get_WindowId()).ToolTabId(TEXT("CkMapDebugger"))
         .ShowRefreshControls(true)
         .CommandGroups({
             FCkDebug_CommandGroup::Primary(
                 TEXT("MapPoiVisibility"),
                 FText::FromString(TEXT("Map point visibility")),
-                SNew(SCkDebug_IconToggle)
-            .IconId(ECk_Icon::Target)
-            .Label(FText::FromString(TEXT("Enabled POIs only")))
-            .ToolTip(FText::FromString(TEXT("Hide disabled POIs from the list; the map snapshot remains unchanged.")))
-            .IsOn_Lambda([this]() { return _ShowEnabledPoisOnly; })
-            .OnStateChanged_Lambda([this](const bool InEnabledOnly)
-            {
-                if (_ShowEnabledPoisOnly == InEnabledOnly) { return; }
-                _ShowEnabledPoisOnly = InEnabledOnly;
-                DoRefreshRowItems();
-            })),
+                _ActionsHost.ToSharedRef()),
             FCkDebug_CommandGroup::Context(
                 TEXT("MapWorld"),
                 FText::FromString(TEXT("Map world status")),
                 SNew(STextBlock)
                 .Font_Static(&ck_map_debugger::Font_Body)
                 .ColorAndOpacity(CkStyle::TextDim())
-                .Text_Lambda([this]() -> FText
+                .Text_Lambda([WeakWindow]() -> FText
                 {
-                    return _Snapshot->HasWorld
-                        ? FText::FromString(ck::Format_UE(TEXT("World: {}"), _Snapshot->WorldLabel))
+                    const TSharedPtr<SCkMapDebuggerWindow> Window = WeakWindow.Pin();
+                    return Window.IsValid() && !Window->_PresentationReleased && Window->_Snapshot.IsValid() && Window->_Snapshot->HasWorld
+                        ? FText::FromString(ck::Format_UE(TEXT("World: {}"), Window->_Snapshot->WorldLabel))
                         : FText::FromString(TEXT("No active world. Start PIE to see the map stack."));
                 })
                 .OverflowPolicy(ETextOverflowPolicy::Ellipsis))})
         .Content()
         [
-        SNew(SVerticalBox)
-
-            + SVerticalBox::Slot().FillHeight(1.0f)
-                [
-                    SNew(SHorizontalBox)
-
-                    + SHorizontalBox::Slot().AutoWidth()
-                        [ SNew(SBox).WidthOverride(250.0f)
-                            [ SNew(SCkDebug_PaneHost) [ LeftRail ] ] ]
-
-                    + SHorizontalBox::Slot().AutoWidth()
-                        [ MakeRailSeparator() ]
-
-                    + SHorizontalBox::Slot().FillWidth(1.0f)
-                        [ SNew(SCkDebug_PaneHost).ContentMode(ECkDebugPaneContent::OpaqueRenderer) [ _Canvas.ToSharedRef() ] ]
-
-                    + SHorizontalBox::Slot().AutoWidth()
-                        [ MakeRailSeparator() ]
-
-                    + SHorizontalBox::Slot().AutoWidth()
-                        [ SNew(SBox).WidthOverride(280.0f)
-                            [ SNew(SCkDebug_PaneHost) [ RightRail ] ] ]
-                ]
-
-            + SVerticalBox::Slot().AutoHeight()
-                [ StatusBar ]
+            _ShellHost.ToSharedRef()
         ]
     ];
+
+    Build_AuthoredShell();
+}
+
+auto SCkMapDebuggerWindow::Build_NativeShellFallback(
+    TSharedRef<SWidget> InLeftRail,
+    TSharedRef<SWidget> InRightRail,
+    TSharedRef<SWidget> InStatusBar)
+    -> TSharedRef<SWidget>
+{
+    if (_ActionsHost.IsValid()) { _ActionsHost->SetContent(_FallbackEnabledPoisHost.ToSharedRef()); }
+
+    return SNew(SVerticalBox)
+        + SVerticalBox::Slot().FillHeight(1.0f)
+        [
+            SNew(SHorizontalBox)
+            + SHorizontalBox::Slot().AutoWidth()
+            [ SNew(SBox).WidthOverride(250.0f) [ SNew(SCkDebug_PaneHost) [ InLeftRail ] ] ]
+            + SHorizontalBox::Slot().AutoWidth()
+            [ MakeRailSeparator() ]
+            + SHorizontalBox::Slot().FillWidth(1.0f)
+            [ SNew(SCkDebug_PaneHost).ContentMode(ECkDebugPaneContent::OpaqueRenderer) [ _FallbackCanvasHost.ToSharedRef() ] ]
+            + SHorizontalBox::Slot().AutoWidth()
+            [ MakeRailSeparator() ]
+            + SHorizontalBox::Slot().AutoWidth()
+            [ SNew(SBox).WidthOverride(280.0f) [ SNew(SCkDebug_PaneHost) [ InRightRail ] ] ]
+        ]
+        + SVerticalBox::Slot().AutoHeight()
+        [ InStatusBar ];
+}
+
+auto SCkMapDebuggerWindow::Build_AuthoredShell() -> void
+{
+    TSharedPtr<const FCkUiWidgetRegistrySnapshot> Registry;
+    const FCkUiLoadResult RegistryResult = FCkDebug_UiRegistry::TryCreate(Registry);
+    const TSharedPtr<IPlugin> Plugin = IPluginManager::Get().FindPlugin(TEXT("CkDebugger"));
+    if (NOT RegistryResult.Succeeded || NOT Registry.IsValid() || NOT Plugin.IsValid()
+        || NOT _ShellHost.IsValid() || NOT _ActionsHost.IsValid()
+        || NOT _SearchBar.IsValid() || NOT _PoiList.IsValid() || NOT _Canvas.IsValid()
+        || NOT _SelectedEntity.IsValid() || NOT _EnabledPoisToggle.IsValid())
+    {
+        _AuthoredShellLoadFailure = TEXT("Map authored shell prerequisites are unavailable.");
+        return;
+    }
+
+    auto Ports = FCkUiView::FNativeBindings{};
+    Ports.Add(TEXT("map-search"), _SearchBar);
+    Ports.Add(TEXT("map-list"), _PoiList);
+    Ports.Add(TEXT("map-canvas"), _Canvas);
+    Ports.Add(TEXT("map-entity"), _SelectedEntity);
+    Ports.Add(TEXT("map-enabled"), _EnabledPoisToggle);
+
+    const TWeakPtr<SCkMapDebuggerWindow> WeakWindow = SharedThis(this);
+    auto Data = FCkUiView::FDataBindings{};
+    Data.CanDispatchEvents = TAttribute<bool>::CreateLambda([WeakWindow]()
+    {
+        const TSharedPtr<SCkMapDebuggerWindow> Window = WeakWindow.Pin();
+        return Window.IsValid() && NOT Window->_PresentationReleased;
+    });
+    Data.Text.Add(TEXT("map-summary"), TAttribute<FText>::CreateLambda([WeakWindow]()
+    {
+        const TSharedPtr<SCkMapDebuggerWindow> Window = WeakWindow.Pin();
+        if (!Window.IsValid() || !Window->_Snapshot.IsValid()) { return FText::GetEmpty(); }
+        return FText::FromString(ck::Format_UE(TEXT("{} / {} POIs shown"),
+            Window->_VisibleRows.Num(), Window->_AllRows.Num()));
+    }));
+    Data.Text.Add(TEXT("map-status"), TAttribute<FText>::CreateLambda([WeakWindow]()
+    {
+        const TSharedPtr<SCkMapDebuggerWindow> Window = WeakWindow.Pin();
+        if (!Window.IsValid() || !Window->_Snapshot.IsValid() || NOT Window->_Snapshot->HasWorld)
+        { return FText::FromString(TEXT("No active world. Start PIE to see the map stack.")); }
+        return FText::FromString(ck::Format_UE(TEXT("POIs: {} ({} enabled)   Compasses: {}   Minimaps: {}"),
+            Window->_Snapshot->Pois.Num(), Window->_Snapshot->NumEnabledPois,
+            Window->_Snapshot->Compasses.Num(), Window->_Snapshot->Minimaps.Num()));
+    }));
+
+    const TSharedRef<FCkUiView> Candidate = FCkUiView::Create(MoveTemp(Ports), {}, ck_map_debugger::AuthoredStyleTokens(),
+        CkStyle::RegularFont(CkStyle::FontSizeBody()), MoveTemp(Data), Registry);
+    Candidate->GetRegion(TEXT("actions"));
+    Candidate->GetRegion(TEXT("main"));
+    Candidate->GetRegion(TEXT("status"));
+
+    const FString ResourceDirectory = _ResourceDirectoryOverride.IsEmpty()
+        ? FPaths::Combine(Plugin->GetBaseDir(), TEXT("Resources/UI")) : _ResourceDirectoryOverride;
+    _AuthoredShellMarkupPath = FPaths::Combine(ResourceDirectory, TEXT("MapDebugger.ui.html"));
+    _AuthoredShellStylesheetPath = FPaths::Combine(ResourceDirectory, TEXT("MapDebugger.ui.css"));
+    _PoiRowMarkupPath = FPaths::Combine(ResourceDirectory, TEXT("MapDebuggerPoiRow.ui.html"));
+    _PoiRowStylesheetPath = FPaths::Combine(ResourceDirectory, TEXT("MapDebuggerPoiRow.ui.css"));
+    Candidate->SetFiles(_AuthoredShellMarkupPath, _AuthoredShellStylesheetPath);
+
+    // Validation rejects an already-parented native binding. Temporarily detach every fallback host,
+    // then restore the complete native shell on failure; no partially admitted tree is ever published.
+    Detach_FallbackPorts();
+    if (_ActionsHost.IsValid()) { _ActionsHost->SetContent(SNullWidget::NullWidget); }
+    Candidate->PollFiles(ck_map_debugger::AuthoredStyleTokens());
+    if (NOT Candidate->GetLastResult().Succeeded)
+    {
+        _AuthoredShellLoadFailure = FString::Join(Candidate->GetLastResult().Errors, TEXT("\n"));
+        _AuthoredShellView = Candidate;
+        Restore_FallbackPorts();
+        if (_ActionsHost.IsValid()) { _ActionsHost->SetContent(_FallbackEnabledPoisHost.ToSharedRef()); }
+        return;
+    }
+
+    _AuthoredShellView = Candidate;
+    if (NOT Mount_AuthoredShell())
+    {
+        _AuthoredShellLoadFailure = TEXT("Map authored shell could not mount its accepted regions.");
+        _AuthoredShellView.Reset();
+        Restore_FallbackPorts();
+        if (_ActionsHost.IsValid()) { _ActionsHost->SetContent(_FallbackEnabledPoisHost.ToSharedRef()); }
+    }
+}
+
+auto SCkMapDebuggerWindow::Mount_AuthoredShell() -> bool
+{
+    if (NOT _AuthoredShellView.IsValid() || NOT _ShellHost.IsValid() || NOT _ActionsHost.IsValid())
+    { return false; }
+
+    _ActionsHost->SetContent(_AuthoredShellView->GetRegion(TEXT("actions")));
+    _ShellHost->SetContent(SNew(SVerticalBox)
+        + SVerticalBox::Slot().FillHeight(1.0f)
+        [ _AuthoredShellView->GetRegion(TEXT("main")) ]
+        + SVerticalBox::Slot().AutoHeight()
+        [ _AuthoredShellView->GetRegion(TEXT("status")) ]);
+    _UsingNativeShellFallback = false;
+    _AuthoredShellLoadFailure.Reset();
+    return true;
+}
+
+auto SCkMapDebuggerWindow::Poll_AuthoredShell(const double InCurrentTime) -> void
+{
+    if (_PresentationReleased || NOT _AuthoredShellView.IsValid() || InCurrentTime < _NextAuthoredShellPollSeconds)
+    { return; }
+
+    _NextAuthoredShellPollSeconds = InCurrentTime + 0.5;
+    if (_UsingNativeShellFallback)
+    {
+        Detach_FallbackPorts();
+        if (_ActionsHost.IsValid()) { _ActionsHost->SetContent(SNullWidget::NullWidget); }
+    }
+    const bool Changed = _AuthoredShellView->PollFiles(ck_map_debugger::AuthoredStyleTokens());
+    if (_UsingNativeShellFallback && _AuthoredShellView->GetLastResult().Succeeded)
+    {
+        Mount_AuthoredShell();
+        return;
+    }
+    if (_UsingNativeShellFallback)
+    {
+        Restore_FallbackPorts();
+        if (_ActionsHost.IsValid()) { _ActionsHost->SetContent(_FallbackEnabledPoisHost.ToSharedRef()); }
+    }
+    if (Changed && NOT _AuthoredShellView->GetLastResult().Succeeded)
+    {
+        // FCkUiView keeps the prior committed tree and revision on rejection. Keep it mounted and expose
+        // the failure for diagnostics instead of replacing it with a new, state-losing fallback tree.
+        _AuthoredShellLoadFailure = FString::Join(_AuthoredShellView->GetLastResult().Errors, TEXT("\n"));
+    }
+}
+
+auto SCkMapDebuggerWindow::Release_Presentation() -> void
+{
+    if (_PresentationReleased) { return; }
+    _PresentationReleased = true;
+
+#if WITH_EDITOR
+    if (_EndPieHandle.IsValid())
+    {
+        FEditorDelegates::EndPIE.Remove(_EndPieHandle);
+        _EndPieHandle.Reset();
+    }
+#endif
+
+    // This releases focus/capture only below the views we own; unrelated editor controls retain focus.
+    if (_AuthoredShellView.IsValid()) { _AuthoredShellView->ReleaseOwnerInteractions(); }
+    for (const TSharedPtr<FCkMapDebug_PoiRow>& Row : _AllRows)
+    {
+        if (Row.IsValid() && Row->Presentation.IsValid())
+        {
+            Row->Presentation->ReleaseOwnerInteractions();
+            Row->Presentation.Reset();
+        }
+    }
+
+    if (_ShellHost.IsValid()) { _ShellHost->SetContent(SNullWidget::NullWidget); }
+    if (_ActionsHost.IsValid()) { _ActionsHost->SetContent(SNullWidget::NullWidget); }
+    Detach_FallbackPorts();
+
+    if (_PoiList.IsValid())
+    {
+        _PoiList->ClearSelection();
+        _PoiList->ClearItemsSource();
+    }
+    if (_Canvas.IsValid()) { _Canvas->Release_Interaction(); }
+
+    _SelectedPoi = {};
+    _AllRows.Reset();
+    _VisibleRows.Reset();
+    _Snapshot.Reset();
+    _AuthoredShellView.Reset();
+    _SearchBar.Reset();
+    _PoiList.Reset();
+    _Canvas.Reset();
+    _SelectedEntity.Reset();
+    _EnabledPoisToggle.Reset();
+    _FallbackSearchHost.Reset();
+    _FallbackListHost.Reset();
+    _FallbackCanvasHost.Reset();
+    _FallbackSelectedEntityHost.Reset();
+    _FallbackEnabledPoisHost.Reset();
+    _ShellHost.Reset();
+    _ActionsHost.Reset();
+    // Keep the chrome object alive through module/tab teardown; its content hosts are already empty.
+}
+
+auto SCkMapDebuggerWindow::Detach_FallbackPorts() -> void
+{
+    // SBox owns exactly one child. Clearing every host before another owner mounts the retained
+    // mechanics prevents Slate dual-parenting, including partially constructed test/failure paths.
+    if (_FallbackSearchHost.IsValid()) { _FallbackSearchHost->SetContent(SNullWidget::NullWidget); }
+    if (_FallbackListHost.IsValid()) { _FallbackListHost->SetContent(SNullWidget::NullWidget); }
+    if (_FallbackCanvasHost.IsValid()) { _FallbackCanvasHost->SetContent(SNullWidget::NullWidget); }
+    if (_FallbackSelectedEntityHost.IsValid()) { _FallbackSelectedEntityHost->SetContent(SNullWidget::NullWidget); }
+    if (_FallbackEnabledPoisHost.IsValid()) { _FallbackEnabledPoisHost->SetContent(SNullWidget::NullWidget); }
+}
+
+auto SCkMapDebuggerWindow::Restore_FallbackPorts() -> void
+{
+    // A retained control may still belong to a committed authored view while recovery is unwinding.
+    // Treat that as not-yet-detached instead of asking Slate to dual-parent it; a later restore can retry.
+    const auto RestoreIfDetached = [](const TSharedPtr<SBox>& InHost, const TSharedPtr<SWidget>& InControl)
+    {
+        if (NOT InHost.IsValid() || NOT InControl.IsValid() || InControl->GetParentWidget().IsValid())
+        { return; }
+
+        InHost->SetContent(InControl.ToSharedRef());
+    };
+
+    RestoreIfDetached(_FallbackSearchHost, _SearchBar);
+    RestoreIfDetached(_FallbackListHost, _PoiList);
+    RestoreIfDetached(_FallbackCanvasHost, _Canvas);
+    RestoreIfDetached(_FallbackSelectedEntityHost, _SelectedEntity);
+    RestoreIfDetached(_FallbackEnabledPoisHost, _EnabledPoisToggle);
 }
 
 auto
@@ -816,6 +1113,11 @@ auto
     -> void
 {
     SCkDebugger_WindowBase::Tick(InAllottedGeometry, InCurrentTime, InDeltaTime);
+
+    if (_PresentationReleased)
+    { return; }
+
+    Poll_AuthoredShell(InCurrentTime);
 
     if (NOT FCkDebuggerRefreshGate::Should_RefreshNow(WindowId))
     { return; }
@@ -1140,11 +1442,62 @@ auto
 
 auto
     SCkMapDebuggerWindow::
+    Build_PoiRowPresentation(
+        const TSharedPtr<FCkMapDebug_PoiRow>& InRow)
+    -> TSharedPtr<SWidget>
+{
+    if (!InRow.IsValid() || _PresentationReleased || _PoiRowMarkupPath.IsEmpty() || _PoiRowStylesheetPath.IsEmpty())
+    { return {}; }
+
+    if (!InRow->Presentation.IsValid())
+    {
+        TSharedPtr<const FCkUiWidgetRegistrySnapshot> Registry;
+        const FCkUiLoadResult RegistryResult = FCkDebug_UiRegistry::TryCreate(Registry);
+        if (!RegistryResult.Succeeded || !Registry.IsValid())
+        { return {}; }
+        const TWeakPtr<FCkMapDebug_PoiRow> WeakRow = InRow;
+        auto Data = FCkUiView::FDataBindings{};
+        Data.Text.Add(TEXT("map-row-name"), TAttribute<FText>::CreateLambda([WeakRow]()
+        { const TSharedPtr<FCkMapDebug_PoiRow> Row = WeakRow.Pin(); return FText::FromString(Row.IsValid() ? Row->Name : FString{}); }));
+        Data.Text.Add(TEXT("map-row-distance"), TAttribute<FText>::CreateLambda([WeakRow]()
+        { const TSharedPtr<FCkMapDebug_PoiRow> Row = WeakRow.Pin(); return FText::FromString(Row.IsValid() ? Row->Distance : FString{}); }));
+        Data.Color.Add(TEXT("map-row-swatch"), TAttribute<FLinearColor>::CreateLambda([WeakRow]()
+        { const TSharedPtr<FCkMapDebug_PoiRow> Row = WeakRow.Pin(); return Row.IsValid() ? Row->Color : FLinearColor::Transparent; }));
+        Data.Color.Add(TEXT("map-row-name-color"), TAttribute<FLinearColor>::CreateLambda([WeakRow]()
+        { const TSharedPtr<FCkMapDebug_PoiRow> Row = WeakRow.Pin(); return !Row.IsValid() || !Row->Enabled ? CkStyle::State_Disabled() : Row->HighlightMatch ? CkStyle::Text() : CkStyle::TextMute(); }));
+        Data.Color.Add(TEXT("map-row-distance-color"), TAttribute<FLinearColor>::CreateLambda([WeakRow]()
+        { const TSharedPtr<FCkMapDebug_PoiRow> Row = WeakRow.Pin(); return Row.IsValid() ? CkStyle::TextDim() : FLinearColor::Transparent; }));
+        const TSharedRef<FCkUiView> Candidate = FCkUiView::Create({}, {}, ck_map_debugger::AuthoredStyleTokens(),
+            CkStyle::RegularFont(CkStyle::FontSizeBody()), MoveTemp(Data), Registry);
+        Candidate->GetRegion(TEXT("main"));
+        Candidate->SetFiles(_PoiRowMarkupPath, _PoiRowStylesheetPath);
+        Candidate->PollFiles(ck_map_debugger::AuthoredStyleTokens());
+        if (!Candidate->GetLastResult().Succeeded)
+        { return {}; }
+        InRow->Presentation = Candidate;
+    }
+
+    InRow->Presentation->PollFiles(ck_map_debugger::AuthoredStyleTokens());
+    if (!InRow->Presentation->GetLastResult().Succeeded)
+    { return {}; }
+    return InRow->Presentation->GetRegion(TEXT("main"));
+}
+
+auto
+    SCkMapDebuggerWindow::
     OnGenerateRow(
         TSharedPtr<FCkMapDebug_PoiRow> InRow,
         const TSharedRef<STableViewBase>& InOwnerTable)
     -> TSharedRef<ITableRow>
 {
+    if (const TSharedPtr<SWidget> Authored = Build_PoiRowPresentation(InRow); Authored.IsValid())
+    {
+        return SNew(STableRow<TSharedPtr<FCkMapDebug_PoiRow>>, InOwnerTable)
+            .Padding(TAttribute<FMargin>::CreateStatic(&ck_map_debugger::Get_PoiRowPadding))
+            .ShowSelection(true)
+            [ Authored.ToSharedRef() ];
+    }
+
     const auto WeakRow = TWeakPtr<FCkMapDebug_PoiRow>{InRow};
 
     // Plain visual widgets only — no click-consuming children, so STableRow selection bubbles cleanly

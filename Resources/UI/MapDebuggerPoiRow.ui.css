@@ -1,0 +1,1 @@
+.map-poi-row { gap: var(--map-space-s); padding: var(--map-space-s); }.map-poi-row-swatch { color: var(--map-text); }.map-poi-row-name { flex-grow: 1; }.map-poi-row-distance { flex-shrink: 0; color: var(--map-muted); font-family: monospace; }

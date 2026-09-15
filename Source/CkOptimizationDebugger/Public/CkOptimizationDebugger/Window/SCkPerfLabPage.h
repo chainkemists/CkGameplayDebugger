@@ -12,6 +12,8 @@
 #include <Widgets/SCompoundWidget.h>
 #include <Widgets/Views/SListView.h>
 
+struct FCkOptimizationDebuggerLifecycleTestAccess;
+
 // --------------------------------------------------------------------------------------------------------------------
 // The Performance page: set up a measurement run, watch it, and read what it found.
 //
@@ -31,12 +33,16 @@ public:
     /** Clears the published snapshot and deactivates the EdMode: the overlay must not outlive the page that owns
      *  its only off switch. */
     virtual ~SCkPerfLabPage() override;
+    /** Cancels/waits the child while this page's Slate and editor delegates are still valid. */
+    auto Release_Presentation() -> void;
 
 public:
     /** Sessions on disk, so the tab badge can show a count without this page being the one asked. */
     auto Get_SessionCount() const -> int32 { return _SessionRows.Num(); }
 
 private:
+    friend struct FCkOptimizationDebuggerLifecycleTestAccess;
+
     auto DoBuild_RunControls() -> TSharedRef<SWidget>;
     auto DoBuild_TargetPresets() -> TSharedRef<SWidget>;
     auto DoBuild_SessionList() -> TSharedRef<SWidget>;
@@ -116,6 +122,7 @@ private:
     TSharedPtr<FActiveTimerHandle> _HeatmapTimer;
 
     bool _HeatmapEnabled = false;
+    bool _PresentationReleased = false;
 };
 
 // --------------------------------------------------------------------------------------------------------------------

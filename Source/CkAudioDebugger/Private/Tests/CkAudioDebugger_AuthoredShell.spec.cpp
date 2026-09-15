@@ -198,6 +198,9 @@ namespace ck_audio_debugger_authored_shell_tests
 
     auto SubtreeHasText(const TSharedRef<SWidget>& InRoot, const FString& InText) -> bool
     {
+        if (InRoot->GetTypeAsString() == TEXT("SCkFlexText")
+            && StaticCastSharedRef<SCkFlexText>(InRoot)->GetText().ToString() == InText)
+        { return true; }
         if (InRoot->GetTypeAsString() == TEXT("STextBlock")
             && StaticCastSharedRef<STextBlock>(InRoot)->GetText().ToString() == InText)
         { return true; }
@@ -639,6 +642,32 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
     // SWidgetSwitcher::GetChildren exposes only its active slot; inspect the mounted page after physical selection.
     TestTrue(TEXT("physically selected Events page retains the original native event log"),
         ContainsWidget(DebuggerWindow->_PageSwitcher.ToSharedRef(), OriginalEventLog.ToSharedRef()));
+    if (NOT RunFixturePhase([&, this]() -> bool
+    {
+        const auto Page = DebuggerWindow->_AuthoredEventsPageView;
+        if (NOT TestTrue(TEXT("complete Events page and shared EventLog presentation are authored"),
+            Page.IsValid() && Page->GetLastResult().Succeeded && NOT DebuggerWindow->_UsingNativeEventsPageFallback
+                && OriginalEventLog->Get_UsesAuthoredPresentation()
+                && ContainsWidget(Page->GetRegion(TEXT("main")), DebuggerWindow->_EventsToolbarHost.ToSharedRef())
+                && ContainsWidget(Page->GetRegion(TEXT("main")), OriginalEventLog.ToSharedRef())))
+        { AddError(OriginalEventLog->Get_AuthoredFailure()); return false; }
+        TestEqual(TEXT("production empty Events message is authored by the shared presenter"),
+            TaggedText(OriginalEventLog->Get_AuthoredView()->GetRegion(TEXT("main")), TEXT("event-log-empty")),
+            FString(TEXT("Nothing has changed since this window opened.")));
+        auto PageMarkup = FString{};
+        auto PageCss = FString{};
+        if (NOT TestTrue(TEXT("Events page resources are readable"),
+            FFileHelper::LoadFileToString(PageMarkup, *DebuggerWindow->_AuthoredEventsPageMarkupPath)
+                && FFileHelper::LoadFileToString(PageCss, *DebuggerWindow->_AuthoredEventsPageStylesheetPath))) { return false; }
+        TestTrue(TEXT("Events page compatible reload retains both exact ports"), Page->TryReload(PageMarkup, PageCss).Succeeded
+            && ContainsWidget(Page->GetRegion(TEXT("main")), OriginalEventLog.ToSharedRef())
+            && ContainsWidget(Page->GetRegion(TEXT("main")), DebuggerWindow->_EventsToolbarHost.ToSharedRef()));
+        const auto Revision = Page->GetRevision();
+        const auto Rejected = Page->TryReload(PageMarkup.Replace(TEXT("bind=\"events-log\""), TEXT("bind=\"missing-events-log\"")), PageCss);
+        TestTrue(TEXT("invalid Events page resource preserves the complete mounted page"), NOT Rejected.Succeeded
+            && Page->GetRevision() == Revision && ContainsWidget(Page->GetRegion(TEXT("main")), OriginalEventLog.ToSharedRef()));
+        return true;
+    })) { return false; }
     const TSharedPtr<SCheckBox> HeldEventsStateToggle = FindCheckBoxWithText(EventsMain, TEXT("State"));
     const TSharedPtr<SCheckBox> EventsFadesToggle = FindCheckBoxWithText(EventsMain, TEXT("Fades"));
     const TSharedPtr<SCheckBox> EventsVirtualizationToggle = FindCheckBoxWithText(EventsMain, TEXT("Virtualization"));
@@ -693,6 +722,7 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
     FString AttenuationMarkup;
     FString AttenuationCss;
     FString EventsMarkup;
+    FString EventsPageMarkup;
     FString DirectorsMarkup;
     FString DirectorsCss;
     FString TracksMarkup;
@@ -713,6 +743,7 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
         && FFileHelper::LoadFileToString(AttenuationMarkup, *FPaths::Combine(Directory, TEXT("AudioDebuggerAttenuation.ui.html")))
         && FFileHelper::LoadFileToString(AttenuationCss, *FPaths::Combine(Directory, TEXT("AudioDebuggerAttenuation.ui.css")))
         && FFileHelper::LoadFileToString(EventsMarkup, *FPaths::Combine(Directory, TEXT("AudioDebuggerEventsToolbar.ui.html")))
+        && FFileHelper::LoadFileToString(EventsPageMarkup, *FPaths::Combine(Directory, TEXT("AudioDebuggerEvents.ui.html")))
         && FFileHelper::LoadFileToString(EventsCss, *FPaths::Combine(Directory, TEXT("AudioDebuggerEventsToolbar.ui.css")))
         && FFileHelper::LoadFileToString(DirectorsMarkup, *FPaths::Combine(Directory, TEXT("AudioDebuggerDirectors.ui.html")))
         && FFileHelper::LoadFileToString(DirectorsCss, *FPaths::Combine(Directory, TEXT("AudioDebuggerDirectors.ui.css")))
@@ -965,6 +996,7 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
     bool CrossfadeMarkupRestored = false;
     bool AttenuationMarkupRestored = false;
     bool EventsMarkupRestored = false;
+    bool EventsPageMarkupRestored = false;
     bool DirectorsMarkupRestored = false;
     bool TracksMarkupRestored = false;
     bool SpatialMarkupRestored = false;
@@ -979,6 +1011,8 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
         { FFileHelper::SaveStringToFile(AttenuationMarkup, *FPaths::Combine(Directory, TEXT("AudioDebuggerAttenuation.ui.html"))); }
         if (NOT EventsMarkupRestored)
         { FFileHelper::SaveStringToFile(EventsMarkup, *FPaths::Combine(Directory, TEXT("AudioDebuggerEventsToolbar.ui.html"))); }
+        if (NOT EventsPageMarkupRestored)
+        { FFileHelper::SaveStringToFile(EventsPageMarkup, *FPaths::Combine(Directory, TEXT("AudioDebuggerEvents.ui.html"))); }
         if (NOT DirectorsMarkupRestored)
         { FFileHelper::SaveStringToFile(DirectorsMarkup, *FPaths::Combine(Directory, TEXT("AudioDebuggerDirectors.ui.html"))); }
         if (NOT TracksMarkupRestored)
@@ -997,6 +1031,8 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
                 *FPaths::Combine(Directory, TEXT("AudioDebuggerAttenuation.ui.html")))
             && FFileHelper::SaveStringToFile(InvalidEventsStartupMarkup,
                 *FPaths::Combine(Directory, TEXT("AudioDebuggerEventsToolbar.ui.html")))
+            && FFileHelper::SaveStringToFile(EventsPageMarkup.Replace(TEXT("bind=\"events-log\""), TEXT("bind=\"missing-events-log\"")),
+                *FPaths::Combine(Directory, TEXT("AudioDebuggerEvents.ui.html")))
             && FFileHelper::SaveStringToFile(InvalidDirectorsStartupMarkup,
                 *FPaths::Combine(Directory, TEXT("AudioDebuggerDirectors.ui.html")))
             && FFileHelper::SaveStringToFile(InvalidTracksStartupMarkup,
@@ -1133,6 +1169,21 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
         DebuggerWindow->_EventsStateToggle, DebuggerWindow->_EventsFadesToggle,
         DebuggerWindow->_EventsVirtualizationToggle, DebuggerWindow->_EventsLifecycleToggle};
     const TSharedPtr<SCkDebug_EventLog> LiveEventLog = DebuggerWindow->_EventLog;
+    if (NOT TestTrue(TEXT("invalid Events page startup retains both native page ports"),
+        DebuggerWindow->_UsingNativeEventsPageFallback
+            && ContainsWidget(DebuggerWindow->_EventsPageHost.ToSharedRef(), LiveEventLog.ToSharedRef())
+            && ContainsWidget(DebuggerWindow->_EventsPageHost.ToSharedRef(), DebuggerWindow->_EventsToolbarHost.ToSharedRef())))
+    { return false; }
+    EventsPageMarkupRestored = FFileHelper::SaveStringToFile(EventsPageMarkup,
+        *FPaths::Combine(Directory, TEXT("AudioDebuggerEvents.ui.html")));
+    if (NOT TestTrue(TEXT("Events page fixture restores installed source"), EventsPageMarkupRestored)) { return false; }
+    DebuggerWindow->OnStyleRevisionChanged();
+    TickSlate(Slate);
+    if (NOT TestTrue(TEXT("Events page recovers independently and retains the exact log and toolbar host"),
+        NOT DebuggerWindow->_UsingNativeEventsPageFallback && DebuggerWindow->_UsingNativeEventsToolbarFallback
+            && DebuggerWindow->_EventLog == LiveEventLog
+            && ContainsWidget(DebuggerWindow->_AuthoredEventsPageView->GetRegion(TEXT("main")), LiveEventLog.ToSharedRef())))
+    { return false; }
     const TSharedPtr<SButton> FallbackEventsTab = FindButtonWithText(GetTabs().ToSharedRef(), TEXT("Events"));
     const TSharedPtr<SCheckBox> LiveEventsStateToggle = FindCheckBoxWithText(
         DebuggerWindow->_EventsToolbarHost.ToSharedRef(), TEXT("State"));
@@ -1845,8 +1896,9 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
     DebuggerWindow->DoRecord_Events();
     TestEqual(TEXT("enabled State preference records exactly the next state transition"), LiveEventLog->Get_EntryCount(), 1);
     TickSlate(Slate);
-    TestTrue(TEXT("recorded State event is physically rendered by the original native event log"),
-        SubtreeHasText(LiveEventLog.ToSharedRef(), TEXT("Same track  Paused → Playing")));
+    TestTrue(TEXT("recorded State event is physically rendered by the original log's authored row"),
+        LiveEventLog->Get_UsesAuthoredPresentation()
+            && TaggedText(LiveEventLog.ToSharedRef(), TEXT("event-log-message")) == TEXT("Same track  Paused → Playing"));
     if (NOT TestTrue(TEXT("turning State recording off leaves existing events visible"),
         Click(Slate, LiveEventsStateToggle.ToSharedRef()) && NOT DebuggerWindow->_EventsShowStateChanges
             && LiveEventLog->Get_EntryCount() == 1

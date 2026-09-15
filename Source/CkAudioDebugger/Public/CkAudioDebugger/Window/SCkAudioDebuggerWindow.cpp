@@ -900,6 +900,7 @@ auto
         BuildAuthoredCrossfadePage();
         BuildAuthoredAttenuationPanel();
         BuildAuthoredEventsToolbar();
+        BuildAuthoredEventsPage();
         BuildAuthoredDirectorsPage();
         BuildAuthoredTracksPage();
         BuildAuthoredSpatialPage();
@@ -929,6 +930,8 @@ SCkAudioDebuggerWindow::~SCkAudioDebuggerWindow()
     if (_EventsToolbarHost.IsValid())
     { _EventsToolbarHost->SetContent(SNullWidget::NullWidget); }
     _AuthoredEventsToolbarView.Reset();
+    if (_EventsPageHost.IsValid()) { _EventsPageHost->SetContent(SNullWidget::NullWidget); }
+    _AuthoredEventsPageView.Reset();
     if (_DirectorsPageHost.IsValid()) { _DirectorsPageHost->SetContent(SNullWidget::NullWidget); }
     _AuthoredDirectorsView.Reset();
     if (_TracksPageHost.IsValid()) { _TracksPageHost->SetContent(SNullWidget::NullWidget); }
@@ -1045,6 +1048,8 @@ auto SCkAudioDebuggerWindow::PollAuthoredShell(const double InCurrentTime) -> vo
     { BuildAuthoredAttenuationPanel(); }
     if (NOT _UsingNativeFallback && NOT _AuthoredEventsToolbarView.IsValid())
     { BuildAuthoredEventsToolbar(); }
+    if (NOT _UsingNativeFallback && NOT _AuthoredEventsPageView.IsValid())
+    { BuildAuthoredEventsPage(); }
     if (NOT _UsingNativeFallback && NOT _AuthoredDirectorsView.IsValid())
     { BuildAuthoredDirectorsPage(); }
     if (NOT _UsingNativeFallback && NOT _AuthoredTracksView.IsValid())
@@ -2625,6 +2630,40 @@ auto
 
 // --------------------------------------------------------------------------------------------------------------------
 
+auto SCkAudioDebuggerWindow::BuildAuthoredEventsPage() -> void
+{
+    if (NOT _EventsPageHost.IsValid() || NOT _EventsToolbarHost.IsValid() || NOT _EventLog.IsValid()) { return; }
+    const auto Plugin = IPluginManager::Get().FindPlugin(TEXT("CkDebugger"));
+    if (NOT Plugin.IsValid()) { return; }
+    _EventsPageHost->SetContent(SNullWidget::NullWidget);
+    const auto View = FCkUiView::Create({{TEXT("events-toolbar"), _EventsToolbarHost}, {TEXT("events-log"), _EventLog}}, {},
+        ck_audio_debugger_window::Get_AuthoredShellStyleTokens(), CkStyle::RegularFont(CkStyle::FontSizeBody()));
+    const auto Main = View->GetRegion(TEXT("main"));
+    const auto Directory = FPaths::Combine(Plugin->GetBaseDir(), TEXT("Resources/UI"));
+    _AuthoredEventsPageMarkupPath = FPaths::Combine(Directory, TEXT("AudioDebuggerEvents.ui.html"));
+    _AuthoredEventsPageStylesheetPath = FPaths::Combine(Directory, TEXT("AudioDebuggerEvents.ui.css"));
+    View->SetFiles(_AuthoredEventsPageMarkupPath, _AuthoredEventsPageStylesheetPath);
+    _AuthoredEventsPageView = View;
+    View->PollFiles(ck_audio_debugger_window::Get_AuthoredShellStyleTokens());
+    _UsingNativeEventsPageFallback = NOT View->GetLastResult().Succeeded;
+    _EventsPageHost->SetContent(_UsingNativeEventsPageFallback ? DoCreate_NativeEventsPage() : Main);
+}
+
+auto SCkAudioDebuggerWindow::PollAuthoredEventsPage(double InCurrentTime) -> void
+{
+    if (InCurrentTime < _NextAuthoredEventsPagePollSeconds || NOT _AuthoredEventsPageView.IsValid()) { return; }
+    _NextAuthoredEventsPagePollSeconds = InCurrentTime + 0.5;
+    const auto Tokens = ck_audio_debugger_window::Get_AuthoredShellStyleTokens();
+    const bool Changed = _AuthoredEventsPageView->PollFiles(Tokens);
+    if (NOT _UsingNativeEventsPageFallback || NOT Changed) { return; }
+    _EventsPageHost->SetContent(SNullWidget::NullWidget);
+    _AuthoredEventsPageView->SetFiles(_AuthoredEventsPageMarkupPath, _AuthoredEventsPageStylesheetPath);
+    _AuthoredEventsPageView->PollFiles(Tokens);
+    _UsingNativeEventsPageFallback = NOT _AuthoredEventsPageView->GetLastResult().Succeeded;
+    _EventsPageHost->SetContent(_UsingNativeEventsPageFallback
+        ? DoCreate_NativeEventsPage() : _AuthoredEventsPageView->GetRegion(TEXT("main")));
+}
+
 auto
     SCkAudioDebuggerWindow::
     PollAuthoredEventsToolbar(
@@ -2698,23 +2737,24 @@ auto
     _EventsLifecycleToggle = MakeKindToggle(FText::FromString(TEXT("Lifecycle")), ECk_Tone::Accent,
         &SCkAudioDebuggerWindow::_EventsShowLifecycle);
 
+    SAssignNew(_EventsToolbarHost, SBox)[DoCreate_NativeEventsToolbar()];
+    SAssignNew(_EventLog, SCkDebug_EventLog)
+        .MaxEntries(k_EventLogCapacity)
+        .UseAuthoredPresentation(true)
+        .EmptyText(FText::FromString(TEXT("Nothing has changed since this window opened.")));
+    return SAssignNew(_EventsPageHost, SBox)[DoCreate_NativeEventsPage()];
+}
+
+auto SCkAudioDebuggerWindow::DoCreate_NativeEventsPage() -> TSharedRef<SWidget>
+{
     return SNew(SVerticalBox)
         + SVerticalBox::Slot()
         .AutoHeight()
-        [
-            SAssignNew(_EventsToolbarHost, SBox)
-            [
-                DoCreate_NativeEventsToolbar()
-            ]
-        ]
+        [_EventsToolbarHost.ToSharedRef()]
         + SVerticalBox::Slot()
         .FillHeight(1.0f)
         .Padding(CkStyle::SpaceL, 0.0f, CkStyle::SpaceL, CkStyle::SpaceM)
-        [
-            SAssignNew(_EventLog, SCkDebug_EventLog)
-            .MaxEntries(k_EventLogCapacity)
-            .EmptyText(FText::FromString(TEXT("Nothing has changed since this window opened.")))
-        ];
+        [_EventLog.ToSharedRef()];
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -2829,6 +2869,7 @@ auto
     PollAuthoredCrossfadePage(InCurrentTime);
     PollAuthoredAttenuationPanel(InCurrentTime);
     PollAuthoredEventsToolbar(InCurrentTime);
+    PollAuthoredEventsPage(InCurrentTime);
     PollAuthoredDirectorsPage(InCurrentTime);
     PollAuthoredTracksPage(InCurrentTime);
     PollAuthoredSpatialPage(InCurrentTime);
@@ -2901,6 +2942,8 @@ auto
     _NextAuthoredCrossfadePollSeconds = 0.0;
     _NextAuthoredAttenuationPollSeconds = 0.0;
     _NextAuthoredEventsToolbarPollSeconds = 0.0;
+    _NextAuthoredEventsPagePollSeconds = 0.0;
+    if (_EventLog.IsValid()) { _EventLog->Poll_AuthoredPresentation(); }
     _NextAuthoredDirectorsPollSeconds = 0.0;
     _NextAuthoredTracksPollSeconds = 0.0;
     _NextAuthoredSpatialPollSeconds = 0.0;

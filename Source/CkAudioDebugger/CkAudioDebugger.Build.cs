@@ -1,3 +1,4 @@
+using System.IO;
 using UnrealBuildTool;
 
 public class CkAudioDebugger : CkModuleRules
@@ -30,6 +31,22 @@ public class CkAudioDebugger : CkModuleRules
             "CkSlateLayout",
             "CkEditorTools",  // shared CkStyle:: tokens used directly by the window
         });
+
+        foreach (var Resource in new[]
+        {
+            "AudioDebuggerShell.ui.html", "AudioDebuggerShell.ui.css",
+            "AudioDebuggerDirectors.ui.html", "AudioDebuggerDirectors.ui.css",
+            "AudioDebuggerTracks.ui.html", "AudioDebuggerTracks.ui.css",
+            "AudioDebuggerCrossfade.ui.html", "AudioDebuggerCrossfade.ui.css",
+            "AudioDebuggerSpatial.ui.html", "AudioDebuggerSpatial.ui.css",
+            "AudioDebuggerAttenuation.ui.html", "AudioDebuggerAttenuation.ui.css",
+            "AudioDebuggerEventsToolbar.ui.html", "AudioDebuggerEventsToolbar.ui.css",
+            "AudioDebuggerEvents.ui.html", "AudioDebuggerEvents.ui.css",
+            "AudioDebuggerOverlay.ui.html", "AudioDebuggerOverlay.ui.css"
+        })
+        {
+            RuntimeDependencies.Add(Path.Combine(PluginDirectory, "Resources", "UI", Resource), StagedFileType.NonUFS);
+        }
 
         if (Target.bBuildEditor)
         {

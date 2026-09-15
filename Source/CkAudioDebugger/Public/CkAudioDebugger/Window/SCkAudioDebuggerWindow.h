@@ -158,6 +158,9 @@ private:
 
     auto
     BuildAuthoredEventsToolbar() -> void;
+    auto BuildAuthoredEventsPage() -> void;
+    auto PollAuthoredEventsPage(double InCurrentTime) -> void;
+    auto DoCreate_NativeEventsPage() -> TSharedRef<SWidget>;
 
     auto BuildAuthoredDirectorsPage() -> void;
     auto PollAuthoredDirectorsPage(double InCurrentTime) -> void;
@@ -354,6 +357,12 @@ private:
     TSharedPtr<FCkUiView>       _AuthoredCrossfadeView;
     TSharedPtr<FCkUiView>       _AuthoredAttenuationView;
     TSharedPtr<FCkUiView>       _AuthoredEventsToolbarView;
+    TSharedPtr<FCkUiView>       _AuthoredEventsPageView;
+    TSharedPtr<SBox>           _EventsPageHost;
+    FString                    _AuthoredEventsPageMarkupPath;
+    FString                    _AuthoredEventsPageStylesheetPath;
+    double                     _NextAuthoredEventsPagePollSeconds = 0.0;
+    bool                       _UsingNativeEventsPageFallback = true;
     TSharedPtr<FCkUiView>       _AuthoredDirectorsView;
     TSharedPtr<FCkUiCollection> _DirectorRecords;
     TSharedPtr<SBox>           _DirectorsPageHost;

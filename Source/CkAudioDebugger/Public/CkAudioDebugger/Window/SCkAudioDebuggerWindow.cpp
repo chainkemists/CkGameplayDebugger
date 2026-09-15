@@ -599,6 +599,115 @@ namespace ck_audio_debugger_window
         TSharedPtr<SCkDebug_ToggleSurface> Widget;
     };
 
+    class FOverlayToggle final : public ICkUiRetainedWidget, public TSharedFromThis<FOverlayToggle>
+    {
+    public:
+        struct FConfiguration
+        {
+            TAttribute<FText> Label;
+            TAttribute<FText> Caption;
+            TAttribute<bool> Checked;
+            TAttribute<bool> CanDispatch;
+            FSimpleDelegate Action;
+        };
+        static auto TryConfiguration(const FCkUiCustomWidgetArguments& InArguments,
+            FConfiguration& OutConfiguration, FString& OutFailure) -> bool
+        {
+            const auto* Label = InArguments.TextBindings.Find(TEXT("label"));
+            const auto* Caption = InArguments.TextBindings.Find(TEXT("caption"));
+            const auto* Checked = InArguments.BoolBindings.Find(TEXT("checked"));
+            const auto* Action = InArguments.Actions.Find(TEXT("action"));
+            if (Label == nullptr || NOT Label->IsSet() || Caption == nullptr || NOT Caption->IsSet()
+                || Checked == nullptr || NOT Checked->IsSet() || Action == nullptr || NOT Action->IsBound())
+            { OutFailure = TEXT("audio-overlay-toggle requires label, caption, checked and action bindings."); return false; }
+            OutConfiguration = {*Label, *Caption, *Checked, InArguments.CanDispatchEvents, *Action};
+            return true;
+        }
+        explicit FOverlayToggle(FConfiguration InConfiguration) : Configuration(MoveTemp(InConfiguration)) {}
+        auto Initialize() -> void
+        {
+            const TWeakPtr<FOverlayToggle> WeakToggle = AsShared();
+            Widget = SNew(SCkDebug_ToggleSurface)
+                .AccessibleText_Lambda([WeakToggle]()
+                {
+                    const auto Toggle = WeakToggle.Pin();
+                    return Toggle.IsValid() ? Toggle->Configuration.Label.Get(FText::GetEmpty()) : FText::GetEmpty();
+                })
+                .ToolTipText(FText::FromString(TEXT("Change audio debug draw in the running world.")))
+                .IsOn_Lambda([WeakToggle]()
+                {
+                    const auto Toggle = WeakToggle.Pin();
+                    return Toggle.IsValid() && Toggle->Configuration.CanDispatch.Get(false)
+                        && Toggle->Configuration.Checked.Get(false);
+                })
+                .IsEnabled_Lambda([WeakToggle]()
+                {
+                    const auto Toggle = WeakToggle.Pin();
+                    return Toggle.IsValid() && Toggle->Configuration.CanDispatch.Get(false);
+                })
+                .OnStateChanged_Lambda([WeakToggle](bool)
+                {
+                    const auto Toggle = WeakToggle.Pin();
+                    if (Toggle.IsValid() && Toggle->Configuration.CanDispatch.Get(false))
+                    { const auto Action = Toggle->Configuration.Action; Action.ExecuteIfBound(); }
+                })
+                [
+                    SNew(STextBlock).Font_Static(&Get_MicroFont).ColorAndOpacity_Lambda([]() { return CkStyle::TextDim(); })
+                    .Text_Lambda([WeakToggle]()
+                    {
+                        const auto Toggle = WeakToggle.Pin();
+                        return Toggle.IsValid() ? Toggle->Configuration.Caption.Get(FText::GetEmpty()) : FText::GetEmpty();
+                    })
+                ];
+        }
+        auto GetWidget() const -> TSharedRef<SWidget> override { return Widget.ToSharedRef(); }
+        auto PrepareReload(const FCkUiCustomWidgetArguments& InArguments, FString& OutFailure) const
+            -> TUniquePtr<ICkUiPreparedWidgetUpdate> override
+        {
+            auto Next = FConfiguration{};
+            if (NOT TryConfiguration(InArguments, Next, OutFailure)) { return {}; }
+            return MakeUnique<FUpdate>(ConstCastSharedRef<FOverlayToggle>(AsShared()), MoveTemp(Next));
+        }
+    private:
+        class FUpdate final : public ICkUiPreparedWidgetUpdate
+        {
+        public:
+            FUpdate(TSharedRef<FOverlayToggle> InOwner, FConfiguration InConfiguration)
+                : Owner(MoveTemp(InOwner)), Configuration(MoveTemp(InConfiguration)) {}
+            void Commit() noexcept override { Owner->Configuration = MoveTemp(Configuration); }
+        private:
+            TSharedRef<FOverlayToggle> Owner;
+            FConfiguration Configuration;
+        };
+        FConfiguration Configuration;
+        TSharedPtr<SCkDebug_ToggleSurface> Widget;
+    };
+
+    auto TryCreate_OverlayRegistry(TSharedPtr<const FCkUiWidgetRegistrySnapshot>& OutRegistry) -> bool
+    {
+        auto Staging = FCkUiWidgetRegistry{};
+        auto Toggle = FCkUiCustomWidgetRegistration{};
+        Toggle.Schema.Tag = TEXT("audio-overlay-toggle");
+        Toggle.Schema.Properties = {{TEXT("label"), ECkUiCustomPropertyKind::TextBinding},
+            {TEXT("caption"), ECkUiCustomPropertyKind::TextBinding},
+            {TEXT("checked"), ECkUiCustomPropertyKind::BoolBinding}, {TEXT("action"), ECkUiCustomPropertyKind::Action}};
+        Toggle.RetainedFactory = [](const FCkUiCustomWidgetArguments& InArguments,
+            FString& OutFailure) -> TSharedPtr<ICkUiRetainedWidget>
+        {
+            auto Configuration = FOverlayToggle::FConfiguration{};
+            if (NOT FOverlayToggle::TryConfiguration(InArguments, Configuration, OutFailure)) { return {}; }
+            const auto Result = MakeShared<FOverlayToggle>(MoveTemp(Configuration));
+            Result->Initialize();
+            return Result;
+        };
+        if (NOT Staging.Register(MoveTemp(Toggle)).Succeeded) { return false; }
+        OutRegistry = Staging.CreateSnapshot();
+        return true;
+    }
+
+    auto Build_OverlayActionKey(int64 InGeneration, bool InEnabled) -> FString
+    { return ck::Format_UE(TEXT("{}:overlay:{}"), InGeneration, InEnabled ? TEXT("all") : TEXT("none")); }
+
     // Audio's observer-relative plot retains the one window-created Radar and its shared in-place spatial model.
     class FSpatialRadar final : public ICkUiRetainedWidget
     {
@@ -728,6 +837,12 @@ auto
     FCkUiCollection::TryCreate({{TEXT("name"), ECkUiFieldKind::Text},
         {TEXT("checked"), ECkUiFieldKind::Bool}, {TEXT("tone"), ECkUiFieldKind::Number}}, _SpatialRecords);
     DoUpdate_SpatialRecords();
+    FCkUiCollection::TryCreate({{TEXT("name"), ECkUiFieldKind::Text},
+        {TEXT("distance"), ECkUiFieldKind::Text}, {TEXT("checked"), ECkUiFieldKind::Bool},
+        {TEXT("is-header"), ECkUiFieldKind::Bool}, {TEXT("is-track"), ECkUiFieldKind::Bool}}, _OverlayRecords);
+    FCkUiCollection::TryCreate({{TEXT("name"), ECkUiFieldKind::Text},
+        {TEXT("checked"), ECkUiFieldKind::Bool}}, _OverlayActionRecords);
+    DoUpdate_OverlayRecords();
     _Tabs = DoCreate_Tabs();
     _StatCards = DoCreate_StatCards();
     DoCreate_FilterControls();
@@ -788,6 +903,7 @@ auto
         BuildAuthoredDirectorsPage();
         BuildAuthoredTracksPage();
         BuildAuthoredSpatialPage();
+        BuildAuthoredOverlayPage();
     }
     DoRebuild_OverlayActions();
     _SessionInvalidatedHandle = ck::DebugSessionLifecycle::Get_OnSessionInvalidated().AddSP(
@@ -819,6 +935,8 @@ SCkAudioDebuggerWindow::~SCkAudioDebuggerWindow()
     _AuthoredTracksView.Reset();
     if (_SpatialPageHost.IsValid()) { _SpatialPageHost->SetContent(SNullWidget::NullWidget); }
     _AuthoredSpatialView.Reset();
+    if (_OverlayPageHost.IsValid()) { _OverlayPageHost->SetContent(SNullWidget::NullWidget); }
+    _AuthoredOverlayView.Reset();
     _AuthoredShellView.Reset();
     if (_Tabs.IsValid()) { _Tabs->ReleaseOwnerInteraction(); }
 }
@@ -933,6 +1051,171 @@ auto SCkAudioDebuggerWindow::PollAuthoredShell(const double InCurrentTime) -> vo
     { BuildAuthoredTracksPage(); }
     if (NOT _UsingNativeFallback && NOT _AuthoredSpatialView.IsValid())
     { BuildAuthoredSpatialPage(); }
+    if (NOT _UsingNativeFallback && NOT _AuthoredOverlayView.IsValid())
+    { BuildAuthoredOverlayPage(); }
+}
+
+auto SCkAudioDebuggerWindow::BuildAuthoredOverlayPage() -> void
+{
+    if (NOT _OverlayPageHost.IsValid() || NOT _OverlayRecords.IsValid() || NOT _OverlayActionRecords.IsValid())
+    { return; }
+    const auto Plugin = IPluginManager::Get().FindPlugin(TEXT("CkDebugger"));
+    TSharedPtr<const FCkUiWidgetRegistrySnapshot> Registry;
+    if (NOT Plugin.IsValid() || NOT ck_audio_debugger_window::TryCreate_OverlayRegistry(Registry)) { return; }
+    auto Data = FCkUiView::FDataBindings{};
+    const TWeakPtr<SCkAudioDebuggerWindow> WeakWindow = SharedThis(this);
+    Data.SlateUserIndex = 0;
+    Data.Collections.Add(TEXT("audio-overlay-records"), _OverlayRecords);
+    Data.Collections.Add(TEXT("audio-overlay-actions"), _OverlayActionRecords);
+    Data.CanDispatchEvents = TAttribute<bool>::CreateLambda([WeakWindow]()
+    {
+        const auto Window = WeakWindow.Pin();
+        return Window.IsValid() && Window->_OverlayRecordsReady && Window->_Collector.Get_Snapshot().HasWorld;
+    });
+    Data.Visibility.Add(TEXT("audio-overlay-ready"), TAttribute<bool>::CreateLambda([WeakWindow]()
+    {
+        const auto Window = WeakWindow.Pin();
+        return Window.IsValid() && Window->_OverlayRecordsReady;
+    }));
+    Data.Text.Add(TEXT("audio-overlay-draw"), FText::FromString(TEXT("draw")));
+    Data.ItemActions.Add(TEXT("audio-overlay-toggle"), FCkUiOnItemAction::CreateLambda([WeakWindow](FString InKey)
+    {
+        if (const auto Window = WeakWindow.Pin()) { Window->DoToggle_OverlayRecord(InKey); }
+    }));
+    Data.ItemActions.Add(TEXT("audio-overlay-batch"), FCkUiOnItemAction::CreateLambda([WeakWindow](FString InKey)
+    {
+        if (const auto Window = WeakWindow.Pin()) { Window->DoDispatch_OverlayBatch(InKey); }
+    }));
+    const auto View = FCkUiView::Create({}, {}, ck_audio_debugger_window::Get_AuthoredShellStyleTokens(),
+        CkStyle::RegularFont(CkStyle::FontSizeBody()), MoveTemp(Data), Registry);
+    const auto Main = View->GetRegion(TEXT("main"));
+    const auto Directory = FPaths::Combine(Plugin->GetBaseDir(), TEXT("Resources/UI"));
+    _AuthoredOverlayMarkupPath = FPaths::Combine(Directory, TEXT("AudioDebuggerOverlay.ui.html"));
+    _AuthoredOverlayStylesheetPath = FPaths::Combine(Directory, TEXT("AudioDebuggerOverlay.ui.css"));
+    View->SetFiles(_AuthoredOverlayMarkupPath, _AuthoredOverlayStylesheetPath);
+    _AuthoredOverlayView = View;
+    View->PollFiles(ck_audio_debugger_window::Get_AuthoredShellStyleTokens());
+    _UsingNativeOverlayFallback = NOT View->GetLastResult().Succeeded;
+    _OverlayPageHost->SetContent(_UsingNativeOverlayFallback ? _NativeOverlayPage.ToSharedRef() : Main);
+    if (NOT _UsingNativeOverlayFallback)
+    { _OverlayActionsBox->ClearChildren(); _OverlayListBox->ClearChildren(); }
+}
+
+auto SCkAudioDebuggerWindow::PollAuthoredOverlayPage(const double InCurrentTime) -> void
+{
+    if (InCurrentTime < _NextAuthoredOverlayPollSeconds || NOT _AuthoredOverlayView.IsValid()) { return; }
+    _NextAuthoredOverlayPollSeconds = InCurrentTime + 0.5;
+    _AuthoredOverlayView->PollFiles(ck_audio_debugger_window::Get_AuthoredShellStyleTokens());
+    if (_UsingNativeOverlayFallback && _AuthoredOverlayView->GetLastResult().Succeeded)
+    {
+        _UsingNativeOverlayFallback = false;
+        _OverlayPageHost->SetContent(_AuthoredOverlayView->GetRegion(TEXT("main")));
+        _OverlayActionsBox->ClearChildren();
+        _OverlayListBox->ClearChildren();
+    }
+}
+
+auto SCkAudioDebuggerWindow::DoUpdate_OverlayRecords() -> void
+{
+    using namespace ck_audio_debugger_window;
+    _OverlayRecordsReady = false;
+    if (NOT _OverlayRecords.IsValid() || NOT _OverlayActionRecords.IsValid()) { return; }
+    auto Records = TArray<FCkUiRecordData>{};
+    auto Actions = TArray<FCkUiRecordData>{};
+    const auto SetText = [](FCkUiRecordData& InRecord, const TCHAR* InField, const FString& InText)
+    {
+        auto Value = FCkUiFieldValue{};
+        Value.Text = FText::FromString(InText);
+        InRecord.Fields.Add(InField, MoveTemp(Value));
+    };
+    const auto SetBool = [](FCkUiRecordData& InRecord, const TCHAR* InField, bool InValue)
+    {
+        auto Value = FCkUiFieldValue{};
+        Value.Kind = ECkUiFieldKind::Bool;
+        Value.Bool = InValue;
+        InRecord.Fields.Add(InField, MoveTemp(Value));
+    };
+    if (_Collector.Get_Snapshot().HasWorld)
+    {
+        for (const auto& Director : _Collector.Get_Snapshot().Directors)
+        {
+            auto Header = FCkUiRecordData{};
+            Header.Key = Build_TrackHeaderKey(Director.DirectorEntity, _DirectorSessionGeneration);
+            SetText(Header, TEXT("name"), Director.DirectorName);
+            SetText(Header, TEXT("distance"), {});
+            SetBool(Header, TEXT("checked"), false);
+            SetBool(Header, TEXT("is-header"), true);
+            SetBool(Header, TEXT("is-track"), false);
+            Records.Add(MoveTemp(Header));
+            for (const auto& Track : Director.Tracks)
+            {
+                auto Record = FCkUiRecordData{};
+                Record.Key = Build_TrackRecordKey(Director.DirectorEntity, Track.TrackEntity, _DirectorSessionGeneration);
+                SetText(Record, TEXT("name"), Track.TrackName);
+                SetText(Record, TEXT("distance"), Track.HasSpatialData
+                    ? ck::Format_UE(TEXT("{} m"), FString::SanitizeFloat(Track.DistanceToListener / 100.0f, 1)) : FString{TEXT("2D")});
+                const auto Handle = UCk_Utils_AudioTrack_UE::Cast(Track.TrackEntity);
+                SetBool(Record, TEXT("checked"), ck::IsValid(Handle) && UCk_Utils_AudioTrack_UE::Get_IsDebugDrawEnabled(Handle));
+                SetBool(Record, TEXT("is-header"), false);
+                SetBool(Record, TEXT("is-track"), true);
+                Records.Add(MoveTemp(Record));
+            }
+        }
+        for (const auto Enabled : {true, false})
+        {
+            auto Record = FCkUiRecordData{};
+            Record.Key = Build_OverlayActionKey(_DirectorSessionGeneration, Enabled);
+            SetText(Record, TEXT("name"), Enabled ? TEXT("Draw all") : TEXT("Draw none"));
+            SetBool(Record, TEXT("checked"), false);
+            Actions.Add(MoveTemp(Record));
+        }
+    }
+    _OverlayRecordsReady = _OverlayRecords->TrySetRecords(MoveTemp(Records)).Succeeded
+        && _OverlayActionRecords->TrySetRecords(MoveTemp(Actions)).Succeeded;
+    if (NOT _OverlayRecordsReady)
+    { _OverlayRecords->TrySetRecords({}); _OverlayActionRecords->TrySetRecords({}); }
+}
+
+auto SCkAudioDebuggerWindow::TryGet_OverlayTrack(const FString& InKey) const -> const FCkAudioDebugger_TrackInfo*
+{
+    if (NOT _OverlayRecordsReady || NOT _OverlayRecords.IsValid() || NOT _Collector.Get_Snapshot().HasWorld
+        || NOT _OverlayRecords->FindRecord(InKey).IsValid()) { return nullptr; }
+    const auto* Found = static_cast<const FCkAudioDebugger_TrackInfo*>(nullptr);
+    for (const auto& Director : _Collector.Get_Snapshot().Directors)
+    {
+        for (const auto& Track : Director.Tracks)
+        {
+            if (ck_audio_debugger_window::Build_TrackRecordKey(Director.DirectorEntity, Track.TrackEntity,
+                _DirectorSessionGeneration) != InKey) { continue; }
+            if (Found != nullptr || ck::Is_NOT_Valid(UCk_Utils_AudioTrack_UE::Cast(Track.TrackEntity))) { return nullptr; }
+            Found = &Track;
+        }
+    }
+    return Found;
+}
+
+auto SCkAudioDebuggerWindow::DoToggle_OverlayRecord(const FString& InKey) -> void
+{
+    DoUpdate_OverlayRecords();
+    const auto* Current = TryGet_OverlayTrack(InKey);
+    if (Current == nullptr) { return; }
+    auto Track = UCk_Utils_AudioTrack_UE::Cast(Current->TrackEntity);
+    if (UCk_Utils_AudioTrack_UE::Get_IsDebugDrawEnabled(Track))
+    { UCk_Utils_AudioTrack_UE::Request_DisableDebugDraw(Track); }
+    else
+    { UCk_Utils_AudioTrack_UE::Request_EnableDebugDraw(Track); }
+    DoUpdate_OverlayRecords();
+}
+
+auto SCkAudioDebuggerWindow::DoDispatch_OverlayBatch(const FString& InKey) -> void
+{
+    DoUpdate_OverlayRecords();
+    if (NOT _OverlayRecordsReady || NOT _OverlayActionRecords->FindRecord(InKey).IsValid()) { return; }
+    const auto EnableKey = ck_audio_debugger_window::Build_OverlayActionKey(_DirectorSessionGeneration, true);
+    const auto DisableKey = ck_audio_debugger_window::Build_OverlayActionKey(_DirectorSessionGeneration, false);
+    if (InKey != EnableKey && InKey != DisableKey) { return; }
+    DoSet_DebugDrawOnAll(InKey == EnableKey, _DirectorSessionGeneration);
+    DoUpdate_OverlayRecords();
 }
 
 auto SCkAudioDebuggerWindow::BuildAuthoredSpatialPage() -> void
@@ -2505,7 +2788,7 @@ auto
 {
     using namespace ck_audio_debugger_window;
 
-    return SNew(SVerticalBox)
+    _NativeOverlayPage = SNew(SVerticalBox)
 
         // This page WRITES, and it is the only one that does. Saying so on the page is the point: everything else in
         // this window observes, and a reader flipping a switch here is changing the running game, not the view of it.
@@ -2526,6 +2809,7 @@ auto
                 SAssignNew(_OverlayListBox, SVerticalBox)
             ]
         ];
+    return SAssignNew(_OverlayPageHost, SBox)[_NativeOverlayPage.ToSharedRef()];
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -2548,6 +2832,7 @@ auto
     PollAuthoredDirectorsPage(InCurrentTime);
     PollAuthoredTracksPage(InCurrentTime);
     PollAuthoredSpatialPage(InCurrentTime);
+    PollAuthoredOverlayPage(InCurrentTime);
 
     UWorld* World = DoGet_PieWorld();
     if (World == _InvalidatedWorld.Get())
@@ -2565,6 +2850,7 @@ auto
     { return; }
 
     _Collector.Collect(World);
+    DoUpdate_OverlayRecords();
 
     if (const auto Signature = DoBuild_Signature();
         Signature != _LastSignature)
@@ -2618,6 +2904,7 @@ auto
     _NextAuthoredDirectorsPollSeconds = 0.0;
     _NextAuthoredTracksPollSeconds = 0.0;
     _NextAuthoredSpatialPollSeconds = 0.0;
+    _NextAuthoredOverlayPollSeconds = 0.0;
     // Force the next tick through the structure pass so the rows pick the new palette up; the cells themselves carry
     // no style.
     _LastSignature.Reset();
@@ -3565,18 +3852,15 @@ auto
 {
     using namespace ck_audio_debugger_window;
 
-    if (NOT _OverlayActionsBox.IsValid())
+    if (NOT _OverlayActionsBox.IsValid() || NOT _UsingNativeOverlayFallback)
     { return; }
 
     _OverlayActionsBox->ClearChildren();
     const TWeakPtr<SCkAudioDebuggerWindow> WeakWindow{SharedThis(this)};
-    const auto Generation = _RuntimeGeneration;
-
-    const auto AddAction = [this, WeakWindow, Generation](
-        const TCHAR* InLabel,
-        const TCHAR* InTooltip,
-        bool InEnabled)
+    for (const auto& Record : _OverlayActionRecords->GetRecords())
     {
+        const auto Key = Record->GetKey();
+        const auto Label = Record->FindField(TEXT("name"))->Text;
         _OverlayActionsBox->AddSlot()
         .AutoWidth()
         .VAlign(VAlign_Center)
@@ -3584,25 +3868,28 @@ auto
         [
             SNew(SCkDebug_ToggleSurface)
             .IsOn_Lambda([]() { return false; })
-            .AccessibleText(FText::FromString(InLabel))
-            .ToolTipText(FText::FromString(InTooltip))
-            .OnStateChanged_Lambda([WeakWindow, Generation, InEnabled](const bool)
+            .AccessibleText(Label)
+            .ToolTipText(FText::FromString(TEXT("Change audio debug draw for every track in the running world.")))
+            .IsEnabled_Lambda([WeakWindow, Key]()
             {
                 const auto Window = WeakWindow.Pin();
-                if (Window.IsValid())
-                { Window->DoSet_DebugDrawOnAll(InEnabled, Generation); }
+                return Window.IsValid() && Window->_UsingNativeOverlayFallback && Window->_OverlayRecordsReady
+                    && Window->_Collector.Get_Snapshot().HasWorld && Window->_OverlayActionRecords->FindRecord(Key).IsValid();
+            })
+            .OnStateChanged_Lambda([WeakWindow, Key](const bool)
+            {
+                const auto Window = WeakWindow.Pin();
+                if (Window.IsValid() && Window->_UsingNativeOverlayFallback)
+                { Window->DoDispatch_OverlayBatch(Key); }
             })
             [
                 SNew(STextBlock)
                 .Font_Static(&Get_MicroFont)
                 .ColorAndOpacity(CkStyle::TextDim())
-                .Text(FText::FromString(InLabel))
+                .Text(Label)
             ]
         ];
-    };
-
-    AddAction(TEXT("Draw all"), TEXT("Enable the in-world debug draw for every track in every director."), true);
-    AddAction(TEXT("Draw none"), TEXT("Disable the in-world debug draw for every track."), false);
+    }
 
     _OverlayActionsBox->AddSlot()
     .FillWidth(1.0f)
@@ -3625,14 +3912,14 @@ auto
 {
     using namespace ck_audio_debugger_window;
 
-    if (NOT _OverlayListBox.IsValid())
+    DoUpdate_OverlayRecords();
+    if (NOT _OverlayListBox.IsValid() || NOT _UsingNativeOverlayFallback)
     { return; }
 
-    ++_RuntimeGeneration;
     DoRebuild_OverlayActions();
     _OverlayListBox->ClearChildren();
     const TWeakPtr<SCkAudioDebuggerWindow> WeakWindow{SharedThis(this)};
-    const auto Generation = _RuntimeGeneration;
+    if (NOT _OverlayRecordsReady) { return; }
 
     for (const auto& Director : _Collector.Get_Snapshot().Directors)
     {
@@ -3649,7 +3936,7 @@ auto
         {
             // Captured by VALUE. The row outlives this walk, and the snapshot it came from is replaced wholesale on
             // the next refresh — a captured reference would dangle by the time anybody clicked.
-            const auto TrackEntity = Track.TrackEntity;
+            const auto Key = Build_TrackRecordKey(Director.DirectorEntity, Track.TrackEntity, _DirectorSessionGeneration);
             const auto TrackName = Track.TrackName;
 
             _OverlayListBox->AddSlot()
@@ -3664,36 +3951,28 @@ auto
                 .Padding(0.0f, 0.0f, CkStyle::SpaceM, 0.0f)
                 [
                     SNew(SCkDebug_ToggleSurface)
-                    .IsOn_Lambda([WeakWindow, Generation, TrackEntity]()
+                    .IsOn_Lambda([WeakWindow, Key]()
                     {
                         const auto Window = WeakWindow.Pin();
-                        if (NOT Window.IsValid() || NOT Window->CanDispatch_RuntimeAction(Generation))
+                        if (NOT Window.IsValid() || NOT Window->_UsingNativeOverlayFallback)
                         { return false; }
-
-                        const auto Track = UCk_Utils_AudioTrack_UE::Cast(TrackEntity);
-
-                        return ck::IsValid(Track) && UCk_Utils_AudioTrack_UE::Get_IsDebugDrawEnabled(Track);
+                        const auto* Current = Window->TryGet_OverlayTrack(Key);
+                        return Current != nullptr && UCk_Utils_AudioTrack_UE::Get_IsDebugDrawEnabled(
+                            UCk_Utils_AudioTrack_UE::Cast(Current->TrackEntity));
+                    })
+                    .IsEnabled_Lambda([WeakWindow, Key]()
+                    {
+                        const auto Window = WeakWindow.Pin();
+                        return Window.IsValid() && Window->_UsingNativeOverlayFallback && Window->TryGet_OverlayTrack(Key) != nullptr;
                     })
                     .AccessibleText(FText::FromString(TrackName))
                     .ToolTipText(FText::FromString(
                         TEXT("Draw this track's position and attenuation in the world viewport.")))
-                    .OnStateChanged_Lambda([WeakWindow, Generation, TrackEntity](const bool InEnabled)
+                    .OnStateChanged_Lambda([WeakWindow, Key](const bool)
                     {
                         const auto Window = WeakWindow.Pin();
-                        if (NOT Window.IsValid() || NOT Window->CanDispatch_RuntimeAction(Generation))
-                        { return; }
-
-                        // Through the feature's own Utils, never by adding the tag directly: the tag is CkAudio's
-                        // internal gate and a debugger writing it would be reaching past the API that owns it.
-                        auto Track = UCk_Utils_AudioTrack_UE::Cast(TrackEntity);
-
-                        if (ck::Is_NOT_Valid(Track))
-                        { return; }
-
-                        if (InEnabled)
-                        { UCk_Utils_AudioTrack_UE::Request_EnableDebugDraw(Track); }
-                        else
-                        { UCk_Utils_AudioTrack_UE::Request_DisableDebugDraw(Track); }
+                        if (Window.IsValid() && Window->_UsingNativeOverlayFallback)
+                        { Window->DoToggle_OverlayRecord(Key); }
                     })
                     [
                         SNew(STextBlock)
@@ -3720,10 +3999,15 @@ auto
                     SNew(STextBlock)
                     .Font_Static(&Get_MicroFont)
                     .ColorAndOpacity(CkStyle::TextMute())
-                    .Text(FText::FromString(Track.HasSpatialData
-                        ? ck::Format_UE(TEXT("{} m"),
-                            FString::SanitizeFloat(Track.DistanceToListener / 100.0f, 1))
-                        : FString{TEXT("2D")}))
+                    .Text_Lambda([WeakWindow, Key]()
+                    {
+                        const auto Window = WeakWindow.Pin();
+                        const auto* Current = Window.IsValid() ? Window->TryGet_OverlayTrack(Key) : nullptr;
+                        if (Current == nullptr) { return FText::GetEmpty(); }
+                        return FText::FromString(Current->HasSpatialData
+                            ? ck::Format_UE(TEXT("{} m"), FString::SanitizeFloat(Current->DistanceToListener / 100.0f, 1))
+                            : FString{TEXT("2D")});
+                    })
                 ]
             ];
         }
@@ -3994,7 +4278,7 @@ auto
         int64 InGeneration) const
     -> bool
 {
-    return InGeneration == _RuntimeGeneration
+    return InGeneration == _DirectorSessionGeneration && _OverlayRecordsReady
         && _Collector.Get_Snapshot().HasWorld;
 }
 
@@ -4005,13 +4289,14 @@ auto
     DoInvalidate_RuntimeState()
     -> void
 {
-    ++_RuntimeGeneration;
     ++_DirectorSessionGeneration;
     _Collector.Reset();
     DoUpdate_TabRecords();
     DoUpdate_DirectorRecords();
     DoUpdate_TrackRecords();
     DoUpdate_SpatialRecords();
+
+    DoUpdate_OverlayRecords();
 
     if (_DirectorBox.IsValid()) { _DirectorBox->ClearChildren(); }
     if (_DirectorPageBox.IsValid()) { _DirectorPageBox->ClearChildren(); }

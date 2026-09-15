@@ -273,6 +273,31 @@ namespace ck_audio_debugger_authored_shell_tests
         return DownHandled;
     }
 
+    auto ClickAtAbsolutePosition(FSlateApplication& InSlate, const TSharedRef<SWidget>& InWidget,
+        const FVector2D InPosition) -> bool
+    {
+        const TSharedPtr<SWindow> Window = InSlate.FindWidgetWindow(InWidget);
+        if (NOT Window.IsValid() || NOT Window->GetNativeWindow().IsValid()) { return false; }
+        InSlate.ReleaseAllPointerCapture(0);
+        const TSet<FKey> NoButtons;
+        const TSet<FKey> LeftDown{EKeys::LeftMouseButton};
+        const FPointerEvent MoveEvent(0, FSlateApplication::CursorPointerIndex, InPosition, InPosition,
+            NoButtons, EKeys::Invalid, 0.0f, FModifierKeysState{});
+        const FPointerEvent DownEvent(0, FSlateApplication::CursorPointerIndex, InPosition, InPosition,
+            LeftDown, EKeys::LeftMouseButton, 0.0f, FModifierKeysState{});
+        const FPointerEvent UpEvent(0, FSlateApplication::CursorPointerIndex, InPosition, InPosition,
+            NoButtons, EKeys::LeftMouseButton, 0.0f, FModifierKeysState{});
+        InSlate.SetCursorPos(InPosition);
+        InSlate.ProcessMouseMoveEvent(MoveEvent, true);
+        const FWidgetPath Path = InSlate.LocateWindowUnderMouse(
+            InPosition, InSlate.GetInteractiveTopLevelWindows(), false, 0);
+        if (NOT WidgetPathContains(Path, InWidget)) { return false; }
+        const bool DownHandled = InSlate.ProcessMouseButtonDownEvent(Window->GetNativeWindow(), DownEvent);
+        InSlate.ProcessMouseButtonUpEvent(UpEvent);
+        TickSlate(InSlate);
+        return DownHandled;
+    }
+
     auto IsInHitPath(FSlateApplication& InSlate, const TSharedRef<SWidget>& InWidget) -> bool
     {
         const TSharedPtr<SWindow> Window = InSlate.FindWidgetWindow(InWidget);
@@ -674,6 +699,8 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
     FString TracksCss;
     FString SpatialMarkup;
     FString SpatialCss;
+    FString OverlayMarkup;
+    FString OverlayCss;
     FString EventsCss;
     const FString Directory = Plugin.IsValid()
         ? FPaths::Combine(Plugin->GetBaseDir(), TEXT("Resources/UI"))
@@ -692,7 +719,9 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
         && FFileHelper::LoadFileToString(TracksMarkup, *FPaths::Combine(Directory, TEXT("AudioDebuggerTracks.ui.html")))
         && FFileHelper::LoadFileToString(TracksCss, *FPaths::Combine(Directory, TEXT("AudioDebuggerTracks.ui.css")))
         && FFileHelper::LoadFileToString(SpatialMarkup, *FPaths::Combine(Directory, TEXT("AudioDebuggerSpatial.ui.html")))
-        && FFileHelper::LoadFileToString(SpatialCss, *FPaths::Combine(Directory, TEXT("AudioDebuggerSpatial.ui.css")))))
+        && FFileHelper::LoadFileToString(SpatialCss, *FPaths::Combine(Directory, TEXT("AudioDebuggerSpatial.ui.css")))
+        && FFileHelper::LoadFileToString(OverlayMarkup, *FPaths::Combine(Directory, TEXT("AudioDebuggerOverlay.ui.html")))
+        && FFileHelper::LoadFileToString(OverlayCss, *FPaths::Combine(Directory, TEXT("AudioDebuggerOverlay.ui.css")))))
     { return false; }
 
     TestTrue(TEXT("Audio resource declares typed tabs without the old opaque native tab binding"),
@@ -928,6 +957,8 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
         TEXT("bind=\"audio-tracks\""), TEXT("bind=\"missing-audio-tracks\""));
     const FString InvalidSpatialStartupMarkup = SpatialMarkup.Replace(
         TEXT("bind=\"audio-spatial-attenuation\""), TEXT("bind=\"missing-spatial-attenuation\""));
+    const FString InvalidOverlayStartupMarkup = OverlayMarkup.Replace(
+        TEXT("item-action=\"audio-overlay-toggle\""), TEXT("item-action=\"missing-overlay-toggle\""));
     if (NOT TestTrue(TEXT("Events startup fixture omits one required native port"), InvalidEventsStartupMarkup != EventsMarkup))
     { return false; }
     bool MarkupRestored = false;
@@ -937,6 +968,7 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
     bool DirectorsMarkupRestored = false;
     bool TracksMarkupRestored = false;
     bool SpatialMarkupRestored = false;
+    bool OverlayMarkupRestored = false;
     ON_SCOPE_EXIT
     {
         if (NOT MarkupRestored)
@@ -953,6 +985,8 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
         { FFileHelper::SaveStringToFile(TracksMarkup, *FPaths::Combine(Directory, TEXT("AudioDebuggerTracks.ui.html"))); }
         if (NOT SpatialMarkupRestored)
         { FFileHelper::SaveStringToFile(SpatialMarkup, *FPaths::Combine(Directory, TEXT("AudioDebuggerSpatial.ui.html"))); }
+        if (NOT OverlayMarkupRestored)
+        { FFileHelper::SaveStringToFile(OverlayMarkup, *FPaths::Combine(Directory, TEXT("AudioDebuggerOverlay.ui.html"))); }
     };
     if (NOT TestTrue(TEXT("Audio fixture installs its valid-but-unbound startup candidate"),
         FFileHelper::SaveStringToFile(
@@ -968,7 +1002,9 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
             && FFileHelper::SaveStringToFile(InvalidTracksStartupMarkup,
                 *FPaths::Combine(Directory, TEXT("AudioDebuggerTracks.ui.html")))
             && FFileHelper::SaveStringToFile(InvalidSpatialStartupMarkup,
-                *FPaths::Combine(Directory, TEXT("AudioDebuggerSpatial.ui.html")))))
+                *FPaths::Combine(Directory, TEXT("AudioDebuggerSpatial.ui.html")))
+            && FFileHelper::SaveStringToFile(InvalidOverlayStartupMarkup,
+                *FPaths::Combine(Directory, TEXT("AudioDebuggerOverlay.ui.html")))))
     { return false; }
 
     DebuggerWindow = SNew(SCkAudioDebuggerWindow);
@@ -1668,21 +1704,52 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
             ? FindEntityRef(ReplacementTrackLink.ToSharedRef()) : nullptr;
         if (NOT TestTrue(TEXT("replacement track exposes its exact retained entity action"), ReplacementTrackRef.IsValid()))
         { return false; }
-        const bool ReplacementInitiallyHitTestable = IsInHitPath(Slate, ReplacementTrackRef.ToSharedRef());
-        if (NOT ReplacementInitiallyHitTestable)
-        {
-            TrackScroll->ScrollDescendantIntoView(
-                ReplacementTrackRef.ToSharedRef(), false, EDescendantScrollDestination::IntoView);
-            TickSlate(Slate);
-        }
-        const bool ReplacementArrangedIntoHitPath = IsInHitPath(Slate, ReplacementTrackRef.ToSharedRef());
-        AddInfo(FString::Printf(TEXT("Replacement Track hit path: before=%s after=%s vertical-offset=%g end=%g."),
-            ReplacementInitiallyHitTestable ? TEXT("true") : TEXT("false"),
-            ReplacementArrangedIntoHitPath ? TEXT("true") : TEXT("false"),
-            TrackScroll->GetScrollOffset(), TrackScroll->GetScrollOffsetOfEnd()));
+        const FGeometry ReplacementCachedGeometry = ReplacementTrackRef->GetCachedGeometry();
+        const FVector2D ReplacementCachedCenter = ReplacementCachedGeometry.LocalToAbsolute(
+            ReplacementCachedGeometry.GetLocalSize() * 0.5f);
+        const FWidgetPath CachedCenterPath = Slate.LocateWindowUnderMouse(
+            ReplacementCachedCenter, Slate.GetInteractiveTopLevelWindows(), false, 0);
+        TrackScroll->ScrollDescendantIntoView(
+            ReplacementTrackRef.ToSharedRef(), false, EDescendantScrollDestination::IntoView);
+        TracksOuterScroll->ScrollDescendantIntoView(
+            ReplacementTrackRef.ToSharedRef(), false, EDescendantScrollDestination::IntoView);
+        HostWindow->BringToFront(true);
+        TickSlate(Slate);
+        // The prior entity-link click can leave a deferred tooltip directly over this replacement's center. Closing
+        // it after the settling tick keeps the physical hit test on the production window; another tick here would
+        // immediately respawn the tooltip under the stationary synthetic cursor.
+        Slate.CloseToolTip();
+        auto ReplacementWidgetPath = FWidgetPath{};
+        const bool FoundArrangedGeometry = Slate.GeneratePathToWidgetUnchecked(
+            ReplacementTrackRef.ToSharedRef(), ReplacementWidgetPath);
+        const FGeometry* ReplacementArranged = FoundArrangedGeometry && ReplacementWidgetPath.IsValid()
+            ? &ReplacementWidgetPath.Widgets.Last().Geometry : nullptr;
+        const FVector2D ReplacementArrangedCenter = ReplacementArranged != nullptr
+            ? ReplacementArranged->LocalToAbsolute(ReplacementArranged->GetLocalSize() * 0.5f)
+            : FVector2D::ZeroVector;
+        const FWidgetPath ArrangedCenterPath = Slate.LocateWindowUnderMouse(
+            ReplacementArrangedCenter, Slate.GetInteractiveTopLevelWindows(), false, 0);
+        const bool ReplacementArrangedIntoHitPath = FoundArrangedGeometry && ReplacementArranged != nullptr
+            && WidgetPathContains(ArrangedCenterPath, ReplacementTrackRef.ToSharedRef());
+        const auto ReplacementHostGeometry = HostWindow->GetCachedGeometry();
+        AddInfo(FString::Printf(TEXT("Replacement Track geometry: cached-pos=(%g,%g) cached-size=(%g,%g) "
+            "arranged-pos=(%g,%g) arranged-size=(%g,%g) host-pos=(%g,%g) host-size=(%g,%g) "
+            "inner-offset=%g/%g outer-offset=%g/%g cached-path='%s' arranged-path='%s'."),
+            ReplacementCachedGeometry.GetAbsolutePosition().X, ReplacementCachedGeometry.GetAbsolutePosition().Y,
+            ReplacementCachedGeometry.GetAbsoluteSize().X, ReplacementCachedGeometry.GetAbsoluteSize().Y,
+            ReplacementArranged != nullptr ? ReplacementArranged->GetAbsolutePosition().X : -1.0f,
+            ReplacementArranged != nullptr ? ReplacementArranged->GetAbsolutePosition().Y : -1.0f,
+            ReplacementArranged != nullptr ? ReplacementArranged->GetAbsoluteSize().X : 0.0f,
+            ReplacementArranged != nullptr ? ReplacementArranged->GetAbsoluteSize().Y : 0.0f,
+            ReplacementHostGeometry.GetAbsolutePosition().X, ReplacementHostGeometry.GetAbsolutePosition().Y,
+            ReplacementHostGeometry.GetAbsoluteSize().X, ReplacementHostGeometry.GetAbsoluteSize().Y,
+            TrackScroll->GetScrollOffset(), TrackScroll->GetScrollOffsetOfEnd(),
+            TracksOuterScroll->GetScrollOffset(), TracksOuterScroll->GetScrollOffsetOfEnd(),
+            *CachedCenterPath.ToString(), *ArrangedCenterPath.ToString()));
         if (NOT TestTrue(TEXT("replacement track action is arranged into the current hit path"), ReplacementArrangedIntoHitPath))
         { return false; }
-        const bool ReplacementClickHandled = Click(Slate, ReplacementTrackRef.ToSharedRef());
+        const bool ReplacementClickHandled = ClickAtAbsolutePosition(
+            Slate, ReplacementTrackRef.ToSharedRef(), ReplacementArrangedCenter);
         const bool ReplacementCountAdvanced = TestEqual(TEXT("replacement track action dispatches exactly once"),
             TrackNavigationResults->Num(), 4);
         const bool ReplacementEntityMatches = TestTrue(TEXT("replacement track action resolves its exact entity"),
@@ -1812,7 +1879,7 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
     { return false; }
     DebuggerWindow->Tick(DebuggerWindow->GetCachedGeometry(), FPlatformTime::Seconds(), 0.0f);
     const TSharedPtr<SCheckBox> HeldTrackAToggle = FindCheckBoxWithText(
-        DebuggerWindow->_OverlayListBox.ToSharedRef(), TEXT("draw"));
+        DebuggerWindow->_OverlayPageHost.ToSharedRef(), TEXT("draw"));
     if (NOT TestTrue(TEXT("physical production overlay action targets the first same-name entity"),
         HeldTrackAToggle.IsValid() && Click(Slate, HeldTrackAToggle.ToSharedRef())
             && TrackA.Has<ck::FTag_AudioTrack_DebugDraw>()))
@@ -1840,13 +1907,192 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
         TrackA.Has<ck::FTag_AudioTrack_DebugDraw>());
 
     const TSharedPtr<SCheckBox> HeldTrackBToggle = FindCheckBoxWithText(
-        DebuggerWindow->_OverlayListBox.ToSharedRef(), TEXT("draw"));
+        DebuggerWindow->_OverlayPageHost.ToSharedRef(), TEXT("draw"));
     if (NOT TestTrue(TEXT("replacement overlay action routes to the new same-name entity"),
         HeldTrackBToggle.IsValid() && Click(Slate, HeldTrackBToggle.ToSharedRef())
             && TrackB.Has<ck::FTag_AudioTrack_DebugDraw>()))
     { return false; }
     TrackB.Try_Remove<ck::FFragment_AudioTrack_Debug>();
     TrackB.Try_Remove<ck::FTag_AudioTrack_DebugDraw>();
+
+    if (NOT RunFixturePhase([&, this]() -> bool
+    {
+        const auto OverlayView = DebuggerWindow->_AuthoredOverlayView;
+        if (NOT TestTrue(TEXT("invalid Overlay resource leaves an independent working native page"),
+            OverlayView.IsValid() && NOT OverlayView->GetLastResult().Succeeded
+                && DebuggerWindow->_UsingNativeOverlayFallback
+                && ContainsWidget(DebuggerWindow->_OverlayPageHost.ToSharedRef(), DebuggerWindow->_NativeOverlayPage.ToSharedRef())))
+        { return false; }
+        OverlayMarkupRestored = FFileHelper::SaveStringToFile(
+            OverlayMarkup, *FPaths::Combine(Directory, TEXT("AudioDebuggerOverlay.ui.html")));
+        if (NOT TestTrue(TEXT("Overlay fixture restores its authored source"), OverlayMarkupRestored)) { return false; }
+        DebuggerWindow->OnStyleRevisionChanged();
+        TickSlate(Slate);
+        if (NOT TestTrue(TEXT("Overlay polling recovers authored rows and releases the fallback tree"),
+            OverlayView->GetLastResult().Succeeded && NOT DebuggerWindow->_UsingNativeOverlayFallback
+                && DebuggerWindow->_OverlayListBox->GetChildren()->Num() == 0
+                && DebuggerWindow->_OverlayActionsBox->GetChildren()->Num() == 0
+                && NOT ContainsWidget(DebuggerWindow->_OverlayPageHost.ToSharedRef(), DebuggerWindow->_NativeOverlayPage.ToSharedRef())))
+        {
+            AddError(FString::Join(OverlayView->GetLastResult().Errors, TEXT("\n")));
+            return false;
+        }
+        HeldTrackBToggle->ToggleCheckedState();
+        TestFalse(TEXT("a held native Overlay control is revoked after authored recovery"), TrackB.Has<ck::FTag_AudioTrack_DebugDraw>());
+        const auto Main = OverlayView->GetRegion(TEXT("main"));
+        TestEqual(TEXT("authored Overlay declares its world mutation warning"),
+            TaggedText(Main, TEXT("audio-overlay-warning")), FString{TEXT("writes to the running world")});
+        const auto RepeatRoot = FindTaggedWidget(Main, TEXT("audio-overlay-records"));
+        const auto Repeat = RepeatRoot.IsValid()
+            ? StaticCastSharedPtr<SCkUiRepeat>(FindWidgetType(RepeatRoot.ToSharedRef(), TEXT("SCkUiRepeat"))) : nullptr;
+        const auto OriginalSnapshot = FixtureSnapshot;
+        const auto OriginalFilter = DebuggerWindow->_FilterString;
+        const auto RefreshOverlay = [&]()
+        {
+            DebuggerWindow->_Collector.Collect(nullptr);
+            DebuggerWindow->DoUpdate_OverlayRecords();
+            TickSlate(Slate);
+        };
+        ON_SCOPE_EXIT
+        {
+            FixtureSnapshot = OriginalSnapshot;
+            DebuggerWindow->_FilterString = OriginalFilter;
+            HostWindow->Resize(FVector2D{1100.0f, 720.0f});
+            RefreshOverlay();
+            TrackA.Try_Remove<ck::FFragment_AudioTrack_Debug>();
+            TrackA.Try_Remove<ck::FTag_AudioTrack_DebugDraw>();
+            TrackB.Try_Remove<ck::FFragment_AudioTrack_Debug>();
+            TrackB.Try_Remove<ck::FTag_AudioTrack_DebugDraw>();
+            DebuggerWindow->DoUpdate_OverlayRecords();
+        };
+        auto FirstTrack = TrackInfoA;
+        FirstTrack.TrackName = TEXT("Equal overlay track");
+        FirstTrack.HasSpatialData = true;
+        FirstTrack.DistanceToListener = 125.0f;
+        auto SecondTrack = FirstTrack;
+        SecondTrack.TrackEntity = TrackB;
+        SecondTrack.State = ECk_AudioTrack_State::Stopped;
+        SecondTrack.HasSpatialData = false;
+        auto SecondDirector = FixtureSnapshot.Directors[0];
+        SecondDirector.DirectorEntity = OtherDirectorEntity;
+        SecondDirector.Tracks = {SecondTrack};
+        FixtureSnapshot.Directors[0].Tracks = {FirstTrack};
+        FixtureSnapshot.Directors.Add(SecondDirector);
+        RefreshOverlay();
+        if (NOT TestTrue(TEXT("Overlay includes equal-name tracks under distinct directors and stopped tracks"),
+            DebuggerWindow->_OverlayRecordsReady && DebuggerWindow->_OverlayRecords->GetRecords().Num() == 4
+                && Repeat.IsValid() && Repeat->GetItemCount() == 4)) { return false; }
+        const auto KeyA = DebuggerWindow->_OverlayRecords->GetRecords()[1]->GetKey();
+        const auto KeyB = DebuggerWindow->_OverlayRecords->GetRecords()[3]->GetKey();
+        const auto RowA = Repeat->GetItemWidget(KeyA);
+        const auto RowB = Repeat->GetItemWidget(KeyB);
+        if (NOT TestTrue(TEXT("Overlay resolves both current full-identity rows"), RowA.IsValid() && RowB.IsValid())) { return false; }
+        const auto ToggleA = FindCheckBoxWithText(RowA.ToSharedRef(), TEXT("draw"));
+        const auto ToggleB = FindCheckBoxWithText(RowB.ToSharedRef(), TEXT("draw"));
+        const auto All = FindCheckBoxWithText(Main, TEXT("Draw all"));
+        const auto None = FindCheckBoxWithText(Main, TEXT("Draw none"));
+        if (NOT TestTrue(TEXT("authored Overlay physically toggles the exact selected entity on and off"),
+            ToggleA.IsValid() && ToggleB.IsValid() && All.IsValid() && None.IsValid()
+                && Click(Slate, ToggleA.ToSharedRef()) && TrackA.Has<ck::FTag_AudioTrack_DebugDraw>()
+                && NOT TrackB.Has<ck::FTag_AudioTrack_DebugDraw>()
+                && Click(Slate, ToggleA.ToSharedRef()) && NOT TrackA.Has<ck::FTag_AudioTrack_DebugDraw>()))
+        { return false; }
+        DebuggerWindow->_FilterString = TEXT("no overlay track matches this mixer filter");
+        if (NOT TestTrue(TEXT("physical Draw all and Draw none include stopped tracks across every director despite mixer filtering"),
+            Click(Slate, All.ToSharedRef()) && TrackA.Has<ck::FTag_AudioTrack_DebugDraw>()
+                && TrackB.Has<ck::FTag_AudioTrack_DebugDraw>() && ToggleA->IsChecked() && ToggleB->IsChecked()
+                && Click(Slate, None.ToSharedRef()) && NOT TrackA.Has<ck::FTag_AudioTrack_DebugDraw>()
+                && NOT TrackB.Has<ck::FTag_AudioTrack_DebugDraw>())) { return false; }
+        const auto Signature = DebuggerWindow->DoBuild_AllTracksSignature();
+        FixtureSnapshot.Directors[0].Tracks[0].DistanceToListener = 975.0f;
+        FixtureSnapshot.Directors[1].Tracks[0].HasSpatialData = true;
+        FixtureSnapshot.Directors[1].Tracks[0].DistanceToListener = 50.0f;
+        RefreshOverlay();
+        TestTrue(TEXT("live Overlay distance and 2D changes preserve full keys and physical rows without a structure signature change"),
+            DebuggerWindow->DoBuild_AllTracksSignature() == Signature
+                && Repeat->GetItemWidget(KeyA) == RowA && Repeat->GetItemWidget(KeyB) == RowB
+                && TaggedText(RowA.ToSharedRef(), TEXT("audio-overlay-distance")) == TEXT("9.75 m")
+                && TaggedText(RowB.ToSharedRef(), TEXT("audio-overlay-distance")) == TEXT("0.5 m"));
+        DebuggerWindow->DoRebuild_OverlayList();
+        TestTrue(TEXT("ordinary Overlay rebuilding preserves physical controls and lifecycle record identity"),
+            Repeat->GetItemWidget(KeyA) == RowA && FindCheckBoxWithText(Main, TEXT("Draw all")) == All);
+        const auto Scroll = OverlayView->GetScroll(TEXT("audio-overlay-scroll"));
+        const auto Revision = OverlayView->GetRevision();
+        TestTrue(TEXT("compatible Overlay reload retains rows, toggles, scroll and collection state"),
+            OverlayView->TryReload(OverlayMarkup, OverlayCss, TEXT("compatible Audio Overlay")).Succeeded
+                && OverlayView->GetRevision() > Revision && Repeat->GetItemWidget(KeyA) == RowA
+                && FindCheckBoxWithText(Main, TEXT("Draw all")) == All
+                && OverlayView->GetScroll(TEXT("audio-overlay-scroll")) == Scroll);
+        const auto BeforeRejected = OverlayView->GetRevision();
+        const auto Rejected = OverlayView->TryReload(InvalidOverlayStartupMarkup, OverlayCss, TEXT("unbound Audio Overlay action"));
+        TestTrue(TEXT("unbound Overlay action rejects atomically with retained controls still physically functional"),
+            NOT Rejected.Succeeded && OverlayView->GetRevision() == BeforeRejected
+                && Click(Slate, ToggleB.ToSharedRef()) && TrackB.Has<ck::FTag_AudioTrack_DebugDraw>()
+                && Click(Slate, ToggleB.ToSharedRef()) && NOT TrackB.Has<ck::FTag_AudioTrack_DebugDraw>());
+        const auto MissingCollection = OverlayMarkup.Replace(TEXT("bind=\"audio-overlay-records\""), TEXT("bind=\"missing-overlay-records\""));
+        TestFalse(TEXT("unknown Overlay collection rejects without publishing a partial page"),
+            OverlayView->TryReload(MissingCollection, OverlayCss).Succeeded);
+        TestEqual(TEXT("rejected Overlay collection keeps the committed revision"), OverlayView->GetRevision(), BeforeRejected);
+        TestTrue(TEXT("valid Overlay candidate remains recoverable after rejection"), OverlayView->TryReload(OverlayMarkup, OverlayCss).Succeeded);
+        const auto OldFont = StaticCastSharedPtr<SCkFlexText>(FindTaggedWidget(RowA.ToSharedRef(), TEXT("audio-overlay-name")))->GetFont().Size;
+        StyleSettings->Selection.TextScale = ECkDebugAxis_TextScale::Large;
+        StyleSettings->NotifyChanged();
+        DebuggerWindow->OnStyleRevisionChanged();
+        TickSlate(Slate);
+        TestTrue(TEXT("Overlay live style revision updates authored row typography"),
+            StaticCastSharedPtr<SCkFlexText>(FindTaggedWidget(RowA.ToSharedRef(), TEXT("audio-overlay-name")))->GetFont().Size > OldFont);
+        StyleSettings->Selection.TextScale = ECkDebugAxis_TextScale::Normal;
+        StyleSettings->NotifyChanged();
+        DebuggerWindow->OnStyleRevisionChanged();
+        HostWindow->Resize(FVector2D{360.0f, 480.0f});
+        TickSlate(Slate);
+        const auto ShellScroll = DebuggerWindow->_AuthoredShellView->GetScroll(TEXT("audio-shell-scroll"));
+        if (ShellScroll.IsValid()) { ShellScroll->SetScrollOffset(ShellScroll->GetScrollOffsetOfEnd()); }
+        TickSlate(Slate);
+        const auto DistanceGeometry = FindTaggedWidget(RowB.ToSharedRef(), TEXT("audio-overlay-distance"))->GetCachedGeometry();
+        const auto HostGeometry = DebuggerWindow->GetCachedGeometry();
+        TestTrue(TEXT("narrow Overlay trailing distance remains reachable through its authored outer scrolling"),
+            ShellScroll.IsValid() && ShellScroll->GetScrollOffsetOfEnd() > 0.0f && DistanceGeometry.GetLocalSize().X > 0.0f
+                && DistanceGeometry.GetAbsolutePosition().X >= HostGeometry.GetAbsolutePosition().X - 1.0f
+                && DistanceGeometry.GetAbsolutePosition().X + DistanceGeometry.GetAbsoluteSize().X
+                    <= HostGeometry.GetAbsolutePosition().X + HostGeometry.GetAbsoluteSize().X + 1.0f);
+        if (ShellScroll.IsValid()) { ShellScroll->SetScrollOffset(0.0f); }
+        HostWindow->Resize(FVector2D{1100.0f, 720.0f});
+        RefreshOverlay();
+        TrackA.Try_Remove<ck::FFragment_AudioTrack_Current>();
+        ToggleA->ToggleCheckedState();
+        TestFalse(TEXT("Overlay rejects a held track whose required feature composition disappeared"), TrackA.Has<ck::FTag_AudioTrack_DebugDraw>());
+        TrackA.Add<ck::FFragment_AudioTrack_Current>();
+        FixtureSnapshot.Directors[0].Tracks.Reset();
+        DebuggerWindow->_Collector.Collect(nullptr);
+        ToggleA->ToggleCheckedState();
+        TestFalse(TEXT("held Overlay control rejects removal before the next UI refresh"), TrackA.Has<ck::FTag_AudioTrack_DebugDraw>());
+        const FCkAudioDebugger_TrackInfo DuplicateOverlayTrack = FixtureSnapshot.Directors[1].Tracks[0];
+        FixtureSnapshot.Directors[1].Tracks.Add(DuplicateOverlayTrack);
+        RefreshOverlay();
+        All->ToggleCheckedState();
+        ToggleB->ToggleCheckedState();
+        TestTrue(TEXT("duplicate Overlay identities reject the whole projection and all mutations"),
+            NOT DebuggerWindow->_OverlayRecordsReady && DebuggerWindow->_OverlayRecords->GetRecords().IsEmpty()
+                && DebuggerWindow->_OverlayActionRecords->GetRecords().IsEmpty()
+                && NOT TrackA.Has<ck::FTag_AudioTrack_DebugDraw>() && NOT TrackB.Has<ck::FTag_AudioTrack_DebugDraw>());
+        return true;
+    })) { return false; }
+    const auto RecoveredOverlayRepeat = StaticCastSharedPtr<SCkUiRepeat>(FindWidgetType(
+        FindTaggedWidget(DebuggerWindow->_AuthoredOverlayView->GetRegion(TEXT("main")),
+            TEXT("audio-overlay-records")).ToSharedRef(), TEXT("SCkUiRepeat")));
+    RecoveredOverlayRepeat->TryRefresh();
+    if (NOT TestTrue(TEXT("recovered Overlay publishes a real track record"),
+        DebuggerWindow->_OverlayRecords->GetRecords().Num() > 1)) { return false; }
+    const auto RecoveredOverlayTrackRow = RecoveredOverlayRepeat->GetItemWidget(
+        DebuggerWindow->_OverlayRecords->GetRecords()[1]->GetKey());
+    const auto RecoveredOverlayToggle = RecoveredOverlayTrackRow.IsValid()
+        ? FindCheckBoxWithText(RecoveredOverlayTrackRow.ToSharedRef(), TEXT("draw")) : nullptr;
+    if (NOT TestTrue(TEXT("recovered Overlay controls are primed for later lifecycle refusal checks"),
+        RecoveredOverlayToggle.IsValid()
+            && Click(Slate, RecoveredOverlayToggle.ToSharedRef()) && TrackB.Has<ck::FTag_AudioTrack_DebugDraw>()
+            && Click(Slate, RecoveredOverlayToggle.ToSharedRef()) && NOT TrackB.Has<ck::FTag_AudioTrack_DebugDraw>()))
+    { return false; }
 
     DebuggerWindow->DoRecord_VolumeHistory();
     DebuggerWindow->DoRecord_Events();
@@ -2194,6 +2440,37 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
     if (NOT TestTrue(TEXT("Tracks teardown fixture holds a currently published entity link"), LiveTrackRef.IsValid()))
     { return false; }
     const auto SessionFixture = FixtureSnapshot;
+    DebuggerWindow->DoUpdate_OverlayRecords();
+    auto LifecycleOverlayView = DebuggerWindow->_AuthoredOverlayView;
+    const auto LifecycleOverlayRepeat = StaticCastSharedPtr<SCkUiRepeat>(FindWidgetType(
+        FindTaggedWidget(LifecycleOverlayView->GetRegion(TEXT("main")), TEXT("audio-overlay-records")).ToSharedRef(), TEXT("SCkUiRepeat")));
+    const auto LifecycleActionRepeat = StaticCastSharedPtr<SCkUiRepeat>(FindWidgetType(
+        FindTaggedWidget(LifecycleOverlayView->GetRegion(TEXT("main")), TEXT("audio-overlay-actions")).ToSharedRef(), TEXT("SCkUiRepeat")));
+    LifecycleOverlayRepeat->TryRefresh();
+    LifecycleActionRepeat->TryRefresh();
+    const auto LifecycleOverlayTrackRow = LifecycleOverlayRepeat->GetItemWidget(TrackRecordKey);
+    const auto HeldAuthoredOverlayToggle = LifecycleOverlayTrackRow.IsValid()
+        ? FindCheckBoxWithText(LifecycleOverlayTrackRow.ToSharedRef(), TEXT("draw")) : nullptr;
+    const auto HeldAuthoredOverlayAll = FindCheckBoxWithText(LifecycleOverlayView->GetRegion(TEXT("main")), TEXT("Draw all"));
+    if (NOT TestTrue(TEXT("Overlay lifecycle probes hold currently published controls"),
+        HeldAuthoredOverlayToggle.IsValid() && HeldAuthoredOverlayAll.IsValid())) { return false; }
+    HeldAuthoredOverlayToggle->ToggleCheckedState();
+    TestTrue(TEXT("held Overlay per-track probe mutates before lifecycle invalidation"), TrackA.Has<ck::FTag_AudioTrack_DebugDraw>());
+    LifecycleOverlayRepeat->TryRefresh();
+    TestTrue(TEXT("hidden Overlay repeat explicitly re-admits the same retained control after its record revision changes"),
+        LifecycleOverlayRepeat->GetItemWidget(TrackRecordKey) == LifecycleOverlayTrackRow
+            && HeldAuthoredOverlayToggle->IsEnabled() && HeldAuthoredOverlayToggle->IsChecked());
+    HeldAuthoredOverlayToggle->ToggleCheckedState();
+    TestFalse(TEXT("held Overlay per-track probe can restore debug draw before invalidation"), TrackA.Has<ck::FTag_AudioTrack_DebugDraw>());
+    HeldAuthoredOverlayAll->ToggleCheckedState();
+    TestTrue(TEXT("held Overlay batch probe mutates before lifecycle invalidation"), TrackA.Has<ck::FTag_AudioTrack_DebugDraw>());
+    TrackA.Try_Remove<ck::FFragment_AudioTrack_Debug>();
+    TrackA.Try_Remove<ck::FTag_AudioTrack_DebugDraw>();
+    DebuggerWindow->DoUpdate_OverlayRecords();
+    LifecycleOverlayRepeat->TryRefresh();
+    TestTrue(TEXT("Overlay lifecycle invalidation begins with the exact held per-track control currently dispatch-capable"),
+        LifecycleOverlayRepeat->GetItemWidget(TrackRecordKey) == LifecycleOverlayTrackRow
+            && HeldAuthoredOverlayToggle->IsEnabled() && NOT HeldAuthoredOverlayToggle->IsChecked());
     const auto HeldSpatialToggle = FindCheckBoxWithText(SpatialPageView->GetRegion(TEXT("main")), TrackInfoA.TrackName);
     const auto HeldSpatialFooter = FindTaggedWidget(SpatialPageView->GetRegion(TEXT("main")), TEXT("audio-spatial-listener"));
     if (NOT TestTrue(TEXT("Spatial lifecycle fixture holds a published selector and weak listener footer"),
@@ -2206,6 +2483,11 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
         DebuggerWindow->_ObservedWorld.Get() == InvalidatedWorld
             && DebuggerWindow->_Collector.Get_Snapshot().HasWorld);
     ck::DebugSessionLifecycle::Get_OnWorldInvalidated().Broadcast(InvalidatedWorld);
+    HeldAuthoredOverlayToggle->ToggleCheckedState();
+    HeldAuthoredOverlayAll->ToggleCheckedState();
+    TestTrue(TEXT("world invalidation clears Overlay collections and immediately revokes per-track and batch dispatch"),
+        DebuggerWindow->_OverlayRecords->GetRecords().IsEmpty() && DebuggerWindow->_OverlayActionRecords->GetRecords().IsEmpty()
+            && NOT TrackA.Has<ck::FTag_AudioTrack_DebugDraw>());
     HeldSpatialToggle->ToggleCheckedState();
     TestTrue(TEXT("world invalidation clears Spatial records and synchronously revokes a held selector"),
         DebuggerWindow->_SpatialRecords->GetRecords().IsEmpty() && DebuggerWindow->_SelectedSpatialTrackKey.IsEmpty());
@@ -2241,6 +2523,11 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
     DebuggerWindow->_Collector._SnapshotOverrideForTests.Emplace(SessionFixture);
     DebuggerWindow->_Collector.Collect(nullptr);
     DebuggerWindow->DoUpdate_SpatialView();
+    DebuggerWindow->DoUpdate_OverlayRecords();
+    HeldAuthoredOverlayToggle->ToggleCheckedState();
+    HeldAuthoredOverlayAll->ToggleCheckedState();
+    TestTrue(TEXT("same-identity next-session Overlay records never revive prior-session controls"),
+        NOT DebuggerWindow->_OverlayRecords->GetRecords().IsEmpty() && NOT TrackA.Has<ck::FTag_AudioTrack_DebugDraw>());
     HeldSpatialToggle->ToggleCheckedState();
     TestTrue(TEXT("same-identity next-session records do not revive a prior-session held selector"),
         DebuggerWindow->_SelectedSpatialTrackKey.IsEmpty() && NOT DebuggerWindow->_SpatialRecords->GetRecords().IsEmpty());
@@ -2279,6 +2566,7 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
     const TWeakPtr<FCkUiView> ReleasedPopulatedDirectors = DirectorsView;
     const TWeakPtr<FCkUiView> ReleasedPopulatedTracks = TracksView;
     const TWeakPtr<FCkUiView> ReleasedPopulatedSpatial = SpatialPageView;
+    const TWeakPtr<FCkUiView> ReleasedPopulatedOverlay = DebuggerWindow->_AuthoredOverlayView;
     Slate.DestroyWindowImmediately(HostWindow.ToSharedRef());
     HostWindow.Reset();
     DebuggerWindow.Reset();
@@ -2286,6 +2574,12 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
     ProbeRetainedEntityRef(LiveDirectorRef.ToSharedRef());
     TracksView.Reset();
     SpatialPageView.Reset();
+    LifecycleOverlayView.Reset();
+    HeldAuthoredOverlayToggle->ToggleCheckedState();
+    HeldAuthoredOverlayAll->ToggleCheckedState();
+    TestTrue(TEXT("held Overlay controls release the authored view and owner and cannot mutate after teardown"),
+        NOT ReleasedPopulatedOwner.IsValid() && NOT ReleasedPopulatedOverlay.IsValid()
+            && NOT TrackA.Has<ck::FTag_AudioTrack_DebugDraw>() && NOT TrackB.Has<ck::FTag_AudioTrack_DebugDraw>());
     HeldSpatialToggle->ToggleCheckedState();
     TestTrue(TEXT("held Spatial controls and footer release the owner/view and stay inert after teardown"),
         NOT ReleasedPopulatedOwner.IsValid() && NOT ReleasedPopulatedSpatial.IsValid()

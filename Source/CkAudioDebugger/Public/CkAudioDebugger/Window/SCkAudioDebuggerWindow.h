@@ -174,6 +174,13 @@ private:
     auto DoUpdate_SpatialRecords() -> void;
     auto DoSelect_SpatialRecord(const FString& InKey) -> void;
 
+    auto BuildAuthoredOverlayPage() -> void;
+    auto PollAuthoredOverlayPage(double InCurrentTime) -> void;
+    auto DoUpdate_OverlayRecords() -> void;
+    auto DoToggle_OverlayRecord(const FString& InKey) -> void;
+    auto DoDispatch_OverlayBatch(const FString& InKey) -> void;
+    auto TryGet_OverlayTrack(const FString& InKey) const -> const FCkAudioDebugger_TrackInfo*;
+
     auto
     PollAuthoredEventsToolbar(
         double InCurrentTime) -> void;
@@ -410,6 +417,17 @@ private:
     bool                       _UsingNativeSpatialFallback = true;
     bool                       _SpatialRecordsReady = false;
 
+    TSharedPtr<FCkUiView>       _AuthoredOverlayView;
+    TSharedPtr<FCkUiCollection> _OverlayRecords;
+    TSharedPtr<FCkUiCollection> _OverlayActionRecords;
+    TSharedPtr<SBox>           _OverlayPageHost;
+    TSharedPtr<SWidget>        _NativeOverlayPage;
+    FString                    _AuthoredOverlayMarkupPath;
+    FString                    _AuthoredOverlayStylesheetPath;
+    double                     _NextAuthoredOverlayPollSeconds = 0.0;
+    bool                       _UsingNativeOverlayFallback = true;
+    bool                       _OverlayRecordsReady = false;
+
     TSharedPtr<SHorizontalBox>  _SpatialSelectorBox;
     TSharedPtr<SHorizontalBox>  _OverlayActionsBox;
     TSharedPtr<SVerticalBox>    _OverlayListBox;
@@ -466,8 +484,7 @@ private:
     TWeakObjectPtr<UWorld> _InvalidatedWorld;
     FDelegateHandle _SessionInvalidatedHandle;
     FDelegateHandle _WorldInvalidatedHandle;
-    int64 _RuntimeGeneration = 0;
-    /** Authored entity rows share this lifecycle-only identity; Overlay rebuilds advance only _RuntimeGeneration. */
+    /** Authored entity rows and Overlay actions share this lifecycle-only identity. */
     int64 _DirectorSessionGeneration = 0;
 
     ECkAudioDebugger_Page _ActivePage = ECkAudioDebugger_Page::Tracks;

@@ -1,0 +1,14 @@
+.audio-overlay-root { min-width: 0; min-height: 0; }
+.audio-overlay-toolbar { min-width: 0; padding: 8px 12px 4px 12px; gap: 4px; vertical-align: center; }
+.audio-overlay-actions { gap: 4px; vertical-align: center; }
+.audio-overlay-warning-wrap { min-width: 0; flex-grow: 1; horizontal-align: right; }
+.audio-overlay-warning { min-width: 0; color: var(--audio-stat-warn); font-family: monospace; font-size: var(--audio-events-micro-size); }
+.audio-overlay-scroll { min-width: 0; min-height: 0; flex-grow: 1; flex-shrink: 1; }
+.audio-overlay-records { min-width: 0; padding: 4px 12px; }
+.audio-overlay-record { min-width: 0; }
+.audio-overlay-header { min-width: 0; padding: 8px 0 2px 0; gap: 2px; }
+.audio-overlay-director { min-width: 0; color: var(--audio-stat-label); font-family: sans-serif; font-weight: bold; font-size: var(--audio-events-micro-size); }
+.audio-overlay-divider { min-height: 1px; max-height: 1px; background-color: var(--audio-crossfade-border); }
+.audio-overlay-track { min-width: 0; padding: 2px 0; gap: 8px; vertical-align: center; }
+.audio-overlay-name { min-width: 0; flex-grow: 1; color: var(--audio-stat-text); font-family: sans-serif; font-weight: bold; font-size: var(--audio-crossfade-title-size); }
+.audio-overlay-distance { color: var(--audio-events-muted); font-family: monospace; font-size: var(--audio-events-micro-size); text-wrap: nowrap; }

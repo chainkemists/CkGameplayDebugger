@@ -1,0 +1,29 @@
+<ui version="1">
+  <region name="main">
+    <column id="audio-overlay-root" class="audio-overlay-root">
+      <row id="audio-overlay-toolbar" class="audio-overlay-toolbar">
+        <repeat id="audio-overlay-actions" bind="audio-overlay-actions" direction="horizontal" class="audio-overlay-actions">
+          <audio-overlay-toggle id="audio-overlay-action" label-field="name" caption-field="name" checked-field="checked" item-action="audio-overlay-batch" />
+        </repeat>
+        <column id="audio-overlay-warning-wrap" class="audio-overlay-warning-wrap">
+          <text id="audio-overlay-warning" class="audio-overlay-warning">writes to the running world</text>
+        </column>
+      </row>
+      <scroll id="audio-overlay-scroll" class="audio-overlay-scroll">
+        <repeat id="audio-overlay-records" bind="audio-overlay-records" direction="vertical" visible="audio-overlay-ready" class="audio-overlay-records">
+          <column id="audio-overlay-record" class="audio-overlay-record">
+            <column id="audio-overlay-header" visible-field="is-header" class="audio-overlay-header">
+              <text id="audio-overlay-director" bind-field="name" class="audio-overlay-director" />
+              <row id="audio-overlay-divider" class="audio-overlay-divider" />
+            </column>
+            <row id="audio-overlay-track" visible-field="is-track" class="audio-overlay-track">
+              <audio-overlay-toggle id="audio-overlay-draw" label-field="name" caption-bind="audio-overlay-draw" checked-field="checked" item-action="audio-overlay-toggle" />
+              <text id="audio-overlay-name" bind-field="name" class="audio-overlay-name" />
+              <text id="audio-overlay-distance" bind-field="distance" class="audio-overlay-distance" />
+            </row>
+          </column>
+        </repeat>
+      </scroll>
+    </column>
+  </region>
+</ui>

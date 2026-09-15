@@ -6,6 +6,18 @@
 #include "CkInputHudOverlay/Settings/CkInputHud_UserSettings.h"
 #include "CkInputHudOverlay/Style/CkInputHud_RenderStyle.h"
 #include "CkInputHudOverlay/Subsystem/CkInputHud_Subsystem.h"
+#include "CkInputHudOverlay/Widgets/SCkInputHud_Ribbon.h"
+#include "CkInputHudOverlay/Widgets/SCkInputHud_Root.h"
+#include "CkSlateLayout/CkFlexText.h"
+#include "CkSlateLayout/SCkUiSurface.h"
+
+#include "Framework/Application/SlateApplication.h"
+#include "HAL/FileManager.h"
+#include "Interfaces/IPluginManager.h"
+#include "Misc/FileHelper.h"
+#include "Misc/Paths.h"
+#include "Misc/ScopeExit.h"
+#include "Widgets/SWindow.h"
 
 #include <limits>
 
@@ -139,6 +151,253 @@ namespace ck_input_hud_spec
     {
         return FCk_InputHud_Model::Get_EventKind(InModel.Get_Events()[InIndex], InNow, TapHoldThresholdMs);
     }
+
+    auto TickSlate(FSlateApplication& InSlate) -> void
+    {
+        InSlate.PumpMessages();
+        InSlate.Tick();
+        InSlate.Tick();
+    }
+
+    auto FindTaggedWidget(const TSharedRef<SWidget>& InRoot, const FName InTag) -> TSharedPtr<SWidget>
+    {
+        if (InRoot->GetTag() == InTag) { return InRoot; }
+        FChildren* Children = InRoot->GetChildren();
+        for (int32 Index = 0; Children != nullptr && Index < Children->Num(); ++Index)
+        {
+            if (const TSharedPtr<SWidget> Found = FindTaggedWidget(
+                ConstCastSharedRef<SWidget>(Children->GetChildAt(Index)), InTag); Found.IsValid())
+            { return Found; }
+        }
+        return nullptr;
+    }
+
+    auto ContainsWidget(const TSharedRef<SWidget>& InRoot, const TSharedRef<SWidget>& InTarget) -> bool
+    {
+        if (InRoot == InTarget) { return true; }
+        FChildren* Children = InRoot->GetChildren();
+        for (int32 Index = 0; Children != nullptr && Index < Children->Num(); ++Index)
+        {
+            if (ContainsWidget(ConstCastSharedRef<SWidget>(Children->GetChildAt(Index)), InTarget)) { return true; }
+        }
+        return false;
+    }
+
+    auto GetChild(const TSharedRef<SWidget>& InWidget, int32 InIndex) -> TSharedPtr<SWidget>
+    {
+        FChildren* Children = InWidget->GetChildren();
+        if (Children == nullptr || InIndex < 0 || InIndex >= Children->Num()) { return nullptr; }
+        return ConstCastSharedRef<SWidget>(Children->GetChildAt(InIndex));
+    }
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCkInputHud_AuthoredRoot_Test,
+    "Ck.InputHud.Authored.Root",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCkInputHud_AuthoredRoot_Test::RunTest(const FString&)
+{
+    using namespace ck_input_hud_spec;
+
+    if (NOT FSlateApplication::IsInitialized())
+    {
+        AddError(TEXT("Input HUD authored-root test requires Slate."));
+        return false;
+    }
+
+    const FUserSettingsRestore Restore;
+    UCk_InputHud_UserSettings* const Settings = UCk_InputHud_UserSettings::Get_Mutable();
+    Settings->Reset_VisualTuning();
+    Settings->Reset_ReadoutTuning();
+
+    TSharedPtr<FCk_InputHud_Model> Model = MakeShared<FCk_InputHud_Model>();
+    Model->Set_LeftStick(FVector2f{0.25f, -0.50f});
+    Model->Set_RightStick(FVector2f{-0.75f, 1.00f});
+    Model->Set_ActiveInputType(ECommonInputType::Gamepad);
+    Model->Set_Layers({TPair<int32, FString>{20, TEXT("Modal")}, TPair<int32, FString>{10, TEXT("Player")}});
+    Model->Open_Event(TEXT("E"), FName{TEXT("E")}, 7, T0, false);
+
+    int32 Corner = 0;
+    float Scale = 1.25f;
+    int32 Mode = 2;
+    float Opacity = 0.5f;
+    FVector2f Offset{12.0f, 18.0f};
+    const TSharedPtr<SCkInputHud_Root> Root = SNew(SCkInputHud_Root)
+        .Model(Model)
+        .Corner(TAttribute<int32>::CreateLambda([&Corner]() { return Corner; }))
+        .Scale(TAttribute<float>::CreateLambda([&Scale]() { return Scale; }))
+        .Mode(TAttribute<int32>::CreateLambda([&Mode]() { return Mode; }))
+        .Opacity(TAttribute<float>::CreateLambda([&Opacity]() { return Opacity; }))
+        .AnchorOffset(TAttribute<FVector2f>::CreateLambda([&Offset]() { return Offset; }));
+
+    auto& Slate = FSlateApplication::Get();
+    TSharedPtr<SWindow> Window = SNew(SWindow)
+        .ClientSize(FVector2D{640.0f, 360.0f})
+        .CreateTitleBar(false)
+        .HasCloseButton(false)
+        [Root.ToSharedRef()];
+    ON_SCOPE_EXIT
+    {
+        if (Window.IsValid()) { Slate.DestroyWindowImmediately(Window.ToSharedRef()); }
+    };
+    Slate.AddWindow(Window.ToSharedRef(), true);
+    TickSlate(Slate);
+
+    TSharedPtr<FCkUiView> View = Root->Get_AuthoredView();
+    TSharedPtr<SCkInputHud_Ribbon> Ribbon = Root->Get_Ribbon();
+    if (NOT TestTrue(TEXT("installed Input HUD resources admit one authored Root and its exact Ribbon port"),
+        View.IsValid() && View->GetLastResult().Succeeded && NOT Root->Get_UsesNativeFallback() && Ribbon.IsValid()))
+    {
+        if (View.IsValid()) { AddError(FString::Join(View->GetLastResult().Errors, TEXT("\n"))); }
+        return false;
+    }
+
+    const TSharedRef<SWidget> Main = View->GetRegion(TEXT("main"));
+    const TSharedPtr<SWidget> AuthoredRoot = FindTaggedWidget(Main, TEXT("input-hud-overlay-root"));
+    const TSharedPtr<SWidget> AuthoredRibbon = FindTaggedWidget(Main, TEXT("input-hud-ribbon"));
+    const TSharedPtr<SWidget> SticksWidget = FindTaggedWidget(Main, TEXT("input-hud-sticks"));
+    const TSharedPtr<SWidget> Layer = FindTaggedWidget(Main, TEXT("input-hud-layer"));
+    const TSharedPtr<SWidget> LayerPrimaryWidget = FindTaggedWidget(Main, TEXT("input-hud-layer-primary"));
+    const TSharedPtr<SWidget> LayerRemainderWidget = FindTaggedWidget(Main, TEXT("input-hud-layer-remainder"));
+    if (NOT TestTrue(TEXT("authored Root and passive descendants are mounted"),
+        Root->GetVisibility() == EVisibility::HitTestInvisible && AuthoredRoot.IsValid()
+            && AuthoredRibbon.IsValid() && SticksWidget.IsValid() && Layer.IsValid()
+            && LayerPrimaryWidget.IsValid() && LayerRemainderWidget.IsValid()
+            && Ribbon->GetVisibility() == EVisibility::HitTestInvisible
+            && NOT Root->SupportsKeyboardFocus() && NOT Ribbon->SupportsKeyboardFocus()
+            && ContainsWidget(Main, Ribbon.ToSharedRef()))) { return false; }
+
+    if (NOT TestTrue(TEXT("authored readouts use passive text leaves"),
+        SticksWidget->GetTypeAsString() == TEXT("SCkFlexText")
+            && LayerPrimaryWidget->GetTypeAsString() == TEXT("SCkFlexText")
+            && LayerRemainderWidget->GetTypeAsString() == TEXT("SCkFlexText"))) { return false; }
+    const TSharedRef<SCkFlexText> Sticks = StaticCastSharedRef<SCkFlexText>(SticksWidget.ToSharedRef());
+    const TSharedRef<SCkFlexText> LayerPrimary = StaticCastSharedRef<SCkFlexText>(LayerPrimaryWidget.ToSharedRef());
+    const TSharedRef<SCkFlexText> LayerRemainder = StaticCastSharedRef<SCkFlexText>(LayerRemainderWidget.ToSharedRef());
+    TestTrue(TEXT("bound stick and layer predicates project the live model"),
+        Sticks->GetVisibility() != EVisibility::Collapsed && Layer->GetVisibility() != EVisibility::Collapsed);
+    TestEqual(TEXT("authored stick text follows the live model"), Sticks->GetText().ToString(),
+        FString{TEXT("L 0.25,-0.50   R -0.75,1.00")});
+    TestEqual(TEXT("authored primary layer text follows the live model"), LayerPrimary->GetText().ToString(),
+        FString{TEXT("Modal")});
+    TestEqual(TEXT("authored remainder keeps the native separator contract"), LayerRemainder->GetText().ToString(),
+        FString{TEXT(" · Player")});
+
+    const TSharedPtr<SWidget> Anchor = GetChild(Root.ToSharedRef(), 0);
+    const TSharedPtr<SWidget> PresentationHost = Anchor.IsValid() ? GetChild(Anchor.ToSharedRef(), 0) : nullptr;
+    if (NOT TestTrue(TEXT("Root exposes its live authored presentation host"), PresentationHost.IsValid())) { return false; }
+
+    const TArray<TPair<int32, FVector2D>> Corners{
+        {0, FVector2D{0.0f, 0.0f}}, {1, FVector2D{1.0f, 0.0f}},
+        {2, FVector2D{0.0f, 1.0f}}, {3, FVector2D{1.0f, 1.0f}}};
+    for (const TPair<int32, FVector2D>& Expected : Corners)
+    {
+        Corner = Expected.Key;
+        Root->Tick(Root->GetCachedGeometry(), T0 + Expected.Key, 0.1f);
+        TestTrue(*FString::Printf(TEXT("corner %d updates the authored host pivot"), Expected.Key),
+            PresentationHost->GetRenderTransformPivot().Equals(Expected.Value));
+    }
+    TestTrue(TEXT("live scale is applied to the presentation host"), PresentationHost->GetRenderTransform().IsSet());
+
+    Root->Tick(Root->GetCachedGeometry(), T0 + 10.0, 0.1f);
+    const float PopulatedOpacity = PresentationHost->GetRenderOpacity();
+    Model->Reset();
+    Root->Tick(Root->GetCachedGeometry(), T0 + 10.1, 0.1f);
+    TestTrue(TEXT("whole-overlay fade composes with caller opacity"),
+        PopulatedOpacity > PresentationHost->GetRenderOpacity() && PresentationHost->GetRenderOpacity() >= 0.0f);
+
+    Model->Set_LeftStick(FVector2f{0.5f, 0.5f});
+    Model->Set_RightStick(FVector2f{-0.5f, -0.5f});
+    Model->Set_Layers({TPair<int32, FString>{1, TEXT("Player")}});
+    Model->Open_Event(TEXT("Q"), FName{TEXT("Q")}, 8, T0 + 11.0, false);
+    Mode = 1;
+    Root->Tick(Root->GetCachedGeometry(), T0 + 11.0, 0.1f);
+    TickSlate(Slate);
+    TestTrue(TEXT("stick predicate responds to live mode"),
+        Sticks->GetVisibility() == EVisibility::Collapsed);
+    TestTrue(TEXT("layer remains projected after the model reset and rebuild"),
+        Layer->GetVisibility() != EVisibility::Collapsed);
+
+    const int64 SettingsRevision = View->GetRevision();
+    Settings->Set_PanelOpacity(0.5f);
+    Root->Tick(Root->GetCachedGeometry(), T0 + 12.0, 0.1f);
+    TestTrue(TEXT("live authored style tokens advance the retained view revision"),
+        View->GetRevision() > SettingsRevision);
+
+    Settings->Set_OverallOpacity(0.8f);
+    Root->Tick(Root->GetCachedGeometry(), T0 + 12.1, 0.1f);
+    TestTrue(TEXT("live overall opacity remains native and composes across the authored presentation"),
+        FMath::IsNearlyEqual(PresentationHost->GetRenderOpacity(), Opacity * 0.8f));
+
+    const TSharedPtr<IPlugin> Plugin = IPluginManager::Get().FindPlugin(TEXT("CkDebugger"));
+    FString Markup;
+    FString Css;
+    const FString Directory = Plugin.IsValid() ? FPaths::Combine(Plugin->GetBaseDir(), TEXT("Resources/UI")) : FString{};
+    if (NOT TestTrue(TEXT("installed Input HUD authored resources are readable"), Plugin.IsValid()
+        && FFileHelper::LoadFileToString(Markup, *FPaths::Combine(Directory, TEXT("InputHudOverlay.ui.html")))
+        && FFileHelper::LoadFileToString(Css, *FPaths::Combine(Directory, TEXT("InputHudOverlay.ui.css"))))) { return false; }
+
+    const int64 AcceptedRevision = View->GetRevision();
+    const FCkUiLoadResult Compatible = View->TryReload(Markup, Css, TEXT("Input HUD compatible in-memory candidate"));
+    TestTrue(TEXT("compatible in-memory reload retains the exact Ribbon and advances revision"),
+        Compatible.Succeeded && View->GetRevision() == AcceptedRevision + 1
+            && Root->Get_Ribbon() == Ribbon && ContainsWidget(Main, Ribbon.ToSharedRef()));
+
+    const FString MissingRibbonMarkup = Markup.Replace(TEXT("bind=\"input-hud-ribbon\""), TEXT("bind=\"missing-ribbon\""));
+    if (NOT TestTrue(TEXT("rejection candidate removes the required Ribbon binding"), MissingRibbonMarkup != Markup)) { return false; }
+    const int64 RejectedRevision = View->GetRevision();
+    TestFalse(TEXT("missing Ribbon candidate is rejected"), View->TryReload(MissingRibbonMarkup, Css).Succeeded);
+    TestTrue(TEXT("rejection preserves accepted content revision and exact Ribbon"),
+        View->GetRevision() == RejectedRevision && Root->Get_Ribbon() == Ribbon && ContainsWidget(Main, Ribbon.ToSharedRef()));
+
+    Model.Reset();
+    TestTrue(TEXT("expired model leaves the Ribbon safely empty"), Ribbon->ComputeDesiredSize(1.0f).IsNearlyZero());
+    Root->Release_AuthoredPresentation();
+    Root->Tick(Root->GetCachedGeometry(), T0 + 13.0, 0.1f);
+    TestTrue(TEXT("explicit release revokes presentation from a held Root while a caller still holds its old view"),
+        Root->Get_IsAuthoredPresentationReleased() && NOT Root->Get_AuthoredView().IsValid()
+            && NOT Root->Get_Ribbon().IsValid() && View.IsValid()
+            && Sticks->GetText().IsEmpty() && Ribbon->ComputeDesiredSize(1.0f).IsNearlyZero());
+
+#if WITH_DEV_AUTOMATION_TESTS
+    const FString TempMarkupPath = FPaths::CreateTempFilename(
+        *FPaths::ProjectSavedDir(), TEXT("CkInputHudFallback_"), TEXT(".ui.html"));
+    const FString TempCssPath = FPaths::CreateTempFilename(
+        *FPaths::ProjectSavedDir(), TEXT("CkInputHudFallback_"), TEXT(".ui.css"));
+    ON_SCOPE_EXIT
+    {
+        IFileManager::Get().Delete(*TempMarkupPath, false, true);
+        IFileManager::Get().Delete(*TempCssPath, false, true);
+    };
+    if (NOT TestTrue(TEXT("fallback fixture writes isolated temporary authored resources"),
+        FFileHelper::SaveStringToFile(MissingRibbonMarkup, *TempMarkupPath)
+            && FFileHelper::SaveStringToFile(Css, *TempCssPath))) { return false; }
+
+    const TSharedPtr<SCkInputHud_Root> RecoveryRoot = SNew(SCkInputHud_Root)
+        .Model(Model)
+        .AuthoredMarkupPathOverride(TempMarkupPath)
+        .AuthoredStylesheetPathOverride(TempCssPath);
+    Window->SetContent(RecoveryRoot.ToSharedRef());
+    TickSlate(Slate);
+    const TSharedPtr<SCkInputHud_Ribbon> RecoveryRibbon = RecoveryRoot->Get_Ribbon();
+    if (NOT TestTrue(TEXT("invalid startup resource mounts the native fallback around the exact Ribbon"),
+        RecoveryRoot->Get_UsesNativeFallback() && RecoveryRoot->Get_AuthoredView().IsValid()
+            && RecoveryRibbon.IsValid() && NOT RecoveryRoot->Get_AuthoredFailure().IsEmpty())) { return false; }
+
+    if (NOT TestTrue(TEXT("fallback fixture restores valid markup"),
+        FFileHelper::SaveStringToFile(Markup, *TempMarkupPath))) { return false; }
+    RecoveryRoot->Tick(
+        RecoveryRoot->GetCachedGeometry(), FSlateApplication::Get().GetCurrentTime() + 1.0, 0.1f);
+    const TSharedPtr<FCkUiView> RecoveryView = RecoveryRoot->Get_AuthoredView();
+    TestTrue(TEXT("bounded polling recovers the authored Root without recreating its Ribbon"),
+        RecoveryView.IsValid() && RecoveryView->GetLastResult().Succeeded
+            && NOT RecoveryRoot->Get_UsesNativeFallback() && RecoveryRoot->Get_Ribbon() == RecoveryRibbon
+            && ContainsWidget(RecoveryView->GetRegion(TEXT("main")), RecoveryRibbon.ToSharedRef()));
+    RecoveryRoot->Release_AuthoredPresentation();
+#endif
+    return true;
 }
 
 // --------------------------------------------------------------------------------------------------------------------

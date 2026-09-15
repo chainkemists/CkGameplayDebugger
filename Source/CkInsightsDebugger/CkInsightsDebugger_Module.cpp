@@ -47,6 +47,8 @@ auto FCkInsightsDebuggerModule::StartupModule() -> void
     auto& TabSpawner = FGlobalTabmanager::Get()->RegisterNomadTabSpawner(
         _DebuggerTabName,
         FOnSpawnTab::CreateRaw(this, &FCkInsightsDebuggerModule::OnSpawnDebuggerTab))
+        .SetReuseTabMethod(FOnFindTabToReuse::CreateLambda(
+            [this](const FTabId&) { return _DebuggerTab; }))
         .SetDisplayName(LOCTEXT("InsightsAnalyzerDisplayName", "Insights Analyzer"))
         .SetTooltipText(LOCTEXT("InsightsAnalyzerTooltip", "Open .utrace files and analyze frame performance"));
 
@@ -64,10 +66,12 @@ auto FCkInsightsDebuggerModule::StartupModule() -> void
         10}
         .Set_TabFactory(FCkDebuggerToolTabFactory::CreateLambda([this]
         { return OnSpawnDebuggerTab(FSpawnTabArgs{TSharedPtr<SWindow>{}, FTabId{_DebuggerTabName}}); })));
+    _EnginePreExitHandle = FCoreDelegates::OnEnginePreExit.AddRaw(this, &FCkInsightsDebuggerModule::HandleEnginePreExit);
 }
 
 auto FCkInsightsDebuggerModule::ShutdownModule() -> void
 {
+    if (_EnginePreExitHandle.IsValid()) { FCoreDelegates::OnEnginePreExit.Remove(_EnginePreExitHandle); _EnginePreExitHandle.Reset(); }
     FCkDebuggerToolRegistry::Get().Unregister(_DebuggerTabName, _DebuggerToolRegistrationId);
     _DebuggerToolRegistrationId = 0;
 
@@ -94,13 +98,15 @@ auto FCkInsightsDebuggerModule::OpenDebugger() -> void
 
 auto FCkInsightsDebuggerModule::CloseDebugger() -> void
 {
-    if (_DebuggerTab.IsValid())
-    {
-        if (NOT IsEngineExitRequested())
-        { _DebuggerTab->RequestCloseTab(); }
-        _DebuggerTab.Reset();
-    }
+    if (_DebuggerWindow.IsValid()) { _DebuggerWindow->Release_Presentation(); }
+    ck::debugger_tabs::Release_DebuggerTab(_DebuggerTab, true);
+    _DebuggerWindow.Reset();
+}
 
+auto FCkInsightsDebuggerModule::HandleEnginePreExit() -> void
+{
+    if (_DebuggerWindow.IsValid()) { _DebuggerWindow->Release_Presentation(); }
+    ck::debugger_tabs::Release_DebuggerTab(_DebuggerTab, false);
     _DebuggerWindow.Reset();
 }
 
@@ -125,6 +131,7 @@ auto FCkInsightsDebuggerModule::OnSpawnDebuggerTab(const FSpawnTabArgs& InArgs) 
         .ToolTipText(LOCTEXT("InsightsAnalyzerTabTooltip", "Analyze Unreal Insights .utrace files"))
         .OnTabClosed_Lambda([this](TSharedRef<SDockTab>)
         {
+            if (_DebuggerWindow.IsValid()) { _DebuggerWindow->Release_Presentation(); }
             _DebuggerWindow.Reset();
             _DebuggerTab.Reset();
         })

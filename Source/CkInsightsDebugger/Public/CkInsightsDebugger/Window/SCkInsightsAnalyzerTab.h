@@ -24,6 +24,7 @@
 #include <Widgets/Views/STreeView.h>
 
 struct FSlateDynamicImageBrush;
+class FCkUiView;
 
 // --------------------------------------------------------------------------------------------------------------------
 
@@ -51,9 +52,14 @@ public:
 
     auto Construct(const FArguments& InArgs) -> void;
     virtual ~SCkInsightsAnalyzerTab() override;
+    /** Releases tab-owned async/UI state only; module capture ownership intentionally survives. */
+    auto Release_Presentation() -> void;
+    auto Get_AuthoredShell() const -> TSharedPtr<FCkUiView> { return _AuthoredShell; }
+    auto IsUsingNativeShellFallback() const -> bool { return _UsingNativeShellFallback; }
 
 private:
     friend struct FCkInsightsAnalyzerTabTestAccess;
+    friend struct FCkInsightsLifecycleTestAccess;
 
     // ---- Results mode ----
 
@@ -84,6 +90,13 @@ private:
     auto DoCreateSidePanels() -> TSharedRef<SWidget>;
     auto DoCreateScreenshotPanel() -> TSharedRef<SWidget>;
     auto DoCreateRawReportArea() -> TSharedRef<SWidget>;
+    auto DoCreateBody() -> TSharedRef<SWidget>;
+    auto DoCreateNativeBody() -> TSharedRef<SWidget>;
+    auto DoInitializeAuthoredShell() -> void;
+    auto DoPollAuthoredShell(double InCurrentTime, float InDeltaTime) -> EActiveTimerReturnType;
+    auto DoMountAuthoredShell() -> bool;
+    auto DoDetachNativeShellPorts() -> void;
+    auto DoRestoreNativeShellPorts() -> void;
 
     // ---- Hot-path tree ----
 
@@ -230,6 +243,21 @@ private:
     TSharedPtr<STextBlock> _StatusText;
     TSharedPtr<SMultiLineEditableText> _ReportText;
 
+    // These mounts retain feature-specific identity through a shell reload. The results port contains the timing
+    // graph and per-row presence strips: both have bespoke paint/input semantics and are deliberately not generic
+    // authored controls.
+    TSharedPtr<SBox> _BodyHost;
+    TSharedPtr<SBox> _SummaryMount;
+    TSharedPtr<SBox> _FrameBarChartMount;
+    TSharedPtr<SBox> _ResultsMount;
+    TSharedPtr<SBox> _RawReportMount;
+    TSharedPtr<SBox> _FallbackSummaryHost;
+    TSharedPtr<SBox> _FallbackFrameBarChartHost;
+    TSharedPtr<SBox> _FallbackResultsHost;
+    TSharedPtr<SBox> _FallbackRawReportHost;
+    TSharedPtr<FCkUiView> _AuthoredShell;
+    bool _UsingNativeShellFallback = true;
+
     ECk_Tone _StatusTone = ECk_Tone::Neutral;
 
     TArray<TSharedPtr<FString>> _DepthOptions;
@@ -295,6 +323,7 @@ private:
     FTSTicker::FDelegateHandle _LoadingTickerHandle;
     FTSTicker::FDelegateHandle _CaptureUiTickerHandle;
     FTSTicker::FDelegateHandle _AutoOpenTickerHandle;
+    bool _PresentationReleased = false;
     FString _PendingTracePath;
     FString _PendingAutoOpenTracePath;
     FString _PendingAutoReportTracePath;

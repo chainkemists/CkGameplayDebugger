@@ -1,0 +1,7 @@
+.insights-shell { min-width: 0; min-height: 0; padding: var(--insights-space); gap: var(--insights-space); background-color: var(--insights-surface); flex-grow: 1; flex-shrink: 1; }
+.insights-summary { min-width: 0; flex-grow: 0; flex-shrink: 0; }
+.insights-frame-bars { min-width: 0; flex-grow: 0; flex-shrink: 0; }
+.insights-results-split { min-width: 0; min-height: 180px; flex-grow: 1; flex-shrink: 1; border-width: 1px; border-color: var(--insights-border); }
+.insights-results-column { min-width: 0; min-height: 0; padding: var(--insights-space); gap: var(--insights-space); flex-grow: 1; flex-shrink: 1; }
+.insights-results { min-width: 0; min-height: 0; flex-grow: 1; flex-shrink: 1; }
+.insights-raw-report { min-width: 0; flex-grow: 0; flex-shrink: 0; }

@@ -19,11 +19,15 @@
 #include "CkDebuggerCommon/Widgets/SCkDebug_SectionHeader.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_SelectableLabel.h"
 #include "CkDebuggerCommon/Window/SCkDebug_WindowChrome.h"
+#include "CkDebuggerCommon/UI/CkDebug_UiRegistry.h"
+#include "CkSlateLayout/SCkUiSurface.h"
 
 #include <Async/Async.h>
 #include <Brushes/SlateDynamicImageBrush.h>
 #include <DesktopPlatformModule.h>
 #include <Framework/Application/SlateApplication.h>
+#include <Framework/Application/SlateUser.h>
+#include <Layout/WidgetPath.h>
 #include <Framework/MultiBox/MultiBoxBuilder.h>
 #include <HAL/FileManager.h>
 #include <HAL/PlatformApplicationMisc.h>
@@ -32,6 +36,7 @@
 #include <IImageWrapperModule.h>
 #include <ImageCore.h>
 #include <Misc/FileHelper.h>
+#include <Interfaces/IPluginManager.h>
 #include <Modules/ModuleManager.h>
 #include <Rendering/SlateRenderer.h>
 #include <Styling/AppStyle.h>
@@ -45,6 +50,7 @@
 #include <Widgets/Layout/SScrollBox.h>
 #include <Widgets/Layout/SSplitter.h>
 #include <Widgets/SOverlay.h>
+#include <Widgets/SNullWidget.h>
 #include <Widgets/Notifications/SProgressBar.h>
 #include <Widgets/Views/SExpanderArrow.h>
 #include <Widgets/Views/SHeaderRow.h>
@@ -54,10 +60,56 @@
 
 namespace ck_insights_analyzer_tab
 {
+    auto ReleaseOwnedSlateInput(const TSharedRef<SWidget>& InRoot) -> void
+    {
+        if (NOT FSlateApplication::IsInitialized()) { return; }
+
+        FSlateApplication& Slate = FSlateApplication::Get();
+        const auto IsUnderRoot = [&Slate, &InRoot](const TSharedPtr<SWidget>& InWidget)
+        {
+            FWidgetPath Path;
+            if (NOT InWidget.IsValid()
+                || NOT Slate.GeneratePathToWidgetUnchecked(InWidget.ToSharedRef(), Path, EVisibility::All))
+            { return false; }
+
+            for (int32 Index = 0; Index < Path.Widgets.Num(); ++Index)
+            {
+                if (Path.Widgets[Index].Widget == InRoot) { return true; }
+            }
+            return false;
+        };
+
+        Slate.ForEachUser([&Slate, &IsUnderRoot](FSlateUser& InUser)
+        {
+            const int32 UserIndex = InUser.GetUserIndex();
+            if (IsUnderRoot(Slate.GetUserFocusedWidget(UserIndex)))
+            { Slate.ClearUserFocus(UserIndex, EFocusCause::SetDirectly); }
+
+            if (IsUnderRoot(InUser.GetCursorCaptor())) { InUser.ReleaseCursorCapture(); }
+            TSet<uint32> PointerIndices{FSlateApplication::CursorPointerIndex};
+            for (const auto& Entry : InUser.GetWidgetsUnderPointerLastEventByIndex())
+            { PointerIndices.Add(Entry.Key); }
+            for (const uint32 PointerIndex : PointerIndices)
+            {
+                if (IsUnderRoot(InUser.GetPointerCaptor(PointerIndex)))
+                { InUser.ReleaseCapture(PointerIndex); }
+            }
+        }, true);
+    }
+
     constexpr float PanelPadding = 8.0f;
     constexpr float SectionSpacing = 8.0f;
     constexpr float ChartHeight = 200.0f;
     constexpr float SideBarWidth = 90.0f;    // proportion bar width in side panels
+
+    auto ShellTokens() -> FCkUiView::FTokens
+    {
+        return {
+            {TEXT("--insights-space"), FString::SanitizeFloat(CkStyle::SpaceM)},
+            {TEXT("--insights-surface"), TEXT("#") + CkStyle::Bg2().ToFColorSRGB().ToHex()},
+            {TEXT("--insights-border"), TEXT("#") + CkStyle::Border().ToFColorSRGB().ToHex()},
+        };
+    }
     constexpr double TargetFrameMs = 16.67;
     constexpr int32 TopTimerCount = 15;
     constexpr int32 MaxEagerScreenshotThumbnails = 12;
@@ -690,57 +742,7 @@ auto
     _DepthOptions.Add(MakeShared<FString>(TEXT("Concise")));
     _DepthOptions.Add(MakeShared<FString>(TEXT("Hot Paths Only")));
 
-    auto* Capture = &FCkInsightsDebuggerModule::Get().Get_CaptureController();
-    const auto Content = SNew(SBox)
-        .Tag(TEXT("InsightsAnalyzer.RetainedResults"))
-        .Visibility_Lambda([Capture]()
-        {
-            // Retain selection and expansion state, but exclude charts and result rows from
-            // layout, ticking and painting until capture (including screenshot drain) ends.
-            return Capture->Get_Snapshot().State == ECkInsightsCaptureState::Idle
-                ? EVisibility::Visible
-                : EVisibility::Collapsed;
-        })
-        .Padding(PanelPadding)
-        [
-            SNew(SVerticalBox)
-
-            + SVerticalBox::Slot()
-            .AutoHeight()
-            .Padding(0.0f, 0.0f, 0.0f, SectionSpacing)
-            [
-                DoCreateSummaryStrip()
-            ]
-
-            + SVerticalBox::Slot()
-            .AutoHeight()
-            .Padding(0.0f, 0.0f, 0.0f, SectionSpacing)
-            [
-                SNew(SBox)
-                .HeightOverride(ChartHeight)
-                [
-                    SAssignNew(_FrameBarChart, SCkFrameBarChart)
-                    .TargetFrameMs(TargetFrameMs)
-                    .OnFrameSelectionChanged(
-                        FOnFrameSelectionChanged::CreateSP(this, &SCkInsightsAnalyzerTab::DoOnFrameSelectionChanged))
-                    .OnScreenshotMarkerClicked(
-                        FOnScreenshotMarkerClicked::CreateSP(this, &SCkInsightsAnalyzerTab::DoOnScreenshotMarkerClicked))
-                ]
-            ]
-
-            + SVerticalBox::Slot()
-            .FillHeight(1.0f)
-            .Padding(0.0f, 0.0f, 0.0f, SectionSpacing)
-            [
-                DoCreateResultsArea()
-            ]
-
-            + SVerticalBox::Slot()
-            .AutoHeight()
-            [
-                DoCreateRawReportArea()
-            ]
-        ];
+    const TSharedRef<SWidget> Content = DoCreateBody();
 
     ChildSlot
     [
@@ -784,12 +786,136 @@ auto
         0.1f);
 }
 
+auto SCkInsightsAnalyzerTab::DoCreateBody() -> TSharedRef<SWidget>
+{
+    SAssignNew(_BodyHost, SBox)[DoCreateNativeBody()];
+    DoInitializeAuthoredShell();
+    return _BodyHost.ToSharedRef();
+}
+
+auto SCkInsightsAnalyzerTab::DoCreateNativeBody() -> TSharedRef<SWidget>
+{
+    using namespace ck_insights_analyzer_tab;
+
+    auto* Capture = &FCkInsightsDebuggerModule::Get().Get_CaptureController();
+    SAssignNew(_SummaryMount, SBox)[DoCreateSummaryStrip()];
+    SAssignNew(_FrameBarChartMount, SBox)
+    [
+        SNew(SBox).HeightOverride(ChartHeight)
+        [
+            SAssignNew(_FrameBarChart, SCkFrameBarChart)
+            .TargetFrameMs(TargetFrameMs)
+            .OnFrameSelectionChanged(FOnFrameSelectionChanged::CreateSP(this, &SCkInsightsAnalyzerTab::DoOnFrameSelectionChanged))
+            .OnScreenshotMarkerClicked(FOnScreenshotMarkerClicked::CreateSP(this, &SCkInsightsAnalyzerTab::DoOnScreenshotMarkerClicked))
+        ]
+    ];
+    SAssignNew(_ResultsMount, SBox)[DoCreateResultsArea()];
+    SAssignNew(_RawReportMount, SBox)[DoCreateRawReportArea()];
+
+    return SNew(SBox)
+        .Tag(TEXT("InsightsAnalyzer.RetainedResults"))
+        .Visibility_Lambda([Capture]()
+        {
+            return Capture->Get_Snapshot().State == ECkInsightsCaptureState::Idle
+                ? EVisibility::Visible : EVisibility::Collapsed;
+        })
+        .Padding(PanelPadding)
+        [
+            SNew(SVerticalBox)
+            + SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, SectionSpacing)
+            [ SAssignNew(_FallbackSummaryHost, SBox)[_SummaryMount.ToSharedRef()] ]
+            + SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, SectionSpacing)
+            [ SAssignNew(_FallbackFrameBarChartHost, SBox)[_FrameBarChartMount.ToSharedRef()] ]
+            + SVerticalBox::Slot().FillHeight(1.0f).Padding(0.0f, 0.0f, 0.0f, SectionSpacing)
+            [ SAssignNew(_FallbackResultsHost, SBox)[_ResultsMount.ToSharedRef()] ]
+            + SVerticalBox::Slot().AutoHeight()
+            [ SAssignNew(_FallbackRawReportHost, SBox)[_RawReportMount.ToSharedRef()] ]
+        ];
+}
+
+auto SCkInsightsAnalyzerTab::DoInitializeAuthoredShell() -> void
+{
+    TSharedPtr<const FCkUiWidgetRegistrySnapshot> Registry;
+    const TSharedPtr<IPlugin> Plugin = IPluginManager::Get().FindPlugin(TEXT("CkDebugger"));
+    if (!FCkDebug_UiRegistry::TryCreate(Registry).Succeeded || !Registry.IsValid() || !Plugin.IsValid()
+        || !_BodyHost.IsValid() || !_SummaryMount.IsValid() || !_FrameBarChartMount.IsValid()
+        || !_ResultsMount.IsValid() || !_RawReportMount.IsValid())
+    { return; }
+
+    FCkUiView::FNativeBindings Ports;
+    Ports.Add(TEXT("summary"), _SummaryMount);
+    Ports.Add(TEXT("frame-bar-chart"), _FrameBarChartMount);
+    Ports.Add(TEXT("results"), _ResultsMount);
+    Ports.Add(TEXT("raw-report"), _RawReportMount);
+    FCkUiView::FDataBindings Data;
+    Data.CanDispatchEvents = TAttribute<bool>::CreateLambda([Weak = TWeakPtr<SCkInsightsAnalyzerTab>{SharedThis(this)}]()
+    { const TSharedPtr<SCkInsightsAnalyzerTab> Tab = Weak.Pin(); return Tab.IsValid() && !Tab->_PresentationReleased; });
+    _AuthoredShell = FCkUiView::Create(MoveTemp(Ports), {}, ck_insights_analyzer_tab::ShellTokens(),
+        CkStyle::RegularFont(CkStyle::FontSizeBody()), MoveTemp(Data), Registry);
+    const FString Directory = FPaths::Combine(Plugin->GetBaseDir(), TEXT("Resources/UI"));
+    _AuthoredShell->SetFiles(FPaths::Combine(Directory, TEXT("InsightsDebugger.ui.html")),
+        FPaths::Combine(Directory, TEXT("InsightsDebugger.ui.css")));
+    _AuthoredShell->GetRegion(TEXT("main"));
+    DoDetachNativeShellPorts();
+    _AuthoredShell->PollFiles(ck_insights_analyzer_tab::ShellTokens());
+    if (!_AuthoredShell->GetLastResult().Succeeded || !DoMountAuthoredShell())
+    { DoRestoreNativeShellPorts(); }
+    RegisterActiveTimer(0.5f, FWidgetActiveTimerDelegate::CreateSP(this, &SCkInsightsAnalyzerTab::DoPollAuthoredShell));
+}
+
+auto SCkInsightsAnalyzerTab::DoPollAuthoredShell(double, float) -> EActiveTimerReturnType
+{
+    if (_PresentationReleased || !_AuthoredShell.IsValid()) { return EActiveTimerReturnType::Stop; }
+    if (_UsingNativeShellFallback) { DoDetachNativeShellPorts(); }
+    _AuthoredShell->PollFiles(ck_insights_analyzer_tab::ShellTokens());
+    if (_UsingNativeShellFallback && _AuthoredShell->GetLastResult().Succeeded && DoMountAuthoredShell())
+    { return EActiveTimerReturnType::Continue; }
+    if (_UsingNativeShellFallback) { DoRestoreNativeShellPorts(); }
+    return EActiveTimerReturnType::Continue;
+}
+
+auto SCkInsightsAnalyzerTab::DoMountAuthoredShell() -> bool
+{
+    if (!_AuthoredShell.IsValid() || !_BodyHost.IsValid() || !_AuthoredShell->GetLastResult().Succeeded) { return false; }
+    _BodyHost->SetContent(SNullWidget::NullWidget);
+    _BodyHost->SetContent(_AuthoredShell->GetRegion(TEXT("main")));
+    _UsingNativeShellFallback = false;
+    return true;
+}
+
+auto SCkInsightsAnalyzerTab::DoDetachNativeShellPorts() -> void
+{
+    for (const TSharedPtr<SBox>& Host : {_FallbackSummaryHost, _FallbackFrameBarChartHost,
+         _FallbackResultsHost, _FallbackRawReportHost})
+    { if (Host.IsValid()) { Host->SetContent(SNullWidget::NullWidget); } }
+}
+
+auto SCkInsightsAnalyzerTab::DoRestoreNativeShellPorts() -> void
+{
+    const auto Restore = [](const TSharedPtr<SBox>& Host, const TSharedPtr<SBox>& Port) -> void
+    { if (Host.IsValid() && Port.IsValid() && !Port->GetParentWidget().IsValid()) { Host->SetContent(Port.ToSharedRef()); } };
+    Restore(_FallbackSummaryHost, _SummaryMount);
+    Restore(_FallbackFrameBarChartHost, _FrameBarChartMount);
+    Restore(_FallbackResultsHost, _ResultsMount);
+    Restore(_FallbackRawReportHost, _RawReportMount);
+}
+
 SCkInsightsAnalyzerTab::~SCkInsightsAnalyzerTab()
 {
+    Release_Presentation();
+}
+
+auto SCkInsightsAnalyzerTab::Release_Presentation() -> void
+{
+    if (_PresentationReleased) { return; }
+    _PresentationReleased = true;
     DoCancelCaptureUiTick();
     DoCancelAutoOpenTrace();
     DoCancelLoading();
     DoClearScreenshots();
+    if (_AuthoredShell.IsValid()) { _AuthoredShell->ReleaseOwnerInteractions(); }
+    ck_insights_analyzer_tab::ReleaseOwnedSlateInput(ChildSlot.GetWidget());
+    ChildSlot[SNullWidget::NullWidget];
 }
 
 // --------------------------------------------------------------------------------------------------------------------

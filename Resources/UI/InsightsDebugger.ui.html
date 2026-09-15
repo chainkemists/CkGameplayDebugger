@@ -1,0 +1,15 @@
+<ui version="1">
+  <region name="main">
+    <column id="insights-shell"><column id="insights-shell-content" class="insights-shell">
+      <column id="insights-summary-host" class="insights-summary"><native id="insights-summary" bind="summary" /></column>
+      <column id="insights-frame-bars-host" class="insights-frame-bars"><native id="insights-frame-bars" bind="frame-bar-chart" /></column>
+      <column id="insights-results-split" class="insights-results-split">
+        <column id="insights-results-column" class="insights-results-column">
+          <text id="insights-results-heading">Frame analysis</text>
+          <column id="insights-results-host" class="insights-results"><native id="insights-results" bind="results" /></column>
+        </column>
+      </column>
+      <column id="insights-raw-report-host" class="insights-raw-report"><native id="insights-raw-report" bind="raw-report" /></column>
+    </column></column>
+  </region>
+</ui>

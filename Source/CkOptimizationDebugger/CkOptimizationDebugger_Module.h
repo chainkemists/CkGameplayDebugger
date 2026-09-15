@@ -5,6 +5,7 @@
 
 class SCkOptimizationDebuggerWindow;
 class SDockTab;
+struct FCkOptimizationDebuggerLifecycleTestAccess;
 
 class FCkOptimizationDebuggerModule : public IModuleInterface
 {
@@ -18,14 +19,17 @@ public:
     auto CloseDebugger() -> void;
     auto ToggleDebugger() -> void;
     auto IsDebuggerOpen() const -> bool;
+    auto HandleEnginePreExit() -> void;
 
 private:
+    friend struct FCkOptimizationDebuggerLifecycleTestAccess;
     auto OnSpawnDebuggerTab(const class FSpawnTabArgs& InArgs) -> TSharedRef<SDockTab>;
 
     TSharedPtr<SCkOptimizationDebuggerWindow> _DebuggerWindow;
     TSharedPtr<SDockTab> _DebuggerTab;
 
     uint64 _DebuggerToolRegistrationId = 0;
+    FDelegateHandle _EnginePreExitHandle;
 
     static const FName _DebuggerTabName;
 };

@@ -18,6 +18,7 @@
 #include <Widgets/Input/SSpinBox.h>
 #include <Widgets/Layout/SBorder.h>
 #include <Widgets/Layout/SBox.h>
+#include <Widgets/SNullWidget.h>
 #include <Widgets/Layout/SScrollBox.h>
 #include <Widgets/Layout/SWrapBox.h>
 #include <Widgets/SBoxPanel.h>
@@ -253,13 +254,38 @@ auto
 
 SCkPerfLabPage::~SCkPerfLabPage()
 {
+    Release_Presentation();
+}
+
+auto SCkPerfLabPage::Release_Presentation() -> void
+{
+    if (_PresentationReleased) { return; }
+    _PresentationReleased = true;
+
+    if (_Child)
+    {
+        _Child->Request_Cancel();
+        _Child.Reset();
+    }
 #if WITH_EDITOR
     // FEditorDelegates is a global that outlives every window bound to it.
     if (_MapOpenedHandle.IsValid())
     {
         FEditorDelegates::OnMapOpened.Remove(_MapOpenedHandle);
+        _MapOpenedHandle.Reset();
     }
 #endif
+
+    if (_PollTimer.IsValid())
+    {
+        UnRegisterActiveTimer(_PollTimer.ToSharedRef());
+        _PollTimer.Reset();
+    }
+    if (_HeatmapTimer.IsValid())
+    {
+        UnRegisterActiveTimer(_HeatmapTimer.ToSharedRef());
+        _HeatmapTimer.Reset();
+    }
 
     // The slot is a process-global and the EdMode is owned by the level editor, so neither dies with this page. Left
     // published, the overlay would keep drawing over the viewport with no UI in existence to turn it off — and a
@@ -281,6 +307,7 @@ SCkPerfLabPage::~SCkPerfLabPage()
     {
         _SessionListView->ClearItemsSource();
     }
+    ChildSlot[SNullWidget::NullWidget];
 }
 
 // --------------------------------------------------------------------------------------------------------------------

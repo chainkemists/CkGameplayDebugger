@@ -1,0 +1,17 @@
+<ui version="1">
+  <region name="main">
+    <scroll id="optimization-shell-scroll" direction="horizontal">
+      <column id="optimization-shell-root" class="optimization-shell-root">
+        <tabs id="optimization-shell-tabs" value-bind="optimization-page" changed="optimization-page-changed" class="optimization-shell-tabs">
+          <tab id="optimization-dashboard-tab" key="Dashboard" label="Dashboard"><native id="optimization-dashboard-content" bind="optimization-dashboard-page" class="optimization-page" /></tab>
+          <tab id="optimization-findings-tab" key="Findings" label="Level analysis"><native id="optimization-findings-content" bind="optimization-findings-page" class="optimization-page" /></tab>
+          <tab id="optimization-memory-tab" key="Memory" label="Memory"><native id="optimization-memory-content" bind="optimization-memory-page" class="optimization-page" /></tab>
+          <tab id="optimization-profiling-tab" key="Profiling" label="Profiling"><native id="optimization-profiling-content" bind="optimization-profiling-page" class="optimization-page" /></tab>
+          <tab id="optimization-cleanup-tab" key="Cleanup" label="Cleanup"><native id="optimization-cleanup-content" bind="optimization-cleanup-page" class="optimization-page" /></tab>
+          <tab id="optimization-snapshots-tab" key="Snapshots" label="Snapshots"><native id="optimization-snapshots-content" bind="optimization-snapshots-page" class="optimization-page" /></tab>
+          <tab id="optimization-performance-tab" key="Performance" label="Performance"><native id="optimization-performance-content" bind="optimization-performance-page" class="optimization-page" /></tab>
+        </tabs>
+      </column>
+    </scroll>
+  </region>
+</ui>

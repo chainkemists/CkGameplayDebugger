@@ -32,6 +32,12 @@
 #include "CkDebuggerCommon/Widgets/SCkDebug_Switch.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_UnderlineTabs.h"
 #include "CkDebuggerCommon/Window/SCkDebug_WindowChrome.h"
+#include "CkDebuggerCommon/UI/CkDebug_UiRegistry.h"
+
+#include "CkSlateLayout/SCkUiSurface.h"
+#include "CkSlateLayout/CkUiCollection.h"
+#include "CkSlateLayout/CkUiDocument.h"
+#include "Interfaces/IPluginManager.h"
 
 #include "CkOptimizationDebugger/Analysis/CkOptimizationDebugger_CleanupScan.h"
 #include "CkOptimizationDebugger/Analysis/CkOptimizationDebugger_LevelScan.h"
@@ -61,6 +67,8 @@
 #include <Misc/FileHelper.h>
 #include <Misc/Paths.h>
 #include <Framework/Application/SlateApplication.h>
+#include <Framework/Application/SlateUser.h>
+#include <Layout/WidgetPath.h>
 #include <Misc/MessageDialog.h>
 #include <Styling/AppStyle.h>
 #include <UObject/Class.h>
@@ -96,6 +104,42 @@ const FName SCkOptimizationDebuggerWindow::WindowId = FName(TEXT("CkOptimization
 
 namespace ck_optimization_debugger_window
 {
+    auto ReleaseOwnedSlateInput(const TSharedRef<SWidget>& InRoot) -> void
+    {
+        if (NOT FSlateApplication::IsInitialized()) { return; }
+
+        FSlateApplication& Slate = FSlateApplication::Get();
+        const auto IsUnderRoot = [&Slate, &InRoot](const TSharedPtr<SWidget>& InWidget)
+        {
+            FWidgetPath Path;
+            if (NOT InWidget.IsValid()
+                || NOT Slate.GeneratePathToWidgetUnchecked(InWidget.ToSharedRef(), Path, EVisibility::All))
+            { return false; }
+            for (int32 Index = 0; Index < Path.Widgets.Num(); ++Index)
+            {
+                if (Path.Widgets[Index].Widget == InRoot) { return true; }
+            }
+            return false;
+        };
+
+        Slate.ForEachUser([&Slate, &IsUnderRoot](FSlateUser& InUser)
+        {
+            const int32 UserIndex = InUser.GetUserIndex();
+            if (IsUnderRoot(Slate.GetUserFocusedWidget(UserIndex)))
+            { Slate.ClearUserFocus(UserIndex, EFocusCause::SetDirectly); }
+            if (IsUnderRoot(InUser.GetCursorCaptor())) { InUser.ReleaseCursorCapture(); }
+
+            TSet<uint32> PointerIndices{FSlateApplication::CursorPointerIndex};
+            for (const auto& Entry : InUser.GetWidgetsUnderPointerLastEventByIndex())
+            { PointerIndices.Add(Entry.Key); }
+            for (const uint32 PointerIndex : PointerIndices)
+            {
+                if (IsUnderRoot(InUser.GetPointerCaptor(PointerIndex)))
+                { InUser.ReleaseCapture(PointerIndex); }
+            }
+        }, true);
+    }
+
     constexpr auto k_StatusDotSize   = 8.0f;
     constexpr auto k_PanelIconSize   = 14.0f;
     constexpr auto k_RowIconSize     = 12.0f;
@@ -998,6 +1042,9 @@ auto
         const FArguments& InArgs)
     -> void
 {
+#if WITH_DEV_AUTOMATION_TESTS
+    _TestResourceDirectory = InArgs._TestResourceDirectory;
+#endif
     // Per-window, created BEFORE the body: the dashboard's threshold editors bind it at construction.
     _ThresholdEditGuard = MakeShared<FCkInspectorEditGuard>();
 
@@ -1065,8 +1112,42 @@ auto
 
 SCkOptimizationDebuggerWindow::~SCkOptimizationDebuggerWindow()
 {
+    Release_Presentation();
+}
+
+auto SCkOptimizationDebuggerWindow::Release_Presentation() -> void
+{
+    if (_PresentationReleased) { return; }
+    _PresentationReleased = true;
+    DoCancel_ProjectScan();
+    if (_PerfLabPage.IsValid()) { _PerfLabPage->Release_Presentation(); _PerfLabPage.Reset(); }
     // AddSP self-unbinds when the widget dies; the explicit RemoveAll is determinism, not repair.
     ck::DebugSessionLifecycle::Get_OnSessionInvalidated().RemoveAll(this);
+    ck_optimization_debugger_window::ReleaseOwnedSlateInput(ChildSlot.GetWidget());
+    // Revoke authored actions before either the ports or their tab are detached. A held view in an
+    // automation/reload path must be inert even if a Slate user still owns focus or pointer capture.
+    if (_AuthoredShellView.IsValid()) { _AuthoredShellView->ReleaseOwnerInteractions(); }
+    if (_AuthoredDashboardView.IsValid()) { _AuthoredDashboardView->ReleaseOwnerInteractions(); }
+    if (_AuthoredShellHost.IsValid()) { _AuthoredShellHost->SetContent(SNullWidget::NullWidget); }
+    Detach_FallbackPorts();
+    ChildSlot[SNullWidget::NullWidget];
+    _AuthoredShellView.Reset();
+    _AuthoredDashboardView.Reset();
+    _DashboardCards.Reset();
+    _AuthoredDashboardLoadFailure.Reset();
+    _AuthoredShellHost.Reset();
+    _FallbackPageHosts.Reset();
+    _PagePorts.Reset();
+    _PageSwitcher.Reset();
+}
+
+auto SCkOptimizationDebuggerWindow::Tick(
+    const FGeometry& InAllottedGeometry,
+    const double InCurrentTime,
+    const float InDeltaTime) -> void
+{
+    SCkDebugger_WindowBase::Tick(InAllottedGeometry, InCurrentTime, InDeltaTime);
+    Poll_AuthoredShell(InCurrentTime);
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -1358,6 +1439,46 @@ auto
     DoCreate_Body()
     -> TSharedRef<SWidget>
 {
+    _PagePorts = {
+        DoCreate_DashboardPage(),
+        DoCreate_FindingsPage(),
+        DoCreate_MemoryPage(),
+        DoCreate_ProfilingPage(),
+        DoCreate_CleanupPage(),
+        DoCreate_SnapshotsPage(),
+        DoCreate_PerformancePage()};
+
+    SAssignNew(_AuthoredShellHost, SBox)
+    [
+        Build_NativeShellFallback()
+    ];
+    Build_AuthoredShell();
+    return _AuthoredShellHost.ToSharedRef();
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkOptimizationDebuggerWindow::
+    Build_NativeShellFallback()
+    -> TSharedRef<SWidget>
+{
+    _FallbackPageHosts.Reset();
+    _PageSwitcher = SNew(SWidgetSwitcher);
+    for (const TSharedPtr<SWidget>& Page : _PagePorts)
+    {
+        TSharedPtr<SBox> Host;
+        _PageSwitcher->AddSlot()
+        [
+            SAssignNew(Host, SBox)
+            [
+                Page.ToSharedRef()
+            ]
+        ];
+        _FallbackPageHosts.Add(Host);
+    }
+    _PageSwitcher->SetActiveWidgetIndex(ck_optimization_debugger_model::Get_PageIndex(_Model.Get_ActivePage()));
+
     return SNew(SVerticalBox)
 
         + SVerticalBox::Slot()
@@ -1370,44 +1491,108 @@ auto
         + SVerticalBox::Slot()
         .FillHeight(1.0f)
         [
-            // Slot order IS ECkOptimizationDebugger_Page order — DoSelect_Page indexes with Get_PageIndex.
-            SAssignNew(_PageSwitcher, SWidgetSwitcher)
-
-            + SWidgetSwitcher::Slot()
-            [
-                DoCreate_DashboardPage()
-            ]
-
-            + SWidgetSwitcher::Slot()
-            [
-                DoCreate_FindingsPage()
-            ]
-
-            + SWidgetSwitcher::Slot()
-            [
-                DoCreate_MemoryPage()
-            ]
-
-            + SWidgetSwitcher::Slot()
-            [
-                DoCreate_ProfilingPage()
-            ]
-
-            + SWidgetSwitcher::Slot()
-            [
-                DoCreate_CleanupPage()
-            ]
-
-            + SWidgetSwitcher::Slot()
-            [
-                DoCreate_SnapshotsPage()
-            ]
-
-            + SWidgetSwitcher::Slot()
-            [
-                DoCreate_PerformancePage()
-            ]
+            _PageSwitcher.ToSharedRef()
         ];
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto SCkOptimizationDebuggerWindow::Build_AuthoredShell() -> void
+{
+    TSharedPtr<const FCkUiWidgetRegistrySnapshot> Registry;
+    const FCkUiLoadResult RegistryResult = FCkDebug_UiRegistry::TryCreate(Registry);
+    const TSharedPtr<IPlugin> Plugin = IPluginManager::Get().FindPlugin(TEXT("CkDebugger"));
+    if (!RegistryResult.Succeeded || !Registry.IsValid() || !Plugin.IsValid() || !_AuthoredShellHost.IsValid() || _PagePorts.Num() != 7)
+    {
+        _AuthoredShellLoadFailure = RegistryResult.Succeeded
+            ? TEXT("Optimization authored shell prerequisites are unavailable.")
+            : FString::Join(RegistryResult.Errors, TEXT("\n"));
+        return;
+    }
+
+    FCkUiView::FNativeBindings Ports;
+    static const TCHAR* PortNames[] = {
+        TEXT("optimization-dashboard-page"), TEXT("optimization-findings-page"), TEXT("optimization-memory-page"),
+        TEXT("optimization-profiling-page"), TEXT("optimization-cleanup-page"), TEXT("optimization-snapshots-page"),
+        TEXT("optimization-performance-page")};
+    for (int32 Index = 0; Index < UE_ARRAY_COUNT(PortNames); ++Index)
+    { Ports.Add(PortNames[Index], _PagePorts[Index].ToSharedRef()); }
+
+    const TWeakPtr<SCkOptimizationDebuggerWindow> WeakWindow = SharedThis(this);
+    FCkUiView::FDataBindings Data;
+    Data.SlateUserIndex = 0;
+    Data.CanDispatchEvents = TAttribute<bool>::CreateLambda([WeakWindow]()
+    { const auto Window = WeakWindow.Pin(); return Window.IsValid() && !Window->_PresentationReleased; });
+    Data.String.Add(TEXT("optimization-page"), TAttribute<FString>::CreateLambda([WeakWindow]()
+    { const auto Window = WeakWindow.Pin(); return Window.IsValid() ? ck_optimization_debugger_model::Get_PageId(Window->_Model.Get_ActivePage()).ToString() : FString{}; }));
+    Data.StringChanged.Add(TEXT("optimization-page-changed"), FCkUiOnStringChanged::CreateLambda([WeakWindow](const FString& InValue)
+    {
+        const auto Window = WeakWindow.Pin();
+        const auto Page = ck_optimization_debugger_model::TryGet_PageFromId(FName{*InValue});
+        if (Window.IsValid() && !Window->_PresentationReleased && Page.IsSet()) { Window->DoSelect_Page(Page.GetValue()); }
+    }));
+
+    const TSharedRef<FCkUiView> Candidate = FCkUiView::Create(MoveTemp(Ports), {}, {},
+        CkStyle::RegularFont(CkStyle::FontSizeBody()), MoveTemp(Data), Registry);
+    FString Directory = FPaths::Combine(Plugin->GetBaseDir(), TEXT("Resources/UI"));
+#if WITH_DEV_AUTOMATION_TESTS
+    if (!_TestResourceDirectory.IsEmpty()) { Directory = _TestResourceDirectory; }
+#endif
+    Candidate->SetFiles(FPaths::Combine(Directory, TEXT("OptimizationDebugger.ui.html")),
+        FPaths::Combine(Directory, TEXT("OptimizationDebugger.ui.css")));
+    Candidate->GetRegion(TEXT("main"));
+    _AuthoredShellView = Candidate; // Failed candidates stay live for same-path repair.
+    Detach_FallbackPorts();
+    Candidate->PollFiles();
+    if (!Candidate->GetLastResult().Succeeded)
+    {
+        _AuthoredShellLoadFailure = FString::Join(Candidate->GetLastResult().Errors, TEXT("\n"));
+        Restore_FallbackPorts();
+        return;
+    }
+    if (!Mount_AuthoredShell())
+    {
+        _AuthoredShellLoadFailure = TEXT("Optimization authored shell could not mount its accepted region.");
+        Restore_FallbackPorts();
+    }
+}
+
+auto SCkOptimizationDebuggerWindow::Mount_AuthoredShell() -> bool
+{
+    if (!_AuthoredShellView.IsValid() || !_AuthoredShellHost.IsValid() || !_AuthoredShellView->GetLastResult().Succeeded) { return false; }
+    _AuthoredShellHost->SetContent(SNullWidget::NullWidget);
+    _AuthoredShellHost->SetContent(_AuthoredShellView->GetRegion(TEXT("main")));
+    _UsingNativeShellFallback = false;
+    _AuthoredShellLoadFailure.Reset();
+    return true;
+}
+
+auto SCkOptimizationDebuggerWindow::Detach_FallbackPorts() -> void
+{
+    for (const TSharedPtr<SBox>& Host : _FallbackPageHosts)
+    { if (Host.IsValid()) { Host->SetContent(SNullWidget::NullWidget); } }
+}
+
+auto SCkOptimizationDebuggerWindow::Restore_FallbackPorts() -> void
+{
+    for (int32 Index = 0; Index < _FallbackPageHosts.Num() && Index < _PagePorts.Num(); ++Index)
+    {
+        if (_FallbackPageHosts[Index].IsValid() && _PagePorts[Index].IsValid() && !_PagePorts[Index]->GetParentWidget().IsValid())
+        { _FallbackPageHosts[Index]->SetContent(_PagePorts[Index].ToSharedRef()); }
+    }
+}
+
+auto SCkOptimizationDebuggerWindow::Poll_AuthoredShell(const double InCurrentTime) -> void
+{
+    if (_PresentationReleased || !_AuthoredShellView.IsValid() || InCurrentTime < _NextAuthoredShellPollSeconds) { return; }
+    _NextAuthoredShellPollSeconds = InCurrentTime + 0.5;
+    if (_UsingNativeShellFallback) { Detach_FallbackPorts(); }
+    _AuthoredShellView->PollFiles();
+    if (_UsingNativeShellFallback && _AuthoredShellView->GetLastResult().Succeeded && Mount_AuthoredShell()) { return; }
+    if (_UsingNativeShellFallback) { Restore_FallbackPorts(); }
+    if (!_AuthoredShellView->GetLastResult().Succeeded)
+    { _AuthoredShellLoadFailure = FString::Join(_AuthoredShellView->GetLastResult().Errors, TEXT("\n")); }
+    else { _AuthoredShellLoadFailure.Reset(); }
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -1462,11 +1647,108 @@ auto
 // Pages
 // --------------------------------------------------------------------------------------------------------------------
 
+auto SCkOptimizationDebuggerWindow::Build_AuthoredDashboardPage() -> TSharedPtr<SWidget>
+{
+    TSharedPtr<const FCkUiWidgetRegistrySnapshot> Registry;
+    TSharedPtr<FCkUiCollection> Cards;
+    const FCkUiLoadResult RegistryResult = FCkDebug_UiRegistry::TryCreate(Registry);
+    if (!RegistryResult.Succeeded)
+    {
+        _AuthoredDashboardLoadFailure = FString::Join(RegistryResult.Errors, TEXT("\n"));
+        return nullptr;
+    }
+    const FCkUiLoadResult CollectionResult = FCkUiCollection::TryCreate({
+        {TEXT("label"), ECkUiFieldKind::Text}, {TEXT("value"), ECkUiFieldKind::Text},
+        {TEXT("delta"), ECkUiFieldKind::Text}}, Cards);
+    if (!CollectionResult.Succeeded)
+    {
+        _AuthoredDashboardLoadFailure = FString::Join(CollectionResult.Errors, TEXT("\n"));
+        return nullptr;
+    }
+
+    const TSharedPtr<IPlugin> Plugin = IPluginManager::Get().FindPlugin(TEXT("CkDebugger"));
+    if (!Plugin.IsValid())
+    {
+        _AuthoredDashboardLoadFailure = TEXT("CkDebugger plugin resources are unavailable.");
+        return nullptr;
+    }
+    FString Markup, Css;
+    const FString Directory = FPaths::Combine(Plugin->GetBaseDir(), TEXT("Resources/UI"));
+    if (!FFileHelper::LoadFileToString(Markup, *FPaths::Combine(Directory, TEXT("OptimizationDebuggerDashboard.ui.html")))
+        || !FFileHelper::LoadFileToString(Css, *FPaths::Combine(Directory, TEXT("OptimizationDebuggerDashboard.ui.css"))))
+    {
+        _AuthoredDashboardLoadFailure = TEXT("Optimization dashboard authored resources are unreadable.");
+        return nullptr;
+    }
+
+    // Cards and the empty state are ordinary authored presentation. The disk census, project mesh ranking,
+    // level inclusion switches and threshold editors retain their established Slate controls behind this narrow
+    // port: they carry navigation, persistence and edit-guard contracts that a repeat cannot represent.
+    SAssignNew(_DashboardBox, SVerticalBox);
+    FCkUiView::FNativeBindings Ports;
+    Ports.Add(TEXT("dashboard-specialist-sections"), _DashboardBox.ToSharedRef());
+    const TWeakPtr<SCkOptimizationDebuggerWindow> WeakWindow = SharedThis(this);
+    FCkUiView::FActions Actions;
+    Actions.Add(TEXT("scan"), FSimpleDelegate::CreateLambda([WeakWindow]()
+    { if (const auto Window = WeakWindow.Pin()) { Window->DoOnScanClicked(); } }));
+    auto Data = FCkUiView::FDataBindings{};
+    Data.Collections.Add(TEXT("dashboard-cards"), Cards);
+    Data.Visibility.Add(TEXT("dashboard-has-summary"), TAttribute<bool>::CreateLambda([WeakWindow]()
+    { const auto Window = WeakWindow.Pin(); return Window.IsValid() && Window->_Model.Get_HasSummary(); }));
+    Data.Visibility.Add(TEXT("dashboard-before-scan"), TAttribute<bool>::CreateLambda([WeakWindow]()
+    { const auto Window = WeakWindow.Pin(); return Window.IsValid() && !Window->_Model.Get_HasSummary(); }));
+    Data.Text.Add(TEXT("dashboard-empty-copy"), FText::FromString(TEXT("No scan yet. Analyze the persistent level and every loaded sub-level to see its costs and findings.")));
+    _DashboardCards = Cards;
+    _AuthoredDashboardView = FCkUiView::Create(MoveTemp(Ports), MoveTemp(Actions), {}, CkStyle::RegularFont(CkStyle::FontSizeBody()), MoveTemp(Data), Registry);
+    _AuthoredDashboardView->GetRegion(TEXT("main"));
+    const FCkUiLoadResult Result = _AuthoredDashboardView->TryReload(Markup, Css, TEXT("Optimization dashboard authored page"));
+    if (!Result.Succeeded)
+    {
+        _AuthoredDashboardLoadFailure = FString::Join(Result.Errors, TEXT("\n"));
+        _AuthoredDashboardView.Reset();
+        _DashboardCards.Reset();
+        return nullptr;
+    }
+    _AuthoredDashboardLoadFailure.Reset();
+    Refresh_AuthoredDashboard();
+    return _AuthoredDashboardView->GetRegion(TEXT("main"));
+}
+
+auto SCkOptimizationDebuggerWindow::Refresh_AuthoredDashboard() -> void
+{
+    using namespace ck_optimization_debugger_window;
+    if (!_DashboardCards.IsValid()) { return; }
+    const auto& Summary = _Model.Get_Summary();
+    const auto Delta = _Model.Get_SummaryDelta();
+    auto Records = TArray<FCkUiRecordData>{};
+    const auto Add = [&Records, &Delta](const TCHAR* Key, const TCHAR* Label, const int64 Value, const int64 Change)
+    {
+        auto Record = FCkUiRecordData{}; Record.Key = Key;
+        Record.Fields.Add(TEXT("label"), FCkUiFieldValue{.Kind = ECkUiFieldKind::Text, .Text = FText::FromString(Label)});
+        Record.Fields.Add(TEXT("value"), FCkUiFieldValue{.Kind = ECkUiFieldKind::Text,
+            .Text = FText::FromString(ck_optimization_debugger_model::Format_AbbreviatedCount(Value))});
+        Record.Fields.Add(TEXT("delta"), FCkUiFieldValue{.Kind = ECkUiFieldKind::Text,
+            .Text = FText::FromString(Delta.HasPrevious
+                ? ck_optimization_debugger_model::Format_Delta(Change) : FString{TEXT("—")})});
+        Records.Add(MoveTemp(Record));
+    };
+    Add(TEXT("actors"), TEXT("Actors"), Summary.ActorCount, Delta.ActorCountDelta);
+    Add(TEXT("meshes"), TEXT("Static meshes"), Summary.UniqueStaticMeshCount, Delta.UniqueStaticMeshCountDelta);
+    Add(TEXT("tris"), TEXT("LOD0 tris"), Summary.Lod0TriangleTotal, Delta.Lod0TriangleTotalDelta);
+    Add(TEXT("materials"), TEXT("Materials"), Summary.UniqueMaterialCount, Delta.UniqueMaterialCountDelta);
+    Add(TEXT("lights"), TEXT("Lights"), Summary.LightCount, Delta.LightCountDelta);
+    Add(TEXT("findings"), TEXT("Findings"), Summary.FindingCounts.Get_Total(), Delta.FindingTotalDelta);
+    _DashboardCards->TrySetRecords(MoveTemp(Records));
+}
+
 auto
     SCkOptimizationDebuggerWindow::
     DoCreate_DashboardPage()
     -> TSharedRef<SWidget>
 {
+    if (const TSharedPtr<SWidget> Authored = Build_AuthoredDashboardPage(); Authored.IsValid())
+    { return Authored.ToSharedRef(); }
+
     return SNew(SScrollBox)
 
         + SScrollBox::Slot()
@@ -5894,6 +6176,7 @@ auto
 {
     using namespace ck_optimization_debugger_window;
 
+    Refresh_AuthoredDashboard();
     if (ck::Is_NOT_Valid(_DashboardBox))
     { return; }
 
@@ -5925,12 +6208,13 @@ auto
     // after it.
     if (NOT _Model.Get_HasSummary())
     {
-        AddSection(DoBuild_DashboardEmptyState(), CkStyle::SpaceL);
         AddSection(DoBuild_DashboardThresholdsSection(), 0.0f);
         return;
     }
 
-    AddSection(DoBuild_DashboardTiles(), CkStyle::SpaceL);
+    // The summary cards and before-scan instruction are the authored collection/repeat above this port. Keep
+    // every specialist section in its established widget: severity buttons change the findings filter, disk and
+    // project sections carry their own navigation, and thresholds own edit-guard lifetime.
     AddSection(DoBuild_DashboardSeverityStrip(), CkStyle::SpaceL);
     AddSection(DoBuild_DashboardDiskSection(), CkStyle::SpaceL);
 

@@ -37,6 +37,11 @@ public class CkOptimizationDebugger : CkModuleRules
 
             "CkDebuggerCommon",
 
+            // The outer shell is an authored CkSlateLayout document. Projects owns IPluginManager,
+            // which resolves the installed document rather than relying on a working-directory path.
+            "CkSlateLayout",
+            "Projects",
+
             // The Performance page hosts CkPerfLab's session store, child launcher and analysis. The arrow points
             // this way on purpose: CkPerfLab is UI-free and must never depend back on the debugger.
             "CkPerfLab",

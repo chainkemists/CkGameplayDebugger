@@ -140,8 +140,8 @@ auto
     if (NOT _View.IsValid() || NOT _View->HasSpatialData)
     { return InLayerId; }
 
-    const auto Geometry = InAllottedGeometry.ToPaintGeometry();
     const auto Size     = InAllottedGeometry.GetLocalSize();
+    const auto Geometry = InAllottedGeometry.ToPaintGeometry(FVector2f{Size}, FSlateLayoutTransform{});
 
     // Square and centred, so the rings stay circles in a slot of any aspect.
     const auto Extent = FMath::Min(Size.X, Size.Y);

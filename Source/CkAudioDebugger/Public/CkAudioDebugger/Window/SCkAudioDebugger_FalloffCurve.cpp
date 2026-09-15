@@ -81,8 +81,8 @@ auto
     if (NOT _View.IsValid() || NOT _View->HasSpatialData || _View->FalloffCurve.Num() < 2)
     { return InLayerId; }
 
-    const auto Geometry = InAllottedGeometry.ToPaintGeometry();
     const auto Size     = InAllottedGeometry.GetLocalSize();
+    const auto Geometry = InAllottedGeometry.ToPaintGeometry(FVector2f{Size}, FSlateLayoutTransform{});
 
     const auto PlotLeft   = k_PadLeft;
     const auto PlotRight  = Size.X - k_PadRight;

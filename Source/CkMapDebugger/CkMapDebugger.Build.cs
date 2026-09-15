@@ -1,4 +1,5 @@
 using UnrealBuildTool;
+using System.IO;
 
 public class CkMapDebugger : CkModuleRules
 {
@@ -21,6 +22,7 @@ public class CkMapDebugger : CkModuleRules
             "CkEcs",
             "CkEcsExt",
             "CkEditorTools",  // shared CkStyle:: tokens used directly by the window
+            "CkSlateLayout",
             "CkEntityTag",
             "CkLabel",
             "CkMinimap",
@@ -28,6 +30,12 @@ public class CkMapDebugger : CkModuleRules
             "CkRecord",
             "CkVisibleRange",
         });
+
+        PrivateDependencyModuleNames.Add("Projects");
+        RuntimeDependencies.Add(Path.Combine(PluginDirectory, "Resources", "UI", "MapDebugger.ui.html"), StagedFileType.NonUFS);
+        RuntimeDependencies.Add(Path.Combine(PluginDirectory, "Resources", "UI", "MapDebugger.ui.css"), StagedFileType.NonUFS);
+        RuntimeDependencies.Add(Path.Combine(PluginDirectory, "Resources", "UI", "MapDebuggerPoiRow.ui.html"), StagedFileType.NonUFS);
+        RuntimeDependencies.Add(Path.Combine(PluginDirectory, "Resources", "UI", "MapDebuggerPoiRow.ui.css"), StagedFileType.NonUFS);
 
         if (Target.bBuildEditor)
         {

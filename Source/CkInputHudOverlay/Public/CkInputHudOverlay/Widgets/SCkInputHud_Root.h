@@ -8,14 +8,15 @@
 #include "Widgets/SCompoundWidget.h"
 
 class FCk_InputHud_Model;
+class FCkUiView;
 class SBorder;
 class SBox;
 class SCkInputHud_Ribbon;
 class SWidget;
 
 // --------------------------------------------------------------------------------------------------------------------
-// The on-screen input HUD. Pure presentation: every content binding is a TAttribute lambda over a TWeakPtr to the
-// model, so the widget never owns a refresh method and the producer never touches Slate.
+// The on-screen input HUD. Pure presentation: every content binding reaches a weak model through a weak Root, so the
+// producer never touches Slate and explicit Root release makes an externally held authored view inert.
 //
 // HitTestInvisible by construction — this sits in the game viewport over live gameplay and must never eat a click.
 //
@@ -49,17 +50,41 @@ public:
         // host can pin its own placement: Style Lab shows the strip inside a small box and must not follow a
         // 400px offset out of it.
         SLATE_ATTRIBUTE(FVector2f, AnchorOffset)
+#if WITH_DEV_AUTOMATION_TESTS
+        // Isolated file seams let the production Root prove startup fallback and bounded recovery without
+        // rewriting the plugin's installed shared resources.
+        SLATE_ARGUMENT(FString, AuthoredMarkupPathOverride)
+        SLATE_ARGUMENT(FString, AuthoredStylesheetPathOverride)
+#endif
     SLATE_END_ARGS()
 
     auto Construct(const FArguments& InArgs) -> void;
+
+    ~SCkInputHud_Root() override;
 
     virtual auto Tick(
         const FGeometry& InAllottedGeometry,
         const double     InCurrentTime,
         const float      InDeltaTime) -> void override;
 
+    auto Release_AuthoredPresentation() -> void;
+
+    auto Get_AuthoredView() const -> TSharedPtr<FCkUiView> { return _AuthoredView; }
+    auto Get_Ribbon() const -> TSharedPtr<SCkInputHud_Ribbon> { return _Ribbon; }
+    auto Get_UsesNativeFallback() const -> bool { return _UsingNativeFallback; }
+    auto Get_IsAuthoredPresentationReleased() const -> bool { return _AuthoredPresentationReleased; }
+    auto Get_AuthoredFailure() const -> FString;
+
 private:
+    auto DoCreate_NativePresentation() -> TSharedRef<SWidget>;
+    auto DoBuild_AuthoredPresentation() -> void;
+    auto DoPoll_AuthoredPresentation(double InCurrentTime) -> void;
+
     auto Get_ShowSticks() const -> bool;
+    auto Get_SticksText() const -> FText;
+    auto Get_ShowLayer() const -> bool;
+    auto Get_LayerPrimaryText() const -> FText;
+    auto Get_LayerRemainderText() const -> FText;
 
 private:
     TWeakPtr<FCk_InputHud_Model> _Model;
@@ -70,10 +95,20 @@ private:
     TAttribute<float> _Opacity;
     TAttribute<FVector2f> _AnchorOffset;
 
-    TSharedPtr<SBox>    _AnchorBox;
-    TSharedPtr<SBorder> _Panel;
-    TSharedPtr<SBorder> _PanelFill;
+    TSharedPtr<SBox> _AnchorBox;
+    TSharedPtr<SBox> _PresentationHost;
+    TSharedPtr<SBorder> _NativePanel;
+    TSharedPtr<SBorder> _NativePanelFill;
     TSharedPtr<SCkInputHud_Ribbon> _Ribbon;
+    TSharedPtr<FCkUiView> _AuthoredView;
+
+    FString _AuthoredMarkupPath;
+    FString _AuthoredStylesheetPath;
+    FString _AuthoredFailure;
+
+    double _NextAuthoredPollSeconds = 0.0;
+    bool _UsingNativeFallback = true;
+    bool _AuthoredPresentationReleased = false;
 
     // Cached so Tick only touches Slate when the value actually moved.
     int32 _AppliedCorner = INDEX_NONE;

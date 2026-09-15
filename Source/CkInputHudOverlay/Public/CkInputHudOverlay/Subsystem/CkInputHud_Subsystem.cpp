@@ -289,6 +289,10 @@ auto
 
     if (_RootWidget.IsValid())
     {
+        // A caller may still hold the Root after the viewport releases it. Revoke its authored view and exact
+        // Ribbon port first so that held reference cannot keep the live presentation route mounted through teardown.
+        _RootWidget->Release_AuthoredPresentation();
+
         if (const auto* LocalPlayer = GetLocalPlayer();
             ck::IsValid(LocalPlayer))
         {

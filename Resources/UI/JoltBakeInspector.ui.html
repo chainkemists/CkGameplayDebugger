@@ -1,0 +1,52 @@
+<ui version="1">
+  <region name="actions">
+    <row id="jolt-bake-actions-root">
+    <row id="jolt-bake-actions" class="jolt-bake-actions">
+      <native id="jolt-bake-search-native" bind="jolt-bake-search" class="jolt-bake-search" />
+      <button id="jolt-bake-refresh" action="jolt-bake-refresh" class="jolt-bake-action">Refresh</button>
+      <button id="jolt-bake-analyze-all" action="jolt-bake-analyze-all" enabled-bind="jolt-bake-can-analyze" class="jolt-bake-action">Analyze All</button>
+      <button id="jolt-bake-cancel" action="jolt-bake-cancel" enabled-bind="jolt-bake-can-cancel" class="jolt-bake-action">Cancel</button>
+      <button id="jolt-bake-filter-all" action="jolt-bake-filter-all" class="jolt-bake-filter">All</button>
+      <button id="jolt-bake-filter-heuristic" action="jolt-bake-filter-heuristic" class="jolt-bake-filter">Heuristic</button>
+      <button id="jolt-bake-filter-fail" action="jolt-bake-filter-fail" class="jolt-bake-filter">Would Fail</button>
+    </row>
+    </row>
+  </region>
+  <region name="main">
+    <column id="jolt-bake-main-root">
+    <scroll id="jolt-bake-shell-scroll" direction="horizontal" class="jolt-bake-shell-scroll">
+    <column id="jolt-bake-shell" class="jolt-bake-shell">
+      <row id="jolt-bake-metrics" class="jolt-bake-metrics">
+        <column id="jolt-bake-inventory-card" class="jolt-bake-card jolt-bake-card-info"><text id="jolt-bake-inventory-label" class="jolt-bake-card-label">Inventory</text><text id="jolt-bake-inventory" bind="jolt-bake-inventory" class="jolt-bake-card-value" /></column>
+        <column id="jolt-bake-analyzed-card" class="jolt-bake-card jolt-bake-card-accent"><text id="jolt-bake-analyzed-label" class="jolt-bake-card-label">Analyzed</text><text id="jolt-bake-analyzed" bind="jolt-bake-analyzed" class="jolt-bake-card-value" /></column>
+        <column id="jolt-bake-heuristic-card" class="jolt-bake-card jolt-bake-card-warn"><text id="jolt-bake-heuristic-label" class="jolt-bake-card-label">Heuristic</text><text id="jolt-bake-heuristic" bind="jolt-bake-heuristic" class="jolt-bake-card-value" /></column>
+        <column id="jolt-bake-fail-card" class="jolt-bake-card jolt-bake-card-err"><text id="jolt-bake-fail-label" class="jolt-bake-card-label">Would fail</text><text id="jolt-bake-fail" bind="jolt-bake-would-fail" class="jolt-bake-card-value" /></column>
+      </row>
+      <splitter id="jolt-bake-main-split" direction="horizontal" class="jolt-bake-main-split">
+        <native id="jolt-bake-list-native" bind="jolt-bake-list" class="jolt-bake-list" />
+        <splitter id="jolt-bake-detail-split" direction="vertical" class="jolt-bake-detail-split">
+          <native id="jolt-bake-preview-native" bind="jolt-bake-preview" class="jolt-bake-preview" />
+          <scroll id="jolt-bake-detail-scroll" direction="vertical" class="jolt-bake-detail-scroll">
+            <column id="jolt-bake-details" class="jolt-bake-details">
+              <text id="jolt-bake-status-heading" class="jolt-bake-heading">Bake status</text>
+              <debug-status id="jolt-bake-status" label-bind="jolt-bake-status" foreground-bind="jolt-bake-status-foreground" background-bind="jolt-bake-status-background" show-dot="true" class="jolt-bake-status" />
+              <text id="jolt-bake-diagnosis" bind="jolt-bake-diagnosis" class="jolt-bake-detail" />
+              <text id="jolt-bake-source-heading" class="jolt-bake-heading">Source topology</text>
+              <text id="jolt-bake-source" bind="jolt-bake-source" class="jolt-bake-detail" />
+              <text id="jolt-bake-cooked-heading" class="jolt-bake-heading">Cooked shape</text>
+              <text id="jolt-bake-cooked" bind="jolt-bake-cooked" class="jolt-bake-detail" />
+              <row id="jolt-bake-detail-actions" class="jolt-bake-detail-actions">
+                <button id="jolt-bake-browse" action="jolt-bake-browse" class="jolt-bake-action">Show in Content Browser</button>
+                <button id="jolt-bake-open" action="jolt-bake-open" class="jolt-bake-action">Open Asset</button>
+                <button id="jolt-bake-selected" action="jolt-bake-selected" enabled-bind="jolt-bake-can-bake" class="jolt-bake-action">Bake Selected</button>
+                <button id="jolt-bake-repairable" action="jolt-bake-repairable" enabled-bind="jolt-bake-can-bake-all" class="jolt-bake-action">Bake Repairable</button>
+              </row>
+            </column>
+          </scroll>
+        </splitter>
+      </splitter>
+    </column>
+    </scroll>
+    </column>
+  </region>
+</ui>

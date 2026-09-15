@@ -20,6 +20,8 @@ auto FCkJoltBakeInspectorModule::StartupModule() -> void
 {
     auto& Spawner = FGlobalTabmanager::Get()->RegisterNomadTabSpawner(
         ck_jolt_bake_inspector::TabId, FOnSpawnTab::CreateRaw(this, &FCkJoltBakeInspectorModule::OnSpawnTab))
+        .SetReuseTabMethod(FOnFindTabToReuse::CreateLambda(
+            [this](const FTabId&) { return _Tab; }))
         .SetDisplayName(FText::FromString(TEXT("CK Jolt Bake Inspector")))
         .SetTooltipText(FText::FromString(TEXT("Inspect Jolt mesh-bake readiness without cooking")));
     Spawner.SetGroup(WorkspaceMenu::GetMenuStructure().GetDeveloperToolsDebugCategory());
@@ -44,6 +46,7 @@ auto FCkJoltBakeInspectorModule::ShutdownModule() -> void
     _EnginePreExitHandle.Reset();
     FCkDebuggerToolRegistry::Get().Unregister(ck_jolt_bake_inspector::TabId, _ToolRegistrationId);
     _ToolRegistrationId = 0;
+    if (_Window.IsValid()) { _Window->Release_AuthoredPresentation(); }
     ck::debugger_tabs::Release_DebuggerTab(_Tab, true);
     _Window.Reset();
     if (FGlobalTabmanager::Get()->HasTabSpawner(ck_jolt_bake_inspector::TabId))
@@ -52,7 +55,8 @@ auto FCkJoltBakeInspectorModule::ShutdownModule() -> void
 
 auto FCkJoltBakeInspectorModule::HandleEnginePreExit() -> void
 {
-    _Tab.Reset();
+    if (_Window.IsValid()) { _Window->Release_AuthoredPresentation(); }
+    ck::debugger_tabs::Release_DebuggerTab(_Tab, false);
     _Window.Reset();
 }
 
@@ -64,6 +68,7 @@ auto FCkJoltBakeInspectorModule::OpenInspector() -> void
 
 auto FCkJoltBakeInspectorModule::CloseInspector() -> void
 {
+    if (_Window.IsValid()) { _Window->Release_AuthoredPresentation(); }
     ck::debugger_tabs::Release_DebuggerTab(_Tab, true);
     _Window.Reset();
 }
@@ -74,7 +79,7 @@ auto FCkJoltBakeInspectorModule::OnSpawnTab(const FSpawnTabArgs&) -> TSharedRef<
     _Tab = SNew(SDockTab)
         .TabRole(ETabRole::NomadTab)
         .Label(FText::FromString(TEXT("CK Jolt Bake Inspector")))
-        .OnTabClosed_Lambda([this](TSharedRef<SDockTab>) { _Window.Reset(); _Tab.Reset(); })
+        .OnTabClosed_Lambda([this](TSharedRef<SDockTab>) { if (_Window.IsValid()) { _Window->Release_AuthoredPresentation(); } _Window.Reset(); _Tab.Reset(); })
         [_Window.ToSharedRef()];
     _Window->Set_OwningTab(_Tab);
     return _Tab.ToSharedRef();

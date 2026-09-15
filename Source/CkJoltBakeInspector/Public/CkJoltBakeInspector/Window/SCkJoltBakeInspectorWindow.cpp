@@ -8,6 +8,7 @@
 #include "CkJoltEditor/Cook/CkJoltCook_MeshShapeAudit.h"
 #include "CkJoltBakeInspector/Viewport/SCkJoltBakeInspectorPreview.h"
 #include "CkDebuggerCommon/Search/SCkDebug_SearchBar.h"
+#include "CkDebuggerCommon/UI/CkDebug_UiRegistry.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_Card.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_Chip.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_InspectorPanel.h"
@@ -16,11 +17,17 @@
 #include "CkDebuggerCommon/Widgets/SCkDebug_StatusPill.h"
 #include "CkDebuggerCommon/Window/SCkDebug_WindowChrome.h"
 #include "CkEditorTools/Style/CkStyle.h"
+#include "CkSlateLayout/SCkUiSurface.h"
 
 #include <AssetRegistry/AssetRegistryModule.h>
 #include <AssetRegistry/IAssetRegistry.h>
 #include <Editor.h>
+#include <Interfaces/IPluginManager.h>
 #include <Engine/StaticMesh.h>
+#include <Framework/Application/SlateApplication.h>
+#include <Framework/Application/SlateUser.h>
+#include <Layout/WidgetPath.h>
+#include <Misc/FileHelper.h>
 #include <Subsystems/AssetEditorSubsystem.h>
 #include <UObject/StrongObjectPtr.h>
 #include <Widgets/Input/SButton.h>
@@ -28,6 +35,7 @@
 #include <Widgets/Layout/SBox.h>
 #include <Widgets/Layout/SScrollBox.h>
 #include <Widgets/Layout/SSplitter.h>
+#include <Widgets/SNullWidget.h>
 #include <Widgets/Text/STextBlock.h>
 #include <Widgets/Views/SListView.h>
 
@@ -35,6 +43,71 @@ const FName SCkJoltBakeInspectorWindow::WindowId{TEXT("CkJoltBakeInspector")};
 
 namespace ck_jolt_bake_inspector_window
 {
+    auto PathContainsWidget(const FWidgetPath& InPath, const TSharedRef<SWidget>& InRoot) -> bool
+    {
+        for (auto Index = int32{0}; Index < InPath.Widgets.Num(); ++Index)
+        {
+            if (InPath.Widgets[Index].Widget == InRoot) { return true; }
+        }
+        return false;
+    }
+
+    auto ReleaseOwnedSlateInput(const TSharedRef<SWidget>& InRoot) -> void
+    {
+        if (NOT FSlateApplication::IsInitialized()) { return; }
+        FSlateApplication& Slate = FSlateApplication::Get();
+        Slate.ForEachUser([&Slate, &InRoot](FSlateUser& InUser)
+        {
+            const auto IsUnderRoot = [&Slate, &InRoot](const TSharedPtr<SWidget>& InWidget)
+            {
+                FWidgetPath Path;
+                return InWidget.IsValid() && Slate.GeneratePathToWidgetUnchecked(InWidget.ToSharedRef(), Path, EVisibility::All)
+                    && PathContainsWidget(Path, InRoot);
+            };
+
+            const int32 UserIndex = InUser.GetUserIndex();
+            if (IsUnderRoot(Slate.GetUserFocusedWidget(UserIndex)))
+            { Slate.ClearUserFocus(UserIndex, EFocusCause::SetDirectly); }
+
+            if (IsUnderRoot(InUser.GetCursorCaptor())) { InUser.ReleaseCursorCapture(); }
+            TSet<uint32> PointerIndices{FSlateApplication::CursorPointerIndex};
+            for (const auto& Entry : InUser.GetWidgetsUnderPointerLastEventByIndex()) { PointerIndices.Add(Entry.Key); }
+            for (const uint32 PointerIndex : PointerIndices)
+            {
+                if (IsUnderRoot(InUser.GetPointerCaptor(PointerIndex))) { InUser.ReleaseCapture(PointerIndex); }
+            }
+        }, true);
+    }
+
+    auto AuthoredStyleTokens() -> FCkUiView::FTokens
+    {
+        const auto Color = [](const FLinearColor& InColor) { return TEXT("#") + InColor.ToFColorSRGB().ToHex(); };
+        return {
+            {TEXT("--jolt-bake-surface"), Color(CkStyle::Bg2())},
+            {TEXT("--jolt-bake-border"), Color(CkStyle::Border())},
+            {TEXT("--jolt-bake-text"), Color(CkStyle::Text())},
+            {TEXT("--jolt-bake-muted"), Color(CkStyle::TextMute())},
+            {TEXT("--jolt-bake-info"), Color(CkStyle::Info())},
+            {TEXT("--jolt-bake-accent"), Color(CkStyle::Accent())},
+            {TEXT("--jolt-bake-warn"), Color(CkStyle::Warn())},
+            {TEXT("--jolt-bake-err"), Color(CkStyle::Err())},
+            {TEXT("--jolt-bake-radius"), FString::SanitizeFloat(CkStyle::RadiusS())},
+            {TEXT("--jolt-bake-ring-width"), FString::SanitizeFloat(CkStyle::RingWidth())},
+            {TEXT("--jolt-bake-card-value-size"), FString::FromInt(CkStyle::FontSizeH3())},
+        };
+    }
+
+    auto HaveSameTokens(const FCkUiView::FTokens& InLeft, const TMap<FString, FString>& InRight) -> bool
+    {
+        if (InLeft.Num() != InRight.Num()) { return false; }
+        for (const auto& [Name, Value] : InLeft)
+        {
+            const FString* Other = InRight.Find(Name);
+            if (Other == nullptr || *Other != Value) { return false; }
+        }
+        return true;
+    }
+
     auto MakeButton(const TCHAR* InText, const FOnClicked& InClicked) -> TSharedRef<SWidget>
     {
         return SNew(SButton).Text(FText::FromString(InText)).OnClicked(InClicked);
@@ -131,35 +204,43 @@ namespace ck_jolt_bake_inspector_window
             ? ECk_Tone::Ok
             : ECk_Tone::Info;
     }
+
+    auto GetToneColor(const FCkJoltBakeInspectorRow* InRow) -> FLinearColor
+    { return CkStyle::GetToneColor(InRow != nullptr ? GetTone(*InRow) : ECk_Tone::Neutral); }
+
+    auto GetToneBackground(const FCkJoltBakeInspectorRow* InRow) -> FLinearColor
+    { return CkStyle::GetToneDimColor(InRow != nullptr ? GetTone(*InRow) : ECk_Tone::Neutral); }
 }
 
-auto SCkJoltBakeInspectorWindow::Construct(const FArguments&) -> void
+auto SCkJoltBakeInspectorWindow::BuildNativeContent() -> TSharedRef<SWidget>
 {
-    Register_WithGate();
-
-    ChildSlot
-    [
-        SNew(SCkDebug_WindowChrome)
+    const TWeakPtr<SCkJoltBakeInspectorWindow> WeakWindow = SharedThis(this);
+    _ListPaneMount->SetContent(SNullWidget::NullWidget);
+    _PreviewPaneMount->SetContent(SNullWidget::NullWidget);
+    _FallbackSearchHost->SetContent(_SearchBar.ToSharedRef());
+    _FallbackListHost->SetContent(_ListPane.ToSharedRef());
+    _FallbackPreviewHost->SetContent(_PreviewPane.ToSharedRef());
+    return SAssignNew(_NativeChrome, SCkDebug_WindowChrome)
         .WindowId(WindowId)
         .ToolTabId(TEXT("CkJoltBakeInspector"))
-        .StatusText(this, &SCkJoltBakeInspectorWindow::GetSummaryText)
+        .StatusText_Lambda([WeakWindow]() { const auto Window = WeakWindow.Pin(); return Window.IsValid() && Window->_UsingNativeFallback && NOT Window->_AuthoredPresentationReleased ? Window->GetSummaryText() : FText::GetEmpty(); })
         .ToolbarContent()
         [
             SNew(SHorizontalBox)
             + SHorizontalBox::Slot().FillWidth(1.0f).Padding(0.0f, 0.0f, CkStyle::SpaceS, 0.0f)
-            [ SAssignNew(_SearchBar, SCkDebug_SearchBar).HintText(FText::FromString(TEXT("Filter baked meshes"))).OnSearchTextChanged(this, &SCkJoltBakeInspectorWindow::OnSearchChanged) ]
+            [ _FallbackSearchHost.ToSharedRef() ]
             + SHorizontalBox::Slot().AutoWidth().Padding(CkStyle::SpaceXS)
-            [ ck_jolt_bake_inspector_window::MakeButton(TEXT("Refresh"), FOnClicked::CreateSP(this, &SCkJoltBakeInspectorWindow::OnRefreshClicked)) ]
+            [ ck_jolt_bake_inspector_window::MakeButton(TEXT("Refresh"), FOnClicked::CreateLambda([WeakWindow]() { if (const auto Window = WeakWindow.Pin(); Window.IsValid() && Window->_UsingNativeFallback && NOT Window->_AuthoredPresentationReleased) { return Window->OnRefreshClicked(); } return FReply::Handled(); })) ]
             + SHorizontalBox::Slot().AutoWidth().Padding(CkStyle::SpaceXS)
-            [ ck_jolt_bake_inspector_window::MakeButton(TEXT("Analyze All"), FOnClicked::CreateSP(this, &SCkJoltBakeInspectorWindow::StartAnalyzeAll)) ]
+            [ SNew(SButton).Text(FText::FromString(TEXT("Analyze All"))).IsEnabled_Lambda([WeakWindow] { const auto Window = WeakWindow.Pin(); return Window.IsValid() && Window->_UsingNativeFallback && NOT Window->_AuthoredPresentationReleased && NOT Window->GetIsAnalyzing(); }).OnClicked_Lambda([WeakWindow] { if (const auto Window = WeakWindow.Pin(); Window.IsValid() && Window->_UsingNativeFallback && NOT Window->_AuthoredPresentationReleased) { return Window->StartAnalyzeAll(); } return FReply::Handled(); }) ]
             + SHorizontalBox::Slot().AutoWidth().Padding(CkStyle::SpaceXS)
-            [ ck_jolt_bake_inspector_window::MakeButton(TEXT("Cancel"), FOnClicked::CreateSP(this, &SCkJoltBakeInspectorWindow::CancelAnalyzeAll)) ]
+            [ SNew(SButton).Text(FText::FromString(TEXT("Cancel"))).IsEnabled_Lambda([WeakWindow] { const auto Window = WeakWindow.Pin(); return Window.IsValid() && Window->_UsingNativeFallback && NOT Window->_AuthoredPresentationReleased && Window->GetIsAnalyzing(); }).OnClicked_Lambda([WeakWindow] { if (const auto Window = WeakWindow.Pin(); Window.IsValid() && Window->_UsingNativeFallback && NOT Window->_AuthoredPresentationReleased) { return Window->CancelAnalyzeAll(); } return FReply::Handled(); }) ]
             + SHorizontalBox::Slot().AutoWidth().Padding(CkStyle::SpaceXS)
-            [ ck_jolt_bake_inspector_window::MakeButton(TEXT("All"), FOnClicked::CreateSP(this, &SCkJoltBakeInspectorWindow::SetFilterMode, 0)) ]
+            [ ck_jolt_bake_inspector_window::MakeButton(TEXT("All"), FOnClicked::CreateLambda([WeakWindow] { if (const auto Window = WeakWindow.Pin(); Window.IsValid() && Window->_UsingNativeFallback && NOT Window->_AuthoredPresentationReleased) { return Window->SetFilterMode(0); } return FReply::Handled(); })) ]
             + SHorizontalBox::Slot().AutoWidth().Padding(CkStyle::SpaceXS)
-            [ ck_jolt_bake_inspector_window::MakeButton(TEXT("Heuristic"), FOnClicked::CreateSP(this, &SCkJoltBakeInspectorWindow::SetFilterMode, 1)) ]
+            [ ck_jolt_bake_inspector_window::MakeButton(TEXT("Heuristic"), FOnClicked::CreateLambda([WeakWindow] { if (const auto Window = WeakWindow.Pin(); Window.IsValid() && Window->_UsingNativeFallback && NOT Window->_AuthoredPresentationReleased) { return Window->SetFilterMode(1); } return FReply::Handled(); })) ]
             + SHorizontalBox::Slot().AutoWidth().Padding(CkStyle::SpaceXS)
-            [ ck_jolt_bake_inspector_window::MakeButton(TEXT("Would Fail"), FOnClicked::CreateSP(this, &SCkJoltBakeInspectorWindow::SetFilterMode, 2)) ]
+            [ ck_jolt_bake_inspector_window::MakeButton(TEXT("Would Fail"), FOnClicked::CreateLambda([WeakWindow] { if (const auto Window = WeakWindow.Pin(); Window.IsValid() && Window->_UsingNativeFallback && NOT Window->_AuthoredPresentationReleased) { return Window->SetFilterMode(2); } return FReply::Handled(); })) ]
         ]
         .Content()
         [
@@ -168,30 +249,24 @@ auto SCkJoltBakeInspectorWindow::Construct(const FArguments&) -> void
             [
                 SNew(SHorizontalBox)
                 + SHorizontalBox::Slot().FillWidth(1.0f).Padding(0.0f, 0.0f, CkStyle::SpaceS, 0.0f)
-                [ SNew(SCkDebug_Card).StripeColor(CkStyle::Info()).BodyPadding(FMargin{CkStyle::SpaceS})
-                    [ SNew(SCkDebug_StatPair).Layout(ECkDebug_StatPairLayout::Stacked_ValueOnTop).Value_Lambda([this] { return GetMetricText(0); }).Label(FText::FromString(TEXT("Inventory"))) ] ]
+                    [ SNew(SCkDebug_Card).StripeColor(CkStyle::Info()).BodyPadding(FMargin{CkStyle::SpaceS})
+                    [ SNew(SCkDebug_StatPair).Layout(ECkDebug_StatPairLayout::Stacked_ValueOnTop).Value_Lambda([WeakWindow] { const auto Window = WeakWindow.Pin(); return Window.IsValid() && Window->_UsingNativeFallback && NOT Window->_AuthoredPresentationReleased ? Window->GetMetricText(0) : FText::GetEmpty(); }).Label(FText::FromString(TEXT("Inventory"))) ] ]
                 + SHorizontalBox::Slot().FillWidth(1.0f).Padding(CkStyle::SpaceXS, 0.0f, CkStyle::SpaceS, 0.0f)
-                [ SNew(SCkDebug_Card).StripeColor(CkStyle::Accent()).BodyPadding(FMargin{CkStyle::SpaceS})
-                    [ SNew(SCkDebug_StatPair).Layout(ECkDebug_StatPairLayout::Stacked_ValueOnTop).Value_Lambda([this] { return GetMetricText(1); }).Label(FText::FromString(TEXT("Analyzed"))) ] ]
+                    [ SNew(SCkDebug_Card).StripeColor(CkStyle::Accent()).BodyPadding(FMargin{CkStyle::SpaceS})
+                    [ SNew(SCkDebug_StatPair).Layout(ECkDebug_StatPairLayout::Stacked_ValueOnTop).Value_Lambda([WeakWindow] { const auto Window = WeakWindow.Pin(); return Window.IsValid() && Window->_UsingNativeFallback && NOT Window->_AuthoredPresentationReleased ? Window->GetMetricText(1) : FText::GetEmpty(); }).Label(FText::FromString(TEXT("Analyzed"))) ] ]
                 + SHorizontalBox::Slot().FillWidth(1.0f).Padding(CkStyle::SpaceXS, 0.0f, CkStyle::SpaceS, 0.0f)
-                [ SNew(SCkDebug_Card).StripeColor(CkStyle::Warn()).BodyPadding(FMargin{CkStyle::SpaceS})
-                    [ SNew(SCkDebug_StatPair).Layout(ECkDebug_StatPairLayout::Stacked_ValueOnTop).Value_Lambda([this] { return GetMetricText(2); }).Label(FText::FromString(TEXT("Heuristic"))) ] ]
+                    [ SNew(SCkDebug_Card).StripeColor(CkStyle::Warn()).BodyPadding(FMargin{CkStyle::SpaceS})
+                    [ SNew(SCkDebug_StatPair).Layout(ECkDebug_StatPairLayout::Stacked_ValueOnTop).Value_Lambda([WeakWindow] { const auto Window = WeakWindow.Pin(); return Window.IsValid() && Window->_UsingNativeFallback && NOT Window->_AuthoredPresentationReleased ? Window->GetMetricText(2) : FText::GetEmpty(); }).Label(FText::FromString(TEXT("Heuristic"))) ] ]
                 + SHorizontalBox::Slot().FillWidth(1.0f).Padding(CkStyle::SpaceXS, 0.0f, 0.0f, 0.0f)
-                [ SNew(SCkDebug_Card).StripeColor(CkStyle::Err()).BodyPadding(FMargin{CkStyle::SpaceS})
-                    [ SNew(SCkDebug_StatPair).Layout(ECkDebug_StatPairLayout::Stacked_ValueOnTop).Value_Lambda([this] { return GetMetricText(3); }).Label(FText::FromString(TEXT("Would fail"))) ] ]
+                    [ SNew(SCkDebug_Card).StripeColor(CkStyle::Err()).BodyPadding(FMargin{CkStyle::SpaceS})
+                    [ SNew(SCkDebug_StatPair).Layout(ECkDebug_StatPairLayout::Stacked_ValueOnTop).Value_Lambda([WeakWindow] { const auto Window = WeakWindow.Pin(); return Window.IsValid() && Window->_UsingNativeFallback && NOT Window->_AuthoredPresentationReleased ? Window->GetMetricText(3) : FText::GetEmpty(); }).Label(FText::FromString(TEXT("Would fail"))) ] ]
             ]
             + SVerticalBox::Slot().FillHeight(1.0f).Padding(CkStyle::SpaceM)
             [
                 SNew(SSplitter).Orientation(Orient_Horizontal)
                 + SSplitter::Slot().Value(0.42f)
                 [
-                    SNew(SCkDebug_PaneHost)
-                    [
-                        SAssignNew(_ListView, SListView<FRowPtr>)
-                        .ListItemsSource(&_VisibleRows)
-                        .OnGenerateRow(this, &SCkJoltBakeInspectorWindow::GenerateRow)
-                        .OnSelectionChanged(this, &SCkJoltBakeInspectorWindow::OnSelectionChanged)
-                    ]
+                    _FallbackListHost.ToSharedRef()
                 ]
                 + SSplitter::Slot().Value(0.58f)
                 [
@@ -199,7 +274,7 @@ auto SCkJoltBakeInspectorWindow::Construct(const FArguments&) -> void
                     [
                         SNew(SVerticalBox)
                         + SVerticalBox::Slot().FillHeight(0.48f)
-                        [ SNew(SCkDebug_PaneHost).ContentMode(ECkDebugPaneContent::OpaqueRenderer)[SAssignNew(_Preview, SCkJoltBakeInspectorPreview)] ]
+                        [ _FallbackPreviewHost.ToSharedRef() ]
                         + SVerticalBox::Slot().FillHeight(0.52f).Padding(0.0f, CkStyle::SpaceS, 0.0f, 0.0f)
                         [
                             SNew(SScrollBox)
@@ -207,36 +282,261 @@ auto SCkJoltBakeInspectorWindow::Construct(const FArguments&) -> void
                             [
                                 SNew(SVerticalBox)
                                 + SVerticalBox::Slot().AutoHeight()
-                                [ SNew(SCkDebug_InspectorPanel).Title(FText::FromString(TEXT("Bake status"))).Body()[SNew(SVerticalBox) + SVerticalBox::Slot().AutoHeight()[SNew(SCkDebug_StatusPill).Text_Lambda([this] { return _SelectedRow.IsValid() ? FText::FromString(_SelectedRow->Classification) : FText::FromString(TEXT("Select mesh")); }).Tone_Lambda([this] { return _SelectedRow.IsValid() ? ck_jolt_bake_inspector_window::GetTone(*_SelectedRow) : ECk_Tone::Neutral; })] + SVerticalBox::Slot().AutoHeight().Padding(0.0f, CkStyle::SpaceXS)[SNew(STextBlock).AutoWrapText(true).Text(this, &SCkJoltBakeInspectorWindow::GetSelectedDiagnosisText)]] ]
+                                [ SNew(SCkDebug_InspectorPanel).Title(FText::FromString(TEXT("Bake status"))).Body()[SNew(SVerticalBox) + SVerticalBox::Slot().AutoHeight()[_SelectedStatus.ToSharedRef()] + SVerticalBox::Slot().AutoHeight().Padding(0.0f, CkStyle::SpaceXS)[SNew(STextBlock).AutoWrapText(true).Text_Lambda([WeakWindow] { const auto Window = WeakWindow.Pin(); return Window.IsValid() && Window->_UsingNativeFallback && NOT Window->_AuthoredPresentationReleased ? Window->GetSelectedDiagnosisText() : FText::GetEmpty(); })]] ]
                                 + SVerticalBox::Slot().AutoHeight().Padding(0.0f, CkStyle::SpaceXS)
-                                [ SNew(SCkDebug_InspectorPanel).Title(FText::FromString(TEXT("Source topology"))).Body()[SNew(STextBlock).AutoWrapText(true).Text(this, &SCkJoltBakeInspectorWindow::GetSelectedSourceText)] ]
+                                [ SNew(SCkDebug_InspectorPanel).Title(FText::FromString(TEXT("Source topology"))).Body()[SNew(STextBlock).AutoWrapText(true).Text_Lambda([WeakWindow] { const auto Window = WeakWindow.Pin(); return Window.IsValid() && Window->_UsingNativeFallback && NOT Window->_AuthoredPresentationReleased ? Window->GetSelectedSourceText() : FText::GetEmpty(); })] ]
                                 + SVerticalBox::Slot().AutoHeight().Padding(0.0f, CkStyle::SpaceXS)
-                                [ SNew(SCkDebug_InspectorPanel).Title(FText::FromString(TEXT("Cooked shape"))).Body()[SNew(STextBlock).AutoWrapText(true).Text(this, &SCkJoltBakeInspectorWindow::GetSelectedCookedText)] ]
+                                [ SNew(SCkDebug_InspectorPanel).Title(FText::FromString(TEXT("Cooked shape"))).Body()[SNew(STextBlock).AutoWrapText(true).Text_Lambda([WeakWindow] { const auto Window = WeakWindow.Pin(); return Window.IsValid() && Window->_UsingNativeFallback && NOT Window->_AuthoredPresentationReleased ? Window->GetSelectedCookedText() : FText::GetEmpty(); })] ]
                                 + SVerticalBox::Slot().AutoHeight().Padding(0.0f, CkStyle::SpaceS, 0.0f, 0.0f)
                                 [
                                     SNew(SHorizontalBox)
-                                    + SHorizontalBox::Slot().AutoWidth().Padding(CkStyle::SpaceXS)[ck_jolt_bake_inspector_window::MakeButton(TEXT("Show in Content Browser"), FOnClicked::CreateSP(this, &SCkJoltBakeInspectorWindow::BrowseSelectedAsset))]
-                                    + SHorizontalBox::Slot().AutoWidth().Padding(CkStyle::SpaceXS)[ck_jolt_bake_inspector_window::MakeButton(TEXT("Open Asset"), FOnClicked::CreateSP(this, &SCkJoltBakeInspectorWindow::OpenSelectedAsset))]
-                                    + SHorizontalBox::Slot().AutoWidth().Padding(CkStyle::SpaceXS)[SNew(SButton).Text(FText::FromString(TEXT("Bake Selected"))).IsEnabled(this, &SCkJoltBakeInspectorWindow::CanBakeSelected).OnClicked(this, &SCkJoltBakeInspectorWindow::BakeSelected)]
-                                    + SHorizontalBox::Slot().AutoWidth().Padding(CkStyle::SpaceXS)[SNew(SButton).Text(FText::FromString(TEXT("Bake Repairable"))).IsEnabled(this, &SCkJoltBakeInspectorWindow::CanBakeAll).OnClicked(this, &SCkJoltBakeInspectorWindow::BakeAll)]
+                                    + SHorizontalBox::Slot().AutoWidth().Padding(CkStyle::SpaceXS)[ck_jolt_bake_inspector_window::MakeButton(TEXT("Show in Content Browser"), FOnClicked::CreateLambda([WeakWindow] { if (const auto Window = WeakWindow.Pin(); Window.IsValid() && Window->_UsingNativeFallback && NOT Window->_AuthoredPresentationReleased) { return Window->BrowseSelectedAsset(); } return FReply::Handled(); }))]
+                                    + SHorizontalBox::Slot().AutoWidth().Padding(CkStyle::SpaceXS)[ck_jolt_bake_inspector_window::MakeButton(TEXT("Open Asset"), FOnClicked::CreateLambda([WeakWindow] { if (const auto Window = WeakWindow.Pin(); Window.IsValid() && Window->_UsingNativeFallback && NOT Window->_AuthoredPresentationReleased) { return Window->OpenSelectedAsset(); } return FReply::Handled(); }))]
+                                    + SHorizontalBox::Slot().AutoWidth().Padding(CkStyle::SpaceXS)[SNew(SButton).Text(FText::FromString(TEXT("Bake Selected"))).IsEnabled_Lambda([WeakWindow] { const auto Window = WeakWindow.Pin(); return Window.IsValid() && Window->_UsingNativeFallback && NOT Window->_AuthoredPresentationReleased && Window->CanBakeSelected(); }).OnClicked_Lambda([WeakWindow] { if (const auto Window = WeakWindow.Pin(); Window.IsValid() && Window->_UsingNativeFallback && NOT Window->_AuthoredPresentationReleased && Window->CanBakeSelected()) { return Window->BakeSelected(); } return FReply::Handled(); })]
+                                    + SHorizontalBox::Slot().AutoWidth().Padding(CkStyle::SpaceXS)[SNew(SButton).Text(FText::FromString(TEXT("Bake Repairable"))).IsEnabled_Lambda([WeakWindow] { const auto Window = WeakWindow.Pin(); return Window.IsValid() && Window->_UsingNativeFallback && NOT Window->_AuthoredPresentationReleased && Window->CanBakeAll(); }).OnClicked_Lambda([WeakWindow] { if (const auto Window = WeakWindow.Pin(); Window.IsValid() && Window->_UsingNativeFallback && NOT Window->_AuthoredPresentationReleased && Window->CanBakeAll()) { return Window->BakeAll(); } return FReply::Handled(); })]
                                 ]
                             ]
                         ]
                     ]
                 ]
             ]
-        ]
-    ];
+        ];
+}
 
+auto SCkJoltBakeInspectorWindow::Construct(const FArguments& InArgs) -> void
+{
+#if WITH_DEV_AUTOMATION_TESTS
+    _TestResourceDirectory = InArgs._TestResourceDirectory;
+#endif
+    Register_WithGate();
+    _SearchBar = SNew(SCkDebug_SearchBar)
+        .HintText(FText::FromString(TEXT("Filter baked meshes")))
+        .OnSearchTextChanged(this, &SCkJoltBakeInspectorWindow::OnSearchChanged);
+    _ListView = SNew(SListView<FRowPtr>)
+        .ListItemsSource(&_VisibleRows)
+        .OnGenerateRow(this, &SCkJoltBakeInspectorWindow::GenerateRow)
+        .OnSelectionChanged(this, &SCkJoltBakeInspectorWindow::OnSelectionChanged);
+    _Preview = SNew(SCkJoltBakeInspectorPreview);
+    _ListPane = SNew(SCkDebug_PaneHost)[_ListView.ToSharedRef()];
+    _PreviewPane = SNew(SCkDebug_PaneHost).ContentMode(ECkDebugPaneContent::OpaqueRenderer)[_Preview.ToSharedRef()];
+    _ListPaneMount = SNew(SBox)[_ListPane.ToSharedRef()];
+    _PreviewPaneMount = SNew(SBox)[_PreviewPane.ToSharedRef()];
+    _FallbackSearchHost = SNew(SBox);
+    _FallbackListHost = SNew(SBox);
+    _FallbackPreviewHost = SNew(SBox);
+    const TWeakPtr<SCkJoltBakeInspectorWindow> WeakWindow = SharedThis(this);
+    _SelectedStatus = SNew(SCkDebug_StatusPill)
+        .Text_Lambda([WeakWindow] { const auto Window = WeakWindow.Pin(); return Window.IsValid() && Window->_UsingNativeFallback && NOT Window->_AuthoredPresentationReleased && Window->_SelectedRow.IsValid() ? FText::FromString(Window->_SelectedRow->Classification) : FText::FromString(TEXT("Select mesh")); })
+        .Tone_Lambda([WeakWindow] { const auto Window = WeakWindow.Pin(); return Window.IsValid() && Window->_UsingNativeFallback && NOT Window->_AuthoredPresentationReleased && Window->_SelectedRow.IsValid() ? ck_jolt_bake_inspector_window::GetTone(*Window->_SelectedRow) : ECk_Tone::Neutral; });
     RefreshInventory();
+    BuildAuthoredPresentation();
+    if (_UsingNativeFallback)
+    { ChildSlot[BuildNativeContent()]; }
+}
+
+auto SCkJoltBakeInspectorWindow::BuildAuthoredPresentation() -> void
+{
+    TSharedPtr<const FCkUiWidgetRegistrySnapshot> Registry;
+    const FCkUiLoadResult RegistryResult = FCkDebug_UiRegistry::TryCreate(Registry);
+    const TSharedPtr<IPlugin> Plugin = IPluginManager::Get().FindPlugin(TEXT("CkDebugger"));
+    if (NOT RegistryResult.Succeeded || NOT Registry.IsValid() || NOT Plugin.IsValid()
+        || NOT _SearchBar.IsValid() || NOT _ListView.IsValid() || NOT _Preview.IsValid())
+    { return; }
+
+    auto Ports = FCkUiView::FNativeBindings{};
+    Ports.Add(TEXT("jolt-bake-search"), _SearchBar);
+    Ports.Add(TEXT("jolt-bake-list"), _ListPaneMount);
+    Ports.Add(TEXT("jolt-bake-preview"), _PreviewPaneMount);
+    const TWeakPtr<SCkJoltBakeInspectorWindow> WeakWindow = SharedThis(this);
+    auto Data = FCkUiView::FDataBindings{};
+    Data.SlateUserIndex = 0;
+    Data.CanDispatchEvents = TAttribute<bool>::CreateLambda([WeakWindow]()
+    {
+        const TSharedPtr<SCkJoltBakeInspectorWindow> Window = WeakWindow.Pin();
+        return Window.IsValid() && NOT Window->_AuthoredPresentationReleased;
+    });
+    Data.Text.Add(TEXT("jolt-bake-inventory"), TAttribute<FText>::CreateLambda([WeakWindow]()
+    { const auto Window = WeakWindow.Pin(); return Window.IsValid() ? Window->GetMetricText(0) : FText::GetEmpty(); }));
+    Data.Text.Add(TEXT("jolt-bake-analyzed"), TAttribute<FText>::CreateLambda([WeakWindow]()
+    { const auto Window = WeakWindow.Pin(); return Window.IsValid() ? Window->GetMetricText(1) : FText::GetEmpty(); }));
+    Data.Text.Add(TEXT("jolt-bake-heuristic"), TAttribute<FText>::CreateLambda([WeakWindow]()
+    { const auto Window = WeakWindow.Pin(); return Window.IsValid() ? Window->GetMetricText(2) : FText::GetEmpty(); }));
+    Data.Text.Add(TEXT("jolt-bake-would-fail"), TAttribute<FText>::CreateLambda([WeakWindow]()
+    { const auto Window = WeakWindow.Pin(); return Window.IsValid() ? Window->GetMetricText(3) : FText::GetEmpty(); }));
+    Data.Text.Add(TEXT("jolt-bake-diagnosis"), TAttribute<FText>::CreateLambda([WeakWindow]()
+    { const auto Window = WeakWindow.Pin(); return Window.IsValid() ? Window->GetSelectedDiagnosisText() : FText::GetEmpty(); }));
+    Data.Text.Add(TEXT("jolt-bake-source"), TAttribute<FText>::CreateLambda([WeakWindow]()
+    { const auto Window = WeakWindow.Pin(); return Window.IsValid() ? Window->GetSelectedSourceText() : FText::GetEmpty(); }));
+    Data.Text.Add(TEXT("jolt-bake-cooked"), TAttribute<FText>::CreateLambda([WeakWindow]()
+    { const auto Window = WeakWindow.Pin(); return Window.IsValid() ? Window->GetSelectedCookedText() : FText::GetEmpty(); }));
+    Data.Text.Add(TEXT("jolt-bake-status"), TAttribute<FText>::CreateLambda([WeakWindow]()
+    { const auto Window = WeakWindow.Pin(); return Window.IsValid() && Window->_SelectedRow.IsValid()
+        ? FText::FromString(Window->_SelectedRow->Classification) : FText::FromString(TEXT("Select mesh")); }));
+    Data.Color.Add(TEXT("jolt-bake-status-foreground"), TAttribute<FLinearColor>::CreateLambda([WeakWindow]()
+    { const auto Window = WeakWindow.Pin(); return Window.IsValid()
+        ? ck_jolt_bake_inspector_window::GetToneColor(Window->_SelectedRow.Get()) : CkStyle::GetToneColor(ECk_Tone::Neutral); }));
+    Data.Color.Add(TEXT("jolt-bake-status-background"), TAttribute<FLinearColor>::CreateLambda([WeakWindow]()
+    { const auto Window = WeakWindow.Pin(); return Window.IsValid()
+        ? ck_jolt_bake_inspector_window::GetToneBackground(Window->_SelectedRow.Get()) : CkStyle::GetToneDimColor(ECk_Tone::Neutral); }));
+    Data.Visibility.Add(TEXT("jolt-bake-can-bake"), TAttribute<bool>::CreateLambda([WeakWindow]()
+    { const auto Window = WeakWindow.Pin(); return Window.IsValid() && Window->CanBakeSelected(); }));
+    Data.Visibility.Add(TEXT("jolt-bake-can-bake-all"), TAttribute<bool>::CreateLambda([WeakWindow]()
+    { const auto Window = WeakWindow.Pin(); return Window.IsValid() && Window->CanBakeAll(); }));
+    Data.Visibility.Add(TEXT("jolt-bake-can-analyze"), TAttribute<bool>::CreateLambda([WeakWindow]()
+    { const auto Window = WeakWindow.Pin(); return Window.IsValid() && NOT Window->_AuthoredPresentationReleased && NOT Window->GetIsAnalyzing(); }));
+    Data.Visibility.Add(TEXT("jolt-bake-can-cancel"), TAttribute<bool>::CreateLambda([WeakWindow]()
+    { const auto Window = WeakWindow.Pin(); return Window.IsValid() && NOT Window->_AuthoredPresentationReleased && Window->GetIsAnalyzing(); }));
+    auto Actions = FCkUiView::FActions{};
+    Actions.Add(TEXT("jolt-bake-refresh"), FSimpleDelegate::CreateLambda([WeakWindow]() { if (const auto Window = WeakWindow.Pin(); Window.IsValid() && NOT Window->_AuthoredPresentationReleased) { Window->OnRefreshClicked(); } }));
+    Actions.Add(TEXT("jolt-bake-analyze-all"), FSimpleDelegate::CreateLambda([WeakWindow]() { if (const auto Window = WeakWindow.Pin(); Window.IsValid() && NOT Window->_AuthoredPresentationReleased && NOT Window->GetIsAnalyzing()) { Window->StartAnalyzeAll(); } }));
+    Actions.Add(TEXT("jolt-bake-cancel"), FSimpleDelegate::CreateLambda([WeakWindow]() { if (const auto Window = WeakWindow.Pin(); Window.IsValid() && NOT Window->_AuthoredPresentationReleased && Window->GetIsAnalyzing()) { Window->CancelAnalysis(); } }));
+    Actions.Add(TEXT("jolt-bake-filter-all"), FSimpleDelegate::CreateLambda([WeakWindow]() { if (const auto Window = WeakWindow.Pin(); Window.IsValid() && NOT Window->_AuthoredPresentationReleased) { Window->SetFilterMode(0); } }));
+    Actions.Add(TEXT("jolt-bake-filter-heuristic"), FSimpleDelegate::CreateLambda([WeakWindow]() { if (const auto Window = WeakWindow.Pin(); Window.IsValid() && NOT Window->_AuthoredPresentationReleased) { Window->SetFilterMode(1); } }));
+    Actions.Add(TEXT("jolt-bake-filter-fail"), FSimpleDelegate::CreateLambda([WeakWindow]() { if (const auto Window = WeakWindow.Pin(); Window.IsValid() && NOT Window->_AuthoredPresentationReleased) { Window->SetFilterMode(2); } }));
+    Actions.Add(TEXT("jolt-bake-browse"), FSimpleDelegate::CreateLambda([WeakWindow]() { if (const auto Window = WeakWindow.Pin(); Window.IsValid() && NOT Window->_AuthoredPresentationReleased) { Window->BrowseSelectedAsset(); } }));
+    Actions.Add(TEXT("jolt-bake-open"), FSimpleDelegate::CreateLambda([WeakWindow]() { if (const auto Window = WeakWindow.Pin(); Window.IsValid() && NOT Window->_AuthoredPresentationReleased) { Window->OpenSelectedAsset(); } }));
+    Actions.Add(TEXT("jolt-bake-selected"), FSimpleDelegate::CreateLambda([WeakWindow]() { if (const auto Window = WeakWindow.Pin(); Window.IsValid() && NOT Window->_AuthoredPresentationReleased && Window->CanBakeSelected()) { Window->BakeSelected(); } }));
+    Actions.Add(TEXT("jolt-bake-repairable"), FSimpleDelegate::CreateLambda([WeakWindow]() { if (const auto Window = WeakWindow.Pin(); Window.IsValid() && NOT Window->_AuthoredPresentationReleased && Window->CanBakeAll()) { Window->BakeAll(); } }));
+    const TSharedRef<FCkUiView> View = FCkUiView::Create(MoveTemp(Ports), MoveTemp(Actions), ck_jolt_bake_inspector_window::AuthoredStyleTokens(),
+        CkStyle::RegularFont(CkStyle::FontSizeBody()), MoveTemp(Data), Registry);
+    const TSharedRef<SWidget> ActionsRegion = View->GetRegion(TEXT("actions"));
+    const TSharedRef<SWidget> Main = View->GetRegion(TEXT("main"));
+    FString Directory = FPaths::Combine(Plugin->GetBaseDir(), TEXT("Resources/UI"));
+#if WITH_DEV_AUTOMATION_TESTS
+    if (NOT _TestResourceDirectory.IsEmpty()) { Directory = _TestResourceDirectory; }
+#endif
+    _AuthoredMarkupPath = FPaths::Combine(Directory, TEXT("JoltBakeInspector.ui.html"));
+    _AuthoredStylesheetPath = FPaths::Combine(Directory, TEXT("JoltBakeInspector.ui.css"));
+    View->SetFiles(_AuthoredMarkupPath, _AuthoredStylesheetPath);
+    _AuthoredView = View;
+    View->PollFiles(ck_jolt_bake_inspector_window::AuthoredStyleTokens());
+    if (NOT View->GetLastResult().Succeeded)
+    { return; }
+    _UsingNativeFallback = false;
+    ChildSlot
+    [
+        SAssignNew(_NativeChrome, SCkDebug_WindowChrome).WindowId(WindowId).ToolTabId(TEXT("CkJoltBakeInspector"))
+        .StatusText(this, &SCkJoltBakeInspectorWindow::GetSummaryText).MenuActionsContent()[ActionsRegion].Content()[Main]
+    ];
+}
+
+auto SCkJoltBakeInspectorWindow::PollAuthoredPresentation(double InCurrentTime) -> void
+{
+    if (NOT _AuthoredView.IsValid() || InCurrentTime < _NextAuthoredPollSeconds)
+    { return; }
+    _NextAuthoredPollSeconds = InCurrentTime + 0.5;
+    if (_UsingNativeFallback)
+    {
+        // The retained candidate notices only a complete file/token change while the fallback remains visible.
+        // A changed candidate cannot take ports from the fallback, so only then detach and retry it unparented.
+        const FCkUiView::FTokens StyleTokens = ck_jolt_bake_inspector_window::AuthoredStyleTokens();
+        const bool ContentChanged = _AuthoredView->PollFiles(StyleTokens);
+        if (NOT ContentChanged) { return; }
+
+        if (_NativeChrome.IsValid()) { ck_jolt_bake_inspector_window::ReleaseOwnedSlateInput(_NativeChrome.ToSharedRef()); }
+        _FallbackSearchHost->SetContent(SNullWidget::NullWidget);
+        _FallbackListHost->SetContent(SNullWidget::NullWidget);
+        _FallbackPreviewHost->SetContent(SNullWidget::NullWidget);
+        _ListPaneMount->SetContent(_ListPane.ToSharedRef());
+        _PreviewPaneMount->SetContent(_PreviewPane.ToSharedRef());
+        ChildSlot[SNullWidget::NullWidget];
+        _NativeChrome.Reset();
+        _AuthoredView->SetFiles(_AuthoredMarkupPath, _AuthoredStylesheetPath);
+        _AuthoredView->PollFiles(StyleTokens);
+        if (NOT _AuthoredView->GetLastResult().Succeeded)
+        {
+            ChildSlot[BuildNativeContent()];
+            return;
+        }
+        _UsingNativeFallback = false;
+        _ListView->RequestListRefresh();
+        ChildSlot
+        [
+            SAssignNew(_NativeChrome, SCkDebug_WindowChrome).WindowId(WindowId).ToolTabId(TEXT("CkJoltBakeInspector"))
+            .StatusText(this, &SCkJoltBakeInspectorWindow::GetSummaryText)
+            .MenuActionsContent()[_AuthoredView->GetRegion(TEXT("actions"))]
+            .Content()[_AuthoredView->GetRegion(TEXT("main"))]
+        ];
+        return;
+    }
+    _AuthoredView->PollFiles(ck_jolt_bake_inspector_window::AuthoredStyleTokens());
+    if (_RowMarkupPath.IsEmpty() || _RowStylesheetPath.IsEmpty())
+    { return; }
+    const FCkUiView::FTokens RowStyleTokens = ck_jolt_bake_inspector_window::AuthoredStyleTokens();
+
+    FString Markup;
+    FString Stylesheet;
+    const bool ReadSucceeded = FFileHelper::LoadFileToString(Markup, *_RowMarkupPath)
+        && FFileHelper::LoadFileToString(Stylesheet, *_RowStylesheetPath);
+    if (NOT ReadSucceeded
+        || (_HasRowSourceState && Markup == _AppliedRowMarkup && Stylesheet == _AppliedRowStylesheet
+            && ck_jolt_bake_inspector_window::HaveSameTokens(RowStyleTokens, _AppliedRowStyleTokens)))
+    { return; }
+
+    for (const FRowPtr& Row : _AllRows)
+    {
+        if (Row.IsValid() && Row->Presentation.IsValid())
+        { Row->Presentation->TryReloadWithTokens(Markup, Stylesheet, RowStyleTokens, _RowMarkupPath); }
+    }
+    _AppliedRowMarkup = MoveTemp(Markup);
+    _AppliedRowStylesheet = MoveTemp(Stylesheet);
+    _AppliedRowStyleTokens = RowStyleTokens;
+    _HasRowSourceState = true;
 }
 
 SCkJoltBakeInspectorWindow::~SCkJoltBakeInspectorWindow()
-{ CancelAnalysis(); }
+{ Release_AuthoredPresentation(); }
+
+auto SCkJoltBakeInspectorWindow::Release_AuthoredPresentation() -> void
+{
+    if (_AuthoredPresentationReleased)
+    { return; }
+
+    _AuthoredPresentationReleased = true;
+    CancelAnalysis();
+
+    if (_NativeChrome.IsValid()) { ck_jolt_bake_inspector_window::ReleaseOwnedSlateInput(_NativeChrome.ToSharedRef()); }
+    ChildSlot[SNullWidget::NullWidget];
+    _NativeChrome.Reset();
+    if (_FallbackSearchHost.IsValid()) { _FallbackSearchHost->SetContent(SNullWidget::NullWidget); }
+    if (_FallbackListHost.IsValid()) { _FallbackListHost->SetContent(SNullWidget::NullWidget); }
+    if (_FallbackPreviewHost.IsValid()) { _FallbackPreviewHost->SetContent(SNullWidget::NullWidget); }
+    if (_ListView.IsValid())
+    {
+        _ListView->ClearSelection();
+        _ListView->ClearItemsSource();
+    }
+
+    // The target owns preview-world components. A module close/pre-exit may leave external Slate references alive,
+    // so widget destruction is not a sufficient lifetime boundary.
+    if (_Preview.IsValid())
+    { _Preview->Teardown(); }
+    if (_ListPaneMount.IsValid()) { _ListPaneMount->SetContent(SNullWidget::NullWidget); }
+    if (_PreviewPaneMount.IsValid()) { _PreviewPaneMount->SetContent(SNullWidget::NullWidget); }
+    _Preview.Reset();
+    _ListView.Reset();
+    _SearchBar.Reset();
+    _ListPane.Reset();
+    _PreviewPane.Reset();
+    _ListPaneMount.Reset();
+    _PreviewPaneMount.Reset();
+    _FallbackSearchHost.Reset();
+    _FallbackListHost.Reset();
+    _FallbackPreviewHost.Reset();
+    _SelectedStatus.Reset();
+    _SelectedRow.Reset();
+    for (const FRowPtr& Row : _AllRows) { if (Row.IsValid()) { Row->Presentation.Reset(); } }
+    _VisibleRows.Reset();
+    _AllRows.Reset();
+    _AuthoredView.Reset();
+}
 
 auto SCkJoltBakeInspectorWindow::Tick(const FGeometry& InGeometry, double InTime, float InDeltaTime) -> void
 {
     SCkDebugger_WindowBase::Tick(InGeometry, InTime, InDeltaTime);
+    if (_AuthoredPresentationReleased)
+    { return; }
+    PollAuthoredPresentation(InTime);
     if (NOT GetIsAnalyzing()) { return; }
     const auto NextIndex = _AnalysisState.TryTakeNext();
     if (NOT NextIndex.IsSet() || NOT _AnalysisQueue.IsValidIndex(*NextIndex)) { CancelAnalysis(); return; }
@@ -299,6 +599,7 @@ auto SCkJoltBakeInspectorWindow::RefreshInventory() -> void
 
 auto SCkJoltBakeInspectorWindow::OnRefreshClicked() -> FReply
 {
+    if (_AuthoredPresentationReleased) { return FReply::Handled(); }
     RefreshInventory();
     return FReply::Handled();
 }
@@ -322,12 +623,14 @@ auto SCkJoltBakeInspectorWindow::RefilterRows() -> void
 
 auto SCkJoltBakeInspectorWindow::OnSearchChanged(const FString& InText) -> void
 {
+    if (_AuthoredPresentationReleased) { return; }
     _FilterText = InText;
     RefilterRows();
 }
 
 auto SCkJoltBakeInspectorWindow::OnSelectionChanged(FRowPtr InRow, ESelectInfo::Type InSelection) -> void
 {
+    if (_AuthoredPresentationReleased) { return; }
     if (InSelection == ESelectInfo::Direct) { return; }
     _SelectedRow = MoveTemp(InRow);
     AnalyzeSelectedRow();
@@ -375,19 +678,24 @@ auto SCkJoltBakeInspectorWindow::AnalyzeRow(const FRowPtr& InRow) -> void
 
 auto SCkJoltBakeInspectorWindow::StartAnalyzeAll() -> FReply
 {
+    if (_AuthoredPresentationReleased || GetIsAnalyzing()) { return FReply::Handled(); }
     CancelAnalysis();
     for (const auto& Row : _AllRows) { if (NOT Row->Audit.IsSet()) { _AnalysisQueue.Add(Row); } }
     _AnalysisState.Start(_AnalysisQueue.Num());
     if (GetIsAnalyzing()) { _AnalysisJoltLease = MakeUnique<ck::jolt::FCk_Jolt_ScopedGlobalInit>(); }
     return FReply::Handled();
 }
-auto SCkJoltBakeInspectorWindow::CancelAnalyzeAll() -> FReply { CancelAnalysis(); return FReply::Handled(); }
+auto SCkJoltBakeInspectorWindow::CancelAnalyzeAll() -> FReply { if (NOT _AuthoredPresentationReleased) { CancelAnalysis(); } return FReply::Handled(); }
 auto SCkJoltBakeInspectorWindow::CancelAnalysis() -> void { _AnalysisQueue.Reset(); _AnalysisState.Cancel(); _AnalysisJoltLease.Reset(); }
-auto SCkJoltBakeInspectorWindow::SetFilterMode(int32 InMode) -> FReply { _FilterMode = InMode; RefilterRows(); return FReply::Handled(); }
+auto SCkJoltBakeInspectorWindow::SetFilterMode(int32 InMode) -> FReply { if (NOT _AuthoredPresentationReleased) { _FilterMode = InMode; RefilterRows(); } return FReply::Handled(); }
 auto SCkJoltBakeInspectorWindow::GetIsAnalyzing() const -> bool { return _AnalysisState.IsActive(); }
 
 auto SCkJoltBakeInspectorWindow::GenerateRow(FRowPtr InRow, const TSharedRef<STableViewBase>& InOwnerTable) -> TSharedRef<ITableRow>
 {
+    if (const TSharedPtr<SWidget> AuthoredRow = BuildAuthoredRow(InRow); AuthoredRow.IsValid())
+    {
+        return SNew(STableRow<FRowPtr>, InOwnerTable)[AuthoredRow.ToSharedRef()];
+    }
     return SNew(STableRow<FRowPtr>, InOwnerTable)
     [
         SNew(SVerticalBox)
@@ -411,9 +719,46 @@ auto SCkJoltBakeInspectorWindow::GenerateRow(FRowPtr InRow, const TSharedRef<STa
     ];
 }
 
+auto SCkJoltBakeInspectorWindow::BuildAuthoredRow(const FRowPtr& InRow) -> TSharedPtr<SWidget>
+{
+    if (_AuthoredPresentationReleased || _UsingNativeFallback || NOT InRow.IsValid()) { return {}; }
+    if (InRow->Presentation.IsValid()) { return InRow->Presentation->GetRegion(TEXT("main")); }
+
+    const TSharedPtr<IPlugin> Plugin = IPluginManager::Get().FindPlugin(TEXT("CkDebugger"));
+    TSharedPtr<const FCkUiWidgetRegistrySnapshot> Registry;
+    const FCkUiLoadResult RegistryResult = FCkDebug_UiRegistry::TryCreate(Registry);
+    if (NOT Plugin.IsValid() || NOT RegistryResult.Succeeded || NOT Registry.IsValid()) { return {}; }
+
+    const TWeakPtr<FCkJoltBakeInspectorRow> WeakRow = InRow;
+    auto Data = FCkUiView::FDataBindings{};
+    Data.Text.Add(TEXT("jolt-bake-row-name"), TAttribute<FText>::CreateLambda([WeakRow]()
+    { const auto Row = WeakRow.Pin(); return Row.IsValid() ? FText::FromString(Row->DisplayName) : FText::GetEmpty(); }));
+    Data.Text.Add(TEXT("jolt-bake-row-classification"), TAttribute<FText>::CreateLambda([WeakRow]()
+    { const auto Row = WeakRow.Pin(); return Row.IsValid() ? FText::FromString(Row->Classification) : FText::GetEmpty(); }));
+    Data.Color.Add(TEXT("jolt-bake-row-foreground"), TAttribute<FLinearColor>::CreateLambda([WeakRow]()
+    { const auto Row = WeakRow.Pin(); return ck_jolt_bake_inspector_window::GetToneColor(Row.Get()); }));
+    Data.Color.Add(TEXT("jolt-bake-row-background"), TAttribute<FLinearColor>::CreateLambda([WeakRow]()
+    { const auto Row = WeakRow.Pin(); return ck_jolt_bake_inspector_window::GetToneBackground(Row.Get()); }));
+    Data.Text.Add(TEXT("jolt-bake-row-path"), TAttribute<FText>::CreateLambda([WeakRow]()
+    { const auto Row = WeakRow.Pin(); return Row.IsValid() ? FText::FromString(Row->PackagePath) : FText::GetEmpty(); }));
+    Data.Visibility.Add(TEXT("jolt-bake-row-heuristic"), TAttribute<bool>::CreateLambda([WeakRow]()
+    { const auto Row = WeakRow.Pin(); return Row.IsValid() && Row->Audit.IsSet() && Row->Audit->_bWouldUseHeuristic; }));
+    const TSharedRef<FCkUiView> View = FCkUiView::Create({}, {}, ck_jolt_bake_inspector_window::AuthoredStyleTokens(), CkStyle::RegularFont(CkStyle::FontSizeBody()), MoveTemp(Data), Registry);
+    const TSharedRef<SWidget> Main = View->GetRegion(TEXT("main"));
+    const FString Directory = FPaths::Combine(Plugin->GetBaseDir(), TEXT("Resources/UI"));
+    _RowMarkupPath = FPaths::Combine(Directory, TEXT("JoltBakeInspectorRow.ui.html"));
+    _RowStylesheetPath = FPaths::Combine(Directory, TEXT("JoltBakeInspectorRow.ui.css"));
+    View->SetFiles(_RowMarkupPath, _RowStylesheetPath);
+    View->PollFiles(ck_jolt_bake_inspector_window::AuthoredStyleTokens());
+    if (NOT View->GetLastResult().Succeeded) { return {}; }
+
+    InRow->Presentation = View;
+    return Main;
+}
+
 auto SCkJoltBakeInspectorWindow::BrowseSelectedAsset() -> FReply
 {
-    if (NOT _SelectedRow.IsValid() || GEditor == nullptr)
+    if (_AuthoredPresentationReleased || NOT _SelectedRow.IsValid() || GEditor == nullptr)
     { return FReply::Handled(); }
     const TStrongObjectPtr<UObject> Asset{_SelectedRow->Asset.GetAsset()};
     if (Asset.IsValid())
@@ -424,7 +769,7 @@ auto SCkJoltBakeInspectorWindow::BrowseSelectedAsset() -> FReply
 auto SCkJoltBakeInspectorWindow::OpenSelectedAsset() -> FReply
 {
     // Refresh is deliberately an explicit command only. It never runs from Tick, filtering, or attributes.
-    if (NOT _SelectedRow.IsValid())
+    if (_AuthoredPresentationReleased || NOT _SelectedRow.IsValid())
     { return FReply::Handled(); }
     if (GEditor != nullptr)
     {
@@ -441,7 +786,7 @@ auto SCkJoltBakeInspectorWindow::OpenSelectedAsset() -> FReply
 
 auto SCkJoltBakeInspectorWindow::BakeSelected() -> FReply
 {
-    if (NOT _SelectedRow.IsValid() || GEditor == nullptr)
+    if (_AuthoredPresentationReleased || NOT CanBakeSelected())
     { return FReply::Handled(); }
 
     const TWeakObjectPtr<UCk_JoltCook_EditorSubsystem_UE> Cooker{
@@ -457,7 +802,7 @@ auto SCkJoltBakeInspectorWindow::BakeSelected() -> FReply
 
 auto SCkJoltBakeInspectorWindow::BakeAll() -> FReply
 {
-    if (GEditor == nullptr)
+    if (_AuthoredPresentationReleased || NOT CanBakeAll())
     { return FReply::Handled(); }
 
     const TWeakObjectPtr<UCk_JoltCook_EditorSubsystem_UE> Cooker{
@@ -476,7 +821,7 @@ auto SCkJoltBakeInspectorWindow::BakeAll() -> FReply
 
 auto SCkJoltBakeInspectorWindow::CanBakeSelected() const -> bool
 {
-    if (NOT _SelectedRow.IsValid() || NOT _SelectedRow->Audit.IsSet() || _SelectedRow->Audit->_bWouldFailBake || GEditor == nullptr)
+    if (_AuthoredPresentationReleased || NOT _SelectedRow.IsValid() || NOT _SelectedRow->Audit.IsSet() || _SelectedRow->Audit->_bWouldFailBake || GEditor == nullptr)
     { return false; }
 
     return ck::jolt_bake_inspector::Get_IsRepairableBakeAction(
@@ -485,7 +830,7 @@ auto SCkJoltBakeInspectorWindow::CanBakeSelected() const -> bool
 
 auto SCkJoltBakeInspectorWindow::CanBakeAll() const -> bool
 {
-    return GEditor != nullptr && _AllRows.ContainsByPredicate([](const FRowPtr& Row)
+    return NOT _AuthoredPresentationReleased && GEditor != nullptr && _AllRows.ContainsByPredicate([](const FRowPtr& Row)
     {
         return Row->Audit.IsSet() && ck::jolt_bake_inspector::Get_IsRepairableBakeAction(
             Row->Audit->_RecommendedAction, Row->Audit->_bWouldFailBake);

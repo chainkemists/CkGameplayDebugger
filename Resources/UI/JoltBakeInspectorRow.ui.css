@@ -1,0 +1,7 @@
+.jolt-bake-row { gap: 3px; padding: 5px 7px; }
+.jolt-bake-row-title { gap: 8px; }
+.jolt-bake-row-name { flex-grow: 1; color: var(--jolt-bake-text); font-weight: bold; }
+.jolt-bake-row-classification { flex-shrink: 0; color: var(--jolt-bake-muted); }
+.jolt-bake-row-meta { gap: 8px; }
+.jolt-bake-row-path { flex-grow: 1; color: var(--jolt-bake-muted); }
+.jolt-bake-row-heuristic { flex-shrink: 0; color: var(--jolt-bake-warn); }

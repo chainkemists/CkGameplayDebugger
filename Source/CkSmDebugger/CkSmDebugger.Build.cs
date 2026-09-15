@@ -24,7 +24,13 @@ public class CkSmDebugger : CkModuleRules
 
             "CkDebuggerCommon",
             "CkEditorTools",
+            "CkSlateLayout",
         });
+
+        RuntimeDependencies.Add(Path.Combine(PluginDirectory, "Resources", "UI", "SmDebuggerShell.ui.html"), StagedFileType.NonUFS);
+        RuntimeDependencies.Add(Path.Combine(PluginDirectory, "Resources", "UI", "SmDebuggerShell.ui.css"), StagedFileType.NonUFS);
+
+        PrivateDependencyModuleNames.Add("Projects");
 
         if (Target.bBuildEditor)
         {

@@ -16,6 +16,9 @@ class SCkSmRuntimeGraph;
 class SCkSmDebugger_PreviewPane;
 class SSplitter;
 class SBox;
+class SWidget;
+class FCkUiView;
+struct FCkUiLoadResult;
 enum class ECkSmRuntimeBreakpointTarget : uint8;
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -29,6 +32,9 @@ public:
     static const FName WindowId;
 
     SLATE_BEGIN_ARGS(SCkSmDebuggerWindow) {}
+#if WITH_DEV_AUTOMATION_TESTS
+        SLATE_ARGUMENT(FString, TestResourceDirectory)
+#endif
     SLATE_END_ARGS()
 
     ~SCkSmDebuggerWindow();
@@ -36,6 +42,11 @@ public:
     auto Construct(const FArguments& InArgs) -> void;
     auto Tick(const FGeometry& InAllottedGeometry, double InCurrentTime, float InDeltaTime) -> void override;
     auto TargetEntity(const FCk_Handle& InEntity) -> void;
+    auto Release_Presentation() -> void;
+
+#if WITH_DEV_AUTOMATION_TESTS
+    auto TryReload_AuthoredShell(const FString& InMarkup, const FString& InStylesheet) -> FCkUiLoadResult;
+#endif
 
     // The ONE definition of "an entity this debugger lists" — shared by the
     // module's FCkDebug_EntityTargetRoute and the window's viewport picker.
@@ -54,6 +65,7 @@ protected:
     virtual auto OnStyleRevisionChanged() -> void override;
 
 private:
+    friend struct FCkSmDebuggerAuthoredShellTestAccess;
     auto BuildMenuActions() -> TSharedRef<SWidget>;
     auto BuildTargetCommands() -> TSharedRef<SWidget>;
     auto BuildGraphCommands() -> TSharedRef<SWidget>;
@@ -63,6 +75,12 @@ private:
     auto BuildTimelineToolbar() -> TSharedRef<SWidget>;
     auto BuildDetailPanel() -> TSharedRef<SWidget>;
     auto BuildDetailContent() -> TSharedRef<SWidget>;
+    auto BuildNativeBody() -> TSharedRef<SWidget>;
+    auto InitializeAuthoredShell() -> void;
+    auto PollAuthoredShell(double InCurrentTime, float InDeltaTime) -> EActiveTimerReturnType;
+    auto MountAuthoredShell() -> bool;
+    auto DetachNativeShellPorts() -> void;
+    auto RestoreNativeShellPorts() -> void;
     auto RefreshDetailContent() -> void;
     auto RefreshSmSelector() -> void;
     auto Get_IsExecutionPaused() const -> bool;
@@ -128,6 +146,28 @@ private:
 
     // Right-side preview pane (50/50 split) — toggled via the PREVIEW toolbar button
     TSharedPtr<SCkSmDebugger_PreviewPane> _PreviewPane;
+
+    // The six mounts are the stable native identities. The authored document may move only these ports;
+    // graph paint, timeline gesture state, history selection, details, preview and picker remain native.
+    TSharedPtr<SBox> _BodyHost;
+    TSharedPtr<SBox> _GraphMount;
+    TSharedPtr<SBox> _TimelineMount;
+    TSharedPtr<SBox> _HistoryMount;
+    TSharedPtr<SBox> _DetailMount;
+    TSharedPtr<SBox> _PreviewMount;
+    TSharedPtr<SBox> _PreviewPickerMount;
+    TSharedPtr<SBox> _FallbackGraphHost;
+    TSharedPtr<SBox> _FallbackTimelineHost;
+    TSharedPtr<SBox> _FallbackHistoryHost;
+    TSharedPtr<SBox> _FallbackDetailHost;
+    TSharedPtr<SBox> _FallbackPreviewHost;
+    TSharedPtr<SBox> _FallbackPreviewPickerHost;
+    TSharedPtr<FCkUiView> _AuthoredShell;
+    bool _UsingNativeShellFallback = true;
+    bool _PresentationReleased = false;
+#if WITH_DEV_AUTOMATION_TESTS
+    FString _TestResourceDirectory;
+#endif
 
     // Common debugger-session boundary — unsubscribed in destructor.
     FDelegateHandle _SessionInvalidatedHandle;

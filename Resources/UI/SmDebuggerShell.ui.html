@@ -1,0 +1,17 @@
+<ui version="1">
+  <region name="main">
+    <column id="sm-shell-root"><splitter id="sm-root" direction="horizontal" class="sm-root">
+      <splitter id="sm-left" direction="vertical" class="sm-left">
+        <column id="sm-graph-pane" class="sm-pane"><column id="sm-graph-host" class="sm-port"><native id="sm-graph" bind="graph" /></column></column>
+        <column id="sm-lower" class="sm-lower">
+          <column id="sm-timeline-pane" class="sm-pane"><column id="sm-timeline-host" class="sm-port"><native id="sm-timeline" bind="timeline" /></column></column>
+          <splitter id="sm-history-detail" direction="horizontal" class="sm-history-detail">
+            <column id="sm-history-pane" class="sm-pane"><text id="sm-history-heading" class="sm-heading">History</text><column id="sm-history-host" class="sm-port"><native id="sm-history" bind="history" /></column></column>
+            <column id="sm-detail-pane" class="sm-pane"><text id="sm-detail-heading" class="sm-heading">Details</text><column id="sm-details-host" class="sm-port"><native id="sm-details" bind="details" /></column></column>
+          </splitter>
+        </column>
+      </splitter>
+      <column id="sm-preview-pane" visible="sm-preview-open" class="sm-pane sm-preview-pane"><row id="sm-preview-picker-host" class="sm-picker"><native id="sm-preview-picker" bind="preview-picker" /></row><column id="sm-preview-host" class="sm-port"><native id="sm-preview" bind="preview" /></column></column>
+    </splitter></column>
+  </region>
+</ui>

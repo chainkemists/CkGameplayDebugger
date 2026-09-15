@@ -5,6 +5,7 @@
 #include "CkOptimizationDebugger/Window/SCkOptimizationDebuggerWindow.h"
 
 #include "CkDebuggerCommon/Launcher/CkDebuggerToolRegistry.h"
+#include "CkDebuggerCommon/Launcher/CkDebuggerTabUtils.h"
 
 #include "Framework/Docking/TabManager.h"
 #include "Widgets/Docking/SDockTab.h"
@@ -48,6 +49,8 @@ auto FCkOptimizationDebuggerModule::StartupModule() -> void
     auto& TabSpawner = FGlobalTabmanager::Get()->RegisterNomadTabSpawner(
         _DebuggerTabName,
         FOnSpawnTab::CreateRaw(this, &FCkOptimizationDebuggerModule::OnSpawnDebuggerTab))
+        .SetReuseTabMethod(FOnFindTabToReuse::CreateLambda(
+            [this](const FTabId&) { return _DebuggerTab; }))
         .SetDisplayName(FText::FromString(TEXT("CK Optimization Debugger")))
         .SetTooltipText(FText::FromString(TEXT("Opens the CK Optimization Debugger window")));
 
@@ -67,10 +70,12 @@ auto FCkOptimizationDebuggerModule::StartupModule() -> void
         40}
         .Set_TabFactory(FCkDebuggerToolTabFactory::CreateLambda([this]
         { return OnSpawnDebuggerTab(FSpawnTabArgs{TSharedPtr<SWindow>{}, FTabId{_DebuggerTabName}}); })));
+    _EnginePreExitHandle = FCoreDelegates::OnEnginePreExit.AddRaw(this, &FCkOptimizationDebuggerModule::HandleEnginePreExit);
 }
 
 auto FCkOptimizationDebuggerModule::ShutdownModule() -> void
 {
+    if (_EnginePreExitHandle.IsValid()) { FCoreDelegates::OnEnginePreExit.Remove(_EnginePreExitHandle); _EnginePreExitHandle.Reset(); }
     FCkDebuggerToolRegistry::Get().Unregister(_DebuggerTabName, _DebuggerToolRegistrationId);
     _DebuggerToolRegistrationId = 0;
 
@@ -97,15 +102,15 @@ auto FCkOptimizationDebuggerModule::OpenDebugger() -> void
 
 auto FCkOptimizationDebuggerModule::CloseDebugger() -> void
 {
-    if (_DebuggerTab.IsValid())
-    {
-        // Engine shutdown destroys Slate windows BEFORE module unload — by then the tab's TSharedFromThis backing is
-        // gone and RequestCloseTab → SharedThis(this) trips the AsShared check. Just drop the ref on exit.
-        if (NOT IsEngineExitRequested())
-        { _DebuggerTab->RequestCloseTab(); }
-        _DebuggerTab.Reset();
-    }
+    if (_DebuggerWindow.IsValid()) { _DebuggerWindow->Release_Presentation(); }
+    ck::debugger_tabs::Release_DebuggerTab(_DebuggerTab, true);
+    _DebuggerWindow.Reset();
+}
 
+auto FCkOptimizationDebuggerModule::HandleEnginePreExit() -> void
+{
+    if (_DebuggerWindow.IsValid()) { _DebuggerWindow->Release_Presentation(); }
+    ck::debugger_tabs::Release_DebuggerTab(_DebuggerTab, false);
     _DebuggerWindow.Reset();
 }
 
@@ -135,6 +140,7 @@ auto FCkOptimizationDebuggerModule::OnSpawnDebuggerTab(const FSpawnTabArgs& InAr
         .Label(FText::FromString(TEXT("CK Optimization")))
         .OnTabClosed_Lambda([this](TSharedRef<SDockTab>)
         {
+            if (_DebuggerWindow.IsValid()) { _DebuggerWindow->Release_Presentation(); }
             _DebuggerWindow.Reset();
             _DebuggerTab.Reset();
         })

@@ -23,12 +23,17 @@
 // --------------------------------------------------------------------------------------------------------------------
 
 class SCkPerfLabPage;
+struct FCkOptimizationDebuggerLifecycleTestAccess;
 class FCkInspectorEditGuard;
 class ITableRow;
 class SEditableTextBox;
 class STextBlock;
 class SVerticalBox;
+class SBox;
 class SWidgetSwitcher;
+class FCkUiView;
+class FCkUiCollection;
+class SCkUiTable;
 
 // --------------------------------------------------------------------------------------------------------------------
 
@@ -120,15 +125,18 @@ struct FCkOptimizationDebugger_CleanupListItem
  *  finding names an object path inside a world, and entering or leaving PIE swaps the world those paths resolve
  *  against. Findings are dropped at that boundary rather than left pointing at a world that no longer exists.
  *
- *  Consequence for refresh: this window never polls, and therefore does NOT override `Tick`. Every rebuild is driven
- *  by an explicit event — scan, filter, page switch — so the base's gated style-revision watch is the only per-tick
- *  work here. */
+ *  Consequence for refresh: no world is polled and every model rebuild is driven by an explicit event — scan,
+ *  filter or page switch. The only local Tick work is the half-second authored-shell file watcher; the base still
+ *  owns its gated style-revision watch. */
 class SCkOptimizationDebuggerWindow : public SCkDebugger_WindowBase
 {
 public:
     static const FName WindowId;
 
     SLATE_BEGIN_ARGS(SCkOptimizationDebuggerWindow) {}
+#if WITH_DEV_AUTOMATION_TESTS
+        SLATE_ARGUMENT(FString, TestResourceDirectory)
+#endif
     SLATE_END_ARGS()
 
     auto
@@ -136,6 +144,9 @@ public:
         const FArguments& InArgs) -> void;
 
     virtual ~SCkOptimizationDebuggerWindow() override;
+    auto Release_Presentation() -> void;
+
+    virtual auto Tick(const FGeometry& InAllottedGeometry, double InCurrentTime, float InDeltaTime) -> void override;
 
     virtual auto Get_WindowId() const -> FName override { return WindowId; }
     virtual auto Get_WindowDisplayName() const -> FText override
@@ -145,6 +156,7 @@ protected:
     virtual auto OnStyleRevisionChanged() -> void override;
 
 private:
+    friend struct FCkOptimizationDebuggerLifecycleTestAccess;
     using FFindingItem = TSharedPtr<FCkOptimizationDebugger_FindingListItem>;
 
     // The memory tables list the model's plain row struct directly — unlike a finding line, a memory row needs no
@@ -165,6 +177,12 @@ private:
     auto DoCreate_Body() -> TSharedRef<SWidget>;
     auto DoCreate_Status() -> TSharedRef<SWidget>;
     auto DoCreate_PageTabs() -> TSharedRef<SWidget>;
+    auto Build_NativeShellFallback() -> TSharedRef<SWidget>;
+    auto Build_AuthoredShell() -> void;
+    auto Mount_AuthoredShell() -> bool;
+    auto Poll_AuthoredShell(double InCurrentTime) -> void;
+    auto Detach_FallbackPorts() -> void;
+    auto Restore_FallbackPorts() -> void;
 
     // ---- Pages. Switcher slots are added in ECkOptimizationDebugger_Page order; Get_PageIndex depends on it. ----
     auto DoCreate_DashboardPage() -> TSharedRef<SWidget>;
@@ -174,6 +192,8 @@ private:
     auto DoCreate_CleanupPage() -> TSharedRef<SWidget>;
     auto DoCreate_SnapshotsPage() -> TSharedRef<SWidget>;
     auto DoCreate_PerformancePage() -> TSharedRef<SWidget>;
+    auto Build_AuthoredDashboardPage() -> TSharedPtr<SWidget>;
+    auto Refresh_AuthoredDashboard() -> void;
 
     auto DoCreate_CategoryFilters() -> TSharedRef<SWidget>;
     auto DoCreate_ScopeFilters() -> TSharedRef<SWidget>;
@@ -585,9 +605,26 @@ private:
 
 private:
     FCkOptimizationDebugger_Model _Model;
+    bool _PresentationReleased = false;
 
     TSharedPtr<SWidgetSwitcher> _PageSwitcher;
+    TSharedPtr<SBox> _AuthoredShellHost;
+    TSharedPtr<FCkUiView> _AuthoredShellView;
+    TArray<TSharedPtr<SBox>> _FallbackPageHosts;
+    TArray<TSharedPtr<SWidget>> _PagePorts;
+    FString _AuthoredShellLoadFailure;
+    double _NextAuthoredShellPollSeconds = 0.0;
+    bool _UsingNativeShellFallback = true;
+#if WITH_DEV_AUTOMATION_TESTS
+    FString _TestResourceDirectory;
+#endif
     TSharedPtr<SCkPerfLabPage>  _PerfLabPage;
+
+    // These two views own only the ordinary authored presentation. The outer shell, context menus and the
+    // threshold editor remain separately owned because their state/action contracts are not repeat/table cells.
+    TSharedPtr<FCkUiView> _AuthoredDashboardView;
+    TSharedPtr<FCkUiCollection> _DashboardCards;
+    FString _AuthoredDashboardLoadFailure;
 
     TSharedPtr<SVerticalBox> _DashboardBox;
     TSharedPtr<SVerticalBox> _FindingDetailBox;

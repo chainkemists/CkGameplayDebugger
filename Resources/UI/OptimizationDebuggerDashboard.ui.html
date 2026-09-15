@@ -1,0 +1,24 @@
+<ui version="1">
+  <region name="main">
+    <scroll id="optimization-dashboard-scroll">
+      <column id="optimization-dashboard-root" class="page-root">
+        <column id="optimization-dashboard-before-scan" visible="dashboard-before-scan" class="empty-card">
+          <text id="optimization-dashboard-before-scan-copy" bind="dashboard-empty-copy" class="empty-copy" />
+          <button id="optimization-dashboard-scan" action="scan">Scan the open levels</button>
+        </column>
+        <column id="optimization-dashboard-summary" visible="dashboard-has-summary" class="summary">
+          <text id="optimization-dashboard-title" class="heading">Level stats</text>
+          <text id="optimization-dashboard-subtitle" class="muted">whole scan, with the change since the previous one</text>
+          <repeat id="optimization-dashboard-cards" bind="dashboard-cards" direction="horizontal" class="cards">
+            <column id="optimization-dashboard-card" class="card">
+              <text id="optimization-dashboard-card-label" bind-field="label" class="muted" />
+              <text id="optimization-dashboard-card-value" bind-field="value" class="value" />
+              <text id="optimization-dashboard-card-delta" bind-field="delta" class="delta" />
+            </column>
+          </repeat>
+        </column>
+        <native id="optimization-dashboard-specialist-sections" bind="dashboard-specialist-sections" class="specialist-sections" />
+      </column>
+    </scroll>
+  </region>
+</ui>

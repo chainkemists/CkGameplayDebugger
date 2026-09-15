@@ -7,6 +7,7 @@
 class FSpawnTabArgs;
 class SCkInsightsAnalyzerTab;
 class SDockTab;
+struct FCkInsightsLifecycleTestAccess;
 
 // --------------------------------------------------------------------------------------------------------------------
 
@@ -25,12 +26,15 @@ public:
     auto Get_CaptureController() -> FCkInsightsCaptureController& { return _CaptureController; }
 
 private:
+    friend struct FCkInsightsLifecycleTestAccess;
     auto OnSpawnDebuggerTab(const FSpawnTabArgs& InArgs) -> TSharedRef<SDockTab>;
+    auto HandleEnginePreExit() -> void;
 
     TSharedPtr<SCkInsightsAnalyzerTab> _DebuggerWindow;
     TSharedPtr<SDockTab> _DebuggerTab;
     FCkInsightsCaptureController _CaptureController;
     uint64 _DebuggerToolRegistrationId = 0;
+    FDelegateHandle _EnginePreExitHandle;
 
     static const FName _DebuggerTabName;
 };

@@ -32,6 +32,8 @@ public class CkInsightsDebugger : CkModuleRules
 
         PrivateDependencyModuleNames.AddRange(new string[]
         {
+            "Projects",
+            "CkSlateLayout",
             "CkProfile",
         });
 

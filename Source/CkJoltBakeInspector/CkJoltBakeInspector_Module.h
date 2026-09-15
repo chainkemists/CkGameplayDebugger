@@ -5,6 +5,7 @@
 
 class SCkJoltBakeInspectorWindow;
 class SDockTab;
+struct FCkJoltBakeInspectorAuthoredTestAccess;
 
 class FCkJoltBakeInspectorModule final : public IModuleInterface
 {
@@ -17,6 +18,8 @@ public:
     auto CloseInspector() -> void;
 
 private:
+    friend struct FCkJoltBakeInspectorAuthoredTestAccess;
+
     auto OnSpawnTab(const class FSpawnTabArgs& InArgs) -> TSharedRef<SDockTab>;
     auto HandleEnginePreExit() -> void;
 

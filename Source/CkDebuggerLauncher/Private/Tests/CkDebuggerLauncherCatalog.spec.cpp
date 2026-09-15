@@ -9,10 +9,13 @@
 #include "CkCore/Format/CkFormat.h"
 #include "CkCore/Validation/CkIsValid.h"
 
+#include "Framework/Application/SlateApplication.h"
 #include "Framework/Docking/TabManager.h"
 #include "Interfaces/IPluginManager.h"
 #include "Misc/AutomationTest.h"
+#include "Misc/ScopeExit.h"
 #include "ModuleDescriptor.h"
+#include "Widgets/Docking/SDockTab.h"
 
 // --------------------------------------------------------------------------------------------------------------------
 
@@ -127,6 +130,97 @@ bool FCkDebuggerLauncherCatalog_AllDebuggersHaveLaunchableDescriptors::RunTest(c
     }
 
     TestEqual(TEXT("Every expected tab id was registered"), ExpectedTabIds.Num(), 0);
+    return true;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FCkDebuggerLauncherCatalog_AllCatalogTabsCloseAndReopen,
+    "Ck.DebuggerLauncher.Catalog.AllCatalogTabsCloseAndReopen",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+// --------------------------------------------------------------------------------------------------------------------
+
+bool FCkDebuggerLauncherCatalog_AllCatalogTabsCloseAndReopen::RunTest(const FString& Parameters)
+{
+    if (NOT FSlateApplication::IsInitialized())
+    {
+        AddError(TEXT("Production-tab lifecycle census requires Slate."));
+        return false;
+    }
+
+    const TSharedRef<FGlobalTabmanager> TabManager = FGlobalTabmanager::Get();
+    const FName HostTabId{TEXT("LevelEditor")};
+    if (NOT TestTrue(TEXT("Lifecycle census has a stable Level Editor docking host"),
+        TabManager->FindExistingLiveTab(FTabId{HostTabId}).IsValid()))
+    { return false; }
+
+    const auto Tools = FCkDebuggerToolRegistry::Get().Get_Tools();
+    auto OpenedByTest = TSet<FName>{};
+    const auto DrainSlate = []()
+    {
+        FSlateApplication::Get().PumpMessages();
+        FSlateApplication::Get().Tick();
+    };
+    ON_SCOPE_EXIT
+    {
+        for (const auto TabId : OpenedByTest)
+        {
+            if (const auto LiveTab = TabManager->FindExistingLiveTab(FTabId{TabId}); LiveTab.IsValid())
+            { LiveTab->RequestCloseTab(); }
+        }
+        DrainSlate();
+    };
+
+    TestEqual(TEXT("Lifecycle census covers every registered standalone debugger tab"), Tools.Num(), 25);
+    for (const auto& Tool : Tools)
+    {
+        const auto TabId = Tool.Get_TabId();
+        const auto FixtureTabId = FName{*ck::Format_UE(TEXT("CkLifecycleFixture_{}"), TabId)};
+        const auto StartsClosedMessage = ck::Format_UE(
+            TEXT("Isolated lifecycle fixture starts with no live tab: {}"),
+            TabId);
+        if (NOT TestFalse(*StartsClosedMessage, TabManager->FindExistingLiveTab(FTabId{FixtureTabId}).IsValid()))
+        { continue; }
+
+        const auto FactoryMessage = ck::Format_UE(TEXT("Catalog exposes a production tab factory: {}"), TabId);
+        if (NOT TestTrue(*FactoryMessage, Tool.Get_TabFactory().IsBound()))
+        { continue; }
+
+        const TSharedRef<SDockTab> FirstTab = Tool.Get_TabFactory().Execute();
+        TabManager->InsertNewDocumentTab(
+            HostTabId, FixtureTabId, FTabManager::FLiveTabSearch{HostTabId}, FirstTab);
+        const auto OpensMessage = ck::Format_UE(TEXT("Production factory opens tab in a live docking host: {}"), TabId);
+        if (NOT TestTrue(*OpensMessage, TabManager->FindExistingLiveTab(FTabId{FixtureTabId}).IsValid()))
+        { continue; }
+        OpenedByTest.Add(FixtureTabId);
+
+        const auto FirstParentMessage = ck::Format_UE(TEXT("First tab is attached to a production host: {}"), TabId);
+        TestTrue(*FirstParentMessage, FirstTab->GetParent().IsValid());
+        FirstTab->RequestCloseTab();
+        DrainSlate();
+
+        const auto ClosesMessage = ck::Format_UE(TEXT("Normal close removes live tab: {}"), TabId);
+        if (NOT TestFalse(*ClosesMessage, TabManager->FindExistingLiveTab(FTabId{FixtureTabId}).IsValid()))
+        { continue; }
+
+        const TSharedRef<SDockTab> ReopenedTab = Tool.Get_TabFactory().Execute();
+        TabManager->InsertNewDocumentTab(
+            HostTabId, FixtureTabId, FTabManager::FLiveTabSearch{HostTabId}, ReopenedTab);
+        const auto ReopensMessage = ck::Format_UE(TEXT("Production factory reopens a fresh tab: {}"), TabId);
+        TestTrue(*ReopensMessage, TabManager->FindExistingLiveTab(FTabId{FixtureTabId}).IsValid());
+
+        const auto ReopenedParentMessage = ck::Format_UE(TEXT("Reopened tab is attached to a production host: {}"), TabId);
+        TestTrue(*ReopenedParentMessage, ReopenedTab->GetParent().IsValid());
+        ReopenedTab->RequestCloseTab();
+        DrainSlate();
+
+        const auto FinalCloseMessage = ck::Format_UE(TEXT("Reopened tab closes without a stale live entry: {}"), TabId);
+        if (TestFalse(*FinalCloseMessage, TabManager->FindExistingLiveTab(FTabId{FixtureTabId}).IsValid()))
+        { OpenedByTest.Remove(FixtureTabId); }
+    }
+
     return true;
 }
 

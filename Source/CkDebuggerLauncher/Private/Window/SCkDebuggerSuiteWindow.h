@@ -7,6 +7,7 @@
 class SBox;
 class SCkDebuggerLauncher;
 class SDockTab;
+class FCkUiView;
 
 // ====================================================================================================================
 // One host window for the whole debugger suite: the category rail on the left, the selected tool's
@@ -30,10 +31,12 @@ class SCkDebuggerSuiteWindow : public SCompoundWidget
 {
 public:
     SLATE_BEGIN_ARGS(SCkDebuggerSuiteWindow) {}
+        SLATE_ARGUMENT(FString, ResourceDirectoryOverride)
     SLATE_END_ARGS()
 
     auto Construct(const FArguments& InArgs) -> void;
     virtual ~SCkDebuggerSuiteWindow() override;
+    auto Tick(const FGeometry& InAllottedGeometry, double InCurrentTime, float InDeltaTime) -> void override;
 
     /**
      * Releases every embedded tool. InRunCloseCallbacks drives the owning modules' OnTabClosed:
@@ -41,8 +44,19 @@ public:
      * where those callbacks belong to modules that are already being torn down.
      */
     auto Release_AllEmbeddedTools(bool InRunCloseCallbacks) -> void;
+    auto Release_Presentation() -> void;
+    auto Get_AuthoredShellView() const -> TSharedPtr<FCkUiView> { return _AuthoredShellView; }
+    auto IsUsingNativeShellFallback() const -> bool { return _UsingNativeShellFallback; }
+    auto Get_AuthoredShellLoadFailure() const -> const FString& { return _AuthoredShellLoadFailure; }
 
 private:
+    friend struct FCkDebuggerSuiteAuthoredTestAccess;
+    auto Build_AuthoredShell() -> void;
+    auto Poll_AuthoredShell(double InCurrentTime) -> void;
+    auto Mount_AuthoredShell() -> bool;
+    auto Build_NativeShellFallback() -> TSharedRef<SWidget>;
+    auto Detach_FallbackPorts() -> void;
+    auto Restore_FallbackPorts() -> void;
     auto Handle_ToolSelected(FName InTabId) -> void;
     auto Show_Tool(FName InTabId) -> void;
     auto Release_EmbeddedTool(FName InTabId, bool InRunCloseCallbacks) -> void;
@@ -61,6 +75,18 @@ private:
 
     TSharedPtr<SCkDebuggerLauncher> _Rail;
     TSharedPtr<SBox> _ContentHost;
+    TSharedPtr<SBox> _FallbackRailHost;
+    TSharedPtr<SBox> _FallbackContentHost;
+    TSharedPtr<SBox> _ShellHost;
+    TSharedPtr<SWidget> _NativeBody;
+    TSharedPtr<FCkUiView> _AuthoredShellView;
+    FString _AuthoredShellLoadFailure;
+    FString _AuthoredShellMarkupPath;
+    FString _AuthoredShellStylesheetPath;
+    FString _ResourceDirectoryOverride;
+    double _NextAuthoredShellPollSeconds = 0.0;
+    bool _UsingNativeShellFallback = true;
+    bool _PresentationReleased = false;
 
     // TabId -> the factory-built tab whose content is on loan to _ContentHost. Owns the embedded
     // tool's lifetime; nothing else holds these.

@@ -37,6 +37,7 @@ public:
     static const FName& SuiteTabName;
 
 private:
+    friend struct FCkDebuggerLauncherModuleAuthoredTestAccess;
     auto OnSpawnLauncherTab(const FSpawnTabArgs& InArgs) -> TSharedRef<SDockTab>;
     auto OnSpawnSuiteTab(const FSpawnTabArgs& InArgs) -> TSharedRef<SDockTab>;
 

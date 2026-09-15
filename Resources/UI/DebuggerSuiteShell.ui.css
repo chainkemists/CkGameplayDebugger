@@ -1,0 +1,6 @@
+.debugger-suite-shell { min-width: 520px; min-height: 360px; flex-grow: 1; flex-shrink: 1; }
+.debugger-suite-rail { min-width: 220px; }
+.debugger-suite-content { flex-grow: 1; flex-shrink: 1; }
+.debugger-suite-header { padding: 10px 6px; }
+.debugger-suite-title { flex-grow: 1; }
+.debugger-suite-tool-content { flex-grow: 1; flex-shrink: 1; }

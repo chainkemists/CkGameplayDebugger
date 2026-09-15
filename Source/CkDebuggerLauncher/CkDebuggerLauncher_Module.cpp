@@ -13,6 +13,7 @@
 #include "Misc/CoreDelegates.h"
 #include "Textures/SlateIcon.h"
 #include "Widgets/Docking/SDockTab.h"
+#include "Widgets/SNullWidget.h"
 
 #if WITH_EDITOR
     #include "WorkspaceMenuStructure.h"
@@ -73,6 +74,8 @@ auto FCkDebuggerLauncherModule::StartupModule() -> void
     auto& TabSpawner = FGlobalTabmanager::Get()->RegisterNomadTabSpawner(
         LauncherTabName,
         FOnSpawnTab::CreateRaw(this, &FCkDebuggerLauncherModule::OnSpawnLauncherTab))
+        .SetReuseTabMethod(FOnFindTabToReuse::CreateLambda(
+            [this](const FTabId&) { return _LauncherTab; }))
         .SetDisplayName(LOCTEXT("LauncherTabTitle", "CK Debugger Launcher"))
         .SetTooltipText(LOCTEXT("LauncherTabTooltip", "Open and focus the available CK debugger tools"))
         .SetIcon(FSlateIcon{
@@ -86,6 +89,8 @@ auto FCkDebuggerLauncherModule::StartupModule() -> void
     auto& SuiteSpawner = FGlobalTabmanager::Get()->RegisterNomadTabSpawner(
         SuiteTabName,
         FOnSpawnTab::CreateRaw(this, &FCkDebuggerLauncherModule::OnSpawnSuiteTab))
+        .SetReuseTabMethod(FOnFindTabToReuse::CreateLambda(
+            [this](const FTabId&) { return _SuiteTab; }))
         .SetDisplayName(LOCTEXT("SuiteTabTitle", "CK Debugger Suite"))
         .SetTooltipText(LOCTEXT("SuiteTabTooltip",
             "One window hosting the CK debugger tools, with the category rail on the left"))
@@ -138,11 +143,17 @@ auto FCkDebuggerLauncherModule::HandleEnginePreExit() -> void
     // TSharedFromThis weak-self can already be cleared, so SharedThis would assert. Dropping the
     // refs is all this hook needs to do.
     if (_SuiteWindow.IsValid())
-    { _SuiteWindow->Release_AllEmbeddedTools(false); }
+    {
+        _SuiteWindow->Release_Presentation();
+        _SuiteWindow->Release_AllEmbeddedTools(false);
+    }
 
-    _SuiteTab.Reset();
+    if (_LauncherWindow.IsValid())
+    { _LauncherWindow->Release_Presentation(); }
+
+    ck::debugger_tabs::Release_DebuggerTab(_SuiteTab, false);
     _SuiteWindow.Reset();
-    _LauncherTab.Reset();
+    ck::debugger_tabs::Release_DebuggerTab(_LauncherTab, false);
     _LauncherWindow.Reset();
 }
 
@@ -153,20 +164,24 @@ auto FCkDebuggerLauncherModule::Get() -> FCkDebuggerLauncherModule&
 
 auto FCkDebuggerLauncherModule::OpenLauncher() -> void
 {
+    // A close detaches content before the docking tree processes removal. Never focus that
+    // retained empty tab: it has no module-owned presentation to service lifecycle calls.
+    if (NOT _LauncherWindow.IsValid())
+    {
+        if (auto ExistingTab = FGlobalTabmanager::Get()->FindExistingLiveTab(FTabId{LauncherTabName});
+            ExistingTab.IsValid() && ExistingTab->GetContent() == SNullWidget::NullWidget)
+        { ck::debugger_tabs::Release_DebuggerTab(ExistingTab, true); }
+    }
+
     FGlobalTabmanager::Get()->TryInvokeTab(LauncherTabName);
 }
 
 auto FCkDebuggerLauncherModule::CloseLauncher() -> void
 {
-    if (_LauncherTab.IsValid())
-    {
-        // Engine shutdown destroys Slate windows BEFORE module unload — by then
-        // the tab's TSharedFromThis backing is gone and RequestCloseTab →
-        // SharedThis(this) trips the AsShared check. Just drop the ref on exit.
-        if (NOT IsEngineExitRequested())
-        { _LauncherTab->RequestCloseTab(); }
-        _LauncherTab.Reset();
-    }
+    if (_LauncherWindow.IsValid())
+    { _LauncherWindow->Release_Presentation(); }
+
+    ck::debugger_tabs::Release_DebuggerTab(_LauncherTab, NOT IsEngineExitRequested());
 
     _LauncherWindow.Reset();
 }
@@ -184,26 +199,31 @@ auto FCkDebuggerLauncherModule::IsLauncherOpen() const -> bool
 
 auto FCkDebuggerLauncherModule::OpenSuite() -> void
 {
+    // Same detached-tab recovery as the launcher. A live suite presentation is deliberately
+    // preserved; only a tab that CloseSuite explicitly emptied is evicted.
+    if (NOT _SuiteWindow.IsValid())
+    {
+        if (auto ExistingTab = FGlobalTabmanager::Get()->FindExistingLiveTab(FTabId{SuiteTabName});
+            ExistingTab.IsValid() && ExistingTab->GetContent() == SNullWidget::NullWidget)
+        { ck::debugger_tabs::Release_DebuggerTab(ExistingTab, true); }
+    }
+
     FGlobalTabmanager::Get()->TryInvokeTab(SuiteTabName);
 }
 
 auto FCkDebuggerLauncherModule::CloseSuite() -> void
 {
-    if (_SuiteTab.IsValid())
-    {
-        // Engine shutdown destroys Slate windows BEFORE module unload — see CloseLauncher.
-        if (NOT IsEngineExitRequested())
-        { _SuiteTab->RequestCloseTab(); }
-        _SuiteTab.Reset();
-    }
+    const bool RunCloseCallbacks = NOT IsEngineExitRequested();
 
     if (_SuiteWindow.IsValid())
     {
-        // Belt and braces: the tab's OnTabClosed normally does this. It does not run when the tab
-        // was already gone, and a leaked embedded tool keeps a feature widget tree alive.
-        _SuiteWindow->Release_AllEmbeddedTools(NOT IsEngineExitRequested());
+        _SuiteWindow->Release_Presentation();
+        _SuiteWindow->Release_AllEmbeddedTools(RunCloseCallbacks);
     }
 
+    // Clear the raw [this] close callback before requesting the synchronous close, and always
+    // empty the tab so a docking tree or adversarial held reference cannot retain module widgets.
+    ck::debugger_tabs::Release_DebuggerTab(_SuiteTab, RunCloseCallbacks);
     _SuiteWindow.Reset();
 }
 
@@ -225,13 +245,14 @@ auto FCkDebuggerLauncherModule::OnSpawnSuiteTab(const FSpawnTabArgs& InArgs) -> 
     _SuiteTab = SNew(SDockTab)
         .TabRole(ETabRole::NomadTab)
         .Label(LOCTEXT("SuiteTabLabel", "CK Debugger Suite"))
-        .OnTabClosed_Lambda([this](TSharedRef<SDockTab>)
+        .OnTabClosed_Lambda([this](TSharedRef<SDockTab> Tab)
         {
             // Closing the host closes the tools it embedded — run their close callbacks so each
             // owning module resets its own window pointers.
             if (_SuiteWindow.IsValid())
             { _SuiteWindow->Release_AllEmbeddedTools(true); }
 
+            Tab->SetContent(SNullWidget::NullWidget);
             _SuiteWindow.Reset();
             _SuiteTab.Reset();
         })
@@ -249,8 +270,10 @@ auto FCkDebuggerLauncherModule::OnSpawnLauncherTab(const FSpawnTabArgs& InArgs) 
     _LauncherTab = SNew(SDockTab)
         .TabRole(ETabRole::NomadTab)
         .Label(LOCTEXT("LauncherTabLabel", "CK Debugger Launcher"))
-        .OnTabClosed_Lambda([this](TSharedRef<SDockTab>)
+        .OnTabClosed_Lambda([this](TSharedRef<SDockTab> Tab)
         {
+            if (_LauncherWindow.IsValid()) { _LauncherWindow->Release_Presentation(); }
+            Tab->SetContent(SNullWidget::NullWidget);
             _LauncherWindow.Reset();
             _LauncherTab.Reset();
         })

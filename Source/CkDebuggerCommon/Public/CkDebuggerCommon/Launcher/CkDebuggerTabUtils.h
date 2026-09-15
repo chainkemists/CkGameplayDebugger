@@ -36,7 +36,10 @@ namespace ck::debugger_tabs
 
     /**
      * Detaches a module-owned tab from callbacks and content before releasing the final local reference.
-     * Request closing only while Slate is live; engine-exit teardown must detach without calling SharedThis.
+     * A requested close is terminal because callers have already released their presentation: after giving normal
+     * close policy its first opportunity, a refusal is force-removed so no live inert tab can survive. Tools that
+     * need a user-vetoable close must resolve that policy before owner release and must not call this terminal path.
+     * Engine-exit teardown only detaches and never calls SharedThis-based tab operations.
      */
     CKDEBUGGERCOMMON_API auto Release_DebuggerTab(
         TSharedPtr<SDockTab>& InOutTab,

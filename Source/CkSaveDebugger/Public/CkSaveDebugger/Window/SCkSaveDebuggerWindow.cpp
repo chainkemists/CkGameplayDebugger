@@ -48,6 +48,7 @@
 #include <DesktopPlatformModule.h>
 #include <Engine/World.h>
 #include <Framework/Application/SlateApplication.h>
+#include <Framework/Application/IMenu.h>
 #include <Styling/SlateBrush.h>
 #include <Framework/MultiBox/MultiBoxBuilder.h>
 #include <HAL/PlatformApplicationMisc.h>
@@ -301,16 +302,55 @@ namespace ck_save_debugger_window
             {TEXT("--space-s"), FString::SanitizeFloat(CkStyle::SpaceS)},
         };
     }
+
+    auto SaveShellStyleTokens() -> FCkUiView::FTokens
+    {
+        return {
+            {TEXT("--save-space-s"), FString::SanitizeFloat(CkStyle::SpaceS)},
+            {TEXT("--save-surface"), TEXT("#") + CkStyle::Bg2().ToFColorSRGB().ToHex()},
+            {TEXT("--save-border"), TEXT("#") + CkStyle::Border().ToFColorSRGB().ToHex()},
+            {TEXT("--save-text"), TEXT("#") + CkStyle::Text().ToFColorSRGB().ToHex()},
+            {TEXT("--save-heading-size"), FString::SanitizeFloat(CkStyle::FontSizeSmall())},
+        };
+    }
+
+    auto ReleaseOwnedSlateInput(const TSharedRef<SWidget>& InRoot) -> void
+    {
+        if (NOT FSlateApplication::IsInitialized()) { return; }
+        FSlateApplication& Slate = FSlateApplication::Get();
+        Slate.ForEachUser([&Slate, &InRoot](FSlateUser& InUser)
+        {
+            const auto IsUnderRoot = [&Slate, &InRoot](const TSharedPtr<SWidget>& InWidget)
+            {
+                FWidgetPath Path;
+                if (!InWidget.IsValid() || !Slate.GeneratePathToWidgetUnchecked(InWidget.ToSharedRef(), Path, EVisibility::All)) { return false; }
+                for (int32 WidgetIndex = 0; WidgetIndex < Path.Widgets.Num(); ++WidgetIndex)
+                {
+                    if (Path.Widgets[WidgetIndex].Widget == InRoot) { return true; }
+                }
+                return false;
+            };
+            const int32 UserIndex = InUser.GetUserIndex();
+            if (IsUnderRoot(Slate.GetUserFocusedWidget(UserIndex))) { Slate.ClearUserFocus(UserIndex, EFocusCause::SetDirectly); }
+            if (IsUnderRoot(InUser.GetCursorCaptor())) { InUser.ReleaseCursorCapture(); }
+            TSet<uint32> PointerIndices{FSlateApplication::CursorPointerIndex};
+            for (const auto& Entry : InUser.GetWidgetsUnderPointerLastEventByIndex()) { PointerIndices.Add(Entry.Key); }
+            for (const uint32 PointerIndex : PointerIndices) { if (IsUnderRoot(InUser.GetPointerCaptor(PointerIndex))) { InUser.ReleaseCapture(PointerIndex); } }
+        }, true);
+    }
 }
 
 // --------------------------------------------------------------------------------------------------------------------
 
 auto
-    SCkSaveDebuggerWindow::
+SCkSaveDebuggerWindow::
     Construct(
         const FArguments& InArgs)
     -> void
 {
+#if WITH_DEV_AUTOMATION_TESTS
+    _TestResourceDirectory = InArgs._TestResourceDirectory;
+#endif
     DoInitialize_EntityNavigation();
 
     ChildSlot
@@ -367,27 +407,7 @@ auto
 
 SCkSaveDebuggerWindow::~SCkSaveDebuggerWindow()
 {
-    if (_EntityNavigationView.IsValid())
-    {
-        if (const TSharedPtr<SCkUiTree> Tree = _EntityNavigationView->GetTree(TEXT("entity-tree")); Tree.IsValid())
-        { Tree->ReleaseContextMenu(); }
-    }
-
-#if WITH_EDITOR
-    USelection::SelectionChangedEvent.RemoveAll(this);
-    FEditorDelegates::OnMapOpened.RemoveAll(this);
-
-    // On engine exit the level-editor mode stack is already tearing down — the auto-discovered EdMode is
-    // unregistered by UAssetEditorSubsystem itself, so only the published state needs dropping.
-    if (NOT IsEngineExitRequested())
-    {
-        ck::save_debugger_viz::Set_VisualizerEnabled(false);
-        ck::save_debugger_viz_retained::Clear();
-    }
-
-    ck::save_debugger_viz::Unregister_OnRowClicked();
-    ck::save_debugger_viz::Clear_Rows();
-#endif
+    Release_Presentation();
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -397,6 +417,9 @@ auto
     OnStyleRevisionChanged()
     -> void
 {
+    if (_PresentationReleased)
+    { return; }
+
     DoRebuild_Summary();
     DoRebuild_EntityDetail();
     DoRebuild_BlobDetail();
@@ -407,6 +430,9 @@ auto
 
 auto SCkSaveDebuggerWindow::TryReload_EntityNavigationLayout(const FString& InMarkup, const FString& InStylesheet) -> FCkUiLoadResult
 {
+    if (_PresentationReleased)
+    { return FCkUiLoadResult{false, {TEXT("Save debugger presentation has been released.")}}; }
+
     const FCkUiLoadResult Result = _EntityNavigationView.IsValid()
         ? _EntityNavigationView->TryReload(InMarkup, InStylesheet, TEXT("SaveDebugger"))
         : FCkUiLoadResult{false, {TEXT("Authored entity navigation is unavailable.")}};
@@ -459,7 +485,7 @@ auto SCkSaveDebuggerWindow::Get_EntityHighlightStringForTest() const -> const FS
 
 auto SCkSaveDebuggerWindow::Open_SaveFileForTest(const FString& InAbsolutePath) -> bool
 {
-    if (InAbsolutePath.IsEmpty() || !FPaths::FileExists(InAbsolutePath)) { return false; }
+    if (_PresentationReleased || InAbsolutePath.IsEmpty() || !FPaths::FileExists(InAbsolutePath)) { return false; }
     DoOpen_Path(InAbsolutePath);
     return _CurrentPath == InAbsolutePath;
 }
@@ -539,6 +565,9 @@ auto SCkSaveDebuggerWindow::DoReload_EntityNavigationLayout() -> void
 
 auto SCkSaveDebuggerWindow::DoTick_EntityNavigationLayout(double InCurrentTime, float InDeltaTime) -> EActiveTimerReturnType
 {
+    if (_PresentationReleased)
+    { return EActiveTimerReturnType::Stop; }
+
     if (_EntityNavigationView.IsValid() && _EntityNavigationView->PollFiles())
     {
         if (_EntityNavigationView->GetLastResult().Succeeded)
@@ -897,264 +926,380 @@ auto
     DoCreate_Body()
     -> TSharedRef<SWidget>
 {
-    return SNew(SVerticalBox)
+    // The old tree is the complete failure representation.  Do not move a port until the authored document has
+    // validated every required binding; an incomplete document is not a partly usable debugger.
+    const TSharedRef<SWidget> NativeBody = DoCreate_NativeBody();
+    SAssignNew(_BodyHost, SBox)
+    [
+        NativeBody
+    ];
+    DoInitialize_AuthoredBody();
+    return _BodyHost.ToSharedRef();
+}
 
-        + SVerticalBox::Slot()
-        .AutoHeight()
+auto SCkSaveDebuggerWindow::DoInitialize_AuthoredBody() -> void
+{
+    TSharedPtr<const FCkUiWidgetRegistrySnapshot> Registry;
+    const FCkUiLoadResult RegistryResult = FCkDebug_UiRegistry::TryCreate(Registry);
+    const TSharedPtr<IPlugin> Plugin = IPluginManager::Get().FindPlugin(TEXT("CkDebugger"));
+    if (!RegistryResult.Succeeded || !Registry.IsValid() || !Plugin.IsValid() || !_BodyHost.IsValid()
+        || !_SummaryMount.IsValid() || !_EntityNavigationMount.IsValid() || !_EntityDetailMount.IsValid()
+        || !_PayloadMount.IsValid() || !_RightColumnMount.IsValid() || !_DiagnosticsMount.IsValid())
+    { return; }
+
+    auto Ports = FCkUiView::FNativeBindings{};
+    Ports.Add(TEXT("summary"), _SummaryMount); Ports.Add(TEXT("entity-navigation"), _EntityNavigationMount);
+    Ports.Add(TEXT("entity-detail"), _EntityDetailMount); Ports.Add(TEXT("payload-list"), _PayloadMount);
+    Ports.Add(TEXT("right-column"), _RightColumnMount); Ports.Add(TEXT("diagnostics"), _DiagnosticsMount);
+    auto Data = FCkUiView::FDataBindings{};
+    Data.CanDispatchEvents = TAttribute<bool>::CreateLambda([Weak = TWeakPtr<SCkSaveDebuggerWindow>{SharedThis(this)}]()
+    { const TSharedPtr<SCkSaveDebuggerWindow> Window = Weak.Pin(); return Window.IsValid() && !Window->_PresentationReleased; });
+    const TSharedRef<FCkUiView> Candidate = FCkUiView::Create(MoveTemp(Ports), {}, ck_save_debugger_window::SaveShellStyleTokens(),
+        CkStyle::RegularFont(CkStyle::FontSizeBody()), MoveTemp(Data), Registry);
+    FString Directory = FPaths::Combine(Plugin->GetBaseDir(), TEXT("Resources/UI"));
+#if WITH_DEV_AUTOMATION_TESTS
+    if (!_TestResourceDirectory.IsEmpty()) { Directory = _TestResourceDirectory; }
+#endif
+    Candidate->SetFiles(FPaths::Combine(Directory, TEXT("SaveDebuggerShell.ui.html")),
+        FPaths::Combine(Directory, TEXT("SaveDebuggerShell.ui.css")));
+    Candidate->GetRegion(TEXT("main"));
+    // Admission rejects a binding which remains parented by the native fallback. The retained ports are detached
+    // as one transaction; every failed admission restores the complete native body before returning.
+    DoDetach_NativeBodyPorts();
+    _AuthoredBodyView = Candidate;
+    Candidate->PollFiles(ck_save_debugger_window::SaveShellStyleTokens());
+    if (!Candidate->GetLastResult().Succeeded || !DoMount_AuthoredBody())
+    {
+        DoRestore_NativeBodyPorts();
+        RegisterActiveTimer(0.5f, FWidgetActiveTimerDelegate::CreateSP(this, &SCkSaveDebuggerWindow::DoPoll_AuthoredBody));
+        return;
+    }
+    RegisterActiveTimer(0.5f, FWidgetActiveTimerDelegate::CreateSP(this, &SCkSaveDebuggerWindow::DoPoll_AuthoredBody));
+}
+
+auto SCkSaveDebuggerWindow::DoPoll_AuthoredBody(double InCurrentTime, float InDeltaTime) -> EActiveTimerReturnType
+{
+    if (_PresentationReleased || !_AuthoredBodyView.IsValid()) { return EActiveTimerReturnType::Stop; }
+    if (_UsingNativeBodyFallback)
+    { DoDetach_NativeBodyPorts(); }
+
+    _AuthoredBodyView->PollFiles(ck_save_debugger_window::SaveShellStyleTokens());
+    if (_UsingNativeBodyFallback && _AuthoredBodyView->GetLastResult().Succeeded && DoMount_AuthoredBody())
+    {
+        return EActiveTimerReturnType::Continue;
+    }
+    if (_UsingNativeBodyFallback)
+    { DoRestore_NativeBodyPorts(); }
+    return EActiveTimerReturnType::Continue;
+}
+
+auto SCkSaveDebuggerWindow::DoMount_AuthoredBody() -> bool
+{
+    if (!_AuthoredBodyView.IsValid() || !_BodyHost.IsValid() || !_AuthoredBodyView->GetLastResult().Succeeded)
+    { return false; }
+
+    _BodyHost->SetContent(SNullWidget::NullWidget);
+    _BodyHost->SetContent(_AuthoredBodyView->GetRegion(TEXT("main")));
+    _UsingNativeBodyFallback = false;
+    return true;
+}
+
+auto SCkSaveDebuggerWindow::DoDetach_NativeBodyPorts() -> void
+{
+    // A port may only have one Slate parent. Clear every fallback host before FCkUiView admits or mounts it.
+    for (const TSharedPtr<SBox>& Host : {_FallbackSummaryHost, _FallbackEntityNavigationHost,
+         _FallbackEntityDetailHost, _FallbackPayloadHost, _FallbackRightColumnHost, _FallbackDiagnosticsHost})
+    {
+        if (Host.IsValid()) { Host->SetContent(SNullWidget::NullWidget); }
+    }
+}
+
+auto SCkSaveDebuggerWindow::DoRestore_NativeBodyPorts() -> void
+{
+    const auto RestoreIfDetached = [](const TSharedPtr<SBox>& InHost, const TSharedPtr<SBox>& InPort) -> void
+    {
+        if (!InHost.IsValid() || !InPort.IsValid() || InPort->GetParentWidget().IsValid())
+        { return; }
+        InHost->SetContent(InPort.ToSharedRef());
+    };
+
+    RestoreIfDetached(_FallbackSummaryHost, _SummaryMount);
+    RestoreIfDetached(_FallbackEntityNavigationHost, _EntityNavigationMount);
+    RestoreIfDetached(_FallbackEntityDetailHost, _EntityDetailMount);
+    RestoreIfDetached(_FallbackPayloadHost, _PayloadMount);
+    RestoreIfDetached(_FallbackRightColumnHost, _RightColumnMount);
+    RestoreIfDetached(_FallbackDiagnosticsHost, _DiagnosticsMount);
+}
+
+auto SCkSaveDebuggerWindow::Release_Presentation() -> void
+{
+    if (_PresentationReleased)
+    { return; }
+
+    _PresentationReleased = true;
+
+#if WITH_EDITOR
+    // These delegates and the visualizer callback can outlive a detached tab when a caller still holds the Slate
+    // window. Drop every route before dismantling widgets so no editor event can re-enter released presentation.
+    USelection::SelectionChangedEvent.RemoveAll(this);
+    FEditorDelegates::OnMapOpened.RemoveAll(this);
+    ck::save_debugger_viz::Unregister_OnRowClicked();
+    ck::save_debugger_viz::Clear_Rows();
+
+    // During engine exit the level-editor mode stack owns its own shutdown; outside that path the window must
+    // explicitly deactivate its mode and retained editor entities before the tab loses its content.
+    if (NOT IsEngineExitRequested())
+    {
+        ck::save_debugger_viz::Set_VisualizerEnabled(false);
+        ck::save_debugger_viz_retained::Clear();
+    }
+#endif
+
+    if (_AuthoredBodyView.IsValid()) { _AuthoredBodyView->ReleaseOwnerInteractions(); }
+    if (_EntityNavigationView.IsValid()) { _EntityNavigationView->ReleaseOwnerInteractions(); }
+    if (const TSharedPtr<SCkUiTree> Tree = Get_AuthoredEntityTree(); Tree.IsValid())
+    { Tree->ReleaseContextMenu(); }
+    ReleaseContextMenus();
+
+    if (_BodyHost.IsValid()) { ck_save_debugger_window::ReleaseOwnedSlateInput(_BodyHost.ToSharedRef()); }
+
+    if (_BodyHost.IsValid()) { _BodyHost->SetContent(SNullWidget::NullWidget); }
+    for (const TSharedPtr<SBox>& Port : {_SummaryMount, _EntityNavigationMount, _EntityDetailMount,
+         _PayloadMount, _RightColumnMount, _DiagnosticsMount})
+    {
+        if (Port.IsValid()) { Port->SetContent(SNullWidget::NullWidget); }
+    }
+    ChildSlot[SNullWidget::NullWidget];
+    _AuthoredBodyView.Reset();
+    _EntityNavigationView.Reset();
+}
+
+auto
+    SCkSaveDebuggerWindow::
+    DoCreate_NativeBody()
+    -> TSharedRef<SWidget>
+{
+    const TSharedRef<SWidget> SummaryPort = SAssignNew(_SummaryMount, SBox)
+    [
+        SAssignNew(_SummaryBox, SVerticalBox)
+    ];
+
+    const TSharedRef<SWidget> EntityNavigationPort = SAssignNew(_EntityNavigationMount, SBox)
+    [
+        SNew(SCkDebug_PaneHost)
+        [
+            SNew(SVerticalBox)
+            + SVerticalBox::Slot().AutoHeight()
+            [
+                SNew(STextBlock)
+                .Text_Lambda([this]() -> FText { return FText::FromString(_EntityNavigationPublicationError); })
+                .AutoWrapText(true)
+                .ColorAndOpacity(FSlateColor{CkStyle::Err()})
+                .Visibility_Lambda([this]() -> EVisibility
+                { return _EntityNavigationPublicationError.IsEmpty() ? EVisibility::Collapsed : EVisibility::Visible; })
+            ]
+            + SVerticalBox::Slot().FillHeight(1.0f)
+            [
+                _EntityNavigationView.IsValid()
+                    ? _EntityNavigationView->GetRegion(TEXT("entity-navigation"))
+                    : SNullWidget::NullWidget
+            ]
+        ]
+    ];
+
+    const TSharedRef<SWidget> EntityDetailPort = SAssignNew(_EntityDetailMount, SBox)
+    [
+        SNew(SScrollBox)
+        + SScrollBox::Slot()
         .Padding(CkStyle::SpaceM, CkStyle::SpaceS)
         [
-            SAssignNew(_SummaryBox, SVerticalBox)
+            SAssignNew(_EntityDetailBox, SVerticalBox)
         ]
+    ];
 
-        + SVerticalBox::Slot()
-        .FillHeight(1.0f)
+    const TSharedRef<SWidget> PayloadPort = SAssignNew(_PayloadMount, SBox)
+    [
+        SNew(SVerticalBox)
+        + SVerticalBox::Slot().AutoHeight()
         [
-            // Vertical splitter, not fixed 0.72/0.28 weights: how much height diagnostics deserve depends
-            // entirely on the file — a clean save wants none, a broken one wants most of the window.
+            SNew(SHorizontalBox)
+            + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+            .Padding(0.0f, 0.0f, CkStyle::SpaceS, 0.0f)
+            [
+                SNew(SCkDebug_Icon)
+                .Brush(ck_save_debugger_window::Get_IconBrush(ECk_Icon::Payload))
+                .Meaning(FText::FromString(TEXT("Replicated-data blobs saved against the selected entity")))
+                .ColorAndOpacity(FSlateColor{CkStyle::Accent()})
+                .Size(FVector2D{ck_save_debugger_window::k_PanelIconSize, ck_save_debugger_window::k_PanelIconSize})
+            ]
+            + SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)
+            [
+                SNew(SCkDebug_SectionHeader)
+                .Label(FText::FromString(TEXT("Payloads")))
+                .ToolTip(FText::FromString(TEXT("Every payload the save holds for the selected entity")))
+                .Underline(true)
+                .RightContent()
+                [
+                    SNew(SCkDebug_CountBadge)
+                    .ValueText_Lambda([this]() -> FText
+                    { return FText::FromString(ck::Format_UE(TEXT("{}"), _PayloadRows.Num())); })
+                    .ValueColor(CkStyle::Text())
+                    .BackgroundColor(CkStyle::Bg2())
+                    .BorderColor(CkStyle::Border())
+                ]
+            ]
+        ]
+        + SVerticalBox::Slot().FillHeight(1.0f)
+        [
+            SAssignNew(_PayloadList, SListView<TSharedPtr<FCkSaveDebugger_PayloadRow>>)
+            .ListItemsSource(&_PayloadRows)
+            .OnGenerateRow(this, &SCkSaveDebuggerWindow::DoGenerate_PayloadRow)
+            .OnSelectionChanged(this, &SCkSaveDebuggerWindow::DoOnPayloadSelectionChanged)
+            .OnContextMenuOpening(this, &SCkSaveDebuggerWindow::DoOnPayloadContextMenu)
+            .SelectionMode(ESelectionMode::Single)
+        ]
+    ];
+
+    const TSharedRef<SWidget> RightColumnPort = SAssignNew(_RightColumnMount, SBox)
+    [
+        SNew(SCkDebug_PaneHost)
+        .ContentMode(ECkDebugPaneContent::OpaqueRenderer)
+        [
+            SAssignNew(_RightColumnSwitcher, SWidgetSwitcher)
+            .WidgetIndex_Lambda([this]() -> int32 { return _Model.Get_HasDiff() ? 1 : 0; })
+            + SWidgetSwitcher::Slot()[DoCreate_BlobColumn()]
+            + SWidgetSwitcher::Slot()[DoCreate_DiffColumn()]
+        ]
+    ];
+
+    const TSharedRef<SWidget> DiagnosticsPort = SAssignNew(_DiagnosticsMount, SBox)
+    [
+        SNew(SCkDebug_PaneHost)
+        [
+            SNew(SVerticalBox)
+            + SVerticalBox::Slot().AutoHeight()
+            .Padding(CkStyle::SpaceM, CkStyle::SpaceS, CkStyle::SpaceM, 0.0f)
+            [
+                SNew(SHorizontalBox)
+                + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+                .Padding(0.0f, 0.0f, CkStyle::SpaceS, 0.0f)
+                [
+                    SNew(SCkDebug_Icon)
+                    .Brush(ck_save_debugger_window::Get_IconBrush(ECk_Icon::Diagnostics))
+                    .Meaning(FText::FromString(TEXT("Everything the inspection analyzer had to say about this file")))
+                    .ColorAndOpacity(FSlateColor{CkStyle::Accent()})
+                    .Size(FVector2D{ck_save_debugger_window::k_PanelIconSize, ck_save_debugger_window::k_PanelIconSize})
+                ]
+                + SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)
+                [
+                    SNew(SCkDebug_SectionHeader)
+                    .Label(FText::FromString(TEXT("Diagnostics")))
+                    .ToolTip(FText::FromString(TEXT("Click a row to select the entity and payload it names")))
+                    .Underline(true)
+                    .RightContent()
+                    [
+                        SNew(SHorizontalBox)
+                        + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+                        .Padding(0.0f, 0.0f, CkStyle::SpaceS, 0.0f)
+                        [
+                            SNew(SCkDebug_CountBadge)
+                            .ValueText_Lambda([this]() -> FText
+                            { return FText::FromString(ck::Format_UE(TEXT("{}"), _Model.Get_Document().Get_ErrorCount())); })
+                            .SuffixText(FText::FromString(TEXT("err")))
+                            .ValueColor(CkStyle::Err())
+                            .SuffixColor(CkStyle::TextMute())
+                            .BackgroundColor(CkStyle::ErrDim())
+                            .BorderColor(CkStyle::Err())
+                        ]
+                        + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+                        .Padding(0.0f, 0.0f, CkStyle::SpaceM, 0.0f)
+                        [
+                            SNew(SCkDebug_CountBadge)
+                            .ValueText_Lambda([this]() -> FText
+                            { return FText::FromString(ck::Format_UE(TEXT("{}"), _Model.Get_Document().Get_WarningCount())); })
+                            .SuffixText(FText::FromString(TEXT("warn")))
+                            .ValueColor(CkStyle::Warn())
+                            .SuffixColor(CkStyle::TextMute())
+                            .BackgroundColor(CkStyle::WarnDim())
+                            .BorderColor(CkStyle::Warn())
+                        ]
+                        + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+                        [
+                            DoCreate_DiagnosticSeverityPills()
+                        ]
+                        + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+                        .Padding(CkStyle::SpaceM, 0.0f, 0.0f, 0.0f)
+                        [
+                            SNew(SCkDebug_ToggleSurface)
+                            .AccessibleText(FText::FromString(TEXT("Diagnostics")))
+                            .ToolTipText(FText::FromString(TEXT("Collapse or expand the diagnostics list")))
+                            .IsOn_Lambda([this]() -> bool { return _DiagnosticsExpanded; })
+                            .OnStateChanged_Lambda([this](const bool InIsOn) { _DiagnosticsExpanded = InIsOn; })
+                            [
+                                SNew(STextBlock)
+                                .Text_Lambda([this]() -> FText
+                                { return FText::FromString(_DiagnosticsExpanded ? TEXT("HIDE") : TEXT("SHOW")); })
+                                .ColorAndOpacity(FSlateColor{CkStyle::TextMute()})
+                            ]
+                        ]
+                    ]
+                ]
+            ]
+            + SVerticalBox::Slot().FillHeight(1.0f)
+            [
+                SAssignNew(_DiagnosticList, SListView<TSharedPtr<FCkSaveDebugger_DiagnosticRow>>)
+                .Visibility_Lambda([this]() -> EVisibility
+                { return _DiagnosticsExpanded ? EVisibility::Visible : EVisibility::Collapsed; })
+                .ListItemsSource(&_DiagnosticRows)
+                .OnGenerateRow(this, &SCkSaveDebuggerWindow::DoGenerate_DiagnosticRow)
+                .OnSelectionChanged(this, &SCkSaveDebuggerWindow::DoOnDiagnosticSelectionChanged)
+                .OnContextMenuOpening(this, &SCkSaveDebuggerWindow::DoOnDiagnosticContextMenu)
+                .SelectionMode(ESelectionMode::Single)
+            ]
+        ]
+    ];
+
+    return SNew(SVerticalBox)
+        + SVerticalBox::Slot().AutoHeight().Padding(CkStyle::SpaceM, CkStyle::SpaceS)
+        [
+            SAssignNew(_FallbackSummaryHost, SBox)[SummaryPort]
+        ]
+        + SVerticalBox::Slot().FillHeight(1.0f)
+        [
             SNew(SSplitter)
             .Orientation(Orient_Vertical)
-
-            + SSplitter::Slot()
-            .Value(0.72f)
+            + SSplitter::Slot().Value(0.72f)
             [
                 SNew(SSplitter)
                 .Orientation(Orient_Horizontal)
-
-                + SSplitter::Slot()
-                .Value(0.32f)
+                + SSplitter::Slot().Value(0.32f)
+                [
+                    SAssignNew(_FallbackEntityNavigationHost, SBox)[EntityNavigationPort]
+                ]
+                + SSplitter::Slot().Value(0.36f)
                 [
                     SNew(SCkDebug_PaneHost)
                     [
                         SNew(SVerticalBox)
-                        + SVerticalBox::Slot().AutoHeight()
+                        + SVerticalBox::Slot().FillHeight(0.6f)
                         [
-                            SNew(STextBlock)
-                            .Text_Lambda([this]() -> FText { return FText::FromString(_EntityNavigationPublicationError); })
-                            .AutoWrapText(true)
-                            .ColorAndOpacity(FSlateColor{CkStyle::Err()})
-                            .Visibility_Lambda([this]() -> EVisibility
-                            { return _EntityNavigationPublicationError.IsEmpty() ? EVisibility::Collapsed : EVisibility::Visible; })
+                            SAssignNew(_FallbackEntityDetailHost, SBox)[EntityDetailPort]
                         ]
-                        + SVerticalBox::Slot().FillHeight(1.0f)
+                        + SVerticalBox::Slot().FillHeight(0.4f)
+                        .Padding(CkStyle::SpaceM, CkStyle::SpaceS, CkStyle::SpaceM, 0.0f)
                         [
-                            _EntityNavigationView.IsValid()
-                                ? _EntityNavigationView->GetRegion(TEXT("entity-navigation"))
-                                : SNullWidget::NullWidget
-                        ]
-                    ]
-            ]
-
-            + SSplitter::Slot()
-            .Value(0.36f)
-            [
-                SNew(SCkDebug_PaneHost)
-                [
-                    SNew(SVerticalBox)
-
-                + SVerticalBox::Slot()
-                .FillHeight(0.6f)
-                [
-                    SNew(SScrollBox)
-                    + SScrollBox::Slot()
-                    .Padding(CkStyle::SpaceM, CkStyle::SpaceS)
-                    [
-                        SAssignNew(_EntityDetailBox, SVerticalBox)
-                    ]
-                ]
-
-                + SVerticalBox::Slot()
-                .AutoHeight()
-                .Padding(CkStyle::SpaceM, CkStyle::SpaceS, CkStyle::SpaceM, 0.0f)
-                [
-                    SNew(SHorizontalBox)
-
-                    + SHorizontalBox::Slot()
-                    .AutoWidth()
-                    .VAlign(VAlign_Center)
-                    .Padding(0.0f, 0.0f, CkStyle::SpaceS, 0.0f)
-                    [
-                        SNew(SCkDebug_Icon)
-                        .Brush(ck_save_debugger_window::Get_IconBrush(ECk_Icon::Payload))
-                        .Meaning(FText::FromString(TEXT("Replicated-data blobs saved against the selected entity")))
-                        .ColorAndOpacity(FSlateColor{CkStyle::Accent()})
-                        .Size(FVector2D{ck_save_debugger_window::k_PanelIconSize, ck_save_debugger_window::k_PanelIconSize})
-                    ]
-
-                    + SHorizontalBox::Slot()
-                    .FillWidth(1.0f)
-                    .VAlign(VAlign_Center)
-                    [
-                        SNew(SCkDebug_SectionHeader)
-                        .Label(FText::FromString(TEXT("Payloads")))
-                        .ToolTip(FText::FromString(TEXT("Every payload the save holds for the selected entity")))
-                        .Underline(true)
-                        .RightContent()
-                        [
-                            SNew(SCkDebug_CountBadge)
-                            .ValueText_Lambda([this]() -> FText
-                            {
-                                return FText::FromString(ck::Format_UE(TEXT("{}"), _PayloadRows.Num()));
-                            })
-                            .ValueColor(CkStyle::Text())
-                            .BackgroundColor(CkStyle::Bg2())
-                            .BorderColor(CkStyle::Border())
+                            SAssignNew(_FallbackPayloadHost, SBox)[PayloadPort]
                         ]
                     ]
                 ]
-
-                + SVerticalBox::Slot()
-                .FillHeight(0.4f)
+                + SSplitter::Slot().Value(0.32f)
                 [
-                    SAssignNew(_PayloadList, SListView<TSharedPtr<FCkSaveDebugger_PayloadRow>>)
-                    .ListItemsSource(&_PayloadRows)
-                    .OnGenerateRow(this, &SCkSaveDebuggerWindow::DoGenerate_PayloadRow)
-                    .OnSelectionChanged(this, &SCkSaveDebuggerWindow::DoOnPayloadSelectionChanged)
-                    .OnContextMenuOpening(this, &SCkSaveDebuggerWindow::DoOnPayloadContextMenu)
-                    .SelectionMode(ESelectionMode::Single)
-                ]
+                    SAssignNew(_FallbackRightColumnHost, SBox)[RightColumnPort]
                 ]
             ]
-
-            + SSplitter::Slot()
-            .Value(0.32f)
+            + SSplitter::Slot().Value(0.28f)
             [
-                SNew(SCkDebug_PaneHost)
-                .ContentMode(ECkDebugPaneContent::OpaqueRenderer)
-                [
-                    SAssignNew(_RightColumnSwitcher, SWidgetSwitcher)
-                    .WidgetIndex_Lambda([this]() -> int32 { return _Model.Get_HasDiff() ? 1 : 0; })
-
-                    + SWidgetSwitcher::Slot()
-                    [
-                        DoCreate_BlobColumn()
-                    ]
-
-                    + SWidgetSwitcher::Slot()
-                    [
-                        DoCreate_DiffColumn()
-                    ]
-                ]
-            ]
-            ]
-
-            + SSplitter::Slot()
-            .Value(0.28f)
-            [
-            SNew(SCkDebug_PaneHost)
-            [
-            SNew(SVerticalBox)
-
-        + SVerticalBox::Slot()
-        .AutoHeight()
-        .Padding(CkStyle::SpaceM, CkStyle::SpaceS, CkStyle::SpaceM, 0.0f)
-        [
-            SNew(SHorizontalBox)
-
-            + SHorizontalBox::Slot()
-            .AutoWidth()
-            .VAlign(VAlign_Center)
-            .Padding(0.0f, 0.0f, CkStyle::SpaceS, 0.0f)
-            [
-                SNew(SCkDebug_Icon)
-                .Brush(ck_save_debugger_window::Get_IconBrush(ECk_Icon::Diagnostics))
-                .Meaning(FText::FromString(TEXT("Everything the inspection analyzer had to say about this file")))
-                .ColorAndOpacity(FSlateColor{CkStyle::Accent()})
-                .Size(FVector2D{ck_save_debugger_window::k_PanelIconSize, ck_save_debugger_window::k_PanelIconSize})
-            ]
-
-            + SHorizontalBox::Slot()
-            .FillWidth(1.0f)
-            .VAlign(VAlign_Center)
-            [
-                SNew(SCkDebug_SectionHeader)
-                .Label(FText::FromString(TEXT("Diagnostics")))
-                .ToolTip(FText::FromString(TEXT("Click a row to select the entity and payload it names")))
-                .Underline(true)
-                .RightContent()
-                [
-                    SNew(SHorizontalBox)
-
-                    + SHorizontalBox::Slot()
-                    .AutoWidth()
-                    .VAlign(VAlign_Center)
-                    .Padding(0.0f, 0.0f, CkStyle::SpaceS, 0.0f)
-                    [
-                        SNew(SCkDebug_CountBadge)
-                        .ValueText_Lambda([this]() -> FText
-                        {
-                            return FText::FromString(ck::Format_UE(TEXT("{}"), _Model.Get_Document().Get_ErrorCount()));
-                        })
-                        .SuffixText(FText::FromString(TEXT("err")))
-                        .ValueColor(CkStyle::Err())
-                        .SuffixColor(CkStyle::TextMute())
-                        .BackgroundColor(CkStyle::ErrDim())
-                        .BorderColor(CkStyle::Err())
-                    ]
-
-                    + SHorizontalBox::Slot()
-                    .AutoWidth()
-                    .VAlign(VAlign_Center)
-                    .Padding(0.0f, 0.0f, CkStyle::SpaceM, 0.0f)
-                    [
-                        SNew(SCkDebug_CountBadge)
-                        .ValueText_Lambda([this]() -> FText
-                        {
-                            return FText::FromString(ck::Format_UE(TEXT("{}"), _Model.Get_Document().Get_WarningCount()));
-                        })
-                        .SuffixText(FText::FromString(TEXT("warn")))
-                        .ValueColor(CkStyle::Warn())
-                        .SuffixColor(CkStyle::TextMute())
-                        .BackgroundColor(CkStyle::WarnDim())
-                        .BorderColor(CkStyle::Warn())
-                    ]
-
-                    + SHorizontalBox::Slot()
-                    .AutoWidth()
-                    .VAlign(VAlign_Center)
-                    [
-                        DoCreate_DiagnosticSeverityPills()
-                    ]
-
-                    + SHorizontalBox::Slot()
-                    .AutoWidth()
-                    .VAlign(VAlign_Center)
-                    .Padding(CkStyle::SpaceM, 0.0f, 0.0f, 0.0f)
-                    [
-                        // A long info run can bury the tree; collapsing keeps the counts and pills visible so the
-                        // section still reports what it found while taking one row of height.
-                        SNew(SCkDebug_ToggleSurface)
-                        .AccessibleText(FText::FromString(TEXT("Diagnostics")))
-                        .ToolTipText(FText::FromString(TEXT("Collapse or expand the diagnostics list")))
-                        .IsOn_Lambda([this]() -> bool { return _DiagnosticsExpanded; })
-                        .OnStateChanged_Lambda([this](const bool InIsOn) { _DiagnosticsExpanded = InIsOn; })
-                        [
-                            SNew(STextBlock)
-                            .Text_Lambda([this]() -> FText
-                            {
-                                return FText::FromString(_DiagnosticsExpanded ? TEXT("HIDE") : TEXT("SHOW"));
-                            })
-                            .ColorAndOpacity(FSlateColor{CkStyle::TextMute()})
-                        ]
-                    ]
-                ]
-            ]
-        ]
-
-        + SVerticalBox::Slot()
-        .FillHeight(1.0f)
-        [
-            SAssignNew(_DiagnosticList, SListView<TSharedPtr<FCkSaveDebugger_DiagnosticRow>>)
-            .Visibility_Lambda([this]() -> EVisibility
-            {
-                return _DiagnosticsExpanded ? EVisibility::Visible : EVisibility::Collapsed;
-            })
-            .ListItemsSource(&_DiagnosticRows)
-            .OnGenerateRow(this, &SCkSaveDebuggerWindow::DoGenerate_DiagnosticRow)
-            .OnSelectionChanged(this, &SCkSaveDebuggerWindow::DoOnDiagnosticSelectionChanged)
-            .OnContextMenuOpening(this, &SCkSaveDebuggerWindow::DoOnDiagnosticContextMenu)
-            .SelectionMode(ESelectionMode::Single)
-        ]
-            ]
+                SAssignNew(_FallbackDiagnosticsHost, SBox)[DiagnosticsPort]
             ]
         ];
 }
@@ -1700,6 +1845,9 @@ auto
     DoOnVisualizeClicked()
     -> FReply
 {
+    if (_PresentationReleased)
+    { return FReply::Unhandled(); }
+
 #if WITH_EDITOR
     if (ck::save_debugger_viz::Get_IsVisualizerEnabled())
     {
@@ -1962,6 +2110,9 @@ auto
     -> void
 {
 #if WITH_EDITOR
+    if (_PresentationReleased)
+    { return; }
+
     if (NOT ck::save_debugger_viz::Get_IsVisualizerEnabled())
     { return; }
 
@@ -1996,6 +2147,9 @@ auto
     -> void
 {
 #if WITH_EDITOR
+    if (_PresentationReleased)
+    { return; }
+
     if (_CurrentPath.IsEmpty())
     { return; }
 
@@ -3668,7 +3822,7 @@ auto
         FText::FromString(TEXT("Copy the type path the save declares for this payload")),
         Selected[0]->TypePath);
 
-    return MenuBuilder.MakeWidget();
+    return DoOpenOwnedContextMenu(_PayloadList, MenuBuilder.MakeWidget());
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -3850,7 +4004,7 @@ auto
         FText::FromString(TEXT("Copy the selected diagnostic line(s)")),
         FString::Join(Lines, TEXT("\n")));
 
-    return MenuBuilder.MakeWidget();
+    return DoOpenOwnedContextMenu(_DiagnosticList, MenuBuilder.MakeWidget());
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -4052,7 +4206,26 @@ auto
         FText::FromString(TEXT("Copy the selected group's identity path")),
         FString::Join(Paths, TEXT("\n")));
 
-    return MenuBuilder.MakeWidget();
+    return DoOpenOwnedContextMenu(_DiffGroupList, MenuBuilder.MakeWidget());
+}
+
+auto SCkSaveDebuggerWindow::ReleaseContextMenus() -> void
+{
+    const TSharedPtr<IMenu> Menu = MoveTemp(_ContextMenu);
+    if (Menu.IsValid() && FSlateApplication::IsInitialized()) { FSlateApplication::Get().DismissMenu(Menu); }
+}
+
+auto SCkSaveDebuggerWindow::DoOpenOwnedContextMenu(const TSharedPtr<SWidget>& InParent, TSharedPtr<SWidget> InContent) -> TSharedPtr<SWidget>
+{
+    if (_PresentationReleased || NOT InParent.IsValid() || NOT InContent.IsValid() || NOT FSlateApplication::IsInitialized()) { return nullptr; }
+    ReleaseContextMenus();
+    _ContextMenu = FSlateApplication::Get().PushMenu(InParent.ToSharedRef(), FWidgetPath{}, InContent.ToSharedRef(),
+        FVector2f{FSlateApplication::Get().GetCursorPos()}, FPopupTransitionEffect{FPopupTransitionEffect::ContextMenu});
+    if (NOT _ContextMenu.IsValid()) { return nullptr; }
+    const TWeakPtr<SCkSaveDebuggerWindow> WeakWindow = SharedThis(this);
+    _ContextMenu->GetOnMenuDismissed().AddLambda([WeakWindow](const TSharedRef<IMenu>& InDismissedMenu)
+    { if (const TSharedPtr<SCkSaveDebuggerWindow> Window = WeakWindow.Pin(); Window.IsValid() && Window->_ContextMenu == InDismissedMenu) { Window->_ContextMenu.Reset(); } });
+    return nullptr;
 }
 
 // --------------------------------------------------------------------------------------------------------------------

@@ -1,0 +1,8 @@
+.save-shell { min-width: 0; min-height: 0; flex-grow: 1; flex-shrink: 1; }
+.save-summary { flex-grow: 0; flex-shrink: 0; }
+.save-main { min-width: 0; min-height: 0; flex-grow: 1; flex-shrink: 1; }
+.save-columns { min-width: 0; min-height: 180px; flex-grow: 0.72; flex-shrink: 1; }
+.save-pane { min-width: 0; min-height: 0; padding: var(--save-space-s); background-color: var(--save-surface); border-width: 1px; border-color: var(--save-border); }
+.save-heading { color: var(--save-text); font-size: var(--save-heading-size); }
+.save-port { min-width: 0; min-height: 0; flex-grow: 1; flex-shrink: 1; }
+.save-payload { min-height: 88px; flex-grow: 0.4; }

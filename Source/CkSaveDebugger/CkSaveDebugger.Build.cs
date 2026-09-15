@@ -32,6 +32,8 @@ public class CkSaveDebugger : CkModuleRules
 
         RuntimeDependencies.Add(Path.Combine(PluginDirectory, "Resources", "UI", "SaveDebugger.ui.html"), StagedFileType.NonUFS);
         RuntimeDependencies.Add(Path.Combine(PluginDirectory, "Resources", "UI", "SaveDebugger.ui.css"), StagedFileType.NonUFS);
+        RuntimeDependencies.Add(Path.Combine(PluginDirectory, "Resources", "UI", "SaveDebuggerShell.ui.html"), StagedFileType.NonUFS);
+        RuntimeDependencies.Add(Path.Combine(PluginDirectory, "Resources", "UI", "SaveDebuggerShell.ui.css"), StagedFileType.NonUFS);
 
         PrivateDependencyModuleNames.Add("Projects");
 

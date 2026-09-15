@@ -173,7 +173,7 @@ auto FCkEcsDebuggerModule::HandleEnginePreExit() -> void
     // Just drop our refs — that's enough to release the inspector widget tree
     // (and any FCk_Handles it owns) while the ECS registry is still alive,
     // which is the whole point of this hook.
-    DebuggerTab.Reset();
+    ck::debugger_tabs::Release_DebuggerTab(DebuggerTab, false);
     DebuggerWindow.Reset();
 }
 
@@ -218,10 +218,10 @@ auto FCkEcsDebuggerModule::ShutdownModule() -> void
 #endif
 
     // These should already have been released in HandleEnginePreExit during a
-    // normal editor shutdown. Reset again here as a safety net (e.g. live module
+    // normal editor shutdown. Release again here as a safety net (e.g. live module
     // reload, where OnEnginePreExit doesn't fire).
+    ck::debugger_tabs::Release_DebuggerTab(DebuggerTab, true);
     DebuggerWindow.Reset();
-    DebuggerTab.Reset();
 }
 
 auto FCkEcsDebuggerModule::Get() -> FCkEcsDebuggerModule&
@@ -236,16 +236,7 @@ auto FCkEcsDebuggerModule::OpenDebugger() -> void
 
 auto FCkEcsDebuggerModule::CloseDebugger() -> void
 {
-    if (DebuggerTab.IsValid())
-    {
-        // Engine shutdown destroys Slate windows BEFORE module unload — by then
-        // the tab's TSharedFromThis backing is gone and RequestCloseTab →
-        // SharedThis(this) trips the AsShared check. Just drop the ref on exit.
-        if (NOT IsEngineExitRequested())
-        { DebuggerTab->RequestCloseTab(); }
-        DebuggerTab.Reset();
-    }
-
+    ck::debugger_tabs::Release_DebuggerTab(DebuggerTab, true);
     DebuggerWindow.Reset();
 }
 

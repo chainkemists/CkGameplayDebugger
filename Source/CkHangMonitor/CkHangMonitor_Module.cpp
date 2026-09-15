@@ -9,7 +9,6 @@
 #include "Framework/Docking/TabManager.h"
 #include "Misc/CoreDelegates.h"
 #include "Widgets/Docking/SDockTab.h"
-#include "Widgets/SNullWidget.h"
 
 #if WITH_EDITOR
     #include "WorkspaceMenuStructure.h"
@@ -63,11 +62,6 @@ auto FCkHangMonitorModule::ShutdownModule() -> void
     if (_EnginePreExitHandle.IsValid()) { FCoreDelegates::OnEnginePreExit.Remove(_EnginePreExitHandle); _EnginePreExitHandle.Reset(); }
     FCkDebuggerToolRegistry::Get().Unregister(_DebuggerTabName, _DebuggerToolRegistrationId);
     _DebuggerToolRegistrationId = 0;
-    if (_DebuggerTab.IsValid())
-    {
-        _DebuggerTab->SetOnTabClosed(SDockTab::FOnTabClosedCallback{});
-        _DebuggerTab->SetContent(SNullWidget::NullWidget);
-    }
     CloseDebugger();
     if (_Controller) { _Controller->Shutdown(); _Controller.Reset(); }
     if (FGlobalTabmanager::Get()->HasTabSpawner(_DebuggerTabName))
@@ -82,8 +76,7 @@ auto FCkHangMonitorModule::OpenDebugger() -> void
 
 auto FCkHangMonitorModule::CloseDebugger() -> void
 {
-    if (_DebuggerTab.IsValid() && NOT IsEngineExitRequested()) { _DebuggerTab->RequestCloseTab(); }
-    _DebuggerTab.Reset();
+    ck::debugger_tabs::Release_DebuggerTab(_DebuggerTab, true);
 }
 
 auto FCkHangMonitorModule::ToggleDebugger() -> void
@@ -108,14 +101,8 @@ auto FCkHangMonitorModule::OnSpawnDebuggerTab(const FSpawnTabArgs&) -> TSharedRe
 
 auto FCkHangMonitorModule::OnEnginePreExit() -> void
 {
-    // Tab content binds directly to the module-owned controller. During engine exit,
-    // Slate may retain the tab past this callback, so detach it before controller teardown.
-    if (_DebuggerTab.IsValid())
-    {
-        _DebuggerTab->SetOnTabClosed(SDockTab::FOnTabClosedCallback{});
-        _DebuggerTab->SetContent(SNullWidget::NullWidget);
-    }
-    _DebuggerTab.Reset();
+    // Tab content binds directly to the module-owned controller, so detach it before controller teardown.
+    ck::debugger_tabs::Release_DebuggerTab(_DebuggerTab, false);
     if (_Controller) { _Controller->Shutdown(); }
 }
 

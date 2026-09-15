@@ -12,6 +12,7 @@
 
 
 #include "Framework/Docking/TabManager.h"
+#include "Misc/CoreDelegates.h"
 #include "Widgets/Docking/SDockTab.h"
 #if WITH_EDITOR
     #include "WorkspaceMenuStructure.h"
@@ -106,6 +107,9 @@ auto
             const auto Guard = ck::DebugSelectionSync::FApplyGuard{};
             _DebuggerWindow->TargetEntity(Target);
         });
+
+    _EnginePreExitHandle = FCoreDelegates::OnEnginePreExit.AddRaw(
+        this, &FCkAStarDebuggerModule::HandleEnginePreExit);
 }
 
 auto
@@ -113,6 +117,12 @@ auto
     ShutdownModule()
     -> void
 {
+    if (_EnginePreExitHandle.IsValid())
+    {
+        FCoreDelegates::OnEnginePreExit.Remove(_EnginePreExitHandle);
+        _EnginePreExitHandle.Reset();
+    }
+
     if (_SelectionSyncHandle.IsValid())
     {
         ck::DebugSelectionSync::Get_OnSelection().Remove(_SelectionSyncHandle);
@@ -130,8 +140,16 @@ auto
         FGlobalTabmanager::Get()->UnregisterNomadTabSpawner(_DebuggerTabName);
     }
 
+    CloseDebugger();
+}
+
+auto
+    FCkAStarDebuggerModule::
+    HandleEnginePreExit()
+    -> void
+{
     _DebuggerWindow.Reset();
-    _DebuggerTab.Reset();
+    ck::debugger_tabs::Release_DebuggerTab(_DebuggerTab, false);
 }
 
 auto
@@ -155,17 +173,8 @@ auto
     CloseDebugger()
     -> void
 {
-    if (_DebuggerTab.IsValid())
-    {
-        // Engine shutdown destroys Slate windows BEFORE module unload — by then
-        // the tab's TSharedFromThis backing is gone and RequestCloseTab →
-        // SharedThis(this) trips the AsShared check. Just drop the ref on exit.
-        if (NOT IsEngineExitRequested())
-        { _DebuggerTab->RequestCloseTab(); }
-        _DebuggerTab.Reset();
-    }
-
     _DebuggerWindow.Reset();
+    ck::debugger_tabs::Release_DebuggerTab(_DebuggerTab, true);
 }
 
 auto

@@ -115,8 +115,7 @@ auto FCkVisualLodDebuggerModule::ShutdownModule() -> void
         FGlobalTabmanager::Get()->UnregisterNomadTabSpawner(_DebuggerTabName);
     }
 
-    _DebuggerWindow.Reset();
-    _DebuggerTab.Reset();
+    CloseDebugger();
 }
 
 auto FCkVisualLodDebuggerModule::Get() -> FCkVisualLodDebuggerModule&
@@ -136,16 +135,7 @@ auto FCkVisualLodDebuggerModule::OpenDebugger() -> void
 
 auto FCkVisualLodDebuggerModule::CloseDebugger() -> void
 {
-    if (_DebuggerTab.IsValid())
-    {
-        // Engine shutdown destroys Slate windows BEFORE module unload — by then the tab's TSharedFromThis
-        // backing is gone and RequestCloseTab → SharedThis(this) trips the AsShared check. Just drop the
-        // ref on exit.
-        if (NOT IsEngineExitRequested())
-        { _DebuggerTab->RequestCloseTab(); }
-        _DebuggerTab.Reset();
-    }
-
+    ck::debugger_tabs::Release_DebuggerTab(_DebuggerTab, true);
     _DebuggerWindow.Reset();
 }
 
@@ -168,8 +158,8 @@ auto FCkVisualLodDebuggerModule::IsDebuggerOpen() const -> bool
 
 auto FCkVisualLodDebuggerModule::HandleEnginePreExit() -> void
 {
+    ck::debugger_tabs::Release_DebuggerTab(_DebuggerTab, false);
     _DebuggerWindow.Reset();
-    _DebuggerTab.Reset();
 }
 
 auto FCkVisualLodDebuggerModule::OnSpawnDebuggerTab(const FSpawnTabArgs& InArgs) -> TSharedRef<SDockTab>

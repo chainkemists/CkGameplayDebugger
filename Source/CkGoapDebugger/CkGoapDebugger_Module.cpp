@@ -23,6 +23,7 @@
     #include "EdGraphUtilities.h"
 #endif
 #include "Framework/Docking/TabManager.h"
+#include "Misc/CoreDelegates.h"
 #include "Widgets/Docking/SDockTab.h"
 #if WITH_EDITOR
     #include "WorkspaceMenuStructure.h"
@@ -117,6 +118,9 @@ auto
         TEXT("CkGoapDebugger"), _DebuggerTabName,
         [](const FCk_Handle& InEntity) { return ck::IsValid(ck_goap_debugger::ResolveGoapTarget(InEntity)); },
         [](const FCk_Handle& InEntity) { SCkGoapDebuggerWindow::OpenForEntity(ck_goap_debugger::ResolveGoapTarget(InEntity)); }});
+
+    _EnginePreExitHandle = FCoreDelegates::OnEnginePreExit.AddRaw(
+        this, &FCkGoapDebuggerModule::HandleEnginePreExit);
 }
 
 auto
@@ -124,6 +128,12 @@ auto
     ShutdownModule()
     -> void
 {
+    if (_EnginePreExitHandle.IsValid())
+    {
+        FCoreDelegates::OnEnginePreExit.Remove(_EnginePreExitHandle);
+        _EnginePreExitHandle.Reset();
+    }
+
     FCkDebug_EntityTargetRegistry::Get().Unregister(_DebuggerTabName, _EntityTargetRouteRegistrationId);
     _EntityTargetRouteRegistrationId = 0;
 
@@ -137,8 +147,7 @@ auto
         FGlobalTabmanager::Get()->UnregisterNomadTabSpawner(_DebuggerTabName);
     }
 
-    _DebuggerWindow.Reset();
-    _DebuggerTab.Reset();
+    CloseDebugger();
 
 #if WITH_EDITOR
     if (_NodeFactory.IsValid())
@@ -150,6 +159,15 @@ auto
 
     FCkGoapDebugger_DataCollector::Shutdown();
     FCkGoapDebuggerStyle::Shutdown();
+}
+
+auto
+    FCkGoapDebuggerModule::
+    HandleEnginePreExit()
+    -> void
+{
+    _DebuggerWindow.Reset();
+    ck::debugger_tabs::Release_DebuggerTab(_DebuggerTab, false);
 }
 
 // ====================================================================================================================
@@ -167,16 +185,8 @@ auto
     CloseDebugger()
     -> void
 {
-    if (_DebuggerTab.IsValid())
-    {
-        // Engine shutdown destroys Slate windows BEFORE module unload — by then
-        // the tab's TSharedFromThis backing is gone and RequestCloseTab →
-        // SharedThis(this) trips the AsShared check. Just drop the ref on exit.
-        if (NOT IsEngineExitRequested())
-        { _DebuggerTab->RequestCloseTab(); }
-        _DebuggerTab.Reset();
-    }
     _DebuggerWindow.Reset();
+    ck::debugger_tabs::Release_DebuggerTab(_DebuggerTab, true);
 }
 
 auto

@@ -24,6 +24,7 @@ public:
 
 private:
     auto OnSpawnDebuggerTab(const class FSpawnTabArgs& InArgs) -> TSharedRef<SDockTab>;
+    auto HandleEnginePreExit() -> void;
 
     TSharedPtr<SCkSchedulerDebuggerWindow> _DebuggerWindow;
     TSharedPtr<SDockTab> _DebuggerTab;
@@ -32,6 +33,7 @@ private:
 #endif
 
     uint64 _DebuggerToolRegistrationId = 0;
+    FDelegateHandle _EnginePreExitHandle;
 
     static const FName _DebuggerTabName;
 };

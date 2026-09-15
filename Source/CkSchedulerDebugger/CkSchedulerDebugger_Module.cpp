@@ -11,6 +11,7 @@
 #include "CkDebuggerCommon/Launcher/CkDebuggerTabUtils.h"
 
 #include "Framework/Docking/TabManager.h"
+#include "Misc/CoreDelegates.h"
 #include "Widgets/Docking/SDockTab.h"
 #if WITH_EDITOR
     #include "EdGraphUtilities.h"
@@ -73,10 +74,18 @@ auto FCkSchedulerDebuggerModule::StartupModule() -> void
         10}
         .Set_TabFactory(FCkDebuggerToolTabFactory::CreateLambda([this]
         { return OnSpawnDebuggerTab(FSpawnTabArgs{TSharedPtr<SWindow>{}, FTabId{_DebuggerTabName}}); })));
+
+    _EnginePreExitHandle = FCoreDelegates::OnEnginePreExit.AddRaw(this, &FCkSchedulerDebuggerModule::HandleEnginePreExit);
 }
 
 auto FCkSchedulerDebuggerModule::ShutdownModule() -> void
 {
+    if (_EnginePreExitHandle.IsValid())
+    {
+        FCoreDelegates::OnEnginePreExit.Remove(_EnginePreExitHandle);
+        _EnginePreExitHandle.Reset();
+    }
+
     FCkDebuggerToolRegistry::Get().Unregister(_DebuggerTabName, _DebuggerToolRegistrationId);
     _DebuggerToolRegistrationId = 0;
 
@@ -93,8 +102,7 @@ auto FCkSchedulerDebuggerModule::ShutdownModule() -> void
     }
 #endif
 
-    _DebuggerWindow.Reset();
-    _DebuggerTab.Reset();
+    CloseDebugger();
 }
 
 auto FCkSchedulerDebuggerModule::Get() -> FCkSchedulerDebuggerModule&
@@ -109,16 +117,13 @@ auto FCkSchedulerDebuggerModule::OpenDebugger() -> void
 
 auto FCkSchedulerDebuggerModule::CloseDebugger() -> void
 {
-    if (_DebuggerTab.IsValid())
-    {
-        // Engine shutdown destroys Slate windows BEFORE module unload — by then
-        // the tab's TSharedFromThis backing is gone and RequestCloseTab →
-        // SharedThis(this) trips the AsShared check. Just drop the ref on exit.
-        if (NOT IsEngineExitRequested())
-        { _DebuggerTab->RequestCloseTab(); }
-        _DebuggerTab.Reset();
-    }
+    ck::debugger_tabs::Release_DebuggerTab(_DebuggerTab, true);
+    _DebuggerWindow.Reset();
+}
 
+auto FCkSchedulerDebuggerModule::HandleEnginePreExit() -> void
+{
+    ck::debugger_tabs::Release_DebuggerTab(_DebuggerTab, false);
     _DebuggerWindow.Reset();
 }
 

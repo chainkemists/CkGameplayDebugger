@@ -74,8 +74,7 @@ auto FCkStyleLabDebuggerModule::ShutdownModule() -> void
         FGlobalTabmanager::Get()->UnregisterNomadTabSpawner(_DebuggerTabName);
     }
 
-    _DebuggerWindow.Reset();
-    _DebuggerTab.Reset();
+    CloseDebugger();
 }
 
 auto FCkStyleLabDebuggerModule::Get() -> FCkStyleLabDebuggerModule&
@@ -90,12 +89,7 @@ auto FCkStyleLabDebuggerModule::OpenDebugger() -> void
 
 auto FCkStyleLabDebuggerModule::CloseDebugger() -> void
 {
-    if (_DebuggerTab.IsValid())
-    {
-        _DebuggerTab->RequestCloseTab();
-        _DebuggerTab.Reset();
-    }
-
+    ck::debugger_tabs::Release_DebuggerTab(_DebuggerTab, true);
     _DebuggerWindow.Reset();
 }
 

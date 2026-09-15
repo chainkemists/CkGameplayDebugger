@@ -20,6 +20,7 @@ public:
     auto IsDebuggerOpen() const -> bool;
 
 private:
+    friend struct FCkJoltDebuggerModuleTestAccess;
     /*
      * The nomad tab id — defined once, by the window, because the entity-target route, the launcher descriptor,
      * the chrome's Sync action and the tab spawner must all name the SAME tab. A function rather than a static

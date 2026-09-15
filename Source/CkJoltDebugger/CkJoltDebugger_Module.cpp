@@ -12,6 +12,7 @@
 #include "Framework/Docking/TabManager.h"
 #include "Misc/CoreDelegates.h"
 #include "Widgets/Docking/SDockTab.h"
+#include "Widgets/SNullWidget.h"
 #if WITH_EDITOR
     #include "WorkspaceMenuStructure.h"
     #include "WorkspaceMenuStructureModule.h"
@@ -67,6 +68,8 @@ auto FCkJoltDebuggerModule::StartupModule() -> void
     auto& TabSpawner = FGlobalTabmanager::Get()->RegisterNomadTabSpawner(
         Get_DebuggerTabName(),
         FOnSpawnTab::CreateRaw(this, &FCkJoltDebuggerModule::OnSpawnDebuggerTab))
+        .SetReuseTabMethod(FOnFindTabToReuse::CreateLambda(
+            [this](const FTabId&) { return _DebuggerTab; }))
         .SetDisplayName(FText::FromString(TEXT("CK Jolt Physics Debugger")))
         .SetTooltipText(FText::FromString(TEXT("Opens the CK Jolt Physics Debugger window")));
 #if WITH_EDITOR
@@ -111,7 +114,10 @@ auto FCkJoltDebuggerModule::StartupModule() -> void
 
 auto FCkJoltDebuggerModule::HandleEnginePreExit() -> void
 {
-    _DebuggerTab.Reset();
+    if (_DebuggerWindow.IsValid())
+    { _DebuggerWindow->Release_Presentation(); }
+
+    ck::debugger_tabs::Release_DebuggerTab(_DebuggerTab, false);
     _DebuggerWindow.Reset();
 }
 
@@ -152,12 +158,10 @@ auto FCkJoltDebuggerModule::OpenDebugger() -> void
 
 auto FCkJoltDebuggerModule::CloseDebugger() -> void
 {
-    if (_DebuggerTab.IsValid())
-    {
-        _DebuggerTab->RequestCloseTab();
-        _DebuggerTab.Reset();
-    }
+    if (_DebuggerWindow.IsValid())
+    { _DebuggerWindow->Release_Presentation(); }
 
+    ck::debugger_tabs::Release_DebuggerTab(_DebuggerTab, NOT IsEngineExitRequested());
     _DebuggerWindow.Reset();
 }
 
@@ -185,8 +189,12 @@ auto FCkJoltDebuggerModule::OnSpawnDebuggerTab(const FSpawnTabArgs& InArgs) -> T
     _DebuggerTab = SNew(SDockTab)
         .TabRole(ETabRole::NomadTab)
         .Label(FText::FromString(TEXT("CK Jolt Physics")))
-        .OnTabClosed_Lambda([this](TSharedRef<SDockTab>)
+        .OnTabClosed_Lambda([this](TSharedRef<SDockTab> Tab)
         {
+            if (_DebuggerWindow.IsValid())
+            { _DebuggerWindow->Release_Presentation(); }
+
+            Tab->SetContent(SNullWidget::NullWidget);
             _DebuggerWindow.Reset();
             _DebuggerTab.Reset();
         })

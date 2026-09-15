@@ -15,6 +15,7 @@
 #include "CkDebuggerCommon/Navigation/CkDebug_SelectionSync.h"
 #include "CkDebuggerCommon/Picker/CkDebug_ViewportPicker.h"
 #include "CkDebuggerCommon/Picker/SCkDebug_ViewportPickerControls.h"
+#include "CkDebuggerCommon/UI/CkDebug_UiRegistry.h"
 #include "CkDebuggerCommon/Styles/CkDebuggerAxes.h"
 #include "CkDebuggerCommon/Styles/CkDebuggerCommonStyle.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_CountBadge.h"
@@ -28,6 +29,7 @@
 #include "CkDebuggerCommon/Window/SCkDebug_WindowChrome.h"
 
 #include "CkEditorTools/Style/CkStyle.h"
+#include "CkSlateLayout/SCkUiSurface.h"
 
 #include "CkEcs/EntityLifetime/CkEntityLifetime_Utils.h"
 #include "CkEcs/Handle/CkHandle.h"
@@ -51,6 +53,8 @@
 #include "GameFramework/WorldSettings.h"
 
 #include "HAL/IConsoleManager.h"
+#include "Interfaces/IPluginManager.h"
+#include "Misc/Paths.h"
 #include "Styling/AppStyle.h"
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/SNullWidget.h"
@@ -65,6 +69,9 @@
 #include "Widgets/Text/STextBlock.h"
 
 #include "Framework/Docking/TabManager.h"
+#include "Framework/Application/SlateApplication.h"
+#include "Framework/Application/SlateUser.h"
+#include "Layout/WidgetPath.h"
 
 // --------------------------------------------------------------------------------------------------------------------
 // Local style + helpers (module-unique namespace name — unity builds concatenate TUs).
@@ -72,6 +79,57 @@
 
 namespace ck_jolt_debugger
 {
+    auto AuthoredStyleTokens() -> FCkUiView::FTokens
+    {
+        const auto Color = [](const FLinearColor& InColor) { return TEXT("#") + InColor.ToFColorSRGB().ToHex(); };
+        return {
+            {TEXT("--jolt-space-s"), FString::SanitizeFloat(CkStyle::SpaceS)},
+            {TEXT("--jolt-text"), Color(CkStyle::Text())},
+            {TEXT("--jolt-muted"), Color(CkStyle::TextDim())},
+            {TEXT("--jolt-title-size"), FString::FromInt(CkStyle::FontSizeBody())}};
+    }
+
+    auto ReleaseOwnedSlateInput(const TSharedRef<SWidget>& InRoot) -> void
+    {
+        if (NOT FSlateApplication::IsInitialized())
+        { return; }
+
+        FSlateApplication& Slate = FSlateApplication::Get();
+        const auto IsUnderRoot = [&Slate, &InRoot](const TSharedPtr<SWidget>& InWidget)
+        {
+            FWidgetPath Path;
+            if (NOT InWidget.IsValid()
+                || NOT Slate.GeneratePathToWidgetUnchecked(InWidget.ToSharedRef(), Path, EVisibility::All))
+            { return false; }
+
+            for (int32 WidgetIndex = 0; WidgetIndex < Path.Widgets.Num(); ++WidgetIndex)
+            {
+                if (Path.Widgets[WidgetIndex].Widget == InRoot) { return true; }
+            }
+            return false;
+        };
+
+        Slate.ForEachUser([&Slate, &IsUnderRoot](FSlateUser& InUser)
+        {
+            const int32 UserIndex = InUser.GetUserIndex();
+            if (IsUnderRoot(Slate.GetUserFocusedWidget(UserIndex)))
+            { Slate.ClearUserFocus(UserIndex, EFocusCause::SetDirectly); }
+
+            if (IsUnderRoot(InUser.GetCursorCaptor()))
+            { InUser.ReleaseCursorCapture(); }
+
+            TSet<uint32> PointerIndices{FSlateApplication::CursorPointerIndex};
+            for (const auto& Entry : InUser.GetWidgetsUnderPointerLastEventByIndex())
+            { PointerIndices.Add(Entry.Key); }
+
+            for (const uint32 PointerIndex : PointerIndices)
+            {
+                if (IsUnderRoot(InUser.GetPointerCaptor(PointerIndex)))
+                { InUser.ReleaseCapture(PointerIndex); }
+            }
+        }, true);
+    }
+
     // TextScale-aware counterparts of CkStyle::RegularFont / BoldFont / MonoFont. Bound through
     // .Font_Static below so a Style Lab flip resizes text that was built long before the flip.
     static auto Normal(int32 InSize) -> FSlateFontInfo { return ck::debug_axes::ScaledFont("Regular", InSize); }
@@ -432,6 +490,9 @@ auto
         const FArguments& InArgs)
     -> void
 {
+#if WITH_DEV_AUTOMATION_TESTS
+    _TestResourceDirectory = InArgs._TestResourceDirectory;
+#endif
     Register_WithGate();
 
     _WorldModel = MakeShared<FCkDebuggerModel_WorldSelector>();
@@ -478,6 +539,17 @@ auto
         _ViewportPicker->Construct(MoveTemp(PickerParams));
     }
 
+    _PickerControls = SNew(SCkDebug_ViewportPickerControls)
+        .Picker(_ViewportPicker)
+        .PickTooltip(FText::FromString(TEXT("Enter pick mode: click a physics body in the GAME viewport to select it here.\nOnly Jolt bodies, baked static actors, sensors and characters (and their owning entity) are shown and pickable.")));
+    _DetailPort = BuildRightRail();
+    _FallbackPickerHost = SNew(SBox);
+    _FallbackOutlinerHost = SNew(SBox);
+    _FallbackViewportHost = SNew(SBox);
+    _FallbackDetailHost = SNew(SBox);
+    _ShellHost = SNew(SBox);
+    _ShellHost->SetContent(Build_NativeShellFallback());
+
     _WorldChangedHandle = _WorldModel->OnWorldChanged.AddSP(this, &SCkJoltDebuggerWindow::HandleWorldChanged);
     _SessionInvalidatedHandle = ck::DebugSessionLifecycle::Get_OnSessionInvalidated().AddSP(
         this, &SCkJoltDebuggerWindow::HandleSessionInvalidated);
@@ -491,30 +563,13 @@ auto
         SNew(SCkDebug_WindowChrome).WindowId(Get_WindowId()).ToolTabId(TabId)
         .ShowRefreshControls(true)
         .CommandGroups(BuildCommandGroups())
-        .CommonActionsContent()
-        [
-            SNew(SCkDebug_ViewportPickerControls)
-            .Picker(_ViewportPicker)
-            .PickTooltip(FText::FromString(TEXT("Enter pick mode: click a physics body in the GAME viewport to select it here.\nOnly Jolt bodies, baked static actors, sensors and characters (and their owning entity) are shown and pickable.")))
-        ]
         .Content()
         [
-            SNew(SSplitter).Orientation(Orient_Horizontal)
-
-            + SSplitter::Slot().Value(0.22f)
-            [ SNew(SCkDebug_PaneHost) [ _OutlinerPanel.ToSharedRef() ] ]
-
-            + SSplitter::Slot().Value(0.53f)
-            [
-                SNew(SCkDebug_PaneHost)
-                .ContentMode(ECkDebugPaneContent::OpaqueRenderer)
-                [ _Viewport.ToSharedRef() ]
-            ]
-
-            + SSplitter::Slot().Value(0.25f)
-            [ BuildRightRail() ]
+            _ShellHost.ToSharedRef()
         ]
     ];
+
+    Build_AuthoredShell();
 
     // After the tree, not before: the toggles read their state back off the target, so the restore has to be
     // the last word on it rather than something a freshly-built control overwrites.
@@ -544,14 +599,158 @@ auto
     _Viewport->Set_IsolateSelection(_IsolateActive);
 }
 
+auto SCkJoltDebuggerWindow::Build_NativeShellFallback() -> TSharedRef<SWidget>
+{
+    _FallbackPickerHost->SetContent(_PickerControls.ToSharedRef());
+    _FallbackOutlinerHost->SetContent(_OutlinerPanel.ToSharedRef());
+    _FallbackViewportHost->SetContent(_Viewport.ToSharedRef());
+    _FallbackDetailHost->SetContent(_DetailPort.ToSharedRef());
+
+    return SNew(SVerticalBox)
+        + SVerticalBox::Slot().AutoHeight().Padding(CkStyle::SpaceS)
+        [ _FallbackPickerHost.ToSharedRef() ]
+        + SVerticalBox::Slot().FillHeight(1.0f)
+        [
+            SNew(SSplitter).Orientation(Orient_Horizontal)
+            + SSplitter::Slot().Value(0.22f)[SNew(SCkDebug_PaneHost)[_FallbackOutlinerHost.ToSharedRef()]]
+            + SSplitter::Slot().Value(0.53f)[SNew(SCkDebug_PaneHost).ContentMode(ECkDebugPaneContent::OpaqueRenderer)[_FallbackViewportHost.ToSharedRef()]]
+            + SSplitter::Slot().Value(0.25f)[_FallbackDetailHost.ToSharedRef()]
+        ];
+}
+
+auto SCkJoltDebuggerWindow::Build_AuthoredShell() -> void
+{
+    TSharedPtr<const FCkUiWidgetRegistrySnapshot> Registry;
+    const FCkUiLoadResult RegistryResult = FCkDebug_UiRegistry::TryCreate(Registry);
+    const TSharedPtr<IPlugin> Plugin = IPluginManager::Get().FindPlugin(TEXT("CkDebugger"));
+    if (NOT RegistryResult.Succeeded || NOT Registry.IsValid() || NOT Plugin.IsValid() || NOT _ShellHost.IsValid()
+        || NOT _PickerControls.IsValid() || NOT _OutlinerPanel.IsValid() || NOT _Viewport.IsValid() || NOT _DetailPort.IsValid())
+    { _AuthoredShellLoadFailure = TEXT("Jolt authored shell prerequisites are unavailable."); return; }
+
+    auto Ports = FCkUiView::FNativeBindings{};
+    Ports.Add(TEXT("jolt-picker"), _PickerControls);
+    Ports.Add(TEXT("jolt-outliner"), _OutlinerPanel);
+    Ports.Add(TEXT("jolt-viewport"), _Viewport);
+    Ports.Add(TEXT("jolt-detail"), _DetailPort);
+    const TWeakPtr<SCkJoltDebuggerWindow> WeakWindow = SharedThis(this);
+    auto Data = FCkUiView::FDataBindings{};
+    Data.SlateUserIndex = 0;
+    Data.CanDispatchEvents = TAttribute<bool>::CreateLambda([WeakWindow]()
+    { const TSharedPtr<SCkJoltDebuggerWindow> Window = WeakWindow.Pin(); return Window.IsValid() && NOT Window->_PresentationReleased; });
+    Data.Text.Add(TEXT("jolt-shell-status"), TAttribute<FText>::CreateLambda([WeakWindow]()
+    { const TSharedPtr<SCkJoltDebuggerWindow> Window = WeakWindow.Pin(); return Window.IsValid() && Window->_Stats.HasWorld
+        ? FText::FromString(Window->_Stats.WorldLabel) : FText::FromString(TEXT("No active world")); }));
+    auto Actions = FCkUiView::FActions{};
+    Actions.Add(TEXT("jolt-shell-refresh"), FSimpleDelegate::CreateLambda([WeakWindow]()
+    { if (const TSharedPtr<SCkJoltDebuggerWindow> Window = WeakWindow.Pin(); Window.IsValid() && NOT Window->_PresentationReleased && Window->_WorldModel.IsValid())
+        {
+#if WITH_DEV_AUTOMATION_TESTS
+            ++Window->_AuthoredRefreshDispatchCount;
+#endif
+            UWorld* World = Window->_WorldModel->Get_SelectedWorld();
+            Window->DoRefreshStats(World);
+            Window->DoRefreshBodies(World);
+        } }));
+    const TSharedRef<FCkUiView> Candidate = FCkUiView::Create(MoveTemp(Ports), MoveTemp(Actions), ck_jolt_debugger::AuthoredStyleTokens(),
+        CkStyle::RegularFont(CkStyle::FontSizeBody()), MoveTemp(Data), Registry);
+    Candidate->GetRegion(TEXT("main"));
+    FString Directory = FPaths::Combine(Plugin->GetBaseDir(), TEXT("Resources/UI"));
+#if WITH_DEV_AUTOMATION_TESTS
+    if (NOT _TestResourceDirectory.IsEmpty()) { Directory = _TestResourceDirectory; }
+#endif
+    Candidate->SetFiles(FPaths::Combine(Directory, TEXT("JoltDebugger.ui.html")), FPaths::Combine(Directory, TEXT("JoltDebugger.ui.css")));
+    _AuthoredShellView = Candidate;
+    Detach_FallbackPorts();
+    Candidate->PollFiles(ck_jolt_debugger::AuthoredStyleTokens());
+    if (NOT Candidate->GetLastResult().Succeeded)
+    { _AuthoredShellLoadFailure = FString::Join(Candidate->GetLastResult().Errors, TEXT("\n")); Restore_FallbackPorts(); return; }
+    if (NOT Mount_AuthoredShell())
+    { _AuthoredShellLoadFailure = TEXT("Jolt authored shell could not mount its accepted region."); Restore_FallbackPorts(); }
+}
+
+auto SCkJoltDebuggerWindow::Mount_AuthoredShell() -> bool
+{
+    if (NOT _AuthoredShellView.IsValid() || NOT _ShellHost.IsValid() || NOT _AuthoredShellView->GetLastResult().Succeeded) { return false; }
+    _ShellHost->SetContent(SNullWidget::NullWidget);
+    _ShellHost->SetContent(_AuthoredShellView->GetRegion(TEXT("main")));
+    _UsingNativeShellFallback = false;
+    _AuthoredShellLoadFailure.Reset();
+    return true;
+}
+
+auto SCkJoltDebuggerWindow::Poll_AuthoredShell(const double InCurrentTime) -> void
+{
+    if (_PresentationReleased || NOT _AuthoredShellView.IsValid() || InCurrentTime < _NextAuthoredShellPollSeconds) { return; }
+    _NextAuthoredShellPollSeconds = InCurrentTime + 0.5;
+    if (_UsingNativeShellFallback) { Detach_FallbackPorts(); }
+    const bool Changed = _AuthoredShellView->PollFiles(ck_jolt_debugger::AuthoredStyleTokens());
+    if (_UsingNativeShellFallback && _AuthoredShellView->GetLastResult().Succeeded && Mount_AuthoredShell()) { return; }
+    if (_UsingNativeShellFallback) { Restore_FallbackPorts(); }
+    if (Changed && NOT _AuthoredShellView->GetLastResult().Succeeded)
+    { _AuthoredShellLoadFailure = FString::Join(_AuthoredShellView->GetLastResult().Errors, TEXT("\n")); }
+}
+
+auto SCkJoltDebuggerWindow::Detach_FallbackPorts() -> void
+{
+    for (const TSharedPtr<SBox>& Host : {_FallbackPickerHost, _FallbackOutlinerHost, _FallbackViewportHost, _FallbackDetailHost})
+    { if (Host.IsValid()) { Host->SetContent(SNullWidget::NullWidget); } }
+}
+
+auto SCkJoltDebuggerWindow::Restore_FallbackPorts() -> void
+{
+    const auto Restore = [](const TSharedPtr<SBox>& Host, const TSharedPtr<SWidget>& Port) -> void
+    { if (Host.IsValid() && Port.IsValid() && NOT Port->GetParentWidget().IsValid()) { Host->SetContent(Port.ToSharedRef()); } };
+    Restore(_FallbackPickerHost, _PickerControls); Restore(_FallbackOutlinerHost, _OutlinerPanel);
+    Restore(_FallbackViewportHost, _Viewport); Restore(_FallbackDetailHost, _DetailPort);
+}
+
 // --------------------------------------------------------------------------------------------------------------------
 
 SCkJoltDebuggerWindow::~SCkJoltDebuggerWindow()
 {
+	Release_Presentation();
+}
+
+auto SCkJoltDebuggerWindow::Release_Presentation() -> void
+{
+    if (_PresentationReleased)
+    { return; }
+
+    _PresentationReleased = true;
+
+    // Release the authored owner, transferred ports, and only this window's focus/capture before the
+    // established drag/debug-target sequence below. Held authored views must become inert at close/pre-exit.
+    if (_AuthoredShellView.IsValid()) { _AuthoredShellView->ReleaseOwnerInteractions(); }
+    ck_jolt_debugger::ReleaseOwnedSlateInput(ChildSlot.GetWidget());
+    if (_ShellHost.IsValid()) { _ShellHost->SetContent(SNullWidget::NullWidget); }
+    Detach_FallbackPorts();
+
     // FIRST, while the world selector still points at the world whose subsystem holds the spring: a debugger
     // that closes mid-drag must not leave a body attached to a constraint nothing will ever release
     // (P7-D71/F3). Idempotent, so it costs nothing when no drag was live.
     HandleDragRelease();
+
+    if (_Viewport.IsValid())
+    {
+        if (const TSharedPtr<FCkJoltDebugger_3dPreviewAdapter> Adapter = _Viewport->Get_CommonAdapter();
+            Adapter.IsValid())
+        {
+            Adapter->Set_OnRenderModeChanged({});
+            Adapter->Set_OnGridChanged({});
+            Adapter->Set_OnLabelsChanged({});
+            Adapter->Set_OnDirectionGlyphScaleChanged({});
+            Adapter->Set_OnIsolatedKeysChanged({});
+            Adapter->Set_OnPick({});
+            Adapter->Set_OnDragArm({});
+            Adapter->Set_OnDragRay({});
+            Adapter->Set_OnDragPlaneShift({});
+            Adapter->Set_OnDragRelease({});
+            Adapter->Set_OnHover({});
+            Adapter->Set_OnCommand({});
+        }
+
+        _Viewport->Set_Target({});
+    }
 
     // Demand off BEFORE unregistering: the capture processor reads demand, and a target that is dropped while
     // still desired leaves its last instances standing in the preview world.
@@ -561,25 +760,53 @@ SCkJoltDebuggerWindow::~SCkJoltDebuggerWindow()
     DoUnregisterDebugDrawTarget();
 
     if (_WorldModel.IsValid() && _WorldChangedHandle.IsValid())
-    { _WorldModel->OnWorldChanged.Remove(_WorldChangedHandle); }
+    {
+        _WorldModel->OnWorldChanged.Remove(_WorldChangedHandle);
+        _WorldChangedHandle.Reset();
+    }
 
     if (_SessionInvalidatedHandle.IsValid())
-    { ck::DebugSessionLifecycle::Get_OnSessionInvalidated().Remove(_SessionInvalidatedHandle); }
+    {
+        ck::DebugSessionLifecycle::Get_OnSessionInvalidated().Remove(_SessionInvalidatedHandle);
+        _SessionInvalidatedHandle.Reset();
+    }
 
     if (_SelectionSyncHandle.IsValid())
-    { ck::DebugSelectionSync::Get_OnSelection().Remove(_SelectionSyncHandle); }
+    {
+        ck::DebugSelectionSync::Get_OnSelection().Remove(_SelectionSyncHandle);
+        _SelectionSyncHandle.Reset();
+    }
 
     if (_TabForegroundedHandle.IsValid())
-    { FGlobalTabmanager::Get()->OnTabForegrounded_Unsubscribe(_TabForegroundedHandle); }
+    {
+        FGlobalTabmanager::Get()->OnTabForegrounded_Unsubscribe(_TabForegroundedHandle);
+        _TabForegroundedHandle.Reset();
+    }
 
     if (_ViewportPicker.IsValid())
     { _ViewportPicker->Deactivate(); }
+
+    ChildSlot[SNullWidget::NullWidget];
 
     _Selection.Reset();
     _SelectionAll.Reset();
     _SelectionFacts.Reset();
     _Collector.Reset();
     _DebugDrawTarget.Reset();
+    _ViewportPicker.Reset();
+    _PickerControls.Reset();
+    _DetailPanel.Reset();
+    _OutlinerPanel.Reset();
+    _Viewport.Reset();
+    _WorldModel.Reset();
+    _LegendBox.Reset();
+    _DetailPort.Reset();
+    _AuthoredShellView.Reset();
+    _FallbackPickerHost.Reset();
+    _FallbackOutlinerHost.Reset();
+    _FallbackViewportHost.Reset();
+    _FallbackDetailHost.Reset();
+    _ShellHost.Reset();
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -593,6 +820,10 @@ auto
     -> void
 {
     SCkDebugger_WindowBase::Tick(InAllottedGeometry, InCurrentTime, InDeltaTime);
+    if (_PresentationReleased)
+    { return; }
+
+    Poll_AuthoredShell(InCurrentTime);
 
     // The picker drives the GAME viewport, not this one — it must keep ticking at the display rate even
     // when the user has throttled this window's refresh gate.
@@ -696,6 +927,9 @@ auto
         UWorld*)
     -> void
 {
+    if (_PresentationReleased)
+    { return; }
+
     // Before anything else (P7-D71/F3 + F2): end whatever drag was live and take its line down. Idempotent,
     // and it is the ONE place the drag's local state is dropped — a world change that reset the flags by hand
     // was how the retained "JoltDebugger.Drag" channel came to outlive the world it described.
@@ -768,6 +1002,9 @@ auto
     HandleSessionInvalidated()
     -> void
 {
+    if (_PresentationReleased)
+    { return; }
+
     if (_WorldModel.IsValid() && _WorldModel->Get_SelectedWorld() != nullptr)
     {
         _WorldModel->Set_SelectedWorld(nullptr);
@@ -782,6 +1019,9 @@ auto
     OnStyleRevisionChanged()
     -> void
 {
+    if (_PresentationReleased)
+    { return; }
+
     // Everything else here is attribute-bound and has already moved; the outliner is the one surface with
     // generated ROW widgets, whose STableRow style is resolved at generation time.
     if (_OutlinerPanel.IsValid())
@@ -795,6 +1035,9 @@ auto
         TSharedPtr<SDockTab>)
     -> void
 {
+    if (_PresentationReleased)
+    { return; }
+
     // The tab well updates its foreground index before broadcasting, so the refresh gate's visibility answer is
     // already the post-switch one for both directions.
     DoSyncDebugDrawTarget(_WorldModel.IsValid() ? _WorldModel->Get_SelectedWorld() : nullptr);
@@ -1197,6 +1440,9 @@ auto
         TArray<FCkJoltDebugger_BodySnapshot> InAll)
     -> void
 {
+    if (_PresentationReleased)
+    { return; }
+
     DoApplySelectionSet(MoveTemp(InAll), MoveTemp(InPrimary), ECkJoltDebugger_SelectionSource::Outliner);
 }
 
@@ -1233,6 +1479,9 @@ auto
         bool InIsAdditive)
     -> void
 {
+    if (_PresentationReleased)
+    { return; }
+
     if (NOT InBodyKey.IsSet())
     {
         // A Ctrl+click on empty space adds nothing rather than clearing what the user was building up.
@@ -1284,6 +1533,9 @@ auto
         TOptional<uint64> InBodyKey)
     -> void
 {
+    if (_PresentationReleased)
+    { return; }
+
     if (_DebugDrawTarget.IsValid())
     { _DebugDrawTarget->Set_HoveredBody(InBodyKey); }
 
@@ -1317,6 +1569,9 @@ auto
         uint64 InOtherBodyKey)
     -> void
 {
+    if (_PresentationReleased)
+    { return; }
+
     HandleViewportBodyPicked(TOptional<uint64>{InOtherBodyKey}, false);
 }
 
@@ -1327,6 +1582,9 @@ auto
         FName InSource)
     -> void
 {
+    if (_PresentationReleased)
+    { return; }
+
     if (InSource == TabId)
     { return; }
 
@@ -1352,6 +1610,8 @@ auto
         const FCk_Handle& InEntity)
     -> void
 {
+    if (_PresentationReleased)
+    { return; }
     if (ck::Is_NOT_Valid(InEntity))
     { return; }
 
@@ -1533,6 +1793,9 @@ auto
     HandleTogglePause()
     -> void
 {
+    if (_PresentationReleased)
+    { return; }
+
     auto* Subsystem = Get_SelectedJoltSubsystem();
 
     if (ck::Is_NOT_Valid(Subsystem))
@@ -1546,6 +1809,9 @@ auto
     HandleStepOnce()
     -> void
 {
+    if (_PresentationReleased)
+    { return; }
+
     auto* Subsystem = Get_SelectedJoltSubsystem();
 
     if (ck::Is_NOT_Valid(Subsystem))
@@ -1662,6 +1928,9 @@ auto
         bool InIsActive)
     -> void
 {
+    if (_PresentationReleased)
+    { return; }
+
     _IsolateActive = InIsActive;
 
     if (_Viewport.IsValid())
@@ -1680,6 +1949,9 @@ auto
         bool InIsActive)
     -> void
 {
+    if (_PresentationReleased)
+    { return; }
+
     _FollowSelection = InIsActive;
 
     if (_Viewport.IsValid())
@@ -1695,6 +1967,9 @@ auto
     HandleToggleIsolate()
     -> void
 {
+    if (_PresentationReleased)
+    { return; }
+
     Set_IsolateActive(NOT _IsolateActive);
 }
 
@@ -1720,6 +1995,9 @@ auto
         FVector InGrabPointWorld)
     -> void
 {
+    if (_PresentationReleased)
+    { return; }
+
 #if !UE_BUILD_SHIPPING
     // A gesture whose release never arrived must not leak into this one.
     HandleDragRelease();
@@ -1762,6 +2040,9 @@ auto
         FVector InRayDirection)
     -> void
 {
+    if (_PresentationReleased)
+    { return; }
+
 #if !UE_BUILD_SHIPPING
     if (NOT _DragBodyKey.IsSet())
     { return; }
@@ -1785,6 +2066,9 @@ auto
         float InDirection)
     -> void
 {
+    if (_PresentationReleased)
+    { return; }
+
 #if !UE_BUILD_SHIPPING
     if (NOT _DragBodyKey.IsSet())
     { return; }
@@ -1922,6 +2206,9 @@ auto
         bool InIsEnabled)
     -> void
 {
+    if (_PresentationReleased)
+    { return; }
+
     _ShowProbeResults = InIsEnabled;
 
     auto* Settings = GetMutableDefault<UCkJoltDebuggerSettings>();
@@ -1937,6 +2224,9 @@ auto
         float InScale)
     -> void
 {
+    if (_PresentationReleased)
+    { return; }
+
     const auto ClampedScale = FMath::Clamp(
         InScale, ck_jolt_debugger::DirectionGlyphScaleMin, ck_jolt_debugger::DirectionGlyphScaleMax);
 
@@ -1968,6 +2258,9 @@ auto
         bool InIsEnabled)
     -> void
 {
+    if (_PresentationReleased)
+    { return; }
+
     _ShowGrid = InIsEnabled;
 
     auto* Settings = GetMutableDefault<UCkJoltDebuggerSettings>();
@@ -2309,7 +2602,7 @@ auto
         ECk_Jolt_DebugDrawColorMode InColorMode)
     -> void
 {
-    if (NOT _DebugDrawTarget.IsValid())
+    if (_PresentationReleased || NOT _DebugDrawTarget.IsValid())
     { return; }
 
     _DebugDrawTarget->Set_ColorMode(InColorMode);
@@ -2346,7 +2639,7 @@ auto
         ECk_Jolt_DebugDraw_RenderMode InRenderMode)
     -> void
 {
-    if (NOT _DebugDrawTarget.IsValid())
+    if (_PresentationReleased || NOT _DebugDrawTarget.IsValid())
     { return; }
 
     _DebugDrawTarget->Set_RenderMode(InRenderMode);
@@ -2363,7 +2656,7 @@ auto
         bool InIsEnabled)
     -> void
 {
-    if (NOT _DebugDrawTarget.IsValid())
+    if (_PresentationReleased || NOT _DebugDrawTarget.IsValid())
     { return; }
 
     auto Flags = _DebugDrawTarget->Get_DrawFlags();

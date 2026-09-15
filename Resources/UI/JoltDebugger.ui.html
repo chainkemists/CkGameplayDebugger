@@ -1,0 +1,25 @@
+<ui version="1">
+  <region name="main">
+    <column id="jolt-shell"><column id="jolt-shell-content" class="jolt-shell">
+      <row id="jolt-toolbar" class="jolt-toolbar">
+        <native id="jolt-picker-port" bind="jolt-picker" />
+        <button id="jolt-refresh" action="jolt-shell-refresh">Refresh physics</button>
+        <text id="jolt-status" class="jolt-status" bind="jolt-shell-status" />
+      </row>
+      <splitter id="jolt-topology" direction="horizontal" class="jolt-topology">
+        <column id="jolt-outliner-rail" class="jolt-rail">
+          <text id="jolt-outliner-heading" class="jolt-heading">Bodies</text>
+          <native id="jolt-outliner-port" bind="jolt-outliner" />
+        </column>
+        <column id="jolt-viewport-rail" class="jolt-viewport-rail">
+          <text id="jolt-viewport-heading" class="jolt-heading">Physics preview</text>
+          <native id="jolt-viewport-port" bind="jolt-viewport" />
+        </column>
+        <column id="jolt-detail-rail" class="jolt-rail">
+          <text id="jolt-detail-heading" class="jolt-heading">Statistics and detail</text>
+          <native id="jolt-detail-port" bind="jolt-detail" />
+        </column>
+      </splitter>
+    </column></column>
+  </region>
+</ui>

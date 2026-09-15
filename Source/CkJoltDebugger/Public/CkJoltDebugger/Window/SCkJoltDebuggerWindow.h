@@ -11,12 +11,15 @@
 #include "CkJoltDebugger/Data/CkJoltDebugger_DataCollector.h"
 
 class FCkDebug_ViewportPicker;
+class FCkUiView;
+class SCkDebug_ViewportPickerControls;
 class SCkJoltDebugger_3dViewport;
 class SCkJoltDebugger_DetailPanel;
 class SCkJoltDebugger_OutlinerPanel;
 class SDockTab;
 class SHorizontalBox;
 class STextBlock;
+class SBox;
 class UCk_Jolt_Subsystem;
 class UWorld;
 
@@ -147,6 +150,9 @@ public:
     static auto Is_JoltDebuggerEntity(const FCk_Handle& InCandidate) -> bool;
 
     SLATE_BEGIN_ARGS(SCkJoltDebuggerWindow) {}
+#if WITH_DEV_AUTOMATION_TESTS
+        SLATE_ARGUMENT(FString, TestResourceDirectory)
+#endif
     SLATE_END_ARGS()
 
     auto Construct(const FArguments& InArgs) -> void;
@@ -176,13 +182,24 @@ public:
     auto Get_ShowGrid() const -> bool { return _ShowGrid; }
     auto Get_DirectionGlyphScale() const -> float { return _DirectionGlyphScale; }
     auto Get_NumGridLines() const -> int32;
+    auto Get_AuthoredShellView() const -> TSharedPtr<FCkUiView> { return _AuthoredShellView; }
+    auto Get_AuthoredShellLoadFailure() const -> const FString& { return _AuthoredShellLoadFailure; }
+    auto IsUsingNativeShellFallback() const -> bool { return _UsingNativeShellFallback; }
 
     virtual ~SCkJoltDebuggerWindow() override;
+    auto Release_Presentation() -> void;
 
 protected:
     virtual auto OnStyleRevisionChanged() -> void override;
 
 private:
+    friend struct FCkJoltDebuggerAuthoredShellTestAccess;
+    auto Build_NativeShellFallback() -> TSharedRef<SWidget>;
+    auto Build_AuthoredShell() -> void;
+    auto Poll_AuthoredShell(double InCurrentTime) -> void;
+    auto Mount_AuthoredShell() -> bool;
+    auto Detach_FallbackPorts() -> void;
+    auto Restore_FallbackPorts() -> void;
     auto DoCreateDebugDrawTarget() -> void;
     auto DoRefreshStats(UWorld* InWorld) -> void;
     auto DoSyncDebugDrawTarget(UWorld* InWorld) -> void;
@@ -349,7 +366,22 @@ private:
     TSharedPtr<SCkJoltDebugger_OutlinerPanel>   _OutlinerPanel;
     TSharedPtr<SCkJoltDebugger_DetailPanel>     _DetailPanel;
     TSharedPtr<FCkDebug_ViewportPicker>         _ViewportPicker;
+    TSharedPtr<SCkDebug_ViewportPickerControls> _PickerControls;
     TSharedPtr<SHorizontalBox>                  _LegendBox;
+    TSharedPtr<SWidget>                         _DetailPort;
+    TSharedPtr<SBox>                            _ShellHost;
+    TSharedPtr<SBox>                            _FallbackPickerHost;
+    TSharedPtr<SBox>                            _FallbackOutlinerHost;
+    TSharedPtr<SBox>                            _FallbackViewportHost;
+    TSharedPtr<SBox>                            _FallbackDetailHost;
+    TSharedPtr<FCkUiView>                       _AuthoredShellView;
+    FString                                      _AuthoredShellLoadFailure;
+    double                                       _NextAuthoredShellPollSeconds = 0.0;
+    bool                                         _UsingNativeShellFallback = true;
+#if WITH_DEV_AUTOMATION_TESTS
+    FString                                      _TestResourceDirectory;
+    int32                                        _AuthoredRefreshDispatchCount = 0;
+#endif
 
     FCkJoltDebugger_DataCollector _Collector;
 
@@ -407,6 +439,7 @@ private:
     FDelegateHandle _TabForegroundedHandle;
 
     FCkJoltDebugger_Stats _Stats;
+    bool _PresentationReleased = false;
 };
 
 // --------------------------------------------------------------------------------------------------------------------

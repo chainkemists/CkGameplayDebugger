@@ -28,18 +28,25 @@
 #include "CkDebuggerCommon/Widgets/SCkDebug_WorldSelector.h"
 #include "CkDebuggerCommon/Window/CkDebuggerRefreshGate.h"
 #include "CkDebuggerCommon/Window/SCkDebug_WindowChrome.h"
+#include "CkDebuggerCommon/UI/CkDebug_UiRegistry.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_PaneHost.h"
 
 #include "CkEditorTools/Style/CkStyle.h"
 #include "CkSlateLayout/SCkUiSurface.h"
+#include "CkSlateLayout/CkUiCollection.h"
 
 #include "Framework/Docking/TabManager.h"
+#include "Framework/Application/SlateApplication.h"
+#include "Framework/Application/SlateUser.h"
 #include "HAL/IConsoleManager.h"
+#include "Interfaces/IPluginManager.h"
+#include "Layout/WidgetPath.h"
 #include "Styling/AppStyle.h"
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Input/SComboButton.h"
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SBox.h"
+#include "Widgets/SNullWidget.h"
 #include "Widgets/Layout/SSplitter.h"
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/Text/STextBlock.h"
@@ -50,6 +57,49 @@ namespace ck_intent_debugger_window
 {
     constexpr auto PadS = 4.0f;
     constexpr auto PadM = 8.0f;
+
+    auto AuthoredStyleTokens() -> FCkUiView::FTokens
+    {
+        const auto Color = [](const FLinearColor& InColor) { return TEXT("#") + InColor.ToFColorSRGB().ToHex(); };
+        return {{TEXT("--intent-surface"), Color(CkStyle::Bg2())}, {TEXT("--intent-border"), Color(CkStyle::Border())},
+            {TEXT("--intent-text"), Color(CkStyle::Text())}, {TEXT("--intent-muted"), Color(CkStyle::TextMute())},
+            {TEXT("--intent-accent"), Color(CkStyle::Accent())}, {TEXT("--intent-space-s"), FString::SanitizeFloat(CkStyle::SpaceS)},
+            {TEXT("--intent-heading-size"), FString::FromInt(CkStyle::FontSizeSmall())}};
+    }
+
+    auto PathContainsWidget(const FWidgetPath& InPath, const TSharedRef<SWidget>& InRoot) -> bool
+    {
+        for (int32 WidgetIndex = 0; WidgetIndex < InPath.Widgets.Num(); ++WidgetIndex)
+        {
+            const FArrangedWidget& Arranged = InPath.Widgets[WidgetIndex];
+            if (Arranged.Widget == InRoot) { return true; }
+        }
+        return false;
+    }
+
+    auto ReleaseOwnedSlateInput(const TSharedRef<SWidget>& InRoot) -> void
+    {
+        if (NOT FSlateApplication::IsInitialized()) { return; }
+        FSlateApplication& Slate = FSlateApplication::Get();
+        Slate.ForEachUser([&Slate, &InRoot](FSlateUser& InUser)
+        {
+            const auto IsUnderRoot = [&Slate, &InRoot](const TSharedPtr<SWidget>& InWidget)
+            {
+                FWidgetPath Path;
+                return InWidget.IsValid() && Slate.GeneratePathToWidgetUnchecked(InWidget.ToSharedRef(), Path, EVisibility::All)
+                    && PathContainsWidget(Path, InRoot);
+            };
+            const int32 UserIndex = InUser.GetUserIndex();
+            if (IsUnderRoot(Slate.GetUserFocusedWidget(UserIndex))) { Slate.ClearUserFocus(UserIndex, EFocusCause::SetDirectly); }
+            if (IsUnderRoot(InUser.GetCursorCaptor())) { InUser.ReleaseCursorCapture(); }
+            TSet<uint32> PointerIndices{FSlateApplication::CursorPointerIndex};
+            for (const auto& Entry : InUser.GetWidgetsUnderPointerLastEventByIndex()) { PointerIndices.Add(Entry.Key); }
+            for (const uint32 PointerIndex : PointerIndices)
+            {
+                if (IsUnderRoot(InUser.GetPointerCaptor(PointerIndex))) { InUser.ReleaseCapture(PointerIndex); }
+            }
+        }, true);
+    }
 
 }
 
@@ -80,6 +130,9 @@ auto
     -> void
 {
     Register_WithGate();
+#if WITH_DEV_AUTOMATION_TESTS
+    _TestResourceDirectory = InArgs._TestResourceDirectory;
+#endif
 
     _ViewModel = MakeShared<FCkIntentDebugger_ViewModel>();
 
@@ -117,9 +170,14 @@ auto
         this, &SCkIntentDebuggerWindow::HandleViewModelChanged);
 
     const TSharedRef<bool> IsInputHudMenuOpen = MakeShared<bool>(false);
+    const TWeakPtr<SCkIntentDebuggerWindow> WeakWindow = SharedThis(this);
     const TSharedRef<SCkIntentDebugger_InputHudControls> InputHudControls =
         SNew(SCkIntentDebugger_InputHudControls)
-            .CanDispatchEvents_Lambda([IsInputHudMenuOpen] { return *IsInputHudMenuOpen; });
+            .CanDispatchEvents_Lambda([IsInputHudMenuOpen, WeakWindow]
+            {
+                const TSharedPtr<SCkIntentDebuggerWindow> Window = WeakWindow.Pin();
+                return *IsInputHudMenuOpen && Window.IsValid() && NOT Window->_PresentationReleased;
+            });
 
     const auto InputHudCommandGroup = SNew(SHorizontalBox)
 
@@ -133,26 +191,32 @@ auto
                         FText::FromString(TEXT("Input HUD overlay")),
                         FText::FromString(TEXT("Toggle the on-screen QA input overlay (ck.InputOverlay).\n"
                              "Off (0) hides it, on (2) shows the auto device visual.")),
-                        TAttribute<bool>::CreateLambda([]() -> bool
+                        TAttribute<bool>::CreateLambda([WeakWindow]() -> bool
                         {
+                            const TSharedPtr<SCkIntentDebuggerWindow> Window = WeakWindow.Pin();
+                            if (NOT Window.IsValid() || Window->_PresentationReleased) { return false; }
                             const auto* CVar = IConsoleManager::Get().FindConsoleVariable(TEXT("ck.InputOverlay"));
                             return CVar != nullptr && CVar->GetInt() != 0;
                         }),
-                        FOnCkDebug_IconToggleChanged::CreateLambda([](bool InIsOn)
+                        FOnCkDebug_IconToggleChanged::CreateLambda([WeakWindow](bool InIsOn)
                         {
+                            const TSharedPtr<SCkIntentDebuggerWindow> Window = WeakWindow.Pin();
+                            if (NOT Window.IsValid() || Window->_PresentationReleased) { return; }
                             if (auto* CVar = IConsoleManager::Get().FindConsoleVariable(TEXT("ck.InputOverlay")))
                             { CVar->Set(InIsOn ? 2 : 0, ECVF_SetByConsole); }
                         }),
-                        TAttribute<bool>::CreateLambda([]() -> bool
+                        TAttribute<bool>::CreateLambda([WeakWindow]() -> bool
                         {
-                            return IConsoleManager::Get().FindConsoleVariable(TEXT("ck.InputOverlay")) != nullptr;
+                            const TSharedPtr<SCkIntentDebuggerWindow> Window = WeakWindow.Pin();
+                            return Window.IsValid() && NOT Window->_PresentationReleased
+                                && IConsoleManager::Get().FindConsoleVariable(TEXT("ck.InputOverlay")) != nullptr;
                         })}
                 })
         ]
 
         + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(CkStyle::SpaceS, 0.0f)
         [
-            SNew(SComboButton)
+            SAssignNew(_InputHudMenu, SComboButton)
                 .OnMenuOpenChanged_Lambda([IsInputHudMenuOpen](const bool bIsOpen)
                 {
                     // The menu anchor dismisses its popup and handles focus when it closes. The retained view's
@@ -174,10 +238,14 @@ auto
 
     ChildSlot
     [
-        SNew(SCkDebug_WindowChrome)
+        SAssignNew(_Chrome, SCkDebug_WindowChrome)
             .WindowId(Get_WindowId())
             .ToolTabId(TEXT("CkIntentDebugger"))
-            .StatusText_Lambda([this]() { return Get_StatusText(); })
+            .StatusText_Lambda([WeakWindow]()
+            {
+                const TSharedPtr<SCkIntentDebuggerWindow> Window = WeakWindow.Pin();
+                return Window.IsValid() && NOT Window->_PresentationReleased ? Window->Get_StatusText() : FText::GetEmpty();
+            })
             .CommandGroups({
                 FCkDebug_CommandGroup::Primary(TEXT("IntentView"), FText::FromString(TEXT("Intent view controls")),
                     InputHudCommandGroup),
@@ -194,14 +262,21 @@ auto
             .ShowRefreshControls(true)
             .Content()
             [
-                Build_Body()
+                SAssignNew(_BodyHost, SBox)
+                [
+                    Build_Body()
+                ]
             ]
     ];
+
+    Build_AuthoredBody();
 }
 
 SCkIntentDebuggerWindow::
     ~SCkIntentDebuggerWindow()
 {
+    Release_Presentation();
+
     if (_ViewModel.IsValid() && _ViewModelChangedHandle.IsValid())
     {
         _ViewModel->OnChanged.Remove(_ViewModelChangedHandle);
@@ -241,7 +316,10 @@ auto
 
             + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
             [
-                SAssignNew(_SourceSelectorBox, SHorizontalBox)
+                SAssignNew(_SourceSelectorHost, SBox)
+                [
+                    SAssignNew(_SourceSelectorBox, SHorizontalBox)
+                ]
             ]
 
         ];
@@ -402,7 +480,10 @@ auto
         float InDeltaTime)
     -> void
 {
-    SCompoundWidget::Tick(InAllottedGeometry, InCurrentTime, InDeltaTime);
+    SCkDebugger_WindowBase::Tick(InAllottedGeometry, InCurrentTime, InDeltaTime);
+    if (_PresentationReleased) { return; }
+
+    Poll_AuthoredBody(InCurrentTime);
 
     // Viewport-picker ticks stay ungated so input handling keeps working even
     // when the panel refresh is paused.
@@ -420,6 +501,173 @@ auto
     { return; }
 
     _ViewModel->Tick();
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkIntentDebuggerWindow::
+    Build_AuthoredBody()
+    -> void
+{
+    TSharedPtr<const FCkUiWidgetRegistrySnapshot> Registry;
+    const FCkUiLoadResult RegistryResult = FCkDebug_UiRegistry::TryCreate(Registry);
+    const TSharedPtr<IPlugin> Plugin = IPluginManager::Get().FindPlugin(TEXT("CkDebugger"));
+    if (NOT RegistryResult.Succeeded || NOT Registry.IsValid() || NOT Plugin.IsValid()
+        || NOT _BodyHost.IsValid() || NOT _LayerStackPanel.IsValid() || NOT _TimelineDock.IsValid()
+        || NOT _KeyStatePanel.IsValid() || NOT _ResolutionPanel.IsValid() || NOT _NearMissPanel.IsValid()
+        || NOT _DevicesPanel.IsValid())
+    { return; }
+
+    const FCkUiLoadResult SourceRecordsCreated = FCkUiCollection::TryCreate({
+        {TEXT("label"), ECkUiFieldKind::Text}, {TEXT("selected"), ECkUiFieldKind::Bool},
+        {TEXT("color"), ECkUiFieldKind::Color}}, _SourceRecords);
+    if (NOT SourceRecordsCreated.Succeeded || NOT _SourceRecords.IsValid())
+    { return; }
+    Refresh_SourceRecords();
+
+    SAssignNew(_LayerStackMount, SBox);
+    SAssignNew(_TimelineMount, SBox);
+    SAssignNew(_KeyStateMount, SBox);
+    SAssignNew(_ResolutionMount, SBox);
+    SAssignNew(_NearMissMount, SBox);
+    SAssignNew(_DevicesMount, SBox);
+
+    auto Ports = FCkUiView::FNativeBindings{};
+    Ports.Add(TEXT("intent-layer-stack"), _LayerStackMount);
+    Ports.Add(TEXT("intent-resolution"), _ResolutionMount);
+    Ports.Add(TEXT("intent-near-misses"), _NearMissMount);
+    Ports.Add(TEXT("intent-timeline"), _TimelineMount);
+    Ports.Add(TEXT("intent-key-state"), _KeyStateMount);
+    Ports.Add(TEXT("intent-devices"), _DevicesMount);
+    const TWeakPtr<SCkIntentDebuggerWindow> WeakWindow = SharedThis(this);
+    auto Data = FCkUiView::FDataBindings{};
+    Data.SlateUserIndex = 0;
+    Data.Collections.Add(TEXT("intent-sources"), _SourceRecords);
+    Data.CanDispatchEvents = TAttribute<bool>::CreateLambda([WeakWindow]()
+    {
+        const TSharedPtr<SCkIntentDebuggerWindow> Window = WeakWindow.Pin();
+        return Window.IsValid() && NOT Window->_PresentationReleased;
+    });
+    Data.ItemActions.Add(TEXT("intent-source-select"), FCkUiOnItemAction::CreateLambda([WeakWindow](FString InKey)
+    {
+        const TSharedPtr<SCkIntentDebuggerWindow> Window = WeakWindow.Pin();
+        if (NOT Window.IsValid() || Window->_PresentationReleased || NOT Window->_ViewModel.IsValid()) { return; }
+        const int32 Index = FCString::Atoi(*InKey);
+        if (Window->_ViewModel->Get_Snapshot().Sources.IsValidIndex(Index))
+        { Window->_ViewModel->Set_SelectedSourceIndex(Index); }
+    }));
+    const TSharedRef<FCkUiView> Candidate = FCkUiView::Create(MoveTemp(Ports), {}, ck_intent_debugger_window::AuthoredStyleTokens(),
+        CkStyle::RegularFont(CkStyle::FontSizeBody()), MoveTemp(Data), Registry);
+    FString Directory = FPaths::Combine(Plugin->GetBaseDir(), TEXT("Resources/UI"));
+#if WITH_DEV_AUTOMATION_TESTS
+    if (NOT _TestResourceDirectory.IsEmpty()) { Directory = _TestResourceDirectory; }
+#endif
+    _AuthoredBodyMarkupPath = FPaths::Combine(Directory, TEXT("IntentDebugger.ui.html"));
+    _AuthoredBodyStylesheetPath = FPaths::Combine(Directory, TEXT("IntentDebugger.ui.css"));
+    Candidate->SetFiles(_AuthoredBodyMarkupPath, _AuthoredBodyStylesheetPath);
+    Candidate->GetRegion(TEXT("actions"));
+    Candidate->GetRegion(TEXT("main"));
+    _AuthoredBody = Candidate;
+    Candidate->PollFiles(ck_intent_debugger_window::AuthoredStyleTokens());
+    if (NOT Candidate->GetLastResult().Succeeded)
+    { return; }
+
+    // Candidate admission is complete while fallback still owns every panel. Detach it before a port takes ownership.
+    _BodyHost->SetContent(SNullWidget::NullWidget);
+    _LayerStackMount->SetContent(_LayerStackPanel.ToSharedRef());
+    _ResolutionMount->SetContent(_ResolutionPanel.ToSharedRef());
+    _NearMissMount->SetContent(_NearMissPanel.ToSharedRef());
+    _TimelineMount->SetContent(_TimelineDock.ToSharedRef());
+    _KeyStateMount->SetContent(_KeyStatePanel.ToSharedRef());
+    _DevicesMount->SetContent(_DevicesPanel.ToSharedRef());
+    _BodyHost->SetContent(Candidate->GetRegion(TEXT("main")));
+    if (_SourceSelectorHost.IsValid()) { _SourceSelectorHost->SetContent(Candidate->GetRegion(TEXT("actions"))); }
+    _UsingNativeBodyFallback = false;
+}
+
+auto
+    SCkIntentDebuggerWindow::
+    Poll_AuthoredBody(
+        const double InCurrentTime)
+    -> void
+{
+    if (_PresentationReleased || NOT _AuthoredBody.IsValid() || InCurrentTime < _NextAuthoredBodyPollSeconds)
+    { return; }
+
+    _NextAuthoredBodyPollSeconds = InCurrentTime + 0.5;
+    const bool Changed = _AuthoredBody->PollFiles(ck_intent_debugger_window::AuthoredStyleTokens());
+    if (_UsingNativeBodyFallback && Changed && _AuthoredBody->GetLastResult().Succeeded && _BodyHost.IsValid()
+        && _LayerStackMount.IsValid() && _ResolutionMount.IsValid() && _NearMissMount.IsValid()
+        && _TimelineMount.IsValid() && _KeyStateMount.IsValid() && _DevicesMount.IsValid()
+        && _LayerStackPanel.IsValid() && _ResolutionPanel.IsValid() && _NearMissPanel.IsValid()
+        && _TimelineDock.IsValid() && _KeyStatePanel.IsValid() && _DevicesPanel.IsValid())
+    {
+        _BodyHost->SetContent(SNullWidget::NullWidget);
+        _LayerStackMount->SetContent(_LayerStackPanel.ToSharedRef());
+        _ResolutionMount->SetContent(_ResolutionPanel.ToSharedRef());
+        _NearMissMount->SetContent(_NearMissPanel.ToSharedRef());
+        _TimelineMount->SetContent(_TimelineDock.ToSharedRef());
+        _KeyStateMount->SetContent(_KeyStatePanel.ToSharedRef());
+        _DevicesMount->SetContent(_DevicesPanel.ToSharedRef());
+        _BodyHost->SetContent(_AuthoredBody->GetRegion(TEXT("main")));
+        if (_SourceSelectorHost.IsValid()) { _SourceSelectorHost->SetContent(_AuthoredBody->GetRegion(TEXT("actions"))); }
+        _UsingNativeBodyFallback = false;
+    }
+}
+
+auto
+    SCkIntentDebuggerWindow::
+    Release_Presentation()
+    -> void
+{
+    if (_PresentationReleased)
+    { return; }
+
+    _PresentationReleased = true;
+    if (_ViewportPicker.IsValid()) { _ViewportPicker->Deactivate(); }
+    if (_ViewModel.IsValid() && _ViewModelChangedHandle.IsValid())
+    {
+        _ViewModel->OnChanged.Remove(_ViewModelChangedHandle);
+        _ViewModelChangedHandle.Reset();
+    }
+    if (_ViewModel.IsValid()) { _ViewModel->Reset_ForWorldChange(); }
+    if (_AuthoredBody.IsValid())
+    {
+        _AuthoredBody->ReleaseOwnerInteractions();
+    }
+    if (_LayerStackPanel.IsValid()) { _LayerStackPanel->ReleaseContextMenu(); }
+    if (_ResolutionPanel.IsValid()) { _ResolutionPanel->ReleaseContextMenu(); }
+    if (_NearMissPanel.IsValid()) { _NearMissPanel->ReleaseContextMenu(); }
+    if (_Chrome.IsValid()) { ck_intent_debugger_window::ReleaseOwnedSlateInput(_Chrome.ToSharedRef()); }
+    if (_InputHudMenu.IsValid()) { _InputHudMenu->SetIsOpen(false); }
+    if (_BodyHost.IsValid()) { _BodyHost->SetContent(SNullWidget::NullWidget); }
+    if (_SourceSelectorHost.IsValid()) { _SourceSelectorHost->SetContent(SNullWidget::NullWidget); }
+    if (_LayerStackMount.IsValid()) { _LayerStackMount->SetContent(SNullWidget::NullWidget); }
+    if (_ResolutionMount.IsValid()) { _ResolutionMount->SetContent(SNullWidget::NullWidget); }
+    if (_NearMissMount.IsValid()) { _NearMissMount->SetContent(SNullWidget::NullWidget); }
+    if (_TimelineMount.IsValid()) { _TimelineMount->SetContent(SNullWidget::NullWidget); }
+    if (_KeyStateMount.IsValid()) { _KeyStateMount->SetContent(SNullWidget::NullWidget); }
+    if (_DevicesMount.IsValid()) { _DevicesMount->SetContent(SNullWidget::NullWidget); }
+    ChildSlot[SNullWidget::NullWidget];
+    _AuthoredBody.Reset();
+    _LayerStackPanel.Reset();
+    _TimelineDock.Reset();
+    _KeyStatePanel.Reset();
+    _ResolutionPanel.Reset();
+    _NearMissPanel.Reset();
+    _DevicesPanel.Reset();
+    _ViewportPicker.Reset();
+    _ViewModel.Reset();
+    _SourceSelectorBox.Reset();
+    _SourceSelectorHost.Reset();
+    _InputHudMenu.Reset();
+    _Chrome.Reset();
+    _SourceRecords.Reset();
+    _LastSourceCount = INDEX_NONE;
+    _PendingLocalPlayerIndex = INDEX_NONE;
+    _PendingLayerPriority = MIN_int32;
+    _HasPendingTarget = false;
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -570,9 +818,10 @@ auto
 
     const auto Count = _ViewModel->Get_Snapshot().Sources.Num();
     if (Count == _LastSourceCount)
-    { return; }
+    { Refresh_SourceRecords(); return; }
 
     _LastSourceCount = Count;
+    Refresh_SourceRecords();
     _SourceSelectorBox->ClearChildren();
 
     if (Count == 0)
@@ -597,19 +846,57 @@ auto
         [
             SNew(SButton)
                 .Text(FText::FromString(Label))
-                .OnClicked_Lambda([this, Index]()
+                .OnClicked_Lambda([WeakWindow = TWeakPtr<SCkIntentDebuggerWindow>{SharedThis(this)}, Index]()
                 {
-                    _ViewModel->Set_SelectedSourceIndex(Index);
+                    const TSharedPtr<SCkIntentDebuggerWindow> Window = WeakWindow.Pin();
+                    if (NOT Window.IsValid() || Window->_PresentationReleased || NOT Window->_ViewModel.IsValid())
+                    { return FReply::Unhandled(); }
+                    Window->_ViewModel->Set_SelectedSourceIndex(Index);
                     return FReply::Handled();
                 })
-                .ButtonColorAndOpacity_Lambda([this, Index]()
+                .ButtonColorAndOpacity_Lambda([WeakWindow = TWeakPtr<SCkIntentDebuggerWindow>{SharedThis(this)}, Index]()
                 {
-                    return FSlateColor{_ViewModel->Get_SelectedSourceIndex() == Index
+                    const TSharedPtr<SCkIntentDebuggerWindow> Window = WeakWindow.Pin();
+                    return FSlateColor{Window.IsValid() && NOT Window->_PresentationReleased && Window->_ViewModel.IsValid()
+                        && Window->_ViewModel->Get_SelectedSourceIndex() == Index
                         ? CkStyle::Selection()
                         : CkStyle::Bg3()};
                 })
         ];
     }
+}
+
+auto
+    SCkIntentDebuggerWindow::
+    Refresh_SourceRecords()
+    -> void
+{
+    if (NOT _SourceRecords.IsValid() || NOT _ViewModel.IsValid())
+    { return; }
+
+    auto Records = TArray<FCkUiRecordData>{};
+    const auto& Sources = _ViewModel->Get_Snapshot().Sources;
+    Records.Reserve(Sources.Num());
+    for (int32 Index = 0; Index < Sources.Num(); ++Index)
+    {
+        auto Record = FCkUiRecordData{};
+        Record.Key = FString::FromInt(Index);
+        auto Label = FCkUiFieldValue{};
+        Label.Kind = ECkUiFieldKind::Text;
+        Label.Text = FText::FromString(Sources[Index].Label);
+        Record.Fields.Add(TEXT("label"), MoveTemp(Label));
+        auto Selected = FCkUiFieldValue{};
+        Selected.Kind = ECkUiFieldKind::Bool;
+        Selected.Bool = _ViewModel->Get_SelectedSourceIndex() == Index;
+        Record.Fields.Add(TEXT("selected"), MoveTemp(Selected));
+        auto Color = FCkUiFieldValue{};
+        Color.Kind = ECkUiFieldKind::Color;
+        Color.Color = _ViewModel->Get_SelectedSourceIndex() == Index ? CkStyle::Accent() : CkStyle::Text();
+        Record.Fields.Add(TEXT("color"), MoveTemp(Color));
+        Records.Add(MoveTemp(Record));
+    }
+    if (NOT _SourceRecords->TrySetRecords(MoveTemp(Records)).Succeeded)
+    { _SourceRecords->TrySetRecords({}); }
 }
 
 // --------------------------------------------------------------------------------------------------------------------

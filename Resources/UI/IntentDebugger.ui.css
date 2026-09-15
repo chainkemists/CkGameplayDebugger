@@ -1,0 +1,13 @@
+.intent-shell-root { min-width: 0; min-height: 0; flex-grow: 1; flex-shrink: 1; }
+.intent-source-actions { gap: var(--intent-space-s); vertical-align: center; }
+.intent-source-label { color: var(--intent-muted); }
+.intent-sources { gap: var(--intent-space-s); }
+.intent-source { flex-shrink: 0; }
+.intent-top-split { min-width: 0; min-height: 140px; flex-grow: 0.30; flex-shrink: 1; }
+.intent-bottom-split { min-width: 0; min-height: 260px; flex-grow: 0.70; flex-shrink: 1; }
+.intent-detail-split { min-width: 0; min-height: 0; flex-grow: 0.65; flex-shrink: 1; }
+.intent-pane { min-width: 0; min-height: 0; padding: var(--intent-space-s); background-color: var(--intent-surface); border-width: 1px; border-color: var(--intent-border); }
+.intent-timeline-pane { flex-grow: 0.35; flex-shrink: 1; }
+.intent-heading { color: var(--intent-text); font-size: var(--intent-heading-size); }
+.intent-subtext { color: var(--intent-muted); text-wrap: wrap; }
+.intent-port { min-width: 0; min-height: 0; flex-grow: 1; flex-shrink: 1; }

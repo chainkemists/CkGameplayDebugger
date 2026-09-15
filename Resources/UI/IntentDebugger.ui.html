@@ -1,0 +1,21 @@
+<ui version="1">
+  <region name="actions">
+    <row id="intent-source-actions"><row id="intent-source-actions-content" class="intent-source-actions"><text id="intent-source-label" class="intent-source-label">Source:</text><repeat id="intent-sources" bind="intent-sources" direction="horizontal" class="intent-sources"><button id="intent-source" bind-field="label" color-field="color" item-action="intent-source-select" class="intent-source" /></repeat></row></row>
+  </region>
+  <region name="main">
+    <column id="intent-shell-root"><column id="intent-shell-content" class="intent-shell-root">
+      <splitter id="intent-top-split" direction="horizontal" class="intent-top-split">
+        <column id="intent-layer-pane" class="intent-pane"><text id="intent-layer-heading" class="intent-heading">Layer stack</text><text id="intent-layer-subtext" class="intent-subtext">top-down · first Consume wins</text><column id="intent-layer-host" class="intent-port"><native id="intent-layer-native" bind="intent-layer-stack" /></column></column>
+        <column id="intent-resolution-pane" class="intent-pane"><text id="intent-resolution-heading" class="intent-heading">Resolution table</text><column id="intent-resolution-host" class="intent-port"><native id="intent-resolution-native" bind="intent-resolution" /></column></column>
+        <column id="intent-near-miss-pane" class="intent-pane"><text id="intent-near-miss-heading" class="intent-heading">Near misses</text><column id="intent-near-miss-host" class="intent-port"><native id="intent-near-miss-native" bind="intent-near-misses" /></column></column>
+      </splitter>
+      <splitter id="intent-bottom-split" direction="vertical" class="intent-bottom-split">
+        <column id="intent-timeline-pane" class="intent-pane intent-timeline-pane"><column id="intent-timeline-host" class="intent-port"><native id="intent-timeline-native" bind="intent-timeline" /></column></column>
+        <splitter id="intent-detail-split" direction="horizontal" class="intent-detail-split">
+          <column id="intent-key-state-pane" class="intent-pane"><text id="intent-key-state-heading" class="intent-heading">Key / State</text><column id="intent-key-state-host" class="intent-port"><native id="intent-key-state-native" bind="intent-key-state" /></column></column>
+          <column id="intent-devices-pane" class="intent-pane"><text id="intent-devices-heading" class="intent-heading">Devices</text><text id="intent-devices-subtext" class="intent-subtext">flash = press · fill = hold toward the verdict · outline = the game listens to it · dim = not connected</text><column id="intent-devices-host" class="intent-port"><native id="intent-devices-native" bind="intent-devices" /></column></column>
+        </splitter>
+      </splitter>
+    </column></column>
+  </region>
+</ui>

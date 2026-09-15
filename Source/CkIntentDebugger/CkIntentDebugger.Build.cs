@@ -34,6 +34,8 @@ public class CkIntentDebugger : CkModuleRules
 
         RuntimeDependencies.Add(Path.Combine(PluginDirectory, "Resources", "UI", "IntentInputHudControls.ui.html"), StagedFileType.NonUFS);
         RuntimeDependencies.Add(Path.Combine(PluginDirectory, "Resources", "UI", "IntentInputHudControls.ui.css"), StagedFileType.NonUFS);
+        RuntimeDependencies.Add(Path.Combine(PluginDirectory, "Resources", "UI", "IntentDebugger.ui.html"), StagedFileType.NonUFS);
+        RuntimeDependencies.Add(Path.Combine(PluginDirectory, "Resources", "UI", "IntentDebugger.ui.css"), StagedFileType.NonUFS);
         if (Target.bBuildEditor)
         {
             PublicDependencyModuleNames.AddRange(new string[]

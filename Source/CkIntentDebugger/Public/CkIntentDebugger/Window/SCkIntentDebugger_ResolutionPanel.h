@@ -10,6 +10,7 @@
 // --------------------------------------------------------------------------------------------------------------------
 
 class FCkIntentDebugger_ViewModel;
+class IMenu;
 
 // --------------------------------------------------------------------------------------------------------------------
 // Resolution-table view — the selected layer's active compiled set, as the matcher reads it.
@@ -30,16 +31,22 @@ public:
 
     auto RefreshFromViewModel() -> void;
     auto Reset_ForWorldChange() -> void;
+    /** Dismiss only this panel's native copy popup before its Slate root detaches. */
+    auto ReleaseContextMenu() -> void;
 
 private:
     auto OnGenerateRow(
         TSharedPtr<FCkIntentDebugger_ResolutionRow> InRow,
         const TSharedRef<STableViewBase>& InOwnerTable) -> TSharedRef<ITableRow>;
+    auto OpenContextMenu() -> TSharedPtr<SWidget>;
+
+    friend struct FCkIntentDebuggerAuthoredTestAccess;
 
 private:
     TSharedPtr<FCkIntentDebugger_ViewModel> _ViewModel;
 
     TSharedPtr<SListView<TSharedPtr<FCkIntentDebugger_ResolutionRow>>> _ListView;
+    TSharedPtr<IMenu> _ContextMenu;
     TArray<TSharedPtr<FCkIntentDebugger_ResolutionRow>> _Rows;
 };
 

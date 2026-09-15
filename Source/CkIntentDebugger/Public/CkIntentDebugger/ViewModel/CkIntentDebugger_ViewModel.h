@@ -10,6 +10,7 @@
 
 class FCkDebuggerModel_WorldSelector;
 class UWorld;
+struct FCkIntentDebuggerAuthoredTestAccess;
 
 // --------------------------------------------------------------------------------------------------------------------
 
@@ -85,6 +86,8 @@ public:
     FCkIntentDebugger_OnChanged OnChanged;
 
 private:
+    friend struct FCkIntentDebuggerAuthoredTestAccess;
+
     auto DoRecord_PhaseEvents() -> void;
     auto DoRefresh_DeviceSnapshot() -> void;
 

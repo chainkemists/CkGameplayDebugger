@@ -10,6 +10,7 @@
 // --------------------------------------------------------------------------------------------------------------------
 
 class FCkIntentDebugger_ViewModel;
+class IMenu;
 
 // --------------------------------------------------------------------------------------------------------------------
 // Layer-stack view — "why did nothing happen when I pressed X".
@@ -60,17 +61,23 @@ public:
 
     auto RefreshFromViewModel() -> void;
     auto Reset_ForWorldChange() -> void;
+    /** Dismiss only this panel's native copy popup before its Slate root detaches. */
+    auto ReleaseContextMenu() -> void;
 
 private:
     auto OnGenerateRow(TSharedPtr<FCkIntentDebugger_StackNode> InNode, const TSharedRef<STableViewBase>& InOwnerTable)
         -> TSharedRef<ITableRow>;
 
     auto OnSelectionChanged(TSharedPtr<FCkIntentDebugger_StackNode> InNode, ESelectInfo::Type InSelectInfo) -> void;
+    auto OpenContextMenu() -> TSharedPtr<SWidget>;
+
+    friend struct FCkIntentDebuggerAuthoredTestAccess;
 
 private:
     TSharedPtr<FCkIntentDebugger_ViewModel> _ViewModel;
 
     TSharedPtr<SListView<TSharedPtr<FCkIntentDebugger_StackNode>>> _ListView;
+    TSharedPtr<IMenu> _ContextMenu;
     TArray<TSharedPtr<FCkIntentDebugger_StackNode>> _Nodes;
 };
 

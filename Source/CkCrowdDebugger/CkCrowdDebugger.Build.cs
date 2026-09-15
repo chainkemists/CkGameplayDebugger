@@ -33,6 +33,7 @@ public class CkCrowdDebugger : CkModuleRules
 			"CkEcsExt",
 			"CkLabel",
 			"CkDebuggerCommon",
+			"CkSlateLayout",
             "CkEditorTools",
 
 			"CkNavigation",
@@ -53,6 +54,7 @@ public class CkCrowdDebugger : CkModuleRules
 				"EditorWidgets",
 			});
 			PrivateDependencyModuleNames.Add("UnrealEd");
+			PrivateDependencyModuleNames.Add("Projects");
 			PrivateDependencyModuleNames.Add("CkVoxelNavEditor");
 		}
 	}

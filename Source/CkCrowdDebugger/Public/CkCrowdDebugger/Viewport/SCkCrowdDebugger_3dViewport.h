@@ -71,6 +71,7 @@ public:
     auto
     Apply_CameraPreset(
         ECkCrowdDebugger_CameraPreset InPreset) -> void;
+    auto Release_Presentation() -> void;
 
     virtual auto
     Tick(
@@ -100,6 +101,8 @@ public:
     {
         return _Snapshot._AvoidanceVolumes.Num();
     }
+    auto Get_PreviewWorld_ForTests() const -> UWorld*
+    { return _CommonViewport.IsValid() ? _CommonViewport->Get_PreviewWorld() : nullptr; }
 #endif
 
 private:

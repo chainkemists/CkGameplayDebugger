@@ -19,7 +19,14 @@ class SCkCrowdDebugger_AgentDetailPanel;
 class SCkCrowdDebugger_StatsPanel;
 class SCkCrowdDebugger_EventLogPanel;
 class SCkCrowdDebugger_3dViewport;
+class SCkDebug_WindowChrome;
+class SButton;
+class SComboButton;
+class SBox;
+class FCkUiView;
 class UWorld;
+struct FCkCrowdDebuggerLifecycleTestAccess;
+struct FCkCrowdDebuggerAuthoredShellTestAccess;
 
 enum class ECkCrowdDebugger_VoxelSource : uint8
 {
@@ -37,6 +44,9 @@ public:
 	static const FName WindowId;
 
 	SLATE_BEGIN_ARGS(SCkCrowdDebuggerWindow) {}
+#if WITH_DEV_AUTOMATION_TESTS
+		SLATE_ARGUMENT(FString, TestResourceDirectory)
+#endif
 	SLATE_END_ARGS()
 
 	auto Construct(const FArguments& InArgs) -> void;
@@ -53,11 +63,20 @@ public:
 	{ return FText::FromString(TEXT("Crowd")); }
 
 	virtual ~SCkCrowdDebuggerWindow();
+	auto Release_Presentation() -> void;
 
 protected:
 	virtual auto OnStyleRevisionChanged() -> void override;
 
 private:
+	friend struct FCkCrowdDebuggerLifecycleTestAccess;
+	friend struct FCkCrowdDebuggerAuthoredShellTestAccess;
+	auto BuildNativeShell() -> TSharedRef<SWidget>;
+	auto BuildAuthoredShell() -> void;
+	auto PollAuthoredShell(double InCurrentTime) -> void;
+	auto MountAuthoredShell() -> bool;
+	auto DetachFallbackPorts() -> void;
+	auto RestoreFallbackPorts() -> void;
 	auto BuildCommandGroups() -> TArray<FCkDebug_CommandGroup>;
 	auto BuildMenuActions() -> TSharedRef<SWidget>;
 	auto Refresh_VoxelSnapshot(UWorld* InSelectedWorld) -> void;
@@ -80,6 +99,24 @@ private:
 	TSharedPtr<SCkCrowdDebugger_StatsPanel>         _StatsPanel;
 	TSharedPtr<SCkCrowdDebugger_EventLogPanel>      _EventLogPanel;
 	TSharedPtr<SCkCrowdDebugger_3dViewport>         _ViewportPanel;
+	TSharedPtr<SCkDebug_WindowChrome> _Chrome;
+	TSharedPtr<SBox> _AuthoredShellHost;
+	TSharedPtr<FCkUiView> _AuthoredShellView;
+	TSharedPtr<SBox> _FallbackNavHost;
+	TSharedPtr<SBox> _FallbackAgentsHost;
+	TSharedPtr<SBox> _FallbackStatsHost;
+	TSharedPtr<SBox> _FallbackEventsHost;
+	TSharedPtr<SBox> _FallbackPreviewHost;
+	TSharedPtr<SBox> _FallbackDetailHost;
+	FString _AuthoredShellLoadFailure;
+	double _NextAuthoredShellPollSeconds = 0.0;
+	bool _UsingNativeShellFallback = true;
+#if WITH_DEV_AUTOMATION_TESTS
+	FString _TestResourceDirectory;
+#endif
+	TSharedPtr<SComboButton> _DiagnosticsCombo, _SourceCombo, _NavigationCombo, _CrowdCombo, _QueuesCombo, _AvoidanceCombo;
+	TArray<TSharedPtr<SWidget>> _ComboMenuRoots;
+	TSharedPtr<SButton> _LivePieSourceButton;
 
 	ECkCrowdDebugger_VoxelSource _VoxelSource = ECkCrowdDebugger_VoxelSource::Auto;
 	TOptional<ck::voxelnav::FDebugSnapshot> _RetainedVoxelSnapshot;
@@ -100,6 +137,7 @@ private:
 	FDelegateHandle _WorldChangedHandle;
 	FDelegateHandle _SessionInvalidatedHandle;
 	FDelegateHandle _FrameSelectedAgentHandle;
+	bool _PresentationReleased = false;
 };
 
 // --------------------------------------------------------------------------------------------------------------------

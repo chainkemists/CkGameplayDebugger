@@ -1,0 +1,21 @@
+<ui version="1">
+  <region name="main">
+    <splitter id="crowd-topology" direction="horizontal">
+      <column id="crowd-operations-rail" class="crowd-rail">
+        <text id="crowd-operations-title" class="crowd-rail-title">Operations</text>
+        <native id="crowd-nav-port" bind="crowd-nav" />
+        <native id="crowd-agents-port" bind="crowd-agents" />
+        <native id="crowd-stats-port" bind="crowd-stats" />
+        <native id="crowd-events-port" bind="crowd-events" />
+      </column>
+      <column id="crowd-preview-rail" class="crowd-preview-rail">
+        <text id="crowd-preview-title" class="crowd-rail-title">Live preview</text>
+        <native id="crowd-preview-port" bind="crowd-preview" />
+      </column>
+      <column id="crowd-detail-rail" class="crowd-rail">
+        <text id="crowd-detail-title" class="crowd-rail-title">Selected agent</text>
+        <native id="crowd-detail-port" bind="crowd-detail" />
+      </column>
+    </splitter>
+  </region>
+</ui>

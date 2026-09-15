@@ -21,6 +21,7 @@
     #include "WorkspaceMenuStructureModule.h"
 #endif
 #include "Widgets/Docking/SDockTab.h"
+#include "Widgets/SNullWidget.h"
 
 #define LOCTEXT_NAMESPACE "FCkCrowdDebuggerModule"
 
@@ -47,6 +48,8 @@ void FCkCrowdDebuggerModule::StartupModule()
 	auto& TabSpawner = FGlobalTabmanager::Get()->RegisterNomadTabSpawner(
 		_TabId,
 		FOnSpawnTab::CreateRaw(this, &FCkCrowdDebuggerModule::OnSpawnDebuggerTab))
+		.SetReuseTabMethod(FOnFindTabToReuse::CreateLambda(
+			[this](const FTabId&) { return _Tab; }))
 		.SetDisplayName(LOCTEXT("TabTitle", "CK Crowd Debugger"))
 		.SetTooltipText(LOCTEXT("TabTooltip", "Opens the CK Crowd / Navigation debugger window"));
 #if WITH_EDITOR
@@ -103,15 +106,17 @@ void FCkCrowdDebuggerModule::ShutdownModule()
 		FGlobalTabmanager::Get()->UnregisterNomadTabSpawner(_TabId);
 	}
 
+	if (_Window.IsValid()) { _Window->Release_Presentation(); }
+	ck::debugger_tabs::Release_DebuggerTab(_Tab, false);
 	_Window.Reset();
-	_Tab.Reset();
 }
 
 // --------------------------------------------------------------------------------------------------------------------
 
 auto FCkCrowdDebuggerModule::HandleEnginePreExit() -> void
 {
-	_Tab.Reset();
+	if (_Window.IsValid()) { _Window->Release_Presentation(); }
+	ck::debugger_tabs::Release_DebuggerTab(_Tab, false);
 	_Window.Reset();
 }
 
@@ -119,19 +124,24 @@ auto FCkCrowdDebuggerModule::HandleEnginePreExit() -> void
 
 auto FCkCrowdDebuggerModule::OpenDebugger() -> void
 {
+	// Release_DebuggerTab detaches the feature content before requesting close. A docking layout can
+	// retain that empty tab briefly, but it cannot be reused because this module no longer owns its
+	// window. Evict only that explicitly detached state before invoking the spawner.
+	if (NOT _Window.IsValid())
+	{
+		if (auto ExistingTab = FGlobalTabmanager::Get()->FindExistingLiveTab(FTabId{_TabId});
+			ExistingTab.IsValid() && ExistingTab->GetContent() == SNullWidget::NullWidget)
+		{ ck::debugger_tabs::Release_DebuggerTab(ExistingTab, true); }
+	}
+
 	ck::debugger_tabs::Invoke_DebuggerTab(_TabId);
 }
 
 auto FCkCrowdDebuggerModule::CloseDebugger() -> void
 {
-	if (_Tab.IsValid())
-	{
-		// Engine shutdown destroys Slate windows BEFORE module unload — by then
-		// the tab's TSharedFromThis backing is gone and RequestCloseTab →
-		// SharedThis(this) trips the AsShared check. Just drop the ref on exit.
-		if (NOT IsEngineExitRequested())
-		{ _Tab->RequestCloseTab(); }
-	}
+	if (_Window.IsValid()) { _Window->Release_Presentation(); }
+	ck::debugger_tabs::Release_DebuggerTab(_Tab, true);
+	_Window.Reset();
 }
 
 auto FCkCrowdDebuggerModule::ToggleDebugger() -> void
@@ -156,6 +166,7 @@ auto FCkCrowdDebuggerModule::OnSpawnDebuggerTab(const FSpawnTabArgs& InArgs) -> 
 		.Label(FText::FromString(TEXT("CK Crowd Debugger")))
 		.OnTabClosed_Lambda([this](TSharedRef<SDockTab>)
 		{
+			if (_Window.IsValid()) { _Window->Release_Presentation(); }
 			_Window.Reset();
 			_Tab.Reset();
 		})

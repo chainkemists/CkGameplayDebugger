@@ -145,6 +145,21 @@ auto
 
 auto
     SCkCrowdDebugger_3dViewport::
+    Release_Presentation()
+    -> void
+{
+    _OnAgentPicked = {};
+    _OnWorldCommanded = {};
+    if (_PreviewAdapter.IsValid())
+    { _PreviewAdapter->Set_OnSelected({}); _PreviewAdapter->Set_OnCommandAtPoint({}); }
+    if (_CommonViewport.IsValid()) { _CommonViewport->Teardown(); }
+    _PreviewAdapter.Reset();
+    _CommonViewport.Reset();
+    _Snapshot = {};
+}
+
+auto
+    SCkCrowdDebugger_3dViewport::
     Set_VoxelNavSnapshot(const ck::voxelnav::FDebugSnapshot& InSnapshot)
     -> void
 {

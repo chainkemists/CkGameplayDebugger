@@ -1,0 +1,3 @@
+.crowd-rail { gap: var(--crowd-space-s); }
+.crowd-preview-rail { gap: var(--crowd-space-s); }
+.crowd-rail-title { color: var(--crowd-text); font-size: var(--crowd-title-size); }

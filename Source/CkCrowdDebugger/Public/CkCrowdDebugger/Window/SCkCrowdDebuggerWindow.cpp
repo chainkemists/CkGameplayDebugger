@@ -31,6 +31,10 @@
 #include "CkDebuggerCommon/Window/SCkDebug_WindowChrome.h"
 
 #include "CkEditorTools/Style/CkStyle.h"
+#include "CkDebuggerCommon/UI/CkDebug_UiRegistry.h"
+#include "CkSlateLayout/SCkUiSurface.h"
+#include "Interfaces/IPluginManager.h"
+#include "Misc/Paths.h"
 
 #include "CkVoxelNav/Volume/CkVoxelNavVolume_Utils.h"
 #if WITH_EDITOR
@@ -39,6 +43,7 @@
 #endif
 
 #include "Widgets/Input/SButton.h"
+#include "Widgets/Layout/SBox.h"
 #include "Widgets/Input/SComboButton.h"
 #include "Widgets/Input/SSlider.h"
 #include "Widgets/Images/SImage.h"
@@ -46,7 +51,12 @@
 #include "Widgets/Layout/SSplitter.h"
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/SBoxPanel.h"
+#include "Widgets/SNullWidget.h"
 #include "Widgets/Text/STextBlock.h"
+
+#include <Framework/Application/SlateApplication.h>
+#include <Framework/Application/SlateUser.h>
+#include <Layout/WidgetPath.h>
 
 #include "Engine/Engine.h"
 #include "Engine/World.h"
@@ -63,6 +73,31 @@ namespace ck_crowd_debugger_window
 	constexpr auto LeftRailMinHeight =
 		(LeftRailStatsMinHeight / 0.14f)
 		+ (3.0f * LeftRailSplitterHandleSize);
+
+	auto ReleaseOwnedInput(const TSharedRef<SWidget>& Root) -> void
+	{
+		if (NOT FSlateApplication::IsInitialized()) { return; }
+		auto& Slate = FSlateApplication::Get();
+		auto IsUnderRoot = [&Slate, &Root](const TSharedPtr<SWidget>& Widget)
+		{
+			FWidgetPath Path;
+			if (NOT Widget.IsValid() || NOT Slate.GeneratePathToWidgetUnchecked(Widget.ToSharedRef(), Path, EVisibility::All)) { return false; }
+			for (int32 WidgetIndex = 0; WidgetIndex < Path.Widgets.Num(); ++WidgetIndex)
+			{
+				if (Path.Widgets[WidgetIndex].Widget == Root) { return true; }
+			}
+			return false;
+		};
+		Slate.ForEachUser([&Slate, &IsUnderRoot](FSlateUser& User)
+		{
+			const int32 Index = User.GetUserIndex();
+			if (IsUnderRoot(Slate.GetUserFocusedWidget(Index))) { Slate.ClearUserFocus(Index, EFocusCause::SetDirectly); }
+			if (IsUnderRoot(User.GetCursorCaptor())) { User.ReleaseCursorCapture(); }
+			TSet<uint32> Pointers{FSlateApplication::CursorPointerIndex};
+			for (const auto& Entry : User.GetWidgetsUnderPointerLastEventByIndex()) { Pointers.Add(Entry.Key); }
+			for (const uint32 Pointer : Pointers) { if (IsUnderRoot(User.GetPointerCaptor(Pointer))) { User.ReleaseCapture(Pointer); } }
+		}, true);
+	}
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -80,6 +115,9 @@ auto SCkCrowdDebuggerWindow::Is_CrowdDebuggerEntity(const FCk_Handle& InCandidat
 
 auto SCkCrowdDebuggerWindow::Construct(const FArguments& InArgs) -> void
 {
+#if WITH_DEV_AUTOMATION_TESTS
+	_TestResourceDirectory = InArgs._TestResourceDirectory;
+#endif
 	Register_WithGate();
 
 	_ViewModel = MakeShared<FCkCrowdDebugger_ViewModel>();
@@ -140,8 +178,10 @@ auto SCkCrowdDebuggerWindow::Construct(const FArguments& InArgs) -> void
 		})
 		// RTS-style command: right-click a destination to drive the selected agent there.
 		// Commanding auto-arms the debug override, so no separate "Take Control" click is needed.
-		.OnWorldCommanded_Lambda([this, WeakViewModel](const FVector& InDestination)
+		.OnWorldCommanded_Lambda([WeakWindow = TWeakPtr<SCkCrowdDebuggerWindow>(SharedThis(this)), WeakViewModel](const FVector& InDestination)
 		{
+			const auto Window = WeakWindow.Pin();
+			if (NOT Window.IsValid() || Window->_PresentationReleased) { return; }
 			const auto ViewModel = WeakViewModel.Pin();
 			if (NOT ViewModel.IsValid())
 			{ return; }
@@ -158,8 +198,8 @@ auto SCkCrowdDebuggerWindow::Construct(const FArguments& InArgs) -> void
 			// Both surfaces: the viewport ping is where the click happened, the world ping is for
 			// whoever is watching the game. Neither can substitute for the other -- the viewport
 			// renders its own preview world and never shows game-world actors.
-			if (_ViewportPanel.IsValid())
-			{ _ViewportPanel->Set_CommandPing(Destination); }
+			if (Window->_ViewportPanel.IsValid())
+			{ Window->_ViewportPanel->Set_CommandPing(Destination); }
 
 			ck::debug_3d::Draw_WorldCommandPing(
 				UCk_Utils_EntityLifetime_UE::Get_WorldForEntity(Agent), Destination);
@@ -172,7 +212,7 @@ auto SCkCrowdDebuggerWindow::Construct(const FArguments& InArgs) -> void
 
 	ChildSlot
 	[
-		SNew(SCkDebug_WindowChrome)
+		SAssignNew(_Chrome, SCkDebug_WindowChrome)
 		.WindowId(WindowId)
 		.ToolTabId(TEXT("CkCrowdDebugger"))
 		.CommandGroups(BuildCommandGroups())
@@ -182,54 +222,15 @@ auto SCkCrowdDebuggerWindow::Construct(const FArguments& InArgs) -> void
 		]
 		.Content()
 		[
-		SNew(SVerticalBox)
-		+ SVerticalBox::Slot().FillHeight(1.0f)
-		[
-			SNew(SSplitter).Orientation(Orient_Horizontal)
-			// Left rail: navmesh status + agent list + stats + event log.
-			+ SSplitter::Slot().Value(0.20f)
-			[
-				SNew(SScrollBox)
-				.Orientation(Orient_Vertical)
-				.ConsumeMouseWheel(EConsumeMouseWheel::WhenScrollingPossible)
-				+ SScrollBox::Slot()
-				.FillSize(1.0f)
-				.MinSize(ck_crowd_debugger_window::LeftRailMinHeight)
-				[
-					SNew(SSplitter)
-					.Orientation(Orient_Vertical)
-					.PhysicalSplitterHandleSize(ck_crowd_debugger_window::LeftRailSplitterHandleSize)
-					+ SSplitter::Slot()
-					.Value(0.22f)
-					[ SNew(SCkDebug_PaneHost) [ _NavmeshStatusPanel.ToSharedRef() ] ]
-					+ SSplitter::Slot()
-					.Value(0.46f)
-					[ SNew(SCkDebug_PaneHost) [ _AgentListPanel.ToSharedRef() ] ]
-					+ SSplitter::Slot()
-					.Value(0.14f)
-					[ SNew(SCkDebug_PaneHost) [ _StatsPanel.ToSharedRef() ] ]
-					+ SSplitter::Slot()
-					.Value(0.18f)
-					[ SNew(SCkDebug_PaneHost) [ _EventLogPanel.ToSharedRef() ] ]
-				]
-			]
-			// Center: the viewport, full height (the mockup's centerpiece).
-			+ SSplitter::Slot().Value(0.52f)
-			[
-				SNew(SCkDebug_PaneHost).ContentMode(ECkDebugPaneContent::OpaqueRenderer) [ _ViewportPanel.ToSharedRef() ]
-			]
-			// Right: agent detail + tuners + diagnostics, full height (no scrolling).
-			+ SSplitter::Slot().Value(0.28f)
-			[
-				SNew(SCkDebug_PaneHost) [ _AgentDetailPanel.ToSharedRef() ]
-			]
-		]
+			SAssignNew(_AuthoredShellHost, SBox)
 		]
 	];
+	BuildAuthoredShell();
 }
 
 auto SCkCrowdDebuggerWindow::HandleWorldChanged(UWorld*) -> void
 {
+	if (_PresentationReleased) { return; }
 	if (_ViewportPicker.IsValid())
 	{ _ViewportPicker->Deactivate(); }
 
@@ -268,6 +269,8 @@ auto SCkCrowdDebuggerWindow::OnStyleRevisionChanged() -> void
 auto SCkCrowdDebuggerWindow::Tick(const FGeometry& AllottedGeometry, double InCurrentTime, float InDeltaTime) -> void
 {
 	SCkDebugger_WindowBase::Tick(AllottedGeometry, InCurrentTime, InDeltaTime);
+	if (_PresentationReleased) { return; }
+	PollAuthoredShell(InCurrentTime);
 
 	if (_ViewportPicker.IsValid() && _ViewportPicker->IsActive())
 	{ _ViewportPicker->Tick(InDeltaTime); }
@@ -626,29 +629,53 @@ auto SCkCrowdDebuggerWindow::Refresh_VoxelSnapshot(UWorld* InSelectedWorld) -> v
 
 auto SCkCrowdDebuggerWindow::BuildCommandGroups() -> TArray<FCkDebug_CommandGroup>
 {
-	const auto MakeSourceButton = [this](const TCHAR* InLabel, ECkCrowdDebugger_VoxelSource InSource) -> TSharedRef<SWidget>
+	const auto WeakWindow = TWeakPtr<SCkCrowdDebuggerWindow>{SharedThis(this)};
+	const auto MakeSourceButton = [WeakWindow](
+		const TCHAR* InLabel,
+		ECkCrowdDebugger_VoxelSource InSource,
+		TSharedPtr<SButton>* OutButton = nullptr) -> TSharedRef<SWidget>
 	{
+		const auto OnClicked = [WeakWindow, InSource]() -> FReply
+		{
+			const TSharedPtr<SCkCrowdDebuggerWindow> Window = WeakWindow.Pin();
+			if (NOT Window.IsValid() || Window->_PresentationReleased)
+			{ return FReply::Unhandled(); }
+
+			Window->_VoxelSource = InSource;
+			Window->_VoxelRefreshRequested = true;
+			return FReply::Handled();
+		};
+		if (OutButton != nullptr)
+		{
+			return SAssignNew(*OutButton, SButton)
+				.ButtonStyle(FAppStyle::Get(), "SimpleButton")
+				.Text(FText::FromString(InLabel))
+				.OnClicked_Lambda(OnClicked);
+		}
 		return SNew(SButton)
 			.ButtonStyle(FAppStyle::Get(), "SimpleButton")
 			.Text(FText::FromString(InLabel))
-			.OnClicked_Lambda([this, InSource]() -> FReply
-			{
-				_VoxelSource = InSource;
-				_VoxelRefreshRequested = true;
-				return FReply::Handled();
-			});
+			.OnClicked_Lambda(OnClicked);
 	};
 
-	const auto MakeVoxelToggle = [this](const TCHAR* InLabel, const TCHAR* InTooltip, bool* InValue) -> TSharedRef<SWidget>
+	const auto MakeVoxelToggle = [WeakWindow](
+		const TCHAR* InLabel,
+		const TCHAR* InTooltip,
+		bool SCkCrowdDebuggerWindow::* InValue) -> TSharedRef<SWidget>
 	{
 		return SNew(SCkDebug_ToggleSurface)
 			.ToolTipText(FText::FromString(InTooltip))
-			.IsOn_Lambda([InValue]() -> bool
-			{ return *InValue; })
-			.OnStateChanged_Lambda([this, InValue](bool InIsOn)
+			.IsOn_Lambda([WeakWindow, InValue]() -> bool
 			{
-				*InValue = InIsOn;
-				_VoxelRefreshRequested = true;
+				const TSharedPtr<SCkCrowdDebuggerWindow> Window = WeakWindow.Pin();
+				return Window.IsValid() && NOT Window->_PresentationReleased && (Window.Get()->*InValue);
+			})
+			.OnStateChanged_Lambda([WeakWindow, InValue](bool InIsOn)
+			{
+				const TSharedPtr<SCkCrowdDebuggerWindow> Window = WeakWindow.Pin();
+				if (NOT Window.IsValid() || Window->_PresentationReleased) { return; }
+				(Window.Get()->*InValue) = InIsOn;
+				Window->_VoxelRefreshRequested = true;
 			})
 			[ SNew(STextBlock).Text(FText::FromString(InLabel)) ];
 	};
@@ -660,7 +687,7 @@ auto SCkCrowdDebuggerWindow::BuildCommandGroups() -> TArray<FCkDebug_CommandGrou
 #endif
 	const auto SourceMenu = SNew(SVerticalBox)
 		+ SVerticalBox::Slot().AutoHeight()[ MakeSourceButton(AutoSourceLabel, ECkCrowdDebugger_VoxelSource::Auto) ]
-		+ SVerticalBox::Slot().AutoHeight()[ MakeSourceButton(TEXT("Live PIE"), ECkCrowdDebugger_VoxelSource::LivePie) ]
+		+ SVerticalBox::Slot().AutoHeight()[ MakeSourceButton(TEXT("Live PIE"), ECkCrowdDebugger_VoxelSource::LivePie, &_LivePieSourceButton) ]
 		+ SVerticalBox::Slot().AutoHeight()[ MakeSourceButton(TEXT("Retained Snapshot"), ECkCrowdDebugger_VoxelSource::RetainedSnapshot) ]
 #if WITH_EDITOR
 		+ SVerticalBox::Slot().AutoHeight()[ MakeSourceButton(TEXT("Editor Preview"), ECkCrowdDebugger_VoxelSource::EditorPreview) ]
@@ -680,19 +707,19 @@ auto SCkCrowdDebuggerWindow::BuildCommandGroups() -> TArray<FCkDebug_CommandGrou
 			ck::crowd_debugger_axes::Make_PaneHeading(TEXT("Voxel Navigation"))
 		]
 		+ SVerticalBox::Slot().AutoHeight().Padding(8.0f, 2.0f)
-		[ MakeVoxelToggle(TEXT("Volume Bounds"), TEXT("Show authored and navigation volume bounds."), &_ShowVoxelVolume) ]
+		[ MakeVoxelToggle(TEXT("Volume Bounds"), TEXT("Show authored and navigation volume bounds."), &SCkCrowdDebuggerWindow::_ShowVoxelVolume) ]
 		+ SVerticalBox::Slot().AutoHeight().Padding(8.0f, 2.0f)
-		[ MakeVoxelToggle(TEXT("Chunks"), TEXT("Show partition chunk bounds."), &_ShowVoxelChunks) ]
+		[ MakeVoxelToggle(TEXT("Chunks"), TEXT("Show partition chunk bounds."), &SCkCrowdDebuggerWindow::_ShowVoxelChunks) ]
 		+ SVerticalBox::Slot().AutoHeight().Padding(8.0f, 2.0f)
-		[ MakeVoxelToggle(TEXT("Merged Free Cells"), TEXT("Show the merged cells used by the path search. This is the performant default."), &_ShowVoxelMergedFree) ]
+		[ MakeVoxelToggle(TEXT("Merged Free Cells"), TEXT("Show the merged cells used by the path search. This is the performant default."), &SCkCrowdDebuggerWindow::_ShowVoxelMergedFree) ]
 		+ SVerticalBox::Slot().AutoHeight().Padding(8.0f, 2.0f)
-		[ MakeVoxelToggle(TEXT("Raw Free Cells"), TEXT("Show unmerged free octree cells. Opt-in and capped at 10,000."), &_ShowVoxelRawFree) ]
+		[ MakeVoxelToggle(TEXT("Raw Free Cells"), TEXT("Show unmerged free octree cells. Opt-in and capped at 10,000."), &SCkCrowdDebuggerWindow::_ShowVoxelRawFree) ]
 		+ SVerticalBox::Slot().AutoHeight().Padding(8.0f, 2.0f)
-		[ MakeVoxelToggle(TEXT("Occupied Cells"), TEXT("Show occupied finest-layer voxel cubes. Opt-in and capped at 10,000."), &_ShowVoxelOccupied) ]
+		[ MakeVoxelToggle(TEXT("Occupied Cells"), TEXT("Show occupied finest-layer voxel cubes. Opt-in and capped at 10,000."), &SCkCrowdDebuggerWindow::_ShowVoxelOccupied) ]
 		+ SVerticalBox::Slot().AutoHeight().Padding(8.0f, 2.0f)
-		[ MakeVoxelToggle(TEXT("Chunk Portals"), TEXT("Show cross-chunk portal connections."), &_ShowVoxelPortals) ]
+		[ MakeVoxelToggle(TEXT("Chunk Portals"), TEXT("Show cross-chunk portal connections."), &SCkCrowdDebuggerWindow::_ShowVoxelPortals) ]
 		+ SVerticalBox::Slot().AutoHeight().Padding(8.0f, 2.0f)
-		[ MakeVoxelToggle(TEXT("Dirty / Repair Bounds"), TEXT("Show pending and active local-repair regions."), &_ShowVoxelDirtyRepair) ]
+		[ MakeVoxelToggle(TEXT("Dirty / Repair Bounds"), TEXT("Show pending and active local-repair regions."), &SCkCrowdDebuggerWindow::_ShowVoxelDirtyRepair) ]
 #if WITH_EDITOR
 		+ SVerticalBox::Slot().AutoHeight().Padding(8.0f, 4.0f, 8.0f, 2.0f)
 		[
@@ -702,10 +729,12 @@ auto SCkCrowdDebuggerWindow::BuildCommandGroups() -> TArray<FCkDebug_CommandGrou
 			{
 				return UCk_VoxelNavPreview_EdMode::Get_IsLevelOverlayEnabled();
 			})
-			.OnStateChanged_Lambda([this](bool InIsOn)
+			.OnStateChanged_Lambda([WeakWindow](bool InIsOn)
 			{
+				const TSharedPtr<SCkCrowdDebuggerWindow> Window = WeakWindow.Pin();
+				if (NOT Window.IsValid() || Window->_PresentationReleased) { return; }
 				if (UCk_VoxelNavPreview_EdMode::Set_LevelOverlayEnabled(InIsOn))
-				{ _VoxelRefreshRequested = true; }
+				{ Window->_VoxelRefreshRequested = true; }
 			})
 			[
 				SNew(STextBlock).Text(FText::FromString(TEXT("Level Editor Overlay")))
@@ -718,9 +747,12 @@ auto SCkCrowdDebuggerWindow::BuildCommandGroups() -> TArray<FCkDebug_CommandGrou
 			SNew(SButton)
 				.Text(FText::FromString(TEXT("Refresh Exact Preview")))
 				.ToolTipText(FText::FromString(TEXT("Revalidate cooked Jolt data and rebuild placed VoxelNav volumes outside PIE.")))
-				.OnClicked_Lambda([this]() -> FReply
+				.OnClicked_Lambda([WeakWindow]() -> FReply
 				{
-					_VoxelRefreshRequested = true;
+					const TSharedPtr<SCkCrowdDebuggerWindow> Window = WeakWindow.Pin();
+					if (NOT Window.IsValid() || Window->_PresentationReleased)
+					{ return FReply::Unhandled(); }
+					Window->_VoxelRefreshRequested = true;
 					return FReply::Handled();
 				})
 		]
@@ -765,16 +797,36 @@ auto SCkCrowdDebuggerWindow::BuildCommandGroups() -> TArray<FCkDebug_CommandGrou
 	});
 	const auto QueueMenu = SNew(SCkDebug_ToggleSurface)
 		.ToolTipText(FText::FromString(TEXT("Show queue origins, reservation slots, formation order, and agent-to-slot links in the Crowd Debugger viewport.")))
-		.IsOn_Lambda([this]() { return _ShowQueues; })
-		.OnStateChanged_Lambda([this](bool InIsOn) { _ShowQueues = InIsOn; })
+		.IsOn_Lambda([WeakWindow]() -> bool
+		{
+			const TSharedPtr<SCkCrowdDebuggerWindow> Window = WeakWindow.Pin();
+			return Window.IsValid() && NOT Window->_PresentationReleased && Window->_ShowQueues;
+		})
+		.OnStateChanged_Lambda([WeakWindow](bool InIsOn)
+		{
+			const TSharedPtr<SCkCrowdDebuggerWindow> Window = WeakWindow.Pin();
+			if (NOT Window.IsValid() || Window->_PresentationReleased) { return; }
+			Window->_ShowQueues = InIsOn;
+		})
 		[ SNew(STextBlock).Text(FText::FromString(TEXT("Queue Reservations"))) ];
 	const auto AvoidanceVolumeMenu = SNew(SCkDebug_ToggleSurface)
 		.ToolTipText(FText::FromString(TEXT("Show physical, steering-influence, and Recast-painted Crowd avoidance volumes. Painted color shows pending/confirmed/invalid/retiring state; physical color shows traversal policy: blue Avoid If Possible, red Hard Exclude, gold Cost Only.")))
-		.IsOn_Lambda([this]() { return _ShowAvoidanceVolumes; })
-		.OnStateChanged_Lambda([this](bool InIsOn) { _ShowAvoidanceVolumes = InIsOn; })
-		[ SNew(STextBlock).Text_Lambda([this]() -> FText
+		.IsOn_Lambda([WeakWindow]() -> bool
 		{
-			const auto Count = _ViewModel.IsValid() ? _ViewModel->Get_AvoidanceVolumes().Num() : 0;
+			const TSharedPtr<SCkCrowdDebuggerWindow> Window = WeakWindow.Pin();
+			return Window.IsValid() && NOT Window->_PresentationReleased && Window->_ShowAvoidanceVolumes;
+		})
+		.OnStateChanged_Lambda([WeakWindow](bool InIsOn)
+		{
+			const TSharedPtr<SCkCrowdDebuggerWindow> Window = WeakWindow.Pin();
+			if (NOT Window.IsValid() || Window->_PresentationReleased) { return; }
+			Window->_ShowAvoidanceVolumes = InIsOn;
+		})
+		[ SNew(STextBlock).Text_Lambda([WeakWindow]() -> FText
+		{
+			const TSharedPtr<SCkCrowdDebuggerWindow> Window = WeakWindow.Pin();
+			const auto Count = Window.IsValid() && NOT Window->_PresentationReleased && Window->_ViewModel.IsValid()
+				? Window->_ViewModel->Get_AvoidanceVolumes().Num() : 0;
 			return FText::FromString(FString::Printf(TEXT("Avoidance Volumes (%d)"), Count));
 		}) ];
 
@@ -807,29 +859,75 @@ auto SCkCrowdDebuggerWindow::BuildCommandGroups() -> TArray<FCkDebug_CommandGrou
 				SNew(STextBlock).Text(FText::FromString(TEXT("Selected Trouble")))
 			]
 		];
+	_ComboMenuRoots = {DiagnosticsMenu, SourceMenu, NavigationMenu, CrowdMenu, QueueMenu, AvoidanceVolumeMenu};
 
 	const auto Target = SNew(SHorizontalBox)
 		+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0, 0, 8, 0)
 		[ SNew(SCkDebug_WorldSelector, _WorldModel).ShowHeaderLabel(false) ];
 	const auto Diagnostics = SNew(SHorizontalBox)
 		+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0, 0, 8, 0)
-		[ SNew(SButton).Text(FText::FromString(TEXT("Run Health Check"))).ToolTipText(FText::FromString(TEXT("Run a synthetic FindPathSync probe (origin to +200) and surface the result in the Navmesh Status panel. Bypasses the request/processor pipeline entirely; a green probe proves the nav stack works in isolation from any gym wiring."))).OnClicked_Lambda([this]() -> FReply { if (_ViewModel.IsValid()) { _ViewModel->Run_HealthCheckProbe(); } return FReply::Handled(); }) ]
+		[
+			SNew(SButton)
+			.Text(FText::FromString(TEXT("Run Health Check")))
+			.ToolTipText(FText::FromString(TEXT("Run a synthetic FindPathSync probe (origin to +200) and surface the result in the Navmesh Status panel. Bypasses the request/processor pipeline entirely; a green probe proves the nav stack works in isolation from any gym wiring.")))
+			.OnClicked_Lambda([WeakWindow]() -> FReply
+			{
+				const TSharedPtr<SCkCrowdDebuggerWindow> Window = WeakWindow.Pin();
+				if (NOT Window.IsValid() || Window->_PresentationReleased || NOT Window->_ViewModel.IsValid())
+				{ return FReply::Unhandled(); }
+
+				Window->_ViewModel->Run_HealthCheckProbe();
+				return FReply::Handled();
+			})
+		]
 		+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-		[ SNew(SComboButton).ToolTipText(FText::FromString(TEXT("Crowd diagnostic settings."))).ButtonContent()[SNew(STextBlock).Text(FText::FromString(TEXT("Diagnostics")))].MenuContent()[DiagnosticsMenu] ];
+		[ SAssignNew(_DiagnosticsCombo, SComboButton).ToolTipText(FText::FromString(TEXT("Crowd diagnostic settings."))).ButtonContent()[SNew(STextBlock).Text(FText::FromString(TEXT("Diagnostics")))].MenuContent()[DiagnosticsMenu] ];
 	const auto DataView = SNew(SHorizontalBox)
 		+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0, 0, 4, 0)
-		[ SNew(SComboButton).ToolTipText(FText::FromString(TEXT("Choose Live PIE, retained, or exact cooked-Jolt editor VoxelNav data."))).ButtonContent()[SNew(STextBlock).Text_Lambda([this]() { return Get_VoxelSourceLabel(); })].MenuContent()[SourceMenu] ]
+		[
+			SAssignNew(_SourceCombo, SComboButton)
+			.ToolTipText(FText::FromString(TEXT("Choose Live PIE, retained, or exact cooked-Jolt editor VoxelNav data.")))
+			.ButtonContent()
+			[
+				SNew(STextBlock).Text_Lambda([WeakWindow]() -> FText
+				{
+					const TSharedPtr<SCkCrowdDebuggerWindow> Window = WeakWindow.Pin();
+					return Window.IsValid() && NOT Window->_PresentationReleased
+						? Window->Get_VoxelSourceLabel() : FText::GetEmpty();
+				})
+			]
+			.MenuContent()[SourceMenu]
+		]
 		+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(4, 0)
-		[ SNew(SComboButton).ToolTipText(FText::FromString(TEXT("Navigation display settings."))).ButtonContent()[SNew(STextBlock).Text(FText::FromString(TEXT("Navigation")))].MenuContent()[NavigationMenu] ]
+		[ SAssignNew(_NavigationCombo, SComboButton).ToolTipText(FText::FromString(TEXT("Navigation display settings."))).ButtonContent()[SNew(STextBlock).Text(FText::FromString(TEXT("Navigation")))].MenuContent()[NavigationMenu] ]
 		+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(4, 0)
-		[ SNew(SComboButton).ToolTipText(FText::FromString(TEXT("Crowd display settings."))).ButtonContent()[SNew(STextBlock).Text(FText::FromString(TEXT("Crowd")))].MenuContent()[CrowdMenu] ]
+		[ SAssignNew(_CrowdCombo, SComboButton).ToolTipText(FText::FromString(TEXT("Crowd display settings."))).ButtonContent()[SNew(STextBlock).Text(FText::FromString(TEXT("Crowd")))].MenuContent()[CrowdMenu] ]
 		+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(4, 0)
-		[ SNew(SComboButton).ToolTipText(FText::FromString(TEXT("Queue reservation and formation display settings."))).ButtonContent()[SNew(STextBlock).Text(FText::FromString(TEXT("Queues")))].MenuContent()[QueueMenu] ]
+		[ SAssignNew(_QueuesCombo, SComboButton).ToolTipText(FText::FromString(TEXT("Queue reservation and formation display settings."))).ButtonContent()[SNew(STextBlock).Text(FText::FromString(TEXT("Queues")))].MenuContent()[QueueMenu] ]
 		+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(4, 0)
-		[ SNew(SComboButton).ToolTipText(FText::FromString(TEXT("Crowd avoidance-volume display settings."))).ButtonContent()[SNew(STextBlock).Text(FText::FromString(TEXT("Avoidance")))].MenuContent()[AvoidanceVolumeMenu] ];
+		[ SAssignNew(_AvoidanceCombo, SComboButton).ToolTipText(FText::FromString(TEXT("Crowd avoidance-volume display settings."))).ButtonContent()[SNew(STextBlock).Text(FText::FromString(TEXT("Avoidance")))].MenuContent()[AvoidanceVolumeMenu] ];
 	const auto Telemetry = SNew(SHorizontalBox)
-		+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0, 0, 8, 0)[ SNew(STextBlock).Text_Lambda([this]() { return FText::FromString(_VoxelSourceStatus); }).ColorAndOpacity(FSlateColor(CkStyle::Info())) ]
-		+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)[ SNew(STextBlock).Text_Lambda([this]() -> FText { return _ViewModel.IsValid() ? FText::FromString(FString::Printf(TEXT("Agents: %d"), _ViewModel->Get_AgentCount())) : FText::FromString(TEXT("(no view-model)")); }) ];
+		+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0, 0, 8, 0)
+		[
+			SNew(STextBlock)
+			.Text_Lambda([WeakWindow]() -> FText
+			{
+				const TSharedPtr<SCkCrowdDebuggerWindow> Window = WeakWindow.Pin();
+				return Window.IsValid() && NOT Window->_PresentationReleased
+					? FText::FromString(Window->_VoxelSourceStatus) : FText::GetEmpty();
+			})
+			.ColorAndOpacity(FSlateColor(CkStyle::Info()))
+		]
+		+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+		[
+			SNew(STextBlock).Text_Lambda([WeakWindow]() -> FText
+			{
+				const TSharedPtr<SCkCrowdDebuggerWindow> Window = WeakWindow.Pin();
+				return Window.IsValid() && NOT Window->_PresentationReleased && Window->_ViewModel.IsValid()
+					? FText::FromString(FString::Printf(TEXT("Agents: %d"), Window->_ViewModel->Get_AgentCount()))
+					: FText::GetEmpty();
+			})
+		];
 	return {
 		FCkDebug_CommandGroup::Primary(TEXT("CrowdOverlays"), FText::FromString(TEXT("Crowd overlay controls")), BuildMenuActions()),
 		FCkDebug_CommandGroup::Context(TEXT("CrowdTarget"), FText::FromString(TEXT("Crowd target selection")), Target),
@@ -866,15 +964,163 @@ auto
 
 SCkCrowdDebuggerWindow::~SCkCrowdDebuggerWindow()
 {
+	Release_Presentation();
+}
+
+auto SCkCrowdDebuggerWindow::BuildNativeShell() -> TSharedRef<SWidget>
+{
+	return SNew(SSplitter).Orientation(Orient_Horizontal)
+		+ SSplitter::Slot().Value(0.20f)
+		[
+			SNew(SScrollBox).Orientation(Orient_Vertical).ConsumeMouseWheel(EConsumeMouseWheel::WhenScrollingPossible)
+			+ SScrollBox::Slot().FillSize(1.0f).MinSize(ck_crowd_debugger_window::LeftRailMinHeight)
+			[
+				SNew(SSplitter).Orientation(Orient_Vertical).PhysicalSplitterHandleSize(ck_crowd_debugger_window::LeftRailSplitterHandleSize)
+				+ SSplitter::Slot().Value(0.22f)[SNew(SCkDebug_PaneHost)[SAssignNew(_FallbackNavHost, SBox)[_NavmeshStatusPanel.ToSharedRef()]]]
+				+ SSplitter::Slot().Value(0.46f)[SNew(SCkDebug_PaneHost)[SAssignNew(_FallbackAgentsHost, SBox)[_AgentListPanel.ToSharedRef()]]]
+				+ SSplitter::Slot().Value(0.14f)[SNew(SCkDebug_PaneHost)[SAssignNew(_FallbackStatsHost, SBox)[_StatsPanel.ToSharedRef()]]]
+				+ SSplitter::Slot().Value(0.18f)[SNew(SCkDebug_PaneHost)[SAssignNew(_FallbackEventsHost, SBox)[_EventLogPanel.ToSharedRef()]]]
+			]
+		]
+		+ SSplitter::Slot().Value(0.52f)[SNew(SCkDebug_PaneHost).ContentMode(ECkDebugPaneContent::OpaqueRenderer)[SAssignNew(_FallbackPreviewHost, SBox)[_ViewportPanel.ToSharedRef()]]]
+		+ SSplitter::Slot().Value(0.28f)[SNew(SCkDebug_PaneHost)[SAssignNew(_FallbackDetailHost, SBox)[_AgentDetailPanel.ToSharedRef()]]];
+}
+
+auto SCkCrowdDebuggerWindow::BuildAuthoredShell() -> void
+{
+	if (NOT _AuthoredShellHost.IsValid()) { return; }
+	_AuthoredShellHost->SetContent(BuildNativeShell());
+	auto RegistryBuilder = FCkUiWidgetRegistry{};
+	const TSharedPtr<IPlugin> Plugin = IPluginManager::Get().FindPlugin(TEXT("CkDebugger"));
+	if (NOT Plugin.IsValid())
+	{
+		_AuthoredShellLoadFailure = TEXT("CkDebugger plugin resources are unavailable.");
+		return;
+	}
+	auto NativeBindings = FCkUiView::FNativeBindings{};
+	NativeBindings.Add(TEXT("crowd-nav"), _NavmeshStatusPanel.ToSharedRef());
+	NativeBindings.Add(TEXT("crowd-agents"), _AgentListPanel.ToSharedRef());
+	NativeBindings.Add(TEXT("crowd-stats"), _StatsPanel.ToSharedRef());
+	NativeBindings.Add(TEXT("crowd-events"), _EventLogPanel.ToSharedRef());
+	NativeBindings.Add(TEXT("crowd-preview"), _ViewportPanel.ToSharedRef());
+	NativeBindings.Add(TEXT("crowd-detail"), _AgentDetailPanel.ToSharedRef());
+	auto Data = FCkUiView::FDataBindings{};
+	Data.SlateUserIndex = 0;
+	const auto Tokens = FCkUiView::FTokens{
+		{TEXT("--crowd-space-s"), FString::SanitizeFloat(CkStyle::SpaceS)},
+		{TEXT("--crowd-title-size"), FString::FromInt(CkStyle::FontSizeBody())},
+		{TEXT("--crowd-text"), TEXT("#") + CkStyle::Text().ToFColorSRGB().ToHex()},
+		{TEXT("--crowd-muted"), TEXT("#") + CkStyle::TextDim().ToFColorSRGB().ToHex()}};
+	const TSharedRef<FCkUiView> Candidate = FCkUiView::Create(MoveTemp(NativeBindings), {}, Tokens,
+		CkStyle::RegularFont(CkStyle::FontSizeBody()), MoveTemp(Data), RegistryBuilder.CreateSnapshot());
+	Candidate->GetRegion(TEXT("main"));
+	FString Directory = FPaths::Combine(Plugin->GetBaseDir(), TEXT("Resources/UI"));
+#if WITH_DEV_AUTOMATION_TESTS
+	if (!_TestResourceDirectory.IsEmpty()) { Directory = _TestResourceDirectory; }
+#endif
+	Candidate->SetFiles(FPaths::Combine(Directory, TEXT("CrowdDebuggerShell.ui.html")), FPaths::Combine(Directory, TEXT("CrowdDebuggerShell.ui.css")));
+	_AuthoredShellView = Candidate; // Retain even a failed candidate: its file watcher supports same-path recovery.
+	DetachFallbackPorts();
+	Candidate->PollFiles();
+	if (NOT Candidate->GetLastResult().Succeeded)
+	{
+		_AuthoredShellLoadFailure = FString::Join(Candidate->GetLastResult().Errors, TEXT("\n"));
+		RestoreFallbackPorts();
+		return;
+	}
+	if (!MountAuthoredShell())
+	{
+		_AuthoredShellLoadFailure = TEXT("Crowd authored shell could not mount its accepted regions.");
+		RestoreFallbackPorts();
+	}
+}
+
+auto SCkCrowdDebuggerWindow::PollAuthoredShell(const double InCurrentTime) -> void
+{
+	constexpr double PollIntervalSeconds = 0.5;
+	if (InCurrentTime < _NextAuthoredShellPollSeconds || NOT _AuthoredShellView.IsValid()) { return; }
+	_NextAuthoredShellPollSeconds = InCurrentTime + PollIntervalSeconds;
+	if (_UsingNativeShellFallback) { DetachFallbackPorts(); }
+	_AuthoredShellView->PollFiles();
+	if (_UsingNativeShellFallback && _AuthoredShellView->GetLastResult().Succeeded && MountAuthoredShell())
+	{ return; }
+	if (_UsingNativeShellFallback) { RestoreFallbackPorts(); }
+	if (NOT _AuthoredShellView->GetLastResult().Succeeded)
+	{ _AuthoredShellLoadFailure = FString::Join(_AuthoredShellView->GetLastResult().Errors, TEXT("\n")); return; }
+	_AuthoredShellLoadFailure.Reset();
+}
+
+auto SCkCrowdDebuggerWindow::MountAuthoredShell() -> bool
+{
+	if (!_AuthoredShellView.IsValid() || !_AuthoredShellHost.IsValid() || !_AuthoredShellView->GetLastResult().Succeeded)
+	{ return false; }
+
+	_AuthoredShellHost->SetContent(SNullWidget::NullWidget);
+	_AuthoredShellHost->SetContent(_AuthoredShellView->GetRegion(TEXT("main")));
+	_UsingNativeShellFallback = false;
+	_AuthoredShellLoadFailure.Reset();
+	return true;
+}
+
+auto SCkCrowdDebuggerWindow::DetachFallbackPorts() -> void
+{
+	for (const TSharedPtr<SBox>& Host : {_FallbackNavHost, _FallbackAgentsHost, _FallbackStatsHost,
+		_FallbackEventsHost, _FallbackPreviewHost, _FallbackDetailHost})
+	{ if (Host.IsValid()) { Host->SetContent(SNullWidget::NullWidget); } }
+}
+
+auto SCkCrowdDebuggerWindow::RestoreFallbackPorts() -> void
+{
+	const auto RestoreIfDetached = [](const TSharedPtr<SBox>& InHost, const TSharedPtr<SWidget>& InPort) -> void
+	{
+		if (!InHost.IsValid() || !InPort.IsValid() || InPort->GetParentWidget().IsValid()) { return; }
+		InHost->SetContent(InPort.ToSharedRef());
+	};
+	RestoreIfDetached(_FallbackNavHost, _NavmeshStatusPanel);
+	RestoreIfDetached(_FallbackAgentsHost, _AgentListPanel);
+	RestoreIfDetached(_FallbackStatsHost, _StatsPanel);
+	RestoreIfDetached(_FallbackEventsHost, _EventLogPanel);
+	RestoreIfDetached(_FallbackPreviewHost, _ViewportPanel);
+	RestoreIfDetached(_FallbackDetailHost, _AgentDetailPanel);
+}
+
+auto SCkCrowdDebuggerWindow::Release_Presentation() -> void
+{
+	if (_PresentationReleased) { return; }
+	_PresentationReleased = true;
 	if (_WorldModel.IsValid() && _WorldChangedHandle.IsValid())
-	{ _WorldModel->OnWorldChanged.Remove(_WorldChangedHandle); }
+	{ _WorldModel->OnWorldChanged.Remove(_WorldChangedHandle); _WorldChangedHandle.Reset(); }
 
 	if (_SessionInvalidatedHandle.IsValid())
-	{ ck::DebugSessionLifecycle::Get_OnSessionInvalidated().Remove(_SessionInvalidatedHandle); }
+	{ ck::DebugSessionLifecycle::Get_OnSessionInvalidated().Remove(_SessionInvalidatedHandle); _SessionInvalidatedHandle.Reset(); }
 
 	if (_ViewModel.IsValid() && _FrameSelectedAgentHandle.IsValid())
-	{ _ViewModel->OnFrameSelectedAgentRequested.Remove(_FrameSelectedAgentHandle); }
+	{ _ViewModel->OnFrameSelectedAgentRequested.Remove(_FrameSelectedAgentHandle); _FrameSelectedAgentHandle.Reset(); }
 
+	if (_ViewportPicker.IsValid()) { _ViewportPicker->Deactivate(); }
+	for (const TSharedPtr<SWidget>& MenuRoot : _ComboMenuRoots)
+	{ if (MenuRoot.IsValid()) { ck_crowd_debugger_window::ReleaseOwnedInput(MenuRoot.ToSharedRef()); } }
+	for (const TSharedPtr<SComboButton>& Combo : {_DiagnosticsCombo, _SourceCombo, _NavigationCombo, _CrowdCombo, _QueuesCombo, _AvoidanceCombo})
+	{ if (Combo.IsValid()) { Combo->SetIsOpen(false); } }
+	if (_Chrome.IsValid()) { ck_crowd_debugger_window::ReleaseOwnedInput(_Chrome.ToSharedRef()); }
+	if (_AuthoredShellView.IsValid()) { _AuthoredShellView->ReleaseOwnerInteractions(); }
+	if (_ViewportPanel.IsValid()) { _ViewportPanel->Release_Presentation(); }
+	ChildSlot[SNullWidget::NullWidget];
+	if (_AuthoredShellHost.IsValid()) { _AuthoredShellHost->SetContent(SNullWidget::NullWidget); }
+	_AuthoredShellView.Reset();
+	_AuthoredShellHost.Reset();
+	_ViewportPanel.Reset();
+	_AgentListPanel.Reset();
+	_AgentDetailPanel.Reset();
+	_NavmeshStatusPanel.Reset();
+	_StatsPanel.Reset();
+	_EventLogPanel.Reset();
+	_ViewportPicker.Reset();
+	_Chrome.Reset();
+	_DiagnosticsCombo.Reset(); _SourceCombo.Reset(); _NavigationCombo.Reset(); _CrowdCombo.Reset(); _QueuesCombo.Reset(); _AvoidanceCombo.Reset();
+	_ComboMenuRoots.Reset();
+	_LivePieSourceButton.Reset();
+	_WorldModel.Reset();
 	_ViewModel.Reset();
 }
 

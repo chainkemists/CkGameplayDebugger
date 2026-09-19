@@ -170,7 +170,7 @@ namespace ck_ai_debugger_window
         {
             case ECkCrowdDebugger_AgentStatus::Idle: return LOCTEXT("CrowdIdle", "IDLE");
             case ECkCrowdDebugger_AgentStatus::Walking: return LOCTEXT("CrowdWalking", "MOVING");
-            case ECkCrowdDebugger_AgentStatus::Asleep: return LOCTEXT("CrowdAsleep", "ASLEEP");
+            case ECkCrowdDebugger_AgentStatus::Disabled: return LOCTEXT("CrowdDisabled", "DISABLED");
             case ECkCrowdDebugger_AgentStatus::Replanning: return LOCTEXT("CrowdReplanning", "REPLAN");
             case ECkCrowdDebugger_AgentStatus::Failed: return LOCTEXT("CrowdFailed", "FAILED");
             case ECkCrowdDebugger_AgentStatus::PlayerProxy: return LOCTEXT("CrowdPlayer", "PLAYER");

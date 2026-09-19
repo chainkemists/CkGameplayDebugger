@@ -55,7 +55,7 @@ namespace ck_crowd_debugger_3d_viewport
             case ECkCrowdDebugger_AgentStatus::Idle:        return FLinearColor(0.55f, 0.55f, 0.55f, 1.00f);
             case ECkCrowdDebugger_AgentStatus::Replanning:  return FLinearColor(1.00f, 0.70f, 0.15f, 1.00f);
             case ECkCrowdDebugger_AgentStatus::Failed:      return FLinearColor(1.00f, 0.20f, 0.15f, 1.00f);
-            case ECkCrowdDebugger_AgentStatus::Asleep:      return FLinearColor(0.35f, 0.35f, 0.35f, 1.00f);
+            case ECkCrowdDebugger_AgentStatus::Disabled:      return FLinearColor(0.35f, 0.35f, 0.35f, 1.00f);
             case ECkCrowdDebugger_AgentStatus::PlayerProxy: return FLinearColor(0.25f, 1.00f, 0.55f, 1.00f);
             default:                                        return FLinearColor(0.65f, 0.65f, 0.65f, 1.00f);
         }

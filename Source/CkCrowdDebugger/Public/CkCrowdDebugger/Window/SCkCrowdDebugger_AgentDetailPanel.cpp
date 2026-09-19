@@ -339,7 +339,7 @@ auto SCkCrowdDebugger_AgentDetailPanel::Status_Text() const -> FText
 		case ECkCrowdDebugger_AgentStatus::Idle:        return FText::FromString(TEXT("Idle"));
 		case ECkCrowdDebugger_AgentStatus::Replanning:  return FText::FromString(TEXT("Pending"));
 		case ECkCrowdDebugger_AgentStatus::Failed:      return FText::FromString(TEXT("Failed"));
-		case ECkCrowdDebugger_AgentStatus::Asleep:      return FText::FromString(TEXT("Asleep"));
+		case ECkCrowdDebugger_AgentStatus::Disabled:      return FText::FromString(TEXT("Disabled"));
 		case ECkCrowdDebugger_AgentStatus::PlayerProxy: return FText::FromString(TEXT("Proxy"));
 		default:                                        return FText::FromString(TEXT("—"));
 	}
@@ -353,7 +353,7 @@ auto SCkCrowdDebugger_AgentDetailPanel::Status_Color() const -> FLinearColor
 		case ECkCrowdDebugger_AgentStatus::Walking:     return CkStyle::Info();
 		case ECkCrowdDebugger_AgentStatus::Replanning:  return CkStyle::Warn();
 		case ECkCrowdDebugger_AgentStatus::Failed:      return CkStyle::Err();
-		case ECkCrowdDebugger_AgentStatus::Asleep:      return CkStyle::TextMute();
+		case ECkCrowdDebugger_AgentStatus::Disabled:      return CkStyle::TextMute();
 		case ECkCrowdDebugger_AgentStatus::PlayerProxy: return CkStyle::Accent();
 		default:                                        return CkStyle::TextDim();
 	}

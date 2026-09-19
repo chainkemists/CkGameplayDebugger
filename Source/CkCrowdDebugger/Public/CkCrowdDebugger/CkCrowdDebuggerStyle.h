@@ -24,7 +24,7 @@ namespace CkCrowdDebuggerStyle
 	inline auto StatusWarn()   -> FLinearColor { return CkStyle::Warn(); }      // Replan
 	inline auto StatusError()  -> FLinearColor { return CkStyle::Err(); }       // Failed
 	inline auto StatusInfo()   -> FLinearColor { return CkStyle::Info(); }      // Live (proxy)
-	inline auto StatusAsleep() -> FLinearColor { return CkStyle::TextMute(); }  // Asleep / dim
+	inline auto StatusDisabled() -> FLinearColor { return CkStyle::TextMute(); }  // Disabled / dim
 
 	// Selection accent. The dim variant is the same role at reduced weight rather than a second hue,
 	// which is what "dim" meant in the mockup.

@@ -25,7 +25,7 @@ enum class ECkCrowdDebugger_AgentStatus : uint8
 	None,           // Gate 0 default — no movement / pathfinding state yet
 	Idle,           // No goal, awake
 	Walking,        // Has goal + path, moving (Gate 2+)
-	Asleep,         // Sleep tag stamped (Gate 4+)
+	Disabled,       // Taken out of the crowd (UCk_Utils_CrowdAgent_UE::Request_EnableDisable)
 	Replanning,     // Recovering from blocked path (Gate 4+)
 	Failed,         // Path failed N times → Failed tag (Gate 4+)
 	PlayerProxy,    // Player proxy entity (Gate 5+)

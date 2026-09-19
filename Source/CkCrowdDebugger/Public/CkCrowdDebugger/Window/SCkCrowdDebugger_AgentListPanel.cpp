@@ -64,7 +64,7 @@ namespace
 			case ECkCrowdDebugger_AgentStatus::Failed:     return CkStyle::Err();
 			case ECkCrowdDebugger_AgentStatus::Walking:    return CkStyle::Info();
 			case ECkCrowdDebugger_AgentStatus::Replanning: return CkStyle::Warn();
-			case ECkCrowdDebugger_AgentStatus::Asleep:     return CkStyle::TextMute();
+			case ECkCrowdDebugger_AgentStatus::Disabled:     return CkStyle::TextMute();
 			case ECkCrowdDebugger_AgentStatus::Idle:       return CkStyle::TextDim();
 			default:                                       return CkStyle::TextDim();
 		}
@@ -92,7 +92,7 @@ namespace
 					*StaticEnum<ECk_Nav_PathFailReason>()->GetNameStringByValue(static_cast<int64>(InSnapshot.PathFailReason)));
 			case ECkCrowdDebugger_AgentStatus::Walking:    return TEXT("Walking");
 			case ECkCrowdDebugger_AgentStatus::Replanning: return TEXT("Pending");
-			case ECkCrowdDebugger_AgentStatus::Asleep:     return TEXT("Asleep");
+			case ECkCrowdDebugger_AgentStatus::Disabled:     return TEXT("Disabled");
 			case ECkCrowdDebugger_AgentStatus::Idle:       return TEXT("Idle");
 			default:                                       return TEXT("—");
 		}

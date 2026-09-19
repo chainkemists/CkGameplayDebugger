@@ -631,8 +631,8 @@ auto
 	}
 
 	// Derive the agent's status. Order matters — a Failed nav result trumps the agent state
-	// tag because the failure is the most actionable thing to surface in the UI. Asleep wins
-	// over the active states because we want to know it's parked.
+	// tag because the failure is the most actionable thing to surface in the UI. Disabled wins
+	// over the active states because we want to know it is out of the crowd.
 	Snapshot.Status = ECkCrowdDebugger_AgentStatus::None;
 	if (InHandle.Has<ck::FFragment_Nav_PathResult>()
 		&& InHandle.Get<ck::FFragment_Nav_PathResult>().Get_Status() == ECk_Nav_PathStatus::Failed)
@@ -640,9 +640,9 @@ auto
 		Snapshot.Status = ECkCrowdDebugger_AgentStatus::Failed;
 		Snapshot.PathFailReason = InHandle.Get<ck::FFragment_Nav_PathResult>().Get_Diagnostics().Get_LastFailReason();
 	}
-	else if (InHandle.Has<ck::FTag_CrowdAgent_Asleep>())
+	else if (InHandle.Has<ck::FTag_CrowdAgent_Disabled>())
 	{
-		Snapshot.Status = ECkCrowdDebugger_AgentStatus::Asleep;
+		Snapshot.Status = ECkCrowdDebugger_AgentStatus::Disabled;
 	}
 	else if (InHandle.Has<ck::FTag_CrowdAgent_Walking>())
 	{

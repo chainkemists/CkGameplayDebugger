@@ -76,7 +76,7 @@ auto SCkCrowdDebugger_StatsPanel::Construct(const FArguments& InArgs) -> void
 			+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, CkStyle::SpaceM, 0.0f, 0.0f)
 			[
 				SNew(STextBlock)
-				.Text(FText::FromString(TEXT("Awake / Asleep / Replanning / Failed populate in Gate 4+. Neighbor query ms breakdown lands when 3B's perf scope is wired in.")))
+				.Text(FText::FromString(TEXT("Awake / Disabled / Replanning / Failed populate in Gate 4+. Neighbor query ms breakdown lands when 3B's perf scope is wired in.")))
 				.ColorAndOpacity(FSlateColor(CkStyle::TextMute()))
 				.AutoWrapText(true)
 			]

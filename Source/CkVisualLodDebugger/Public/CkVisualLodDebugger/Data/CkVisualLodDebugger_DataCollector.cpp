@@ -155,8 +155,8 @@ auto
     // Same iteration shape as FProcessor_VisualLodArbiter_Update::DoTick: the params/current pair plus
     // CK_IGNORE_PENDING_KILL, skipping arbiters that have not finished setup — an arbiter mid-setup has
     // no resolved config, no pools, and no view, and rendering it would read as a broken domain.
-    TransientEntity.View<ck::FFragment_VisualLodArbiter_Params, ck::FFragment_VisualLodArbiter_Current, CK_IGNORE_PENDING_KILL>().ForEach(
-        [&](FCk_Entity InEntity, const ck::FFragment_VisualLodArbiter_Params&, const ck::FFragment_VisualLodArbiter_Current& InCurrent)
+    TransientEntity.View<ck::FFragment_VisualLodArbiter_Params, ck::FFragment_VisualLodArbiter, CK_IGNORE_PENDING_KILL>().ForEach(
+        [&](FCk_Entity InEntity, const ck::FFragment_VisualLodArbiter_Params&, const ck::FFragment_VisualLodArbiter& InVisualLodArbiter)
         {
             auto Generic = ck::MakeHandle(InEntity, TransientEntity);
             if (ck::Is_NOT_Valid(Generic))
@@ -198,7 +198,7 @@ auto
             // No Utils getter for the resolved config asset — the arbiter's public surface exposes the
             // derived counts, not the asset it derived them from. The fragment getter is public and this
             // is a read-only echo of authored values.
-            if (const auto* Config = InCurrent.Get_Config().Get())
+            if (const auto* Config = InVisualLodArbiter.Get_Config().Get())
             {
                 Info.HasConfig     = true;
                 Info.ConfigName    = Config->GetName();
@@ -228,7 +228,7 @@ auto
 
                 // The config is the authored profile order. A profile asset is normally rooted by
                 // the live crowd setup; Get() still stays nullable for a pre-stand-up/debug race.
-                if (const auto* Config = InCurrent.Get_Config().Get();
+                if (const auto* Config = InVisualLodArbiter.Get_Config().Get();
                     ck::IsValid(Config) && Config->Get_CrowdConfigs().IsValidIndex(CrowdIndex))
                 {
                     const auto& CrowdConfig = Config->Get_CrowdConfigs()[CrowdIndex];
@@ -269,8 +269,8 @@ auto
             _Snapshot.Arbiters.Add(MoveTemp(Info));
         });
 
-    TransientEntity.View<ck::FFragment_VisualLod_Params, ck::FFragment_VisualLod_Current, CK_IGNORE_PENDING_KILL>().ForEach(
-        [&](FCk_Entity InEntity, const ck::FFragment_VisualLod_Params&, const ck::FFragment_VisualLod_Current& InCurrent)
+    TransientEntity.View<ck::FFragment_VisualLod_Params, ck::FFragment_VisualLod, CK_IGNORE_PENDING_KILL>().ForEach(
+        [&](FCk_Entity InEntity, const ck::FFragment_VisualLod_Params&, const ck::FFragment_VisualLod& InVisualLod)
         {
             auto Generic = ck::MakeHandle(InEntity, TransientEntity);
             if (ck::Is_NOT_Valid(Generic))
@@ -287,7 +287,7 @@ auto
 
             // No Utils getter for the resolved arbiter — the member's public surface never needed to
             // name its domain. The fragment getter is public and the view already handed us the fragment.
-            const auto MemberArbiter = InCurrent.Get_Arbiter();
+            const auto MemberArbiter = InVisualLod.Get_Arbiter();
             const auto* ArbiterIndex = ck::IsValid(MemberArbiter)
                 ? ArbiterIndexByHash.Find(GetTypeHash(MemberArbiter.ConvertToHandle()))
                 : nullptr;

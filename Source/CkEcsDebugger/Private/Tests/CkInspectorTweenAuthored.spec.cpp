@@ -90,7 +90,7 @@ auto FCkInspectorTweenAuthored::RunTest(const FString&) -> bool
     FCk_Handle_Tween TweenB = UCk_Utils_Tween_UE::Create_TweenFloat(OwnerB, 0.0f, 1.0f, 0.0f);
     TweenA.AddOrGet<ck::FFragment_Tween_Chain>().Set_NextTween(TweenB);
     if (NOT TestTrue(TEXT("fixture creates duration and no-duration Tweens"), ck::IsValid(TweenA) && ck::IsValid(TweenB)
-        && TweenA.Has<ck::FFragment_Tween_Params>() && TweenA.Has<ck::FFragment_Tween_Current>())) { return false; }
+        && TweenA.Has<ck::FFragment_Tween_Params>() && TweenA.Has<ck::FFragment_Tween>())) { return false; }
 
     const TSharedRef<FCkInspectorEditGuard> EditGuard = MakeShared<FCkInspectorEditGuard>();
     auto Inspector = FCkInspector_Tween{};
@@ -152,11 +152,11 @@ auto FCkInspectorTweenAuthored::RunTest(const FString&) -> bool
     PauseButton->SimulateClick(); PumpRequests(World);
     TestTrue(TEXT("physical Pause routes through Tween request processor"), AuthoredA->Get_StateText().Contains(TEXT("Paused")));
     ResumeButton->SimulateClick(); PumpRequests(World);
-    TweenA.Get<ck::FFragment_Tween_Current>().Set_CurrentTime(1.5f);
+    TweenA.Get<ck::FFragment_Tween>().Set_CurrentTime(1.5f);
     RestartButton->SimulateClick(); PumpRequests(World);
     TestTrue(TEXT("physical Resume and Restart apply through Tween request processor"),
         AuthoredA->Get_StateText() == TEXT("Playing")
-            && FMath::IsNearlyZero(TweenA.Get<ck::FFragment_Tween_Current>().Get_CurrentTime())
+            && FMath::IsNearlyZero(TweenA.Get<ck::FFragment_Tween>().Get_CurrentTime())
             && NOT TweenA.Has<ck::FFragment_Tween_Requests>());
     StopButton->SimulateClick(); PumpRequests(World);
     TestTrue(TEXT("physical DoNothing Stop applies through Tween request processor"),
@@ -197,7 +197,7 @@ auto FCkInspectorTweenAuthored::RunTest(const FString&) -> bool
         TweenC.Has<ck::FTag_DestroyEntity_Initiate>() && NOT SelfDestructAuthored->Get_CanRequest());
 
     auto CurrentOnly = UCk_Utils_EntityLifetime_UE::Request_CreateEntity(LifetimeOwner);
-    CurrentOnly.Add<ck::FFragment_Tween_Current>();
+    CurrentOnly.Add<ck::FFragment_Tween>();
     const TSharedRef<SCkInspector_TweenAuthored> CurrentOnlyAuthored = StaticCastSharedRef<SCkInspector_TweenAuthored>(Inspector.Build_Inspector(CurrentOnly));
     const TSharedPtr<SWidget> CurrentOnlyControls = FindTagged(CurrentOnlyAuthored, TEXT("tween-controls-section"));
     const TSharedRef<SWindow> CurrentOnlyWindow = SNew(SWindow).AutoCenter(EAutoCenter::None)
@@ -220,7 +220,7 @@ auto FCkInspectorTweenAuthored::RunTest(const FString&) -> bool
             Slate.GeneratePathToWidgetUnchecked(CurrentOnlyControls.ToSharedRef(), VisiblePath, EVisibility::Visible));
     }
 
-    TweenA.Try_Remove<ck::FFragment_Tween_Current>();
+    TweenA.Try_Remove<ck::FFragment_Tween>();
     Inspector.Tick(TweenA, 0.0f);
     TestTrue(TEXT("structural fragment loss requests a safe rebuild and disables held controls"), NOT Inspector.CanInspect(TweenA) && NOT AuthoredA->Get_CanRequest());
     AuthoredA->Request_Stop();

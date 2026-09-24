@@ -418,7 +418,7 @@ auto SCkInspector_IntegerAttributesAuthored::Refresh_Records() -> bool
                 { Refill = UCk_Utils_IntegerAttribute_UE::TryGet_RefillAttribute(InAttribute); }
                 const auto bHasRefill = ck::IsValid(Refill)
                     && NOT ck_inspector_integer_attributes::Is_Destroying(FCk_Handle{Refill})
-                    && FCk_Handle{Refill}.Has<ck::FFragment_FloatAttribute_Current>();
+                    && FCk_Handle{Refill}.Has<ck::FFragment_FloatAttribute>();
                 const auto RefillState = bHasRefill
                     ? ck::Format_UE(TEXT("{} @ {:.2f}/s"),
                         UCk_Utils_IntegerAttributeRefill_UE::Get_RefillState(Refill),
@@ -676,7 +676,7 @@ auto SCkInspector_IntegerAttributesAuthored::Resolve_Refill(
 
     const auto Current = UCk_Utils_IntegerAttribute_UE::TryGet_RefillAttribute(Attribute);
     if (ck::Is_NOT_Valid(Current) || Current != *Candidate
-        || NOT FCk_Handle{Current}.Has<ck::FFragment_FloatAttribute_Current>())
+        || NOT FCk_Handle{Current}.Has<ck::FFragment_FloatAttribute>())
     { return false; }
 
     OutRefill = *Candidate;

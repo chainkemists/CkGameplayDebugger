@@ -138,11 +138,11 @@ auto FCkInspectorTimerAuthored::RunTest(const FString&) -> bool
     LifetimeOwner.Add<TWeakObjectPtr<UWorld>>(TestWorld);
     auto OwnerA = UCk_Utils_EntityLifetime_UE::Request_CreateEntity(LifetimeOwner);
     auto OwnerB = UCk_Utils_EntityLifetime_UE::Request_CreateEntity(LifetimeOwner);
-    auto ParamsA = FCk_Fragment_Timer_ParamsData{FCk_Time{10.0}};
+    auto ParamsA = FCk_Timer_Spec{FCk_Time{10.0}};
     ParamsA.Set_StartingState(ECk_Timer_State::Running)
         .Set_CountDirection(ECk_Timer_CountDirection::CountUp)
         .Set_Behavior(ECk_Timer_Behavior::PauseOnDone);
-    auto ParamsB = FCk_Fragment_Timer_ParamsData{FCk_Time{20.0}};
+    auto ParamsB = FCk_Timer_Spec{FCk_Time{20.0}};
     ParamsB.Set_StartingState(ECk_Timer_State::Paused)
         .Set_CountDirection(ECk_Timer_CountDirection::CountDown)
         .Set_Behavior(ECk_Timer_Behavior::StopOnDone);
@@ -151,7 +151,7 @@ auto FCkInspectorTimerAuthored::RunTest(const FString&) -> bool
     PumpSetup(World);
     if (NOT TestTrue(TEXT("fixture creates two complete independent timers"),
         ck::IsValid(TimerA) && ck::IsValid(TimerB) && TimerA != TimerB
-            && TimerA.Has<ck::FFragment_Timer_Current>() && TimerB.Has<ck::FFragment_Timer_Current>())) { return false; }
+            && TimerA.Has<ck::FFragment_Timer>() && TimerB.Has<ck::FFragment_Timer>())) { return false; }
 
     const TSharedRef<FCkInspectorEditGuard> EditGuard = MakeShared<FCkInspectorEditGuard>();
     auto Inspector = FCkInspector_Timer{};
@@ -256,7 +256,7 @@ auto FCkInspectorTimerAuthored::RunTest(const FString&) -> bool
             && &AuthoredB->Get_View()->GetRegion(TEXT("main")).Get() == &MainBefore.Get()
             && AuthoredB->Get_View()->GetRevision() == RejectedRevision);
 
-    TimerA.Try_Remove<ck::FFragment_Timer_Current>();
+    TimerA.Try_Remove<ck::FFragment_Timer>();
     RenderedA->SlatePrepass();
     TestTrue(TEXT("Current-only removal invalidates held Timer controls"),
         ck::IsValid(TimerA) && TimerA.Has<ck::FFragment_Timer_Params>() && NOT Inspector.CanInspect(TimerA)

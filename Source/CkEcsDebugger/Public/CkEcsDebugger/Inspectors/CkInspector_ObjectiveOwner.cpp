@@ -37,10 +37,10 @@ namespace ck_inspector_objective_owner
         const FCk_Handle_ObjectiveOwner Candidate = UCk_Utils_ObjectiveOwner_UE::CastChecked(MutableEntity);
         if (ck::Is_NOT_Valid(Candidate)
             || NOT Candidate.Has<ck::FFragment_ObjectiveOwner_Params>()
-            || NOT Candidate.Has<ck::FFragment_ObjectiveOwner_Current>())
+            || NOT Candidate.Has<ck::FFragment_ObjectiveOwner>())
         { return false; }
 
-        const FCk_Handle_EntityCollection Collection = Candidate.Get<ck::FFragment_ObjectiveOwner_Current>().Get_ObjectivesEntityCollection();
+        const FCk_Handle_EntityCollection Collection = Candidate.Get<ck::FFragment_ObjectiveOwner>().Get_ObjectivesEntityCollection();
         if (ck::Is_NOT_Valid(Collection) || NOT UCk_Utils_EntityCollection_UE::Has(FCk_Handle{Collection}))
         { return false; }
 
@@ -55,10 +55,10 @@ namespace ck_inspector_objective_owner
         const FCk_Handle ObjectiveEntity{InObjective};
         if (NOT UCk_Utils_Objective_UE::Has(ObjectiveEntity)
             || NOT InObjective.Has<ck::FFragment_Objective_Params>()
-            || NOT InObjective.Has<ck::FFragment_Objective_Current>())
+            || NOT InObjective.Has<ck::FFragment_Objective>())
         { return false; }
 
-        const FCk_Handle StatusAttribute = InObjective.Get<ck::FFragment_Objective_Current>().Get_StatusAttribute();
+        const FCk_Handle StatusAttribute = InObjective.Get<ck::FFragment_Objective>().Get_StatusAttribute();
         if (NOT ck::IsValid(StatusAttribute) || NOT UCk_Utils_ByteAttribute_UE::Has(StatusAttribute))
         { return false; }
 

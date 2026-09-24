@@ -45,7 +45,7 @@ namespace ck_inspector_fog_of_war_authored_test
         auto Entity = UCk_Utils_EntityLifetime_UE::Request_CreateEntity(InOwner);
         if (ck::Is_NOT_Valid(Entity)) { return {}; }
 
-        auto Params = FCk_Fragment_FogOfWar_ParamsData{
+        auto Params = FCk_FogOfWar_Spec{
             FCk_Minimap_WorldBounds{InCenter, InHalfExtents}};
         Params.Set_CellSize(InCellSize);
         Params.Set_RevealRadius(InRevealRadius);
@@ -412,7 +412,7 @@ auto FCkInspectorFogOfWarAuthored::RunTest(const FString&) -> bool
             && NOT DestructorGuard->Get_HasActiveEdit());
 
     TestTrue(TEXT("Current loss leaves A live but removes complete inspectability"),
-        EntityA.Try_Remove<ck::FFragment_FogOfWar_Current>()
+        EntityA.Try_Remove<ck::FFragment_FogOfWar>()
             && ck::IsValid(EntityA) && EntityA.Has<ck::FFragment_FogOfWar_Params>()
             && NOT Inspector.CanInspect(EntityA));
     Inspector.Tick(EntityA, 0.0f);
@@ -436,7 +436,7 @@ auto FCkInspectorFogOfWarAuthored::RunTest(const FString&) -> bool
 
     TestTrue(TEXT("Params loss leaves B live but removes complete inspectability"),
         EntityB.Try_Remove<ck::FFragment_FogOfWar_Params>()
-            && ck::IsValid(EntityB) && EntityB.Has<ck::FFragment_FogOfWar_Current>()
+            && ck::IsValid(EntityB) && EntityB.Has<ck::FFragment_FogOfWar>()
             && NOT Inspector.CanInspect(EntityB));
     AuthoredB->Request_RevealAll();
     TestFalse(TEXT("stale B action enqueues nothing after Params loss"),

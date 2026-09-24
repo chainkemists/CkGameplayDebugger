@@ -34,7 +34,7 @@ namespace ck_inspector_astar_authored_test
     auto Add_Params(FCk_Handle& InEntity, const int64 InBudgetUs, const int32 InMaxIterations,
         const float InCostThreshold) -> void
     {
-        auto& Params = InEntity.Add<ck::FFragment_AStar_Params>();
+        auto& Params = InEntity.Add<ck::FFragment_AStar_Tunables>();
         Params._BudgetMicroseconds = InBudgetUs;
         Params._MaxIterationsPerTick = InMaxIterations;
         Params._CostThreshold = InCostThreshold;
@@ -235,7 +235,7 @@ auto FCkInspectorAStarAuthored::RunTest(const FString&) -> bool
             && SearchSection->GetVisibility() == EVisibility::Collapsed && ParamsSection->GetVisibility() == EVisibility::Visible
             && AuthoredA->Get_StatusText() == TEXT("--") && AuthoredA->Get_BudgetText() == TEXT("250"));
     TestTrue(TEXT("Params removal succeeds for final fail-closed coverage"),
-        Fixture.BothA.Try_Remove<ck::FFragment_AStar_Params>());
+        Fixture.BothA.Try_Remove<ck::FFragment_AStar_Tunables>());
     ViewA->GetRegion(TEXT("main"))->SlatePrepass();
     TestTrue(TEXT("removing both fragments collapses both sections and fails closed"),
         NOT Inspector.CanInspect(Fixture.BothA) && NOT AuthoredA->Get_HasSearch() && NOT AuthoredA->Get_HasParams()

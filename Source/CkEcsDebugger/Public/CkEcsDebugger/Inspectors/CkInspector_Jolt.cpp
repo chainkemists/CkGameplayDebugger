@@ -150,9 +150,9 @@ auto SCkInspector_JoltAuthored::Get_HasStaticActor() const -> bool
 
 auto SCkInspector_JoltAuthored::Get_BodyIdText() const -> FString
 {
-    if (NOT Get_HasBody() || NOT _Entity.Has<ck::FFragment_JoltBody_Current>()) { return TEXT("--"); }
+    if (NOT Get_HasBody() || NOT _Entity.Has<ck::FFragment_JoltBody>()) { return TEXT("--"); }
     return ck::Format_UE(TEXT("{}"),
-        _Entity.Get<ck::FFragment_JoltBody_Current>().Get_BodyId().GetIndexAndSequenceNumber());
+        _Entity.Get<ck::FFragment_JoltBody>().Get_BodyId().GetIndexAndSequenceNumber());
 }
 
 auto SCkInspector_JoltAuthored::Get_MotionTypeText() const -> FString

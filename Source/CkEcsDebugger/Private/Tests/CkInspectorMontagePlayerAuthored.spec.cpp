@@ -40,10 +40,10 @@ namespace ck_inspector_montage_player_authored_test
         if (ck::Is_NOT_Valid(Entity))
         { return {}; }
         if (bInAddParams)
-        { Entity.Add<ck::FFragment_MontagePlayer_Params>(FCk_Fragment_MontagePlayer_ParamsData{}); }
+        { Entity.Add<ck::FFragment_MontagePlayer_SkeletalMesh>(FCk_MontagePlayer_Spec{}); }
         auto State = FCk_MontagePlayer_State{};
         State.Set_Kind(InKind).Set_PlayRate(InPlayRate).Set_SectionName(InSection);
-        Entity.Add<ck::FFragment_MontagePlayer_Current>(State);
+        Entity.Add<ck::FFragment_MontagePlayer>(State);
         return Entity;
     }
 
@@ -168,10 +168,10 @@ auto FCkInspectorMontagePlayerAuthored::RunTest(const FString&) -> bool
         LifetimeOwner, ECk_MontagePlayer_StateKind::Resume, 2.0f, TEXT("CurrentOnly"), false);
     if (NOT TestTrue(TEXT("fixture creates two typed players and one Current-only player"),
         ck::IsValid(PlayerA) && ck::IsValid(PlayerB) && ck::IsValid(CurrentOnly)
-            && PlayerA.Has<ck::FFragment_MontagePlayer_Params>()
-            && PlayerA.Has<ck::FFragment_MontagePlayer_Current>()
-            && NOT CurrentOnly.Has<ck::FFragment_MontagePlayer_Params>()
-            && CurrentOnly.Has<ck::FFragment_MontagePlayer_Current>()))
+            && PlayerA.Has<ck::FFragment_MontagePlayer_SkeletalMesh>()
+            && PlayerA.Has<ck::FFragment_MontagePlayer>()
+            && NOT CurrentOnly.Has<ck::FFragment_MontagePlayer_SkeletalMesh>()
+            && CurrentOnly.Has<ck::FFragment_MontagePlayer>()))
     { return false; }
 
     const TSharedRef<FCkInspectorEditGuard> EditGuard = MakeShared<FCkInspectorEditGuard>();
@@ -450,7 +450,7 @@ auto FCkInspectorMontagePlayerAuthored::RunTest(const FString&) -> bool
             && FindButton(MainBefore, TEXT("montage-player-pause")).IsValid());
 
     TestTrue(TEXT("fixture removes Current while the typed entity remains live"),
-        PlayerA.Try_Remove<ck::FFragment_MontagePlayer_Current>()
+        PlayerA.Try_Remove<ck::FFragment_MontagePlayer>()
             && ck::IsValid(PlayerA) && NOT Inspector.CanInspect(PlayerA));
     PauseButton->SlatePrepass();
     TestTrue(TEXT("held authored view and action fail closed after composition loss"),

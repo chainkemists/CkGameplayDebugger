@@ -33,7 +33,7 @@ namespace ck_inspector_anim_plans_authored_test
     auto AddPlan(FCk_Handle& InOwner, const FGameplayTag InGoal, const FGameplayTag InCluster,
         const FGameplayTag InState) -> FCk_Handle_AnimPlan
     {
-        auto Params = FCk_Fragment_AnimPlan_ParamsData{InGoal};
+        auto Params = FCk_AnimPlan_Spec{InGoal};
         Params.Set_StartingAnimCluster(InCluster);
         Params.Set_StartingAnimState(InState);
         return UCk_Utils_AnimPlan_UE::Add(InOwner, Params, ECk_Replication::DoesNotReplicate);
@@ -92,11 +92,11 @@ namespace ck_inspector_anim_plans_authored_test
     auto PumpRequests(ck::FEcsWorld& InWorld, FCk_Handle_AnimPlan& InPlan) -> bool
     {
         if (NOT InPlan.Has<ck::FFragment_AnimPlan_Params>()
-            || NOT InPlan.Has<ck::FFragment_AnimPlan_Current>()
+            || NOT InPlan.Has<ck::FFragment_AnimPlan>()
             || NOT InPlan.Has<ck::FFragment_AnimPlan_Requests>()) { return false; }
         const ck::FProcessor_AnimPlan_HandleRequests Processor{InWorld.Get_Registry()};
         Processor.ForEachEntity(FCk_Time{0.0}, InPlan, InPlan.Get<ck::FFragment_AnimPlan_Params>(),
-            InPlan.Get<ck::FFragment_AnimPlan_Current>(), InPlan.Get<ck::FFragment_AnimPlan_Requests>());
+            InPlan.Get<ck::FFragment_AnimPlan>(), InPlan.Get<ck::FFragment_AnimPlan_Requests>());
         return true;
     }
 
@@ -260,7 +260,7 @@ auto FCkInspectorAnimPlansAuthored::RunTest(const FString&) -> bool
     TestTrue(TEXT("rejected authored candidate retains the accepted tree and revision"),
         ViewA->GetRevision() == Revision && ViewA->GetRegion(TEXT("main")) == MainBeforeReject);
 
-    PlanA.Remove<ck::FFragment_AnimPlan_Current>();
+    PlanA.Remove<ck::FFragment_AnimPlan>();
     ApplyButton->SimulateClick();
     TestFalse(TEXT("held action rejects malformed plan composition"), PlanA.Has<ck::FFragment_AnimPlan_Requests>());
 

@@ -60,9 +60,9 @@ auto FCkInspectorPathNetworkFollowerAuthored::RunTest(const FString&) -> bool
     UCk_Utils_Net_UE::Add(EntityA, AuthoritySettings);
     UCk_Utils_Net_UE::Add(EntityB, AuthoritySettings);
     UCk_Utils_Net_UE::Add(EntityC, AuthoritySettings);
-    auto FollowerA = UCk_Utils_PathNetworkFollower_UE::Add(EntityA, FCk_Fragment_PathNetworkFollower_ParamsData{});
-    auto FollowerB = UCk_Utils_PathNetworkFollower_UE::Add(EntityB, FCk_Fragment_PathNetworkFollower_ParamsData{});
-    auto FollowerC = UCk_Utils_PathNetworkFollower_UE::Add(EntityC, FCk_Fragment_PathNetworkFollower_ParamsData{});
+    auto FollowerA = UCk_Utils_PathNetworkFollower_UE::Add(EntityA, FCk_PathNetworkFollower_Spec{});
+    auto FollowerB = UCk_Utils_PathNetworkFollower_UE::Add(EntityB, FCk_PathNetworkFollower_Spec{});
+    auto FollowerC = UCk_Utils_PathNetworkFollower_UE::Add(EntityC, FCk_PathNetworkFollower_Spec{});
     if (NOT TestTrue(TEXT("public Add creates three inspectable followers"),
                      ck::IsValid(FollowerA) && ck::IsValid(FollowerB) && ck::IsValid(FollowerC) &&
                          UCk_Utils_PathNetworkFollower_UE::Has(EntityA) &&
@@ -231,7 +231,7 @@ auto FCkInspectorPathNetworkFollowerAuthored::RunTest(const FString&) -> bool
                  StaleRows.FindRef(TEXT("Total Cost:")) == TEXT("--"));
 
     auto CorridorOnly = EntityC;
-    CorridorOnly.Try_Remove<ck::FFragment_PathNetworkFollower_Params>();
+    CorridorOnly.Try_Remove<ck::FFragment_PathNetworkFollower_Tunables>();
     TestTrue(TEXT("Corridor-only teardown also fails retained state closed"),
              NOT UCk_Utils_PathNetworkFollower_UE::Has(CorridorOnly) && NOT Inspector.CanInspect(CorridorOnly) &&
                  AuthoredC->Get_RouteStatusText() == TEXT("--") && AuthoredC->Get_FailReasonText() == TEXT("--") &&

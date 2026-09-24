@@ -192,9 +192,9 @@ namespace ck_audio_debugger_collector
         // Target and fade rate have no Utils accessor — they are `CK_PROPERTY_GET` on the Current fragment, read
         // here directly. They are what makes the mixer readable: a current volume alone never says whether the track
         // is steady or halfway through a crossfade.
-        if (InTrack.Has<ck::FFragment_AudioTrack_Current>())
+        if (InTrack.Has<ck::FFragment_AudioTrack>())
         {
-            const auto& Current = InTrack.Get<ck::FFragment_AudioTrack_Current>();
+            const auto& Current = InTrack.Get<ck::FFragment_AudioTrack>();
 
             Info.TargetVolume = Current.Get_TargetVolume();
             Info.FadeSpeed = Current.Get_FadeSpeed();
@@ -253,8 +253,8 @@ auto
     // before it was resolved would silently report distance-from-origin.
     ck_audio_debugger_collector::Resolve_Listener(_Snapshot, InWorld);
 
-    TransientEntity.View<ck::FFragment_AudioDirector_Current>().ForEach(
-        [this, &TransientEntity](FCk_Entity InEntity, const ck::FFragment_AudioDirector_Current&)
+    TransientEntity.View<ck::FFragment_AudioDirector>().ForEach(
+        [this, &TransientEntity](FCk_Entity InEntity, const ck::FFragment_AudioDirector&)
         {
             auto Handle = ck::MakeHandle(InEntity, TransientEntity);
 

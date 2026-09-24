@@ -133,7 +133,7 @@ namespace ck_inspector_objective_owner_authored_test
     {
         auto Entity = UCk_Utils_EntityLifetime_UE::Request_CreateEntity(InOwner);
         if (NOT AddAuthorityAndWorld(Entity)) { return {}; }
-        auto Params = FCk_Objective_ParamsData{InName};
+        auto Params = FCk_Objective_Spec{InName};
         Params.Set_DisplayName(FText::FromString(InName.ToString()));
         return UCk_Utils_Objective_UE::Add(Entity, Params);
     }
@@ -458,7 +458,7 @@ auto FCkInspectorObjectiveOwnerAuthored::RunTest(const FString&) -> bool
         DestructorAuthored.IsValid() && DestructorAuthored->Is_Inert() && NOT DestructorAuthored->Is_Mounted());
 
     TestTrue(TEXT("objective Current partial teardown leaves the owner live"),
-        Fixture.BCompleted.Try_Remove<ck::FFragment_Objective_Current>() && ck::IsValid(Fixture.OwnerB));
+        Fixture.BCompleted.Try_Remove<ck::FFragment_Objective>() && ck::IsValid(Fixture.OwnerB));
     const TSharedPtr<SButton> HeldPartialObjectiveRemove =
         FindActionForObjective(RenderedB, CompletedName, TEXT("objective-owner-remove"));
     AuthoredB->Tick(FGeometry::MakeRoot(FVector2D{1.0f, 1.0f}, FSlateLayoutTransform{}), 0.0, 0.0f);
@@ -474,7 +474,7 @@ auto FCkInspectorObjectiveOwnerAuthored::RunTest(const FString&) -> bool
 
     Selection->Set_SelectedEntities({FCk_Handle{Fixture.BNotStarted}});
     TestTrue(TEXT("owner Current partial teardown leaves the owner entity live"),
-        Fixture.OwnerA.Try_Remove<ck::FFragment_ObjectiveOwner_Current>()
+        Fixture.OwnerA.Try_Remove<ck::FFragment_ObjectiveOwner>()
             && ck::IsValid(Fixture.OwnerA) && NOT Inspector.CanInspect(Fixture.OwnerA));
     HeldRemove->SlatePrepass();
     TestFalse(TEXT("partial owner data makes the mounted authored projection unavailable"), AuthoredA->Get_IsAvailable());

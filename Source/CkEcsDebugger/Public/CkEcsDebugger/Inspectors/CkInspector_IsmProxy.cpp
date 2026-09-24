@@ -42,7 +42,7 @@ namespace ck_inspector_ism_proxy
         OutProxy = {};
         if (IsDestroying(InEntity)
             || NOT InEntity.Has<ck::FFragment_IsmProxy_Params>()
-            || NOT InEntity.Has<ck::FFragment_IsmProxy_Current>())
+            || NOT InEntity.Has<ck::FFragment_IsmProxy>())
         { return false; }
         if (NOT ck::IsValid(InEntity.Get<ck::FFragment_IsmProxy_Params>().Get_IsmRenderer()))
         { return false; }

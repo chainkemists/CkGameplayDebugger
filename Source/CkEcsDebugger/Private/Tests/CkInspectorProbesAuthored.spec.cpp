@@ -55,7 +55,7 @@ namespace ck_inspector_probes_authored_test
         return Content->GetAccessibleText().ToString();
     }
 
-    auto CreateProbe(FCk_Handle& InOwner, FCk_Fragment_Probe_ParamsData InParams) -> FCk_Handle_Probe
+    auto CreateProbe(FCk_Handle& InOwner, FCk_Probe_Spec InParams) -> FCk_Handle_Probe
     {
         return UCk_Utils_Probe_UE::Create(InOwner, FTransform::Identity,
             FCk_AnyShape{FCk_ShapeSphere_Dimensions{25.0f}}, InParams, FCk_Probe_DebugInfo{});
@@ -95,12 +95,12 @@ auto FCkInspectorProbesAuthored::RunTest(const FString&) -> bool
     { return false; }
     LifetimeOwner.Add<TWeakObjectPtr<UWorld>>(StandaloneWorld);
 
-    auto ParamsA = FCk_Fragment_Probe_ParamsData{TAG_Probe};
+    auto ParamsA = FCk_Probe_Spec{TAG_Probe};
     ParamsA.Set_ResponsePolicy(ECk_ProbeResponse_Policy::Notify);
     ParamsA.Set_Filter(FGameplayTagContainer{TAG_Probe});
     ParamsA.Set_MotionType(ECk_MotionType::Kinematic);
     ParamsA.Set_MotionQuality(ECk_MotionQuality::LinearCast);
-    auto ParamsB = FCk_Fragment_Probe_ParamsData{TAG_Probe};
+    auto ParamsB = FCk_Probe_Spec{TAG_Probe};
     ParamsB.Set_ResponsePolicy(ECk_ProbeResponse_Policy::Silent);
     ParamsB.Set_MotionType(ECk_MotionType::Static);
     ParamsB.Set_MotionQuality(ECk_MotionQuality::Discrete);

@@ -114,10 +114,10 @@ namespace ck_visuallod_debugger_collector
         if (ck::Is_NOT_Valid(InProxy))
         { return {}; }
 
-        if (NOT InProxy.Has<ck::FFragment_IskmProxy_Current>())
+        if (NOT InProxy.Has<ck::FFragment_IskmProxy>())
         { return {}; }
 
-        const auto Skmc = InProxy.Get<ck::FFragment_IskmProxy_Current>().Get_BaseSKMC();
+        const auto Skmc = InProxy.Get<ck::FFragment_IskmProxy>().Get_BaseSKMC();
         if (ck::Is_NOT_Valid(Skmc))
         { return {}; }
 

@@ -47,7 +47,7 @@ namespace ck_inspector_iskm_proxy
         OutProxy = UCk_Utils_IskmProxy_UE::Cast(Mutable);
         return ck::IsValid(OutProxy) && InEntity.Has_All<
             ck::FFragment_IskmProxy_Params,
-            ck::FFragment_IskmProxy_Current,
+            ck::FFragment_IskmProxy,
             ck::FFragment_IskmProxy_AnimState,
             ck::FFragment_IskmProxy_PoseSource,
             ck::FFragment_IskmProxy_CustomData,

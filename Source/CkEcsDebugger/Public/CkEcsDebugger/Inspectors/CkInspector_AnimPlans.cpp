@@ -35,7 +35,7 @@ namespace ck_inspector_anim_plans
     {
         return ck::IsValid(InPlan)
             && InPlan.Has<ck::FFragment_AnimPlan_Params>()
-            && InPlan.Has<ck::FFragment_AnimPlan_Current>();
+            && InPlan.Has<ck::FFragment_AnimPlan>();
     }
 
     auto Key(const FCk_Handle_AnimPlan& InPlan) -> FString

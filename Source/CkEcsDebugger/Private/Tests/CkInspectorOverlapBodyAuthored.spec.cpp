@@ -66,9 +66,9 @@ auto FCkInspectorOverlapBodyAuthored::RunTest(const FString&) -> bool
     { return false; }
 
     MarkerEntity.Add<ck::FFragment_Marker_Params>();
-    MarkerEntity.Add<ck::FFragment_Marker_Current>(ECk_EnableDisable::Enable);
+    MarkerEntity.Add<ck::FFragment_Marker>(ECk_EnableDisable::Enable);
     SensorEntity.Add<ck::FFragment_Sensor_Params>();
-    SensorEntity.Add<ck::FFragment_Sensor_Current>(ECk_EnableDisable::Disable);
+    SensorEntity.Add<ck::FFragment_Sensor>(ECk_EnableDisable::Disable);
 
     auto Inspector = FCkInspector_OverlapBody{};
     const TSharedRef<SWidget> RenderedMarker = Inspector.Build_Inspector(MarkerEntity);
@@ -204,7 +204,7 @@ auto FCkInspectorOverlapBodyAuthored::RunTest(const FString&) -> bool
     MarkerAuthored->Set_MarkerEnabled(false);
     TestFalse(TEXT("held switch cannot publish after required Marker composition is removed"),
         MarkerEntity.Has<ck::FFragment_Marker_Requests>());
-    MarkerEntity.Try_Remove<ck::FFragment_Marker_Current>();
+    MarkerEntity.Try_Remove<ck::FFragment_Marker>();
     TestFalse(TEXT("complete Marker removal collapses its authored section"), MarkerAuthored->Get_HasMarker());
 
     TWeakPtr<SCkInspector_OverlapBodyAuthored> DestructorAuthored;

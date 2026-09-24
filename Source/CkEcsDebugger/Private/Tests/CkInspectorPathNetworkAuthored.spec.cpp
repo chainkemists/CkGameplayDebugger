@@ -26,9 +26,9 @@ namespace ck_inspector_pathnetwork_authored_test
             FCk_PathNetwork_RibbonPoint{InEnd, 100.0f}}};
     }
 
-    auto MakeParams(const TArray<FCk_PathNetwork_Ribbon>& InRibbons) -> FCk_Fragment_PathNetwork_ParamsData
+    auto MakeParams(const TArray<FCk_PathNetwork_Ribbon>& InRibbons) -> FCk_PathNetwork_Spec
     {
-        return FCk_Fragment_PathNetwork_ParamsData{InRibbons};
+        return FCk_PathNetwork_Spec{InRibbons};
     }
 
     auto BuildNetwork(ck::FProcessor_PathNetwork_Setup& InSetup, const FCk_Handle_PathNetwork& InNetwork) -> bool

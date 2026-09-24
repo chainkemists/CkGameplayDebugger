@@ -53,11 +53,11 @@ auto FCkAudioDebugger_DataCollector_RealWorld::RunTest(const FString&) -> bool
     if (NOT TestTrue(TEXT("real collector ECS world has a transient entity"), ck::IsValid(TransientEntity)))
     { return false; }
 
-    auto AlphaDirectorParams = FCk_Fragment_AudioDirector_ParamsData{}
+    auto AlphaDirectorParams = FCk_AudioDirector_Spec{}
         .Set_DefaultCrossfadeDuration(FCk_Time{0.75f})
         .Set_MaxConcurrentTracks(7)
         .Set_SamePriorityBehavior(ECk_SamePriorityBehavior::Allow);
-    auto ZuluDirectorParams = FCk_Fragment_AudioDirector_ParamsData{}
+    auto ZuluDirectorParams = FCk_AudioDirector_Spec{}
         .Set_MaxConcurrentTracks(3)
         .Set_SamePriorityBehavior(ECk_SamePriorityBehavior::Block);
 
@@ -74,11 +74,11 @@ auto FCkAudioDebugger_DataCollector_RealWorld::RunTest(const FString&) -> bool
         FSoftObjectPath{TEXT("/Game/Audio/Collector/CollectorHigh.CollectorHigh")}};
     const auto LowSound = TSoftObjectPtr<USoundBase>{
         FSoftObjectPath{TEXT("/Game/Audio/Collector/CollectorLow.CollectorLow")}};
-    auto HighTrackParams = FCk_Fragment_AudioTrack_ParamsData{HighSound}
+    auto HighTrackParams = FCk_AudioTrack_Spec{HighSound}
         .Set_Priority(90)
         .Set_OverrideBehavior(ECk_AudioTrack_OverrideBehavior::Queue)
         .Set_LoopBehavior(ECk_LoopBehavior::PlayOnce);
-    auto LowTrackParams = FCk_Fragment_AudioTrack_ParamsData{LowSound}
+    auto LowTrackParams = FCk_AudioTrack_Spec{LowSound}
         .Set_Priority(10)
         .Set_OverrideBehavior(ECk_AudioTrack_OverrideBehavior::Interrupt)
         .Set_LoopBehavior(ECk_LoopBehavior::Loop);

@@ -252,7 +252,7 @@ auto FCkInspectorEntityTagQueryAuthored::RunTest(const FString&) -> bool
         TEXT("<ui version=\"1\"><region name=\"main\"><native id=\"broken\" bind=\"missing-query-port\" /></region></ui>"),
         TEXT(""), TEXT("Entity Tag Query rejected candidate")).Succeeded && ViewB->GetRevision() == RevisionBBefore);
 
-    TestTrue(TEXT("query composition removal succeeds"), QueryEntityA.Try_Remove<ck::FFragment_EntityTagQuery_Current>());
+    TestTrue(TEXT("query composition removal succeeds"), QueryEntityA.Try_Remove<ck::FFragment_EntityTagQuery>());
     const int32 RequestCountBefore = QueryEntityA.Has<ck::FFragment_EntityTagQuery_Requests>()
         ? QueryEntityA.Get<ck::FFragment_EntityTagQuery_Requests>().Get_Requests().Num() : 0;
     AddButton->SimulateClick();

@@ -62,7 +62,7 @@ namespace ck_inspector_poi_authored_test
         { return {}; }
 
         UCk_Utils_Transform_UE::Add(Entity, FTransform{InLocation}, ECk_Replication::DoesNotReplicate);
-        auto Params = FCk_Fragment_Poi_ParamsData{InCategory};
+        auto Params = FCk_Poi_Spec{InCategory};
         Params.Set_Label(InLabel);
         return UCk_Utils_Poi_UE::Add(Entity, Params);
     }

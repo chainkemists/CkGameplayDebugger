@@ -43,14 +43,14 @@ auto HasCurrent(const FCk_Handle &InEntity) -> bool
 auto TryGetMontagePlayer(const FCk_Handle &InEntity, FCk_Handle_MontagePlayer &OutPlayer) -> bool
 {
     OutPlayer = {};
-    if (IsDestroying(InEntity) || NOT InEntity.Has<ck::FFragment_MontagePlayer_Params>() ||
+    if (IsDestroying(InEntity) || NOT InEntity.Has<ck::FFragment_MontagePlayer_SkeletalMesh>() ||
         NOT InEntity.Has<ck::FFragment_MontagePlayer>())
     {
         return false;
     }
     auto Mutable = InEntity;
     OutPlayer = UCk_Utils_MontagePlayer_UE::Cast(Mutable);
-    return ck::IsValid(OutPlayer) && OutPlayer.Has<ck::FFragment_MontagePlayer_Params>() &&
+    return ck::IsValid(OutPlayer) && OutPlayer.Has<ck::FFragment_MontagePlayer_SkeletalMesh>() &&
            OutPlayer.Has<ck::FFragment_MontagePlayer>();
 }
 

@@ -185,15 +185,15 @@ namespace ck_inspector_integer_attributes_authored_test
         const ECk_MinMax InMinMax,
         const int32 InMin = 0,
         const int32 InMax = 0,
-        const bool bInWithRefill = false) -> FCk_Fragment_IntegerAttribute_ParamsData
+        const bool bInWithRefill = false) -> FCk_IntegerAttribute_Spec
     {
-        auto Params = FCk_Fragment_IntegerAttribute_ParamsData{InName, InBase};
+        auto Params = FCk_IntegerAttribute_Spec{InName, InBase};
         Params.Set_MinMax(InMinMax);
         Params.Set_MinValue(InMin);
         Params.Set_MaxValue(InMax);
         if (bInWithRefill)
         {
-            auto RefillParams = FCk_Fragment_IntegerAttributeRefill_ParamsData{
+            auto RefillParams = FCk_IntegerAttributeRefill_Spec{
                 TAG_Label_FloatAttribute.GetTag(), 1.25f};
             RefillParams.Set_StartingState(ECk_Attribute_RefillState::Running);
             Params.Set_EnableRefill(true);
@@ -218,9 +218,9 @@ namespace ck_inspector_integer_attributes_authored_test
         Out.BoundedB = UCk_Utils_IntegerAttribute_UE::Add(Out.OwnerB,
             MakeParams(TAG_Label_IntegerAttribute.GetTag(), 60, ECk_MinMax::MinMax, 10, 90),
             ECk_Replication::DoesNotReplicate);
-        auto ParamsCurrent = FCk_Fragment_IntegerAttributeModifier_ParamsData{7, ECk_MinMaxCurrent::Current};
-        auto ParamsMin = FCk_Fragment_IntegerAttributeModifier_ParamsData{4, ECk_MinMaxCurrent::Min};
-        auto ParamsMax = FCk_Fragment_IntegerAttributeModifier_ParamsData{5, ECk_MinMaxCurrent::Max};
+        auto ParamsCurrent = FCk_IntegerAttributeModifier_Spec{7, ECk_MinMaxCurrent::Current};
+        auto ParamsMin = FCk_IntegerAttributeModifier_Spec{4, ECk_MinMaxCurrent::Min};
+        auto ParamsMax = FCk_IntegerAttributeModifier_Spec{5, ECk_MinMaxCurrent::Max};
         Out.CurrentModifier = UCk_Utils_IntegerAttributeModifier_UE::Add_Revocable(Out.Bounded,
             TAG_Label_AnimPlan_Goal.GetTag(), ECk_AttributeModifier_Operation::Add, ParamsCurrent);
         Out.MinModifier = UCk_Utils_IntegerAttributeModifier_UE::Add_Revocable(Out.Bounded,
@@ -566,7 +566,7 @@ auto FCkInspectorIntegerAttributesAuthored::RunTest(const FString&) -> bool
             CountVisible(*RefillControlFilteredRecords, TEXT("refill-control-visible")), 1);
     }
 
-    Fixture.Refill.Try_Remove<ck::FFragment_FloatAttribute_Current>();
+    Fixture.Refill.Try_Remove<ck::FFragment_FloatAttribute>();
     PauseButton->SimulateClick();
     TestTrue(TEXT("held refill controls fail closed after Float backing-component loss"),
         UCk_Utils_IntegerAttribute_UE::Has_RefillAttribute(Fixture.Bounded)
@@ -581,9 +581,9 @@ auto FCkInspectorIntegerAttributesAuthored::RunTest(const FString&) -> bool
     Fixture.Bounded.Try_Remove<ck::FFragment_IntegerAttribute_Min>();
     Commit(Slate, MinInput.ToSharedRef(), TEXT("99"));
     TestTrue(TEXT("held Min control is inert after component loss"), NOT Fixture.Bounded.Has<ck::FFragment_IntegerAttribute_Min>());
-    Fixture.Bounded.Try_Remove<ck::FFragment_IntegerAttribute_Current>();
+    Fixture.Bounded.Try_Remove<ck::FFragment_IntegerAttribute>();
     Commit(Slate, CurrentInput.ToSharedRef(), TEXT("99"));
-    TestTrue(TEXT("held Current control is inert after typed attribute loss"), NOT Fixture.Bounded.Has<ck::FFragment_IntegerAttribute_Current>());
+    TestTrue(TEXT("held Current control is inert after typed attribute loss"), NOT Fixture.Bounded.Has<ck::FFragment_IntegerAttribute>());
     Selection->Set_SelectedEntities({FCk_Handle{Fixture.MaxOnly}});
     SelectionButton->SimulateClick();
     HeldMaxRemove->SimulateClick();

@@ -257,7 +257,7 @@ auto FCkInspectorIskmRendererAuthored::RunTest(const FString&) -> bool
 
     auto StaleEntity = Fixture.EntityA;
     TestTrue(TEXT("Current removal succeeds for the stale-fragment fixture"),
-        StaleEntity.Try_Remove<ck::FFragment_IskmRenderer_Current>());
+        StaleEntity.Try_Remove<ck::FFragment_IskmRenderer>());
     TestFalse(TEXT("partial ISKM Renderer composition is no longer inspectable"),
         UCk_Utils_IskmRenderer_UE::Has(StaleEntity) || Inspector.CanInspect(StaleEntity));
     TestTrue(TEXT("mounted authored reads fail closed after Current removal"),

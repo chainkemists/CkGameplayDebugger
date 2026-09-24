@@ -106,10 +106,10 @@ auto FCkInspectorObjectiveAuthored::RunTest(const FString&) -> bool
         ECk_Replication::DoesNotReplicate, ECk_Net_NetModeType::Host, ECk_Net_EntityNetRole::Authority};
     UCk_Utils_Net_UE::Add(EntityA, AuthoritySettings);
     UCk_Utils_Net_UE::Add(EntityB, AuthoritySettings);
-    auto ParamsA = FCk_Objective_ParamsData{NameA};
+    auto ParamsA = FCk_Objective_Spec{NameA};
     ParamsA.Set_DisplayName(FText::FromString(TEXT("Attack objective")));
     ParamsA.Set_Description(FText::FromString(TEXT("Finish the attack sequence.")));
-    auto ParamsB = FCk_Objective_ParamsData{NameB};
+    auto ParamsB = FCk_Objective_Spec{NameB};
     ParamsB.Set_DisplayName(FText::FromString(TEXT("Defense objective")));
     ParamsB.Set_Description(FText::FromString(TEXT("Hold the defensive line.")));
     const FCk_Handle_Objective ObjectiveA = UCk_Utils_Objective_UE::Add(EntityA, ParamsA);
@@ -192,7 +192,7 @@ auto FCkInspectorObjectiveAuthored::RunTest(const FString&) -> bool
         &ViewB->GetRegion(TEXT("main")).Get() == &MainBBefore.Get() && ViewB->GetRevision() == RevisionBBeforeRejected);
 
     TestTrue(TEXT("fixture removes Objective current state while entity remains live"),
-        EntityA.Try_Remove<ck::FFragment_Objective_Current>() && ck::IsValid(EntityA) && NOT Inspector.CanInspect(EntityA));
+        EntityA.Try_Remove<ck::FFragment_Objective>() && ck::IsValid(EntityA) && NOT Inspector.CanInspect(EntityA));
     HeldStart->SlatePrepass();
     TestEqual(TEXT("mounted Objective status fails closed after fragment removal"),
         AuthoredA->Get_StatusText(), FString{TEXT("--")});

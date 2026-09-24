@@ -151,12 +151,12 @@ namespace ck_inspector_physics_authored_test
         if (ck::Is_NOT_Valid(Entity)) { return {}; }
         AddAuthorityAndWorld(Entity);
         UCk_Utils_Velocity_UE::Add(Entity,
-            FCk_Fragment_Velocity_ParamsData{ECk_LocalWorld::World, FVector{3.0, 4.0, 12.0}},
+            FCk_Velocity_Spec{ECk_LocalWorld::World, FVector{3.0, 4.0, 12.0}},
             ECk_Replication::DoesNotReplicate);
         UCk_Utils_Acceleration_UE::Add(Entity,
-            FCk_Fragment_Acceleration_ParamsData{ECk_LocalWorld::World, FVector{-2.0, 6.0, 1.0}},
+            FCk_Acceleration_Spec{ECk_LocalWorld::World, FVector{-2.0, 6.0, 1.0}},
             ECk_Replication::DoesNotReplicate);
-        UCk_Utils_PredictedVelocity_UE::Add(Entity, FCk_Fragment_PredictedVelocity_ParamsData{});
+        UCk_Utils_PredictedVelocity_UE::Add(Entity, FCk_PredictedVelocity_Spec{});
         UCk_Utils_EulerIntegrator_UE::Request_Start(Entity, {});
         return Entity;
     }
@@ -167,7 +167,7 @@ namespace ck_inspector_physics_authored_test
         if (ck::Is_NOT_Valid(Entity)) { return {}; }
         AddAuthorityAndWorld(Entity);
         UCk_Utils_Velocity_UE::Add(Entity,
-            FCk_Fragment_Velocity_ParamsData{ECk_LocalWorld::World, FVector{0.0, 0.0, 5.0}},
+            FCk_Velocity_Spec{ECk_LocalWorld::World, FVector{0.0, 0.0, 5.0}},
             ECk_Replication::DoesNotReplicate);
         return Entity;
     }
@@ -182,10 +182,10 @@ namespace ck_inspector_physics_authored_test
             ECk_Net_EntityNetRole::Proxy});
         Entity.Add<TWeakObjectPtr<UWorld>>();
         UCk_Utils_Velocity_UE::Add(Entity,
-            FCk_Fragment_Velocity_ParamsData{ECk_LocalWorld::World, FVector{1.0, 2.0, 3.0}},
+            FCk_Velocity_Spec{ECk_LocalWorld::World, FVector{1.0, 2.0, 3.0}},
             ECk_Replication::DoesNotReplicate);
         UCk_Utils_Acceleration_UE::Add(Entity,
-            FCk_Fragment_Acceleration_ParamsData{ECk_LocalWorld::World, FVector{4.0, 5.0, 6.0}},
+            FCk_Acceleration_Spec{ECk_LocalWorld::World, FVector{4.0, 5.0, 6.0}},
             ECk_Replication::DoesNotReplicate);
         return Entity;
     }
@@ -221,12 +221,12 @@ auto FCkInspectorPhysicsAuthored::RunTest(const FString&) -> bool
     auto EntityWithoutWorld = CreatePhysicsWithoutWorld(OwnerWithoutWorld);
     if (NOT TestTrue(TEXT("fixture composes all four optional sections and a velocity-only sibling"),
         ck::IsValid(EntityA) && ck::IsValid(EntityB) && ck::IsValid(EntityWithoutWorld)
-            && EntityA.Has<ck::FFragment_Velocity_Current>()
-            && EntityA.Has<ck::FFragment_Acceleration_Current>()
-            && EntityA.Has<ck::FFragment_PredictedVelocity_Current>()
-            && EntityA.Has<ck::FFragment_EulerIntegrator_Current>()
-            && EntityB.Has<ck::FFragment_Velocity_Current>()
-            && NOT EntityB.Has<ck::FFragment_Acceleration_Current>())) { return false; }
+            && EntityA.Has<ck::FFragment_Velocity>()
+            && EntityA.Has<ck::FFragment_Acceleration>()
+            && EntityA.Has<ck::FFragment_PredictedVelocity>()
+            && EntityA.Has<ck::FFragment_EulerIntegrator>()
+            && EntityB.Has<ck::FFragment_Velocity>()
+            && NOT EntityB.Has<ck::FFragment_Acceleration>())) { return false; }
 
     const TSharedRef<FCkInspectorEditGuard> EditGuard = MakeShared<FCkInspectorEditGuard>();
     auto Inspector = FCkInspector_Physics{};
@@ -383,12 +383,12 @@ auto FCkInspectorPhysicsAuthored::RunTest(const FString&) -> bool
     TestTrue(TEXT("Start is disabled and fails closed while the integrator is already running"),
         NOT StartButton->IsEnabled()
             && GetToolTipText(StartButton.ToSharedRef()).Contains(TEXT("already running"))
-            && EntityA.Has<ck::FFragment_EulerIntegrator_Current>());
+            && EntityA.Has<ck::FFragment_EulerIntegrator>());
     TestTrue(TEXT("physical Stop action dispatches through the authored action binding"), Click(Slate, StopButton.ToSharedRef()));
     Inspector.Tick(EntityA, 0.0f);
     TickSlate(Slate);
     TestTrue(TEXT("physical Stop action removes the integrator and requests a structural rebuild"),
-        NOT EntityA.Has<ck::FFragment_EulerIntegrator_Current>() && Inspector.NeedsRebuild()
+        NOT EntityA.Has<ck::FFragment_EulerIntegrator>() && Inspector.NeedsRebuild()
             && IntegratorSection->GetVisibility() == EVisibility::Collapsed);
     const TSharedRef<SCkInspector_PhysicsAuthored> RebuiltAfterStop =
         StaticCastSharedRef<SCkInspector_PhysicsAuthored>(Inspector.Build_Inspector(EntityA));
@@ -435,13 +435,13 @@ auto FCkInspectorPhysicsAuthored::RunTest(const FString&) -> bool
             && ViewB->GetRevision() == RevisionB && &ViewB->GetRegion(TEXT("main")).Get() == &MainB.Get());
 
     TestTrue(TEXT("velocity Current fragment removal preserves the entity"),
-        EntityA.Try_Remove<ck::FFragment_Velocity_Current>() && ck::IsValid(EntityA));
+        EntityA.Try_Remove<ck::FFragment_Velocity>() && ck::IsValid(EntityA));
     VelocityInput->SlatePrepass();
     AuthoredA->Commit_Velocity(FVector{99.0});
     TestTrue(TEXT("held velocity port fails closed after composition loss"),
         NOT AuthoredA->Get_HasVelocity() && NOT AuthoredA->Get_CanOverrideVelocity()
             && AuthoredA->Get_AxisText(TEXT("velocity"), 0) == TEXT("--") && NOT VelocityInput->IsEnabled()
-            && NOT EntityA.Has<ck::FFragment_Velocity_Current>());
+            && NOT EntityA.Has<ck::FFragment_Velocity>());
 
     TSharedPtr<SCkInspector_PhysicsAuthored> DestructorAuthored;
     {
@@ -462,7 +462,7 @@ auto FCkInspectorPhysicsAuthored::RunTest(const FString&) -> bool
             && NOT AuthoredA->Is_Mounted() && NOT AuthoredB->Is_Mounted()
             && NOT AuthoredA->Get_View().IsValid() && NOT AuthoredA->Get_PredictedVelocitySeries().IsValid()
             && NOT EditGuard->Get_HasActiveEdit()
-            && EntityA.Get<ck::FFragment_Acceleration_Current>().Get_CurrentAcceleration().Equals(
+            && EntityA.Get<ck::FFragment_Acceleration>().Get_CurrentAcceleration().Equals(
                 FVector{9.0, 2.0, -3.0}));
     return true;
 }

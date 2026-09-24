@@ -43,7 +43,7 @@ namespace ck_inspector_timer
         OutTimer = UCk_Utils_Timer_UE::Cast(MutableEntity);
         return ck::IsValid(OutTimer)
             && OutTimer.Has<ck::FFragment_Timer_Params>()
-            && OutTimer.Has<ck::FFragment_Timer_Current>();
+            && OutTimer.Has<ck::FFragment_Timer>();
     }
 
     // Elapsed / goal, matching the ratio the numeric rows report. A zero (or negative) goal has no meaningful

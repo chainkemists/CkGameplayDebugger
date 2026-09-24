@@ -18,7 +18,7 @@ decay rate, and time-to-forget. Opened via the `ck.AggroDebugger` console comman
   derived figures that are not readable from any single stored field: `Get_EffectiveDecayRate` (the perceived
   multiplier folded in) and `Get_SecondsToForget`.
 - `Data/CkAggroDebugger_DataCollector.h/.cpp` — rebuilds a snapshot each refresh:
-  `TransientEntity.View<FFragment_Aggro_Current>()`, then `UCk_Utils_Aggro_UE::ForEach_Target` per owner. Public utils
+  `TransientEntity.View<FFragment_Aggro>()`, then `UCk_Utils_Aggro_UE::ForEach_Target` per owner. Public utils
   where they exist; fragments read directly only for pure debug state (the `PendingForget` / `CannotBecomeActive` /
   `CannotBeForgotten` tags and `FFragment_AggroTarget_Perception`, which have no public getter).
 - `Window/SCkAggroDebuggerWindow.h/.cpp` — `SCkDebugger_WindowBase` subclass with the structure/values split

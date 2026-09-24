@@ -66,8 +66,8 @@ namespace ck_inspector_resolver_authored_test
         if (ck::Is_NOT_Valid(Entity)) { return {}; }
 
         Entity.Add<ck::FFragment_ResolverDataBundle_Params>(
-            FCk_Fragment_ResolverDataBundle_ParamsData{FGameplayTag{}, {}, {}, {}, Make_Phases(InPhaseCount)});
-        auto& Current = Entity.Add<ck::FFragment_ResolverDataBundle_Current>();
+            FCk_ResolverDataBundle_Spec{FGameplayTag{}, {}, {}, {}, Make_Phases(InPhaseCount)});
+        auto& Current = Entity.Add<ck::FFragment_ResolverDataBundle>();
         Current._FinalValue = InFinalValue;
         Current._CurrentPhaseIndex = InPhaseIndex;
         Current._MetadataTags.AddTag(InMetadataTag);
@@ -243,7 +243,7 @@ auto FCkInspectorResolverAuthored::RunTest(const FString&) -> bool
             && AuthoredA->Get_ModifierOpsText() == TEXT("1")
             && AuthoredA->Get_MetadataOpsText() == TEXT("2"));
 
-    auto& CurrentA = Fixture.EntityA.Get<ck::FFragment_ResolverDataBundle_Current>();
+    auto& CurrentA = Fixture.EntityA.Get<ck::FFragment_ResolverDataBundle>();
     CurrentA._CurrentPhaseIndex = 2;
     TestEqual(TEXT("out-of-range current phase fails closed against configured phases"),
         AuthoredA->Get_PhaseText(), FString{TEXT("-- / 2")});
@@ -260,7 +260,7 @@ auto FCkInspectorResolverAuthored::RunTest(const FString&) -> bool
             && AuthoredA->Get_ModifierOpsText() == TEXT("1")
             && AuthoredA->Get_MetadataOpsText() == TEXT("2"));
     TestTrue(TEXT("Current removal succeeds for the unavailable Resolver fixture"),
-        PartialEntity.Try_Remove<ck::FFragment_ResolverDataBundle_Current>());
+        PartialEntity.Try_Remove<ck::FFragment_ResolverDataBundle>());
     TestFalse(TEXT("Resolver composition without Current is not inspectable"), Inspector.CanInspect(PartialEntity));
     TestTrue(TEXT("mounted authored reads fail closed after Current removal"),
         NOT AuthoredA->Get_IsAvailable() && AuthoredA->Get_FinalValueText() == TEXT("--")

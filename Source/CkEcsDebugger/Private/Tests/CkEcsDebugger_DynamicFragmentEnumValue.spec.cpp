@@ -124,8 +124,8 @@ bool FCkEcsDebuggerDynamicFragmentEnumValue_UsesFieldAddress::RunTest(const FStr
 
     // The timer's Duration precedes CountDirection. Its default zero duration reproduces the old
     // container-relative read while CountDirection is authored to a distinct nonzero enum value.
-    auto TimerFragment = FInstancedStruct::Make<FCk_Fragment_Timer_ParamsData>();
-    const auto* TimerType = FCk_Fragment_Timer_ParamsData::StaticStruct();
+    auto TimerFragment = FInstancedStruct::Make<FCk_Timer_Spec>();
+    const auto* TimerType = FCk_Timer_Spec::StaticStruct();
     const auto* EnumProperty = CastField<FEnumProperty>(TimerType->FindPropertyByName(TEXT("_CountDirection")));
     TestNotNull(TEXT("fixture exposes the FEnumProperty"), EnumProperty);
     if (EnumProperty == nullptr)
@@ -232,7 +232,7 @@ bool FCkEcsDebuggerDynamicFragments_AuthoredComposition::RunTest(const FString&)
     UCk_Utils_Net_UE::Add(Entity, FCk_Net_ConnectionSettings{
         ECk_Replication::DoesNotReplicate, ECk_Net_NetModeType::Host, ECk_Net_EntityNetRole::Authority});
 
-    auto TimerFragment = FInstancedStruct::Make<FCk_Fragment_Timer_ParamsData>();
+    auto TimerFragment = FInstancedStruct::Make<FCk_Timer_Spec>();
     const UScriptStruct* TimerType = TimerFragment.GetScriptStruct();
     auto JoltFragment = FInstancedStruct::Make<FCk_Jolt_QueryFilter>();
     const UScriptStruct* JoltType = JoltFragment.GetScriptStruct();

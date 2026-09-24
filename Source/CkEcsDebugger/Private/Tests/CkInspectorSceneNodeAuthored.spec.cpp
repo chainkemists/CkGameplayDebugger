@@ -358,7 +358,7 @@ auto FCkInspectorSceneNodeAuthored::RunTest(const FString&) -> bool
         &ViewB->GetRegion(TEXT("main")).Get() == &MainBBefore.Get() && ViewB->GetRevision() == RevisionBBefore);
 
     TestTrue(TEXT("partial SceneNode composition can be removed while the entity remains live"),
-        NodeB.Try_Remove<ck::FFragment_SceneNode_Current>() && ck::IsValid(NodeB));
+        NodeB.Try_Remove<ck::FFragment_SceneNode>() && ck::IsValid(NodeB));
     AuthoredB->Commit_Location(FVector{999.0f});
     AuthoredB->Request_Detach();
     TestTrue(TEXT("held controls fail closed after SceneNode composition loss"),

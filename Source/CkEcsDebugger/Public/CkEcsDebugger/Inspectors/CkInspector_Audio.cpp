@@ -58,7 +58,7 @@ namespace ck_inspector_audio
     {
         OutTrack = {};
         if (IsDestroying(InEntity)
-            || NOT InEntity.Has_All<ck::FFragment_AudioTrack_Params, ck::FFragment_AudioTrack_Current>())
+            || NOT InEntity.Has_All<ck::FFragment_AudioTrack_Params, ck::FFragment_AudioTrack>())
         { return false; }
 
         auto Mutable = InEntity;
@@ -69,14 +69,14 @@ namespace ck_inspector_audio
     auto HasTrackCurrent(const FCk_Handle& InEntity) -> bool
     {
         return NOT IsDestroying(InEntity)
-            && InEntity.Has<ck::FFragment_AudioTrack_Current>();
+            && InEntity.Has<ck::FFragment_AudioTrack>();
     }
 
     auto TryGetDirector(const FCk_Handle& InEntity, FCk_Handle_AudioDirector& OutDirector) -> bool
     {
         OutDirector = {};
         if (IsDestroying(InEntity)
-            || NOT InEntity.Has_All<ck::FFragment_AudioDirector_Params, ck::FFragment_AudioDirector_Current>())
+            || NOT InEntity.Has_All<ck::FFragment_AudioDirector_Params, ck::FFragment_AudioDirector>())
         { return false; }
 
         auto Mutable = InEntity;
@@ -87,7 +87,7 @@ namespace ck_inspector_audio
     auto HasDirectorCurrent(const FCk_Handle& InEntity) -> bool
     {
         return NOT IsDestroying(InEntity)
-            && InEntity.Has<ck::FFragment_AudioDirector_Current>();
+            && InEntity.Has<ck::FFragment_AudioDirector>();
     }
 
     auto GateReason(const FCk_Handle& InEntity, const ECk_DebugRequest_Requirement InRequirement) -> FString
@@ -411,7 +411,7 @@ auto FCkInspector_Audio::Build_NativeBody(const FCk_Handle& Entity) const -> TSh
                                 {
                                     auto Director = FCk_Handle_AudioDirector{};
                                     if (NOT ck_inspector_audio::TryGetDirector(CapturedEntity, Director)
-                                        || NOT Director.Get<ck::FFragment_AudioDirector_Current>()
+                                        || NOT Director.Get<ck::FFragment_AudioDirector>()
                                             .Get_TracksByName().Contains(TrackName))
                                     { return; }
 
@@ -469,7 +469,7 @@ auto SCkInspector_AudioAuthored::Get_IsDirectorAvailable() const -> bool
 auto SCkInspector_AudioAuthored::Get_TrackStateText() const -> FString
 {
     return Get_IsTrackAvailable()
-        ? ck::Format_UE(TEXT("{}"), _Entity.Get<ck::FFragment_AudioTrack_Current>().Get_State())
+        ? ck::Format_UE(TEXT("{}"), _Entity.Get<ck::FFragment_AudioTrack>().Get_State())
         : TEXT("--");
 }
 
@@ -478,7 +478,7 @@ auto SCkInspector_AudioAuthored::Get_TrackVolumeText() const -> FString
     if (NOT Get_IsTrackAvailable())
     { return TEXT("--"); }
 
-    const auto& Current = _Entity.Get<ck::FFragment_AudioTrack_Current>();
+    const auto& Current = _Entity.Get<ck::FFragment_AudioTrack>();
     return ck::Format_UE(
         TEXT("{:.3f} → {:.3f}"),
         Current.Get_CurrentVolume(),
@@ -488,7 +488,7 @@ auto SCkInspector_AudioAuthored::Get_TrackVolumeText() const -> FString
 auto SCkInspector_AudioAuthored::Get_TrackFadeSpeedText() const -> FString
 {
     return Get_IsTrackAvailable()
-        ? FString::Printf(TEXT("%.3f"), _Entity.Get<ck::FFragment_AudioTrack_Current>().Get_FadeSpeed())
+        ? FString::Printf(TEXT("%.3f"), _Entity.Get<ck::FFragment_AudioTrack>().Get_FadeSpeed())
         : TEXT("--");
 }
 
@@ -497,35 +497,35 @@ auto SCkInspector_AudioAuthored::Get_TrackPlaybackText() const -> FString
     return Get_IsTrackAvailable()
         ? ck::Format_UE(
             TEXT("{:.1f}%"),
-            _Entity.Get<ck::FFragment_AudioTrack_Current>().Get_PlaybackPercent() * 100.0f)
+            _Entity.Get<ck::FFragment_AudioTrack>().Get_PlaybackPercent() * 100.0f)
         : TEXT("--");
 }
 
 auto SCkInspector_AudioAuthored::Get_TrackVirtualizedText() const -> FString
 {
     return Get_IsTrackAvailable()
-        ? (_Entity.Get<ck::FFragment_AudioTrack_Current>().Get_IsVirtualized() ? TEXT("Yes") : TEXT("No"))
+        ? (_Entity.Get<ck::FFragment_AudioTrack>().Get_IsVirtualized() ? TEXT("Yes") : TEXT("No"))
         : TEXT("--");
 }
 
 auto SCkInspector_AudioAuthored::Get_DirectorActiveTracksText() const -> FString
 {
     return Get_IsDirectorAvailable()
-        ? FString::FromInt(_Entity.Get<ck::FFragment_AudioDirector_Current>().Get_ActiveTracks().Num())
+        ? FString::FromInt(_Entity.Get<ck::FFragment_AudioDirector>().Get_ActiveTracks().Num())
         : TEXT("--");
 }
 
 auto SCkInspector_AudioAuthored::Get_DirectorPriorityText() const -> FString
 {
     return Get_IsDirectorAvailable()
-        ? FString::FromInt(_Entity.Get<ck::FFragment_AudioDirector_Current>().Get_CurrentHighestPriority())
+        ? FString::FromInt(_Entity.Get<ck::FFragment_AudioDirector>().Get_CurrentHighestPriority())
         : TEXT("--");
 }
 
 auto SCkInspector_AudioAuthored::Get_DirectorAllFinishedText() const -> FString
 {
     return Get_IsDirectorAvailable()
-        ? (_Entity.Get<ck::FFragment_AudioDirector_Current>().Get_HasFiredAllTracksFinished()
+        ? (_Entity.Get<ck::FFragment_AudioDirector>().Get_HasFiredAllTracksFinished()
             ? TEXT("Yes")
             : TEXT("No"))
         : TEXT("--");
@@ -611,7 +611,7 @@ auto SCkInspector_AudioAuthored::Refresh_Tracks() -> bool
     auto Records = TArray<FCkUiRecordData>{};
     if (Get_IsDirectorAvailable())
     {
-        const auto& Tracks = _Entity.Get<ck::FFragment_AudioDirector_Current>().Get_TracksByName();
+        const auto& Tracks = _Entity.Get<ck::FFragment_AudioDirector>().Get_TracksByName();
         Records.Reserve(Tracks.Num());
         for (const auto& [Name, Handle] : Tracks)
         {
@@ -735,7 +735,7 @@ auto SCkInspector_AudioAuthored::Build_AuthoredView() -> bool
         {
             return InWidget.Get_IsTrackAvailable()
                 ? ck_inspector_audio::Get_TrackStateTone(
-                    InWidget._Entity.Get<ck::FFragment_AudioTrack_Current>().Get_State())
+                    InWidget._Entity.Get<ck::FFragment_AudioTrack>().Get_State())
                 : ECk_Tone::Neutral;
         });
     BindTone(
@@ -744,7 +744,7 @@ auto SCkInspector_AudioAuthored::Build_AuthoredView() -> bool
         [](const SCkInspector_AudioAuthored& InWidget)
         {
             return InWidget.Get_IsTrackAvailable()
-                && InWidget._Entity.Get<ck::FFragment_AudioTrack_Current>().Get_IsVirtualized()
+                && InWidget._Entity.Get<ck::FFragment_AudioTrack>().Get_IsVirtualized()
                     ? ECk_Tone::Warn
                     : ECk_Tone::Neutral;
         });
@@ -758,7 +758,7 @@ auto SCkInspector_AudioAuthored::Build_AuthoredView() -> bool
         [](const SCkInspector_AudioAuthored& InWidget)
         {
             return InWidget.Get_IsDirectorAvailable()
-                && InWidget._Entity.Get<ck::FFragment_AudioDirector_Current>().Get_HasFiredAllTracksFinished()
+                && InWidget._Entity.Get<ck::FFragment_AudioDirector>().Get_HasFiredAllTracksFinished()
                     ? ECk_Tone::Ok
                     : ECk_Tone::Neutral;
         });
@@ -833,30 +833,30 @@ auto SCkInspector_AudioAuthored::Build_AuthoredView() -> bool
     }));
 
     const auto GetTrackCurrentNumber = [Weak](
-        TFunction<float(const ck::FFragment_AudioTrack_Current&)> InGetValue)
+        TFunction<float(const ck::FFragment_AudioTrack&)> InGetValue)
     {
         const auto Widget = Weak.Pin();
         return Widget.IsValid() && Widget->Get_IsTrackAvailable()
-            ? InGetValue(Widget->_Entity.Get<ck::FFragment_AudioTrack_Current>())
+            ? InGetValue(Widget->_Entity.Get<ck::FFragment_AudioTrack>())
             : 0.0f;
     };
     Data.Number.Add(TEXT("audio-track-volume-input"), TAttribute<float>::CreateLambda(
         [GetTrackCurrentNumber]()
         {
-            return GetTrackCurrentNumber([](const ck::FFragment_AudioTrack_Current& InCurrent)
-            { return InCurrent.Get_CurrentVolume(); });
+            return GetTrackCurrentNumber([](const ck::FFragment_AudioTrack& InAudioTrack)
+            { return InAudioTrack.Get_CurrentVolume(); });
         }));
     Data.Number.Add(TEXT("audio-track-volume-fraction"), TAttribute<float>::CreateLambda(
         [GetTrackCurrentNumber]()
         {
-            return GetTrackCurrentNumber([](const ck::FFragment_AudioTrack_Current& InCurrent)
-            { return InCurrent.Get_CurrentVolume(); });
+            return GetTrackCurrentNumber([](const ck::FFragment_AudioTrack& InAudioTrack)
+            { return InAudioTrack.Get_CurrentVolume(); });
         }));
     Data.Number.Add(TEXT("audio-track-playback-fraction"), TAttribute<float>::CreateLambda(
         [GetTrackCurrentNumber]()
         {
-            return GetTrackCurrentNumber([](const ck::FFragment_AudioTrack_Current& InCurrent)
-            { return InCurrent.Get_PlaybackPercent(); });
+            return GetTrackCurrentNumber([](const ck::FFragment_AudioTrack& InAudioTrack)
+            { return InAudioTrack.Get_PlaybackPercent(); });
         }));
     Data.Color.Add(TEXT("audio-track-volume-fill"), CkStyle::GetToneColor(ECk_Tone::Accent));
     Data.Color.Add(TEXT("audio-track-playback-fill"), CkStyle::GetToneColor(ECk_Tone::Info));
@@ -1007,7 +1007,7 @@ auto SCkInspector_AudioAuthored::Request_StopTrack(const FString& InTrackKey) ->
     if (NOT _Active
         || TrackName.IsNone()
         || NOT ck_inspector_audio::TryGetDirector(_Entity, Director)
-        || NOT Director.Get<ck::FFragment_AudioDirector_Current>()
+        || NOT Director.Get<ck::FFragment_AudioDirector>()
             .Get_TracksByName().Contains(TrackName)
         || NOT ck::DebugRequestGate::Evaluate(
             _Entity,
@@ -1076,7 +1076,7 @@ auto FCkInspector_Audio::Build_Inspector(const FCk_Handle& Entity) -> TSharedRef
     }
     if (ck_inspector_audio::HasDirectorCurrent(Entity))
     {
-        for (const auto& [Name, Handle] : Entity.Get<ck::FFragment_AudioDirector_Current>().Get_TracksByName())
+        for (const auto& [Name, Handle] : Entity.Get<ck::FFragment_AudioDirector>().Get_TracksByName())
         {
             const FString Label = Name.ToString();
             if (FCkInspector_DiffMarkScope::Is_LabelMarked(Label))

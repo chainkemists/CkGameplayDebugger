@@ -132,9 +132,9 @@ namespace ck_inspector_entity_collections_authored_test
         if (NOT AddAuthorityAndWorld(OutFixture.OwnerA) || NOT AddAuthorityAndWorld(OutFixture.OwnerB)) { return false; }
 
         OutFixture.CollectionA = UCk_Utils_EntityCollection_UE::Add(
-            OutFixture.OwnerA, FCk_Fragment_EntityCollection_ParamsData{CollectionLabel}, ECk_Replication::DoesNotReplicate);
+            OutFixture.OwnerA, FCk_EntityCollection_Spec{CollectionLabel}, ECk_Replication::DoesNotReplicate);
         OutFixture.CollectionB = UCk_Utils_EntityCollection_UE::Add(
-            OutFixture.OwnerB, FCk_Fragment_EntityCollection_ParamsData{CollectionLabel}, ECk_Replication::DoesNotReplicate);
+            OutFixture.OwnerB, FCk_EntityCollection_Spec{CollectionLabel}, ECk_Replication::DoesNotReplicate);
         OutFixture.MemberA1 = UCk_Utils_EntityLifetime_UE::Request_CreateEntity(OutFixture.OwnerA);
         OutFixture.MemberA2 = UCk_Utils_EntityLifetime_UE::Request_CreateEntity(OutFixture.OwnerA);
         OutFixture.MemberB = UCk_Utils_EntityLifetime_UE::Request_CreateEntity(OutFixture.OwnerB);

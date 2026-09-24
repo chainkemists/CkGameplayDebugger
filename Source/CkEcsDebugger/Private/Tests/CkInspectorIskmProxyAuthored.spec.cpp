@@ -33,8 +33,8 @@ namespace ck_inspector_iskm_proxy_authored_test
     {
         FCk_Handle Entity = UCk_Utils_EntityLifetime_UE::Request_CreateEntity(InOwner);
         if (ck::Is_NOT_Valid(Entity)) { return {}; }
-        Entity.Add<ck::FFragment_IskmProxy_Params>(FCk_Fragment_IskmProxy_ParamsData{});
-        Entity.Add<ck::FFragment_IskmProxy_Current>();
+        Entity.Add<ck::FFragment_IskmProxy_Params>(FCk_IskmProxy_Spec{});
+        Entity.Add<ck::FFragment_IskmProxy>();
         Entity.Add<ck::FFragment_IskmProxy_AnimState>();
         Entity.Add<ck::FFragment_IskmProxy_PoseSource>();
         Entity.Add<ck::FFragment_IskmProxy_CustomData>();
@@ -250,7 +250,7 @@ auto FCkInspectorIskmProxyAuthored::RunTest(const FString&) -> bool
     auto ProxyB = CreateCompleteProxy(LifetimeOwner);
     if (NOT TestTrue(TEXT("fixture creates two independent complete ISKM Proxy compositions"),
         ck::IsValid(ProxyA) && ck::IsValid(ProxyB) && ProxyA != ProxyB
-            && ProxyA.Has_All<ck::FFragment_IskmProxy_Params, ck::FFragment_IskmProxy_Current,
+            && ProxyA.Has_All<ck::FFragment_IskmProxy_Params, ck::FFragment_IskmProxy,
                 ck::FFragment_IskmProxy_AnimState, ck::FFragment_IskmProxy_PoseSource,
                 ck::FFragment_IskmProxy_CustomData, ck::FFragment_IskmProxy_MaterialOverrides,
                 ck::FFragment_IskmProxy_MorphTargets, ck::FFragment_IskmProxy_Requests>()))

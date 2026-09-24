@@ -39,11 +39,11 @@ namespace ck_jolt_debugger_data_collector
     auto TryGet_BodyKey(
         const FCk_Handle& InHandle) -> TOptional<uint64>
     {
-        if (ck::Is_NOT_Valid(InHandle) || NOT InHandle.Has<ck::FFragment_JoltBody_Current>())
+        if (ck::Is_NOT_Valid(InHandle) || NOT InHandle.Has<ck::FFragment_JoltBody>())
         { return {}; }
 
         return ck::jolt::debug_draw::Make_BodyKey(
-            InHandle.Get<ck::FFragment_JoltBody_Current>().Get_BodyId().GetIndexAndSequenceNumber());
+            InHandle.Get<ck::FFragment_JoltBody>().Get_BodyId().GetIndexAndSequenceNumber());
     }
 
     auto Make_Snapshot(
@@ -85,15 +85,15 @@ auto
     if (ck::Is_NOT_Valid(TransientEntity))
     { return; }
 
-    TransientEntity.View<ck::FFragment_JoltBody_Current>().ForEach(
-        [&](FCk_Entity InEntity, const ck::FFragment_JoltBody_Current& InCurrent)
+    TransientEntity.View<ck::FFragment_JoltBody>().ForEach(
+        [&](FCk_Entity InEntity, const ck::FFragment_JoltBody& InJoltBody)
         {
             auto Handle = ck::MakeHandle(InEntity, TransientEntity);
 
             auto Snapshot = ck_jolt_debugger_data_collector::Make_Snapshot(
                 Handle,
                 ECkJoltDebugger_Population::JoltBody,
-                ck::jolt::debug_draw::Make_BodyKey(InCurrent.Get_BodyId().GetIndexAndSequenceNumber()));
+                ck::jolt::debug_draw::Make_BodyKey(InJoltBody.Get_BodyId().GetIndexAndSequenceNumber()));
 
             const auto JoltBody = UCk_Utils_JoltBody_UE::CastChecked(Handle);
             Snapshot.MotionType         = UCk_Utils_JoltBody_UE::Get_MotionType(JoltBody);
@@ -103,12 +103,12 @@ auto
             _Bodies.Emplace(MoveTemp(Snapshot));
         });
 
-    TransientEntity.View<ck::FFragment_JoltStaticActor_Current>().ForEach(
-        [&](FCk_Entity InEntity, const ck::FFragment_JoltStaticActor_Current& InCurrent)
+    TransientEntity.View<ck::FFragment_JoltStaticActor>().ForEach(
+        [&](FCk_Entity InEntity, const ck::FFragment_JoltStaticActor& InJoltStaticActor)
         {
             auto Handle = ck::MakeHandle(InEntity, TransientEntity);
 
-            const auto& BodyIds = InCurrent.Get_BodyIds();
+            const auto& BodyIds = InJoltStaticActor.Get_BodyIds();
 
             auto FirstBodyKey = TOptional<uint64>{};
 
@@ -127,24 +127,24 @@ auto
                 FirstBodyKey);
 
             Snapshot.NumBodies       = BodyIds.Num();
-            Snapshot.SourceActorName = InCurrent.Get_SourceActorName().ToString();
+            Snapshot.SourceActorName = InJoltStaticActor.Get_SourceActorName().ToString();
 
             _Bodies.Emplace(MoveTemp(Snapshot));
         });
 
-    TransientEntity.View<ck::FFragment_Probe_Current>().ForEach(
-        [&](FCk_Entity InEntity, const ck::FFragment_Probe_Current& InCurrent)
+    TransientEntity.View<ck::FFragment_Probe>().ForEach(
+        [&](FCk_Entity InEntity, const ck::FFragment_Probe& InProbe)
         {
             auto Handle = ck::MakeHandle(InEntity, TransientEntity);
 
             _Bodies.Emplace(ck_jolt_debugger_data_collector::Make_Snapshot(
                 Handle,
                 ECkJoltDebugger_Population::Sensor,
-                ck::jolt::debug_draw::Make_BodyKey(InCurrent.Get_BodyId().GetIndexAndSequenceNumber())));
+                ck::jolt::debug_draw::Make_BodyKey(InProbe.Get_BodyId().GetIndexAndSequenceNumber())));
         });
 
-    TransientEntity.View<ck::FFragment_JoltCharacter_Current>().ForEach(
-        [&](FCk_Entity InEntity, const ck::FFragment_JoltCharacter_Current&)
+    TransientEntity.View<ck::FFragment_JoltCharacter>().ForEach(
+        [&](FCk_Entity InEntity, const ck::FFragment_JoltCharacter&)
         {
             auto Handle = ck::MakeHandle(InEntity, TransientEntity);
 
@@ -158,8 +158,8 @@ auto
 
     // The fifth pass (P8-D55). A constraint entity draws NOTHING, so its row carries no body key of its own —
     // what it carries is the pair it joins, which is the whole reason the row exists.
-    TransientEntity.View<ck::FFragment_JoltConstraint_Current>().ForEach(
-        [&](FCk_Entity InEntity, const ck::FFragment_JoltConstraint_Current&)
+    TransientEntity.View<ck::FFragment_JoltConstraint>().ForEach(
+        [&](FCk_Entity InEntity, const ck::FFragment_JoltConstraint&)
         {
             auto Handle = ck::MakeHandle(InEntity, TransientEntity);
 

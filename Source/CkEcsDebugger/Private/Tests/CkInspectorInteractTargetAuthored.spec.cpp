@@ -91,7 +91,7 @@ namespace ck_inspector_interact_target_authored_test
     auto AddTarget(FCk_Handle& InOwner, const FGameplayTag InChannel,
         const ECk_Interaction_CompletionPolicy InCompletion, const double InSeconds) -> FCk_Handle_InteractTarget
     {
-        auto Params = FCk_Fragment_InteractTarget_ParamsData{InChannel};
+        auto Params = FCk_InteractTarget_Spec{InChannel};
         Params.Set_CompletionPolicy(InCompletion);
         Params.Set_InteractionDuration(FCk_Time{InSeconds});
         return UCk_Utils_InteractTarget_UE::Add(InOwner, Params, ECk_Replication::DoesNotReplicate);
@@ -200,7 +200,7 @@ auto FCkInspectorInteractTargetAuthored::RunTest(const FString&) -> bool
         UCk_Utils_InteractTarget_UE::Get_Enabled(TargetA) == ECk_EnableDisable::Enable);
 
     auto Source = UCk_Utils_EntityLifetime_UE::Request_CreateEntity(OwnerA);
-    auto Interaction = UCk_Utils_Interaction_UE::Add(TargetA, FCk_Fragment_Interaction_ParamsData{
+    auto Interaction = UCk_Utils_Interaction_UE::Add(TargetA, FCk_Interaction_Spec{
         ChannelA, Source, Source, TargetA, ECk_Interaction_CompletionPolicy::ManuallyCompleted, FCk_Time{0.0}});
     TickSlate(Slate);
     if (NOT TestTrue(TEXT("current interaction is projected as one stable authored entity reference"),
@@ -223,7 +223,7 @@ auto FCkInspectorInteractTargetAuthored::RunTest(const FString&) -> bool
         AuthoredA->Get_Interactions()->GetRecords()[0] == StableInteraction);
 
     UCk_Utils_Interaction_UE::RecordOfInteractions_Utils::Request_Disconnect(TargetA, Interaction);
-    auto ReplacementInteraction = UCk_Utils_Interaction_UE::Add(TargetA, FCk_Fragment_Interaction_ParamsData{
+    auto ReplacementInteraction = UCk_Utils_Interaction_UE::Add(TargetA, FCk_Interaction_Spec{
         ChannelA, Source, Source, TargetA, ECk_Interaction_CompletionPolicy::ManuallyCompleted, FCk_Time{0.0}});
     TickSlate(Slate);
     auto ReplacementRefs = TArray<TSharedRef<SCkDebug_EntityRef>>{};
@@ -288,7 +288,7 @@ auto FCkInspectorInteractTargetAuthored::RunTest(const FString&) -> bool
         DestructorAuthored.IsValid() && DestructorAuthored->Is_Inert() && NOT DestructorAuthored->Is_Mounted());
 
     TestTrue(TEXT("target fragment removal preserves the child entity while invalidating complete composition"),
-        TargetB.Try_Remove<ck::FFragment_InteractTarget_Current>() && ck::IsValid(TargetB));
+        TargetB.Try_Remove<ck::FFragment_InteractTarget>() && ck::IsValid(TargetB));
     TickAuthored(AuthoredB);
     TestTrue(TEXT("partial target composition fails all authored projection and interaction state closed"),
         NOT AuthoredB->Get_IsAvailable() && NOT AuthoredB->Get_CanRequest()

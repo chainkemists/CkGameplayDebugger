@@ -51,21 +51,21 @@ auto FCkInspectorJoltAuthored::RunTest(const FString&) -> bool
         ck::IsValid(EntityA) && ck::IsValid(EntityB) && EntityA != EntityB))
     { return false; }
 
-    auto BodyParamsA = FCk_Fragment_JoltBody_ParamsData{ECk_JoltBody_ShapeSource::ExplicitShape};
+    auto BodyParamsA = FCk_JoltBody_Spec{ECk_JoltBody_ShapeSource::ExplicitShape};
     BodyParamsA.Set_MotionType(ECk_MotionType::Dynamic);
     EntityA.Add<ck::FFragment_JoltBody_Params>(BodyParamsA);
-    EntityA.Add<ck::FFragment_JoltBody_Current>();
-    EntityA.Add<ck::FFragment_JoltCharacter_Params>(FCk_Fragment_JoltCharacter_ParamsData{34.0f, 88.0f});
-    auto& CharacterA = EntityA.Add<ck::FFragment_JoltCharacter_Current>();
+    EntityA.Add<ck::FFragment_JoltBody>();
+    EntityA.Add<ck::FFragment_JoltCharacter_Params>(FCk_JoltCharacter_Spec{34.0f, 88.0f});
+    auto& CharacterA = EntityA.Add<ck::FFragment_JoltCharacter>();
     CharacterA.Set_GroundStateMirror(ECk_JoltCharacter_GroundState::OnGround);
     CharacterA.Set_GroundNormalMirror(FVector{0.0, 0.0, 1.0});
     CharacterA.Set_GroundVelocityMirror(FVector{12.5, -3.0, 0.25});
-    EntityA.Add<ck::FFragment_JoltStaticActor_Current>();
+    EntityA.Add<ck::FFragment_JoltStaticActor>();
 
-    auto BodyParamsB = FCk_Fragment_JoltBody_ParamsData{ECk_JoltBody_ShapeSource::ExplicitShape};
+    auto BodyParamsB = FCk_JoltBody_Spec{ECk_JoltBody_ShapeSource::ExplicitShape};
     BodyParamsB.Set_MotionType(ECk_MotionType::Kinematic);
     EntityB.Add<ck::FFragment_JoltBody_Params>(BodyParamsB);
-    EntityB.Add<ck::FFragment_JoltBody_Current>();
+    EntityB.Add<ck::FFragment_JoltBody>();
     EntityB.Add<ck::FTag_JoltBody_Sleeping>();
 
     auto Inspector = FCkInspector_Jolt{};
@@ -181,7 +181,7 @@ auto FCkInspectorJoltAuthored::RunTest(const FString&) -> bool
             && AuthoredA->Get_HasStaticActor() && AuthoredA->Get_BodyIdText() == TEXT("--")
             && AuthoredA->Get_SpeedSeries()->GetSamples().IsEmpty());
     EntityA.Try_Remove<ck::FFragment_JoltCharacter_Params>();
-    EntityA.Try_Remove<ck::FFragment_JoltStaticActor_Current>();
+    EntityA.Try_Remove<ck::FFragment_JoltStaticActor>();
     TestTrue(TEXT("complete Jolt composition loss makes the retained view unavailable"),
         ck::IsValid(EntityA) && NOT Inspector.CanInspect(EntityA) && NOT AuthoredA->Get_IsAvailable()
             && AuthoredA->Get_GroundStateText() == TEXT("--") && AuthoredA->Get_SourceActorText() == TEXT("--"));

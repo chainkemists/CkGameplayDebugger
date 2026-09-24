@@ -103,7 +103,7 @@ namespace ck_inspector_audio_authored_test
     {
         auto Track = UCk_Utils_EntityLifetime_UE::Request_CreateEntity(Owner);
         Track.Add<ck::FFragment_AudioTrack_Params>();
-        auto& Current = Track.Add<ck::FFragment_AudioTrack_Current>();
+        auto& Current = Track.Add<ck::FFragment_AudioTrack>();
         Current._State = State;
         Current._CurrentVolume = Volume;
         Current._TargetVolume = Volume + 0.25f;
@@ -146,7 +146,7 @@ auto FCkInspectorAudioAuthored::RunTest(const FString&) -> bool
     auto DirectorOnly = UCk_Utils_EntityLifetime_UE::Request_CreateEntity(Owner);
     DirectorOnly.Add<TWeakObjectPtr<UWorld>>(LocalWorld);
     DirectorOnly.Add<ck::FFragment_AudioDirector_Params>();
-    auto& DirectorCurrent = DirectorOnly.Add<ck::FFragment_AudioDirector_Current>();
+    auto& DirectorCurrent = DirectorOnly.Add<ck::FFragment_AudioDirector>();
     DirectorCurrent._CurrentHighestPriority = 7;
     DirectorCurrent._HasFiredAllTracksFinished = false;
     DirectorCurrent._ActiveTracks.Add(MakeTrackHandle(TrackOnly));
@@ -155,7 +155,7 @@ auto FCkInspectorAudioAuthored::RunTest(const FString&) -> bool
     auto Combined = CreateTrack(Owner, ECk_AudioTrack_State::FadingIn, 0.25f);
     Combined.Add<TWeakObjectPtr<UWorld>>(LocalWorld);
     Combined.Add<ck::FFragment_AudioDirector_Params>();
-    auto& CombinedDirector = Combined.Add<ck::FFragment_AudioDirector_Current>();
+    auto& CombinedDirector = Combined.Add<ck::FFragment_AudioDirector>();
     CombinedDirector._CurrentHighestPriority = 3;
     CombinedDirector._HasFiredAllTracksFinished = true;
     CombinedDirector._TracksByName.Add(TEXT("Alpha"), MakeTrackHandle(TrackOnly));
@@ -167,10 +167,10 @@ auto FCkInspectorAudioAuthored::RunTest(const FString&) -> bool
     const TSharedRef<SCkInspector_AudioAuthored> DirectorView = StaticCastSharedRef<SCkInspector_AudioAuthored>(Inspector.Build_Inspector(DirectorOnly));
     const TSharedRef<SCkInspector_AudioAuthored> CombinedView = StaticCastSharedRef<SCkInspector_AudioAuthored>(Inspector.Build_Inspector(Combined));
     auto CurrentOnly = UCk_Utils_EntityLifetime_UE::Request_CreateEntity(Owner);
-    CurrentOnly.Add<ck::FFragment_AudioTrack_Current>();
+    CurrentOnly.Add<ck::FFragment_AudioTrack>();
     const TSharedRef<SCkInspector_AudioAuthored> CurrentOnlyView = StaticCastSharedRef<SCkInspector_AudioAuthored>(Inspector.Build_Inspector(CurrentOnly));
     auto CurrentOnlyDirector = UCk_Utils_EntityLifetime_UE::Request_CreateEntity(Owner);
-    CurrentOnlyDirector.Add<ck::FFragment_AudioDirector_Current>();
+    CurrentOnlyDirector.Add<ck::FFragment_AudioDirector>();
     const TSharedRef<SCkInspector_AudioAuthored> CurrentOnlyDirectorView =
         StaticCastSharedRef<SCkInspector_AudioAuthored>(Inspector.Build_Inspector(CurrentOnlyDirector));
     TSharedPtr<FCkUiView> TrackUi = TrackView->Get_View();
@@ -354,7 +354,7 @@ auto FCkInspectorAudioAuthored::RunTest(const FString&) -> bool
     Play->SimulateClick();
     TestTrue(TEXT("missing Params and Current fail closed and held controls cannot queue additional work"),
         NOT TrackView->Get_CanRequestTrack() && NOT Play->IsEnabled() && TrackOnly.Get<ck::FFragment_AudioTrack_Requests>().Get_Requests().Num() == 3);
-    CurrentOnly.Try_Remove<ck::FFragment_AudioTrack_Current>();
+    CurrentOnly.Try_Remove<ck::FFragment_AudioTrack>();
     TestTrue(TEXT("missing Current fails the Current-only authored projection closed"),
         NOT CurrentOnlyView->Get_IsTrackAvailable() && CurrentOnlyView->Get_TrackStateText() == TEXT("--"));
     DirectorOnly.Add<ck::FTag_DestroyEntity_Initiate>(); StopAll->SimulateClick();

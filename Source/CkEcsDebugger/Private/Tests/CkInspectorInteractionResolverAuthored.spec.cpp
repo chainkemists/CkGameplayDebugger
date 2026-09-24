@@ -75,27 +75,27 @@ namespace ck_inspector_interaction_resolver_authored_test
     }
 
     auto MakeParams(const FGameplayTag InIntent, const TArray<FGameplayTag>& InChannels, const int32 InMax)
-        -> FCk_InteractionResolver_ParamsData
+        -> FCk_InteractionResolver_Spec
     {
         auto Mapping = FCk_InteractionResolver_IntentChannelMapping{InIntent, InChannels};
         Mapping.Set_DistanceSorting(ECk_InteractionResolver_DistanceSorting::Disabled);
         Mapping.Set_MaxConcurrentInteractions(InMax);
-        return FCk_InteractionResolver_ParamsData{{Mapping}};
+        return FCk_InteractionResolver_Spec{{Mapping}};
     }
 
     auto MakeTwoIntentParams(const FGameplayTag InIntentA, const FGameplayTag InIntentB,
-        const FGameplayTag InChannel) -> FCk_InteractionResolver_ParamsData
+        const FGameplayTag InChannel) -> FCk_InteractionResolver_Spec
     {
         auto MappingA = FCk_InteractionResolver_IntentChannelMapping{InIntentA, {InChannel}};
         auto MappingB = FCk_InteractionResolver_IntentChannelMapping{InIntentB, {InChannel}};
         MappingA.Set_DistanceSorting(ECk_InteractionResolver_DistanceSorting::Disabled);
         MappingB.Set_DistanceSorting(ECk_InteractionResolver_DistanceSorting::Disabled);
-        return FCk_InteractionResolver_ParamsData{{MappingA, MappingB}};
+        return FCk_InteractionResolver_Spec{{MappingA, MappingB}};
     }
 
     auto AddTarget(FCk_Handle& InOwner, const FGameplayTag InChannel) -> FCk_Handle_InteractTarget
     {
-        return UCk_Utils_InteractTarget_UE::Add(InOwner, FCk_Fragment_InteractTarget_ParamsData{InChannel},
+        return UCk_Utils_InteractTarget_UE::Add(InOwner, FCk_InteractTarget_Spec{InChannel},
             ECk_Replication::DoesNotReplicate);
     }
 
@@ -262,7 +262,7 @@ auto FCkInspectorInteractionResolverAuthored::RunTest(const FString&) -> bool
     PumpResolverRequests(World);
     auto ExpectedActiveIntents = FString{};
     for (const FGameplayTag& ActiveIntent :
-        ResolverC.Get<ck::FFragment_InteractionResolver_Current>().Get_ActiveIntents())
+        ResolverC.Get<ck::FFragment_InteractionResolver>().Get_ActiveIntents())
     {
         if (NOT ExpectedActiveIntents.IsEmpty()) { ExpectedActiveIntents += TEXT(", "); }
         ExpectedActiveIntents += ActiveIntent.GetTagName().ToString();
@@ -300,7 +300,7 @@ auto FCkInspectorInteractionResolverAuthored::RunTest(const FString&) -> bool
     TickAuthored(AuthoredA);
     TickSlate(Slate);
     const auto& OrderedTargets =
-        ResolverA.Get<ck::FFragment_InteractionResolver_Current>().Get_AvailableTargets();
+        ResolverA.Get<ck::FFragment_InteractionResolver>().Get_AvailableTargets();
     const auto& OrderedRecords = AuthoredA->Get_AvailableTargets()->GetRecords();
     bool PreservesResolverOrder = OrderedRecords.Num() == OrderedTargets.Num();
     int32 OrderedIndex = 0;
@@ -401,7 +401,7 @@ auto FCkInspectorInteractionResolverAuthored::RunTest(const FString&) -> bool
         DestructorAuthored.IsValid() && DestructorAuthored->Is_Inert() && NOT DestructorAuthored->Is_Mounted());
 
     TestTrue(TEXT("removing Current leaves a live entity with partial resolver composition"),
-        GenericB.Try_Remove<ck::FFragment_InteractionResolver_Current>() && ck::IsValid(GenericB));
+        GenericB.Try_Remove<ck::FFragment_InteractionResolver>() && ck::IsValid(GenericB));
     TickAuthored(AuthoredB);
     TestTrue(TEXT("partial composition fails projection, collections, and request admission closed"),
         NOT AuthoredB->Get_IsAvailable() && NOT AuthoredB->Get_CanRequest()

@@ -38,7 +38,7 @@ auto TryGet(const FCk_Handle &InEntity, FCk_Handle_Minimap &OutMinimap) -> bool
     auto Mutable = InEntity;
     OutMinimap = UCk_Utils_Minimap_UE::Cast(Mutable);
     return ck::IsValid(OutMinimap) && OutMinimap.Has<ck::FFragment_Minimap_Params>() &&
-           OutMinimap.Has<ck::FFragment_Minimap_Current>();
+           OutMinimap.Has<ck::FFragment_Minimap>();
 }
 auto CanEdit(const FCk_Handle &InEntity) -> bool
 {

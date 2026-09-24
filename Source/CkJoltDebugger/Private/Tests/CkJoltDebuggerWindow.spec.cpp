@@ -60,7 +60,7 @@ auto FCkJoltDebuggerWindow_ConstraintIsADebuggerEntity::RunTest(const FString&) 
     TestFalse(TEXT("an entity with none of the five fragments is not this window's"),
         SCkJoltDebuggerWindow::Is_JoltDebuggerEntity(Stranger));
 
-    Constraint.Add<ck::FFragment_JoltConstraint_Current>();
+    Constraint.Add<ck::FFragment_JoltConstraint>();
 
     TestTrue(TEXT("a constraint entity IS this window's, so the route and the picker both reach it"),
         SCkJoltDebuggerWindow::Is_JoltDebuggerEntity(Constraint));

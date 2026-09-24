@@ -43,14 +43,14 @@ namespace ck_inspector_minimap_authored_test
         if (ck::Is_NOT_Valid(Entity))
         { return {}; }
 
-        auto Params = FCk_Fragment_Minimap_ParamsData{InViewExtent};
+        auto Params = FCk_Minimap_Spec{InViewExtent};
         Params.Set_ProjectionMode(InProjection);
         Params.Set_RotationMode(InRotation);
         Params.Set_FrameShape(InFrame);
         Params.Set_MaxEntries(InMaxEntries);
         Params.Set_FixedBounds(FCk_Minimap_WorldBounds{FVector2D{100.0, 200.0}, FVector2D{300.0, 400.0}});
         Entity.Add<ck::FFragment_Minimap_Params>(Params);
-        auto& Current = Entity.Add<ck::FFragment_Minimap_Current>();
+        auto& Current = Entity.Add<ck::FFragment_Minimap>();
         Current._Observer = Entity;
         Current._ViewExtent = InViewExtent;
         Current._RotationMode = InRotation;
@@ -377,7 +377,7 @@ auto FCkInspectorMinimapAuthored::RunTest(const FString&) -> bool
             && NOT DestructorAuthored->Is_Mounted() && NOT DestructorView.IsValid());
 
     TestTrue(TEXT("Current-only teardown leaves the entity live but removes complete Minimap inspectability"),
-        EntityA.Try_Remove<ck::FFragment_Minimap_Current>()
+        EntityA.Try_Remove<ck::FFragment_Minimap>()
             && ck::IsValid(EntityA) && EntityA.Has<ck::FFragment_Minimap_Params>()
             && NOT ValidInspector.CanInspect(EntityA));
     ValidAuthoredA->Get_View()->GetRegion(TEXT("main"))->SlatePrepass();
@@ -389,7 +389,7 @@ auto FCkInspectorMinimapAuthored::RunTest(const FString&) -> bool
         EntityA.Has<ck::FFragment_Minimap_Requests>());
     TestTrue(TEXT("Params-only teardown leaves the entity live but removes complete Minimap inspectability"),
         EntityB.Try_Remove<ck::FFragment_Minimap_Params>()
-            && ck::IsValid(EntityB) && EntityB.Has<ck::FFragment_Minimap_Current>()
+            && ck::IsValid(EntityB) && EntityB.Has<ck::FFragment_Minimap>()
             && NOT ValidInspector.CanInspect(EntityB));
 
     ValidInspector.OnDeactivated();

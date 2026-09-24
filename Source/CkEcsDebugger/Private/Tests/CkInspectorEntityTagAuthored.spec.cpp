@@ -362,7 +362,7 @@ auto FCkInspectorEntityTagAuthored::RunTest(const FString&) -> bool
     HeldNameRemove->SimulateClick();
     HeldRootRemove->SimulateClick();
     TestFalse(TEXT("held controls cannot recreate or enqueue tags after EntityTag loss"),
-        EntityA.Has<ck::FFragment_EntityTag_Current>() || EntityA.Has<ck::FFragment_EntityTag_Requests>());
+        EntityA.Has<ck::FFragment_EntityTag>() || EntityA.Has<ck::FFragment_EntityTag_Requests>());
 
     {
         auto StyleInspector = FCkInspector_EntityTag{};

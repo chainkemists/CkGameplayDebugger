@@ -251,15 +251,15 @@ auto FCkInspector_Camera::Build_NativeBody(const FCk_Handle& Entity) const -> TS
         Builder.AddAlignedNumericRow(
             FText::FromString(TEXT("Framing Offset:")),
             ck_inspector_camera::Make_VectorComponents<ck::FFragment_Camera>(Cam,
-                [](const ck::FFragment_Camera& InCurrent)
-                { return InCurrent.Get_ComposedProfile().Get_Rig().Get_FramingOffset(); }));
+                [](const ck::FFragment_Camera& InCamera)
+                { return InCamera.Get_ComposedProfile().Get_Rig().Get_FramingOffset(); }));
 
         Builder.AddAlignedNumericRow(
             FText::FromString(TEXT("Framing Pitch/Yaw:")),
             ck_inspector_camera::Make_Components<ck::FFragment_Camera>(Cam, 2, TEXT("{:.1f}"),
-                [](const ck::FFragment_Camera& InCurrent, int32 InIndex)
+                [](const ck::FFragment_Camera& InCamera, int32 InIndex)
                 {
-                    const auto& Rig = InCurrent.Get_ComposedProfile().Get_Rig();
+                    const auto& Rig = InCamera.Get_ComposedProfile().Get_Rig();
                     return InIndex == 0 ? Rig.Get_FramingPitch() : Rig.Get_FramingYaw();
                 }));
 

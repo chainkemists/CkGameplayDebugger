@@ -177,9 +177,9 @@ namespace ck_inspector_byte_attributes_authored_test
     };
 
     auto MakeParams(const FGameplayTag InName, const uint8 InBase, const ECk_MinMax InMinMax,
-        const uint8 InMin = 0, const uint8 InMax = 0) -> FCk_Fragment_ByteAttribute_ParamsData
+        const uint8 InMin = 0, const uint8 InMax = 0) -> FCk_ByteAttribute_Spec
     {
-        auto Params = FCk_Fragment_ByteAttribute_ParamsData{InName, InBase};
+        auto Params = FCk_ByteAttribute_Spec{InName, InBase};
         Params.Set_MinMax(InMinMax);
         Params.Set_MinValue(InMin);
         Params.Set_MaxValue(InMax);
@@ -202,9 +202,9 @@ namespace ck_inspector_byte_attributes_authored_test
         Out.BoundedB = UCk_Utils_ByteAttribute_UE::Add(Out.OwnerB,
             MakeParams(TAG_Label_ByteAttribute.GetTag(), 60, ECk_MinMax::MinMax, 10, 90),
             ECk_Replication::DoesNotReplicate);
-        auto ParamsCurrent = FCk_Fragment_ByteAttributeModifier_ParamsData{7, ECk_MinMaxCurrent::Current};
-        auto ParamsMin = FCk_Fragment_ByteAttributeModifier_ParamsData{4, ECk_MinMaxCurrent::Min};
-        auto ParamsMax = FCk_Fragment_ByteAttributeModifier_ParamsData{5, ECk_MinMaxCurrent::Max};
+        auto ParamsCurrent = FCk_ByteAttributeModifier_Spec{7, ECk_MinMaxCurrent::Current};
+        auto ParamsMin = FCk_ByteAttributeModifier_Spec{4, ECk_MinMaxCurrent::Min};
+        auto ParamsMax = FCk_ByteAttributeModifier_Spec{5, ECk_MinMaxCurrent::Max};
         Out.CurrentModifier = UCk_Utils_ByteAttributeModifier_UE::Add_Revocable(Out.Bounded,
             TAG_Label_AnimPlan_Goal.GetTag(), ECk_AttributeModifier_Operation::Add, ParamsCurrent);
         Out.MinModifier = UCk_Utils_ByteAttributeModifier_UE::Add_Revocable(Out.Bounded,
@@ -478,9 +478,9 @@ auto FCkInspectorByteAttributesAuthored::RunTest(const FString&) -> bool
     Fixture.Bounded.Try_Remove<ck::FFragment_ByteAttribute_Min>();
     Commit(Slate, MinInput.ToSharedRef(), TEXT("99"));
     TestTrue(TEXT("held Min control is inert after component loss"), NOT Fixture.Bounded.Has<ck::FFragment_ByteAttribute_Min>());
-    Fixture.Bounded.Try_Remove<ck::FFragment_ByteAttribute_Current>();
+    Fixture.Bounded.Try_Remove<ck::FFragment_ByteAttribute>();
     Commit(Slate, CurrentInput.ToSharedRef(), TEXT("99"));
-    TestTrue(TEXT("held Current control is inert after typed attribute loss"), NOT Fixture.Bounded.Has<ck::FFragment_ByteAttribute_Current>());
+    TestTrue(TEXT("held Current control is inert after typed attribute loss"), NOT Fixture.Bounded.Has<ck::FFragment_ByteAttribute>());
     Selection->Set_SelectedEntities({FCk_Handle{Fixture.MaxOnly}});
     SelectionButton->SimulateClick();
     HeldMaxRemove->SimulateClick();

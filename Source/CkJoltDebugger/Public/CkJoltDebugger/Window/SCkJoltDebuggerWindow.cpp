@@ -473,13 +473,13 @@ auto
     if (ck::Is_NOT_Valid(InCandidate))
     { return false; }
 
-    return InCandidate.Has<ck::FFragment_JoltBody_Current>()
-        || InCandidate.Has<ck::FFragment_JoltStaticActor_Current>()
-        || InCandidate.Has<ck::FFragment_Probe_Current>()
-        || InCandidate.Has<ck::FFragment_JoltCharacter_Current>()
+    return InCandidate.Has<ck::FFragment_JoltBody>()
+        || InCandidate.Has<ck::FFragment_JoltStaticActor>()
+        || InCandidate.Has<ck::FFragment_Probe>()
+        || InCandidate.Has<ck::FFragment_JoltCharacter>()
         // The fifth clause (P8-D55). A constraint entity draws nothing of its own, but it IS a Jolt entity this
         // window lists and can select — so an ECS "Open In" and a viewport pick both have to reach it.
-        || InCandidate.Has<ck::FFragment_JoltConstraint_Current>();
+        || InCandidate.Has<ck::FFragment_JoltConstraint>();
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -2394,7 +2394,7 @@ auto
 
     const auto SelectedHandle = _Selection->Handle;
 
-    const auto IsProbe = SelectedHandle.Has<ck::FFragment_Probe_Current>();
+    const auto IsProbe = SelectedHandle.Has<ck::FFragment_Probe>();
     const auto IsProbeTrace = SelectedHandle.Has<ck::FFragment_ProbeTrace_WorldContacts>();
 
     if (NOT IsProbe && NOT IsProbeTrace)

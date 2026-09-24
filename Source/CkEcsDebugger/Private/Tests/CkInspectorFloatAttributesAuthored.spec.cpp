@@ -177,15 +177,15 @@ namespace ck_inspector_float_attributes_authored_test
         const ECk_MinMax InMinMax,
         const float InMin = 0.0f,
         const float InMax = 0.0f,
-        const bool bInWithRefill = false) -> FCk_Fragment_FloatAttribute_ParamsData
+        const bool bInWithRefill = false) -> FCk_FloatAttribute_Spec
     {
-        auto Params = FCk_Fragment_FloatAttribute_ParamsData{InName, InBase};
+        auto Params = FCk_FloatAttribute_Spec{InName, InBase};
         Params.Set_MinMax(InMinMax);
         Params.Set_MinValue(InMin);
         Params.Set_MaxValue(InMax);
         if (bInWithRefill)
         {
-            auto RefillParams = FCk_Fragment_FloatAttributeRefill_ParamsData{
+            auto RefillParams = FCk_FloatAttributeRefill_Spec{
                 TAG_Label_ByteAttribute.GetTag(), 1.25f};
             RefillParams.Set_StartingState(ECk_Attribute_RefillState::Running);
             Params.Set_EnableRefill(true);
@@ -210,9 +210,9 @@ namespace ck_inspector_float_attributes_authored_test
         Out.BoundedB = UCk_Utils_FloatAttribute_UE::Add(Out.OwnerB,
             MakeParams(TAG_Label_FloatAttribute.GetTag(), 60.75f, ECk_MinMax::MinMax, 10.5f, 90.5f),
             ECk_Replication::DoesNotReplicate);
-        auto ParamsCurrent = FCk_Fragment_FloatAttributeModifier_ParamsData{7.25f, ECk_MinMaxCurrent::Current};
-        auto ParamsMin = FCk_Fragment_FloatAttributeModifier_ParamsData{4.5f, ECk_MinMaxCurrent::Min};
-        auto ParamsMax = FCk_Fragment_FloatAttributeModifier_ParamsData{5.75f, ECk_MinMaxCurrent::Max};
+        auto ParamsCurrent = FCk_FloatAttributeModifier_Spec{7.25f, ECk_MinMaxCurrent::Current};
+        auto ParamsMin = FCk_FloatAttributeModifier_Spec{4.5f, ECk_MinMaxCurrent::Min};
+        auto ParamsMax = FCk_FloatAttributeModifier_Spec{5.75f, ECk_MinMaxCurrent::Max};
         Out.CurrentModifier = UCk_Utils_FloatAttributeModifier_UE::Add_Revocable(Out.Bounded,
             TAG_Label_AnimPlan_Goal.GetTag(), ECk_AttributeModifier_Operation::Add, ParamsCurrent);
         Out.MinModifier = UCk_Utils_FloatAttributeModifier_UE::Add_Revocable(Out.Bounded,
@@ -565,9 +565,9 @@ auto FCkInspectorFloatAttributesAuthored::RunTest(const FString&) -> bool
     Fixture.Bounded.Try_Remove<ck::FFragment_FloatAttribute_Min>();
     Commit(Slate, MinInput.ToSharedRef(), TEXT("99"));
     TestTrue(TEXT("held Min control is inert after component loss"), NOT Fixture.Bounded.Has<ck::FFragment_FloatAttribute_Min>());
-    Fixture.Bounded.Try_Remove<ck::FFragment_FloatAttribute_Current>();
+    Fixture.Bounded.Try_Remove<ck::FFragment_FloatAttribute>();
     Commit(Slate, CurrentInput.ToSharedRef(), TEXT("99"));
-    TestTrue(TEXT("held Current control is inert after typed attribute loss"), NOT Fixture.Bounded.Has<ck::FFragment_FloatAttribute_Current>());
+    TestTrue(TEXT("held Current control is inert after typed attribute loss"), NOT Fixture.Bounded.Has<ck::FFragment_FloatAttribute>());
     Selection->Set_SelectedEntities({FCk_Handle{Fixture.MaxOnly}});
     SelectionButton->SimulateClick();
     HeldMaxRemove->SimulateClick();

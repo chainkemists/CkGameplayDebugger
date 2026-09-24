@@ -1290,9 +1290,9 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
     auto TrackA = FCk_Handle{FCk_Entity{Registry.create()}, RegistrySlot};
     auto TrackB = FCk_Handle{FCk_Entity{Registry.create()}, RegistrySlot};
     TrackA.Add<ck::FFragment_AudioTrack_Params>();
-    TrackA.Add<ck::FFragment_AudioTrack_Current>();
+    TrackA.Add<ck::FFragment_AudioTrack>();
     TrackB.Add<ck::FFragment_AudioTrack_Params>();
-    TrackB.Add<ck::FFragment_AudioTrack_Current>();
+    TrackB.Add<ck::FFragment_AudioTrack>();
 
     auto Director = FCkAudioDebugger_DirectorInfo{};
     Director.DirectorEntity = DirectorEntity;
@@ -2111,10 +2111,10 @@ auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
         if (ShellScroll.IsValid()) { ShellScroll->SetScrollOffset(0.0f); }
         HostWindow->Resize(FVector2D{1100.0f, 720.0f});
         RefreshOverlay();
-        TrackA.Try_Remove<ck::FFragment_AudioTrack_Current>();
+        TrackA.Try_Remove<ck::FFragment_AudioTrack>();
         ToggleA->ToggleCheckedState();
         TestFalse(TEXT("Overlay rejects a held track whose required feature composition disappeared"), TrackA.Has<ck::FTag_AudioTrack_DebugDraw>());
-        TrackA.Add<ck::FFragment_AudioTrack_Current>();
+        TrackA.Add<ck::FFragment_AudioTrack>();
         FixtureSnapshot.Directors[0].Tracks.Reset();
         DebuggerWindow->_Collector.Collect(nullptr);
         ToggleA->ToggleCheckedState();

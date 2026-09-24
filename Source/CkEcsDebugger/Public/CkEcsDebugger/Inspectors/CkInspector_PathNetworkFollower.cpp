@@ -41,7 +41,7 @@ namespace ck_inspector_pathnetworkfollower
 
         auto MutableEntity = InEntity;
         const auto Follower = UCk_Utils_PathNetworkFollower_UE::Cast(MutableEntity);
-        if (ck::Is_NOT_Valid(Follower) || NOT Follower.Has<ck::FFragment_PathNetworkFollower_Params>() ||
+        if (ck::Is_NOT_Valid(Follower) || NOT Follower.Has<ck::FFragment_PathNetworkFollower_Tunables>() ||
             NOT Follower.Has<ck::FFragment_PathNetworkFollower_Corridor>())
         {
             return false;

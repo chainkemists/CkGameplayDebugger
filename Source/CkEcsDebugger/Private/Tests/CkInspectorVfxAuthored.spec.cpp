@@ -38,7 +38,7 @@ namespace ck_inspector_vfx_authored_test
         const bool bInFinished) -> FCk_Handle
     {
         auto Entity = UCk_Utils_EntityLifetime_UE::Request_CreateEntity(InLifetimeOwner);
-        auto& Current = Entity.Add<ck::FFragment_VfxCue_Current>();
+        auto& Current = Entity.Add<ck::FFragment_VfxCue>();
         Current._EffectStartTime = FCk_Time{InStartSeconds};
         Current._EffectDuration = FCk_Time{InDurationSeconds};
         Current._HasFiredFinished = bInFinished;
@@ -169,13 +169,13 @@ auto FCkInspectorVfxAuthored::RunTest(const FString&) -> bool
     TestTrue(TEXT("finite duration selects only the meter row"),
         FiniteMeterRow->GetVisibility() == EVisibility::Visible
             && FiniteDurationRow->GetVisibility() == EVisibility::Collapsed);
-    Finite.Get<ck::FFragment_VfxCue_Current>()._EffectDuration = FCk_Time{-1.0};
+    Finite.Get<ck::FFragment_VfxCue>()._EffectDuration = FCk_Time{-1.0};
     FiniteView->GetRegion(TEXT("main"))->SlatePrepass();
     TestTrue(TEXT("duration changes switch authored layout without remounting"),
         NOT AuthoredFinite->Get_HasFiniteDuration() && AuthoredFinite->Get_DurationText() == TEXT("Infinite")
             && FiniteMeterRow->GetVisibility() == EVisibility::Collapsed
             && FiniteDurationRow->GetVisibility() == EVisibility::Visible);
-    Finite.Get<ck::FFragment_VfxCue_Current>()._EffectDuration = FCk_Time{10.0};
+    Finite.Get<ck::FFragment_VfxCue>()._EffectDuration = FCk_Time{10.0};
 
     auto RowsFinite = TMap<FString, FString>{};
     auto RowsInfinite = TMap<FString, FString>{};
@@ -299,7 +299,7 @@ auto FCkInspectorVfxAuthored::RunTest(const FString&) -> bool
             && InfiniteView->GetRevision() == InfiniteRevisionBeforeRejected);
 
     TestTrue(TEXT("fixture removes VFX current state while entity remains live"),
-        Finite.Try_Remove<ck::FFragment_VfxCue_Current>() && ck::IsValid(Finite) && NOT Inspector.CanInspect(Finite));
+        Finite.Try_Remove<ck::FFragment_VfxCue>() && ck::IsValid(Finite) && NOT Inspector.CanInspect(Finite));
     PlayButton->SlatePrepass();
     TestTrue(TEXT("mounted VFX state fails closed after composition loss"),
         NOT AuthoredFinite->Get_IsAvailable() && AuthoredFinite->Get_StateText() == TEXT("--")

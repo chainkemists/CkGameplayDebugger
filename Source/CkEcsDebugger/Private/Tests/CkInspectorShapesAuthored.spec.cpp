@@ -123,12 +123,12 @@ auto FCkInspectorShapesAuthored::RunTest(const FString&) -> bool
     BoxDimensions.Set_ConvexRadius(4.0f);
     auto CylinderDimensions = FCk_ShapeCylinder_Dimensions{80.0f, 40.0f};
     CylinderDimensions.Set_ConvexRadius(6.0f);
-    const auto Sphere = UCk_Utils_ShapeSphere_UE::Add(SphereEntity, FCk_Fragment_ShapeSphere_ParamsData{
+    const auto Sphere = UCk_Utils_ShapeSphere_UE::Add(SphereEntity, FCk_ShapeSphere_Spec{
         FCk_ShapeSphere_Dimensions{25.0f}});
-    const auto Box = UCk_Utils_ShapeBox_UE::Add(BoxEntity, FCk_Fragment_ShapeBox_ParamsData{BoxDimensions});
-    const auto Capsule = UCk_Utils_ShapeCapsule_UE::Add(CapsuleEntity, FCk_Fragment_ShapeCapsule_ParamsData{
+    const auto Box = UCk_Utils_ShapeBox_UE::Add(BoxEntity, FCk_ShapeBox_Spec{BoxDimensions});
+    const auto Capsule = UCk_Utils_ShapeCapsule_UE::Add(CapsuleEntity, FCk_ShapeCapsule_Spec{
         FCk_ShapeCapsule_Dimensions{70.0f, 35.0f}});
-    const auto Cylinder = UCk_Utils_ShapeCylinder_UE::Add(CylinderEntity, FCk_Fragment_ShapeCylinder_ParamsData{CylinderDimensions});
+    const auto Cylinder = UCk_Utils_ShapeCylinder_UE::Add(CylinderEntity, FCk_ShapeCylinder_Spec{CylinderDimensions});
     if (NOT TestTrue(TEXT("fixture creates four distinct public-API shape features"),
         ck::IsValid(Sphere) && ck::IsValid(Box) && ck::IsValid(Capsule) && ck::IsValid(Cylinder)
             && SphereEntity != BoxEntity && BoxEntity != CapsuleEntity && CapsuleEntity != CylinderEntity)) { return false; }
@@ -296,11 +296,11 @@ auto FCkInspectorShapesAuthored::RunTest(const FString&) -> bool
     SphereEntity.Try_Remove<ck::FFragment_ShapeSphere_Params>();
     SphereInput->SlatePrepass();
     TestTrue(TEXT("Params-only removal invalidates held Sphere controls"),
-        ck::IsValid(SphereEntity) && SphereEntity.Has<ck::FFragment_ShapeSphere_Current>()
+        ck::IsValid(SphereEntity) && SphereEntity.Has<ck::FFragment_ShapeSphere>()
             && NOT Inspector.CanInspect(SphereEntity) && NOT SphereAuthored->Get_HasSphere() && NOT SphereInput->IsEnabled());
     SphereAuthored->Commit_SphereRadius(12.0f);
     TestFalse(TEXT("stale Sphere controls cannot enqueue after Params removal"), SphereEntity.Has<ck::FFragment_ShapeSphere_Requests>());
-    BoxEntity.Try_Remove<ck::FFragment_ShapeBox_Current>();
+    BoxEntity.Try_Remove<ck::FFragment_ShapeBox>();
     BoxXInput->SlatePrepass();
     TestTrue(TEXT("Current-only removal invalidates held Box controls"),
         ck::IsValid(BoxEntity) && BoxEntity.Has<ck::FFragment_ShapeBox_Params>()

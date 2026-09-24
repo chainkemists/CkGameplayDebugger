@@ -27,7 +27,7 @@ namespace ck_inspector_objective
         auto MutableEntity = InEntity;
         const FCk_Handle_Objective Candidate = UCk_Utils_Objective_UE::CastChecked(MutableEntity);
         if (ck::Is_NOT_Valid(Candidate)) { return false; }
-        const FCk_Handle StatusEntity = Candidate.Get<ck::FFragment_Objective_Current>().Get_StatusAttribute();
+        const FCk_Handle StatusEntity = Candidate.Get<ck::FFragment_Objective>().Get_StatusAttribute();
         if (NOT ck::IsValid(StatusEntity) || NOT UCk_Utils_ByteAttribute_UE::Has(StatusEntity)) { return false; }
         OutObjective = Candidate;
         return true;

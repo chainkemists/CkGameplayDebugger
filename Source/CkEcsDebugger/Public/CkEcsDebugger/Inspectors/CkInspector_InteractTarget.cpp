@@ -31,7 +31,7 @@ namespace ck_inspector_interact_target
     auto IsTargetComplete(const FCk_Handle_InteractTarget& InTarget) -> bool
     {
         return ck::IsValid(InTarget) && InTarget.Has<ck::FFragment_InteractTarget_Params>()
-            && InTarget.Has<ck::FFragment_InteractTarget_Current>();
+            && InTarget.Has<ck::FFragment_InteractTarget>();
     }
 
     auto GatherTargets(const FCk_Handle& InOwner) -> TArray<FCk_Handle_InteractTarget>

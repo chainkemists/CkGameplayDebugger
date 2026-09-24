@@ -32,12 +32,12 @@ namespace ck_inspector_overlapbody
 {
     auto Has_Marker(const FCk_Handle& InEntity) -> bool
     {
-        return ck::IsValid(InEntity) && InEntity.Has<ck::FFragment_Marker_Current>();
+        return ck::IsValid(InEntity) && InEntity.Has<ck::FFragment_Marker>();
     }
 
     auto Has_Sensor(const FCk_Handle& InEntity) -> bool
     {
-        return ck::IsValid(InEntity) && InEntity.Has<ck::FFragment_Sensor_Current>();
+        return ck::IsValid(InEntity) && InEntity.Has<ck::FFragment_Sensor>();
     }
 
     auto TryGet_Marker(const FCk_Handle& InEntity, FCk_Handle_Marker& OutMarker) -> bool
@@ -77,40 +77,40 @@ namespace ck_inspector_overlapbody
     auto Get_MarkerState(const FCk_Handle& InEntity) -> ECk_EnableDisable
     {
         return Has_Marker(InEntity)
-            ? InEntity.Get<ck::FFragment_Marker_Current>().Get_EnableDisable()
+            ? InEntity.Get<ck::FFragment_Marker>().Get_EnableDisable()
             : ECk_EnableDisable::Disable;
     }
 
     auto Get_SensorState(const FCk_Handle& InEntity) -> ECk_EnableDisable
     {
         return Has_Sensor(InEntity)
-            ? InEntity.Get<ck::FFragment_Sensor_Current>().Get_EnableDisable()
+            ? InEntity.Get<ck::FFragment_Sensor>().Get_EnableDisable()
             : ECk_EnableDisable::Disable;
     }
 
     auto Get_MarkerShapeIsValid(const FCk_Handle& InEntity) -> bool
     {
         return Has_Marker(InEntity)
-            && InEntity.Get<ck::FFragment_Marker_Current>().Get_Marker().IsValid();
+            && InEntity.Get<ck::FFragment_Marker>().Get_Marker().IsValid();
     }
 
     auto Get_SensorShapeIsValid(const FCk_Handle& InEntity) -> bool
     {
         return Has_Sensor(InEntity)
-            && InEntity.Get<ck::FFragment_Sensor_Current>().Get_Sensor().IsValid();
+            && InEntity.Get<ck::FFragment_Sensor>().Get_Sensor().IsValid();
     }
 
     auto Get_MarkerOverlapCount(const FCk_Handle& InEntity) -> int32
     {
         return Has_Sensor(InEntity)
-            ? InEntity.Get<ck::FFragment_Sensor_Current>().Get_CurrentMarkerOverlaps().Get_Overlaps().Num()
+            ? InEntity.Get<ck::FFragment_Sensor>().Get_CurrentMarkerOverlaps().Get_Overlaps().Num()
             : 0;
     }
 
     auto Get_NonMarkerOverlapCount(const FCk_Handle& InEntity) -> int32
     {
         return Has_Sensor(InEntity)
-            ? InEntity.Get<ck::FFragment_Sensor_Current>().Get_CurrentNonMarkerOverlaps().Get_Overlaps().Num()
+            ? InEntity.Get<ck::FFragment_Sensor>().Get_CurrentNonMarkerOverlaps().Get_Overlaps().Num()
             : 0;
     }
 

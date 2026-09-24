@@ -45,12 +45,12 @@ namespace ck_inspector_compass_authored_test
         // fail-closed without asking EntityLifetime to walk an intentionally absent owner chain.
         Entity.Add<TWeakObjectPtr<UWorld>>();
 
-        auto Params = FCk_Fragment_Compass_ParamsData{InArc};
+        auto Params = FCk_Compass_Spec{InArc};
         Params.Set_MaxEntries(InMaxEntries);
         Params.Set_HeadingSource(InSource);
         Params.Set_UpdateInterval(InInterval);
         Entity.Add<ck::FFragment_Compass_Params>(Params);
-        auto& Current = Entity.Add<ck::FFragment_Compass_Current>();
+        auto& Current = Entity.Add<ck::FFragment_Compass>();
         Current._Observer = Entity;
         Current._HeadingDegrees = InHeading;
         Current._Entries.SetNum(InEntryCount);
@@ -361,7 +361,7 @@ auto FCkInspectorCompassAuthored::RunTest(const FString&) -> bool
         DestructorAuthored.IsValid() && DestructorAuthored->Is_Inert() && NOT DestructorAuthored->Is_Mounted());
 
     TestTrue(TEXT("removing Compass Current after mount leaves the entity live"),
-        EntityA.Try_Remove<ck::FFragment_Compass_Current>() && ck::IsValid(EntityA) && NOT Inspector.CanInspect(EntityA));
+        EntityA.Try_Remove<ck::FFragment_Compass>() && ck::IsValid(EntityA) && NOT Inspector.CanInspect(EntityA));
     ViewA->GetRegion(TEXT("main"))->SlatePrepass();
     TestTrue(TEXT("post-mount composition loss fails every Compass getter and editor closed"),
         NOT AuthoredA->Get_IsAvailable() && AuthoredA->Get_HeadingText() == TEXT("--")

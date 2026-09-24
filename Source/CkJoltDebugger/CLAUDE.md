@@ -319,7 +319,7 @@ by `FCkJoltDebugger_DataCollector` on the window's refresh-gated Tick. **Five** 
   the shared key → row lookup; what the row carries instead is `ConstraintBodyKeys` (the pair it joins,
   **A first**) plus `ConstraintType` and `IsBodyBWorldAnchor`. `NumBodies` is reused for the pair count.
   The collector reads the pair through `UCk_Utils_JoltConstraint_UE::Get_BodyA/Get_BodyB` and turns each
-  into a key through the SAME `FFragment_JoltBody_Current` the JoltBody pass keys its own rows from, so a
+  into a key through the SAME `FFragment_JoltBody` the JoltBody pass keys its own rows from, so a
   constraint's body key and that body's row key are the same number by construction.
 
 - **Row identity is `(Handle, Population)`, not the handle alone.** One entity can back two populations
@@ -816,7 +816,7 @@ whatever is in the world at that moment, not a camera state a window can be rest
 | Spec | Asserts |
 |---|---|
 | `Ck.JoltDebugger.Window.ConstructsWithoutSlotAttributeEnsure` | the window builds and prepasses with no slot-attribute ensure |
-| `Ck.JoltDebugger.Window.ConstraintIsADebuggerEntity` | the FIFTH clause of `Is_JoltDebuggerEntity` (P8-D55, pinned by P8-D74/F10): an entity carrying `FFragment_JoltConstraint_Current` answers TRUE, a bare entity FALSE, an invalid handle FALSE. That one predicate answers for both the entity-target route and the game-viewport picker's filter, and the four body-ish clauses cannot cover it — a constraint entity carries none of them |
+| `Ck.JoltDebugger.Window.ConstraintIsADebuggerEntity` | the FIFTH clause of `Is_JoltDebuggerEntity` (P8-D55, pinned by P8-D74/F10): an entity carrying `FFragment_JoltConstraint` answers TRUE, a bare entity FALSE, an invalid handle FALSE. That one predicate answers for both the entity-target route and the game-viewport picker's filter, and the four body-ish clauses cannot cover it — a constraint entity carries none of them |
 | `Ck.JoltDebugger.Viewport.ConstructsWithoutEnsure` | the viewport builds ensure-free, owns a preview world, enables advanced lighting/post-processing/TAA, supplies directional + sky light, and keeps shadows, motion blur, depth of field, and eye adaptation disabled |
 | `Ck.JoltDebugger.Viewport.CursorRayUsesCameraTranslation` | the inverse view used for hover, click, and drag deprojection maps view-space origin back to the camera's world location, pinning the translation term that keeps cursor rays aligned with rendered bodies |
 | `Ck.JoltDebugger.Viewport.CameraPresets` | every preset sets its projection mode and points the camera down its expected axis (compared as forward vectors — rotator normalization must not make it flaky) |

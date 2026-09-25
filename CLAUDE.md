@@ -159,4 +159,4 @@ Facts above verified against code on **2026-07-14** (launcher branch based on `7
 
 ## Procedural animation
 
-CkProceduralAnimationDebugger adds the Systems launcher entry and console command ck.ProceduralAnimationDebugger. It consumes copied CkProceduralAnimation diagnostics: entity roster and picking, per-leg contact/probe evidence, bounded Hold/Scrub/Live history, sampled timelines and historical rig preview. ECS inspector links route through the common target registry. See Source/CkProceduralAnimationDebugger/Claude.md for ownership and lifecycle contracts. Packaged behavior is architecturally supported but requires a separate packaged validation gate.
+See [Source/CkProceduralAnimationDebugger/CLAUDE.md](Source/CkProceduralAnimationDebugger/CLAUDE.md).

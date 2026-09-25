@@ -2,6 +2,8 @@
 
 #include "CkProceduralAnimation/Debug/CkProceduralAnimation_Debug.h"
 
+// --------------------------------------------------------------------------------------------------------------------
+
 // Samples are copies, not replay instructions. Holding/scrubbing never pauses gameplay.
 // The held copy survives eviction from the bounded recording ring.
 class CKPROCEDURALANIMATIONDEBUGGER_API FCkProceduralAnimationDebugger_History
@@ -9,10 +11,12 @@ class CKPROCEDURALANIMATIONDEBUGGER_API FCkProceduralAnimationDebugger_History
 public:
     explicit FCkProceduralAnimationDebugger_History(int32 InCapacity = 600);
 
+public:
     auto Push(const FCk_ProceduralAnimation_DebugSnapshot& InSample) -> bool;
     auto Hold() -> void;
     auto GoLive() -> void;
     auto Scrub(int32 InChronologicalIndex) -> bool;
+    auto Scrub_BySequence(uint64 InSequence) -> bool;
     auto Reset() -> void;
     auto Get_Count() const -> int32 { return _Count; }
     auto Get_Capacity() const -> int32 { return _Samples.Num(); }
@@ -26,3 +30,5 @@ private:
     int32 _Head = 0;
     int32 _Count = 0;
 };
+
+// --------------------------------------------------------------------------------------------------------------------

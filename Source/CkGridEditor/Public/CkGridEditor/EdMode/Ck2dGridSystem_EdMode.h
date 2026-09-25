@@ -11,7 +11,7 @@
 // --------------------------------------------------------------------------------------------------------------------
 
 class ACk_EntitySpawner_UE;
-class UCk_2dGridSystem_Spec;
+class UCk_2dGridSystem_AuthoringSpec;
 
 class FCanvas;
 class FEditorViewportClient;
@@ -174,7 +174,7 @@ public:
     auto Collect_SelectedCellsTagCounts() const -> TArray<TPair<FGameplayTag, int32>>;
 
     // nullptr when no grid spawner is selected.
-    auto Get_SelectedSpec() const -> UCk_2dGridSystem_Spec*;
+    auto Get_SelectedSpec() const -> UCk_2dGridSystem_AuthoringSpec*;
 
     // The spawner the Spec above was resolved from. Two spawners may share one Spec data asset, so
     // only this identifies WHICH grid the mode targets.
@@ -201,7 +201,7 @@ private:
     struct FResolvedGridSelection
     {
         ACk_EntitySpawner_UE*  Spawner       = nullptr;
-        UCk_2dGridSystem_Spec* Spec          = nullptr;
+        UCk_2dGridSystem_AuthoringSpec* Spec          = nullptr;
         FTransform             GridTransform = FTransform::Identity;
 
         auto IsValid() const -> bool { return Spawner != nullptr && Spec != nullptr; }

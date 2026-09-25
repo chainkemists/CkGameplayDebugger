@@ -55,7 +55,7 @@ namespace ck_inspector_procedural_animation
         if (InLeg.Get_Rig().Get_Failure() != ECk_ProceduralRig_Failure::None)
         { return ck::Format_UE(TEXT("Failed: {}"), InLeg.Get_Rig().Get_Failure()); }
 
-        return InLeg.Get_Rig().Get_Ready() ? TEXT("Ready") : TEXT("Waiting for gait");
+        return InLeg.Get_Rig().Get_Status() == ECk_ProceduralAnimation_Status::Ready ? TEXT("Ready") : TEXT("Waiting for gait");
     }
 
     auto
@@ -85,7 +85,7 @@ namespace ck_inspector_procedural_animation
             { continue; }
 
             ++Rigged;
-            Ready += Leg.Get_Rig().Get_Ready() ? 1 : 0;
+            Ready += Leg.Get_Rig().Get_Status() == ECk_ProceduralAnimation_Status::Ready ? 1 : 0;
             Failed += Leg.Get_Rig().Get_Failure() != ECk_ProceduralRig_Failure::None ? 1 : 0;
         }
 
@@ -161,8 +161,9 @@ auto
 
     Add(TEXT("Gait"), [](const FCk_Handle&, const FCk_ProceduralAnimation_DebugSnapshot& InSnapshot)
     {
-        return InSnapshot.Get_Status().Get_GaitFailed() ? FString{TEXT("Failed; last accepted solve retained")}
-            : InSnapshot.Get_Status().Get_GaitReady() ? FString{TEXT("Ready")}
+        return InSnapshot.Get_Status().Get_GaitStatus() == ECk_ProceduralAnimation_Status::Failed
+            ? FString{TEXT("Failed; last accepted solve retained")}
+            : InSnapshot.Get_Status().Get_GaitStatus() == ECk_ProceduralAnimation_Status::Ready ? FString{TEXT("Ready")}
             : FString{TEXT("Waiting for evaluation")};
     }, ReadableBeforeFirstSolve);
 

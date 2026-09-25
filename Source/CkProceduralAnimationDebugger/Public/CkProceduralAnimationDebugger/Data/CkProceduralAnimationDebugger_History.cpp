@@ -17,15 +17,15 @@ auto
         const FCk_ProceduralAnimation_DebugSnapshot& InSample)
     -> bool
 {
-    if (NOT InSample.Get_Available() || NOT InSample.Get_HasAcceptedSample()
-        || NOT FMath::IsFinite(InSample.Get_Time().Get_Seconds()))
+    if (NOT InSample.Get_Status().Get_Available() || NOT InSample.Get_Status().Get_HasAcceptedSample()
+        || NOT FMath::IsFinite(InSample.Get_Sample().Get_Time().Get_Seconds()))
     { return false; }
 
     if (const auto* Latest = Get_Sample(_Count - 1))
     {
         if (Latest->Get_EntityId() != InSample.Get_EntityId()
-            || InSample.Get_Sequence() <= Latest->Get_Sequence()
-            || InSample.Get_Time() < Latest->Get_Time())
+            || InSample.Get_Sample().Get_Sequence() <= Latest->Get_Sample().Get_Sequence()
+            || InSample.Get_Sample().Get_Time() < Latest->Get_Sample().Get_Time())
         { return false; }
     }
 
@@ -89,7 +89,7 @@ auto
 {
     for (auto Index = 0; Index < _Count; ++Index)
     {
-        if (Get_Sample(Index)->Get_Sequence() == InSequence)
+        if (Get_Sample(Index)->Get_Sample().Get_Sequence() == InSequence)
         { return Scrub(Index); }
     }
     return false;

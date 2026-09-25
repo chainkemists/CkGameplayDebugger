@@ -22,6 +22,8 @@
 #include "CkDebuggerCommon/Window/CkDebuggerRefreshGate.h"
 #include "CkDebuggerCommon/Window/SCkDebug_WindowChrome.h"
 
+#include "CkProceduralAnimation/Leg/CkProceduralLeg_Utils.h"
+
 #include <Algo/BinarySearch.h>
 #include <Widgets/Input/SButton.h>
 #include <Widgets/Layout/SBox.h>
@@ -38,10 +40,10 @@ namespace ck_procedural_debug_window
             const FCk_ProceduralAnimation_DebugLeg& InLeg)
         -> FString
     {
-        const auto Contact = InLeg.Get_ContactTrusted() ? TEXT("contact")
-            : InLeg.Get_ProbeState() == ck::EProceduralFootProbeState::Guessing ? TEXT("grace")
+        const auto Contact = InLeg.Get_Foot().Get_ContactTrusted() ? TEXT("contact")
+            : InLeg.Get_Probe().Get_State() == ck::EProceduralFootProbeState::Guessing ? TEXT("grace")
             : TEXT("lost");
-        return ck::Format_UE(TEXT("{} / {}"), InLeg.Get_Planted() ? TEXT("planted") : TEXT("swing"), Contact);
+        return ck::Format_UE(TEXT("{} / {}"), InLeg.Get_Foot().Get_Planted() ? TEXT("planted") : TEXT("swing"), Contact);
     }
 
     auto
@@ -49,13 +51,13 @@ namespace ck_procedural_debug_window
             const FCk_ProceduralAnimation_DebugLeg& InLeg)
         -> FString
     {
-        if (NOT InLeg.Get_HasRig())
+        if (NOT InLeg.Get_Rig().Get_Composed())
         { return TEXT("no rig"); }
 
-        if (InLeg.Get_RigFailure() != ECk_ProceduralRig_Failure::None)
-        { return ck::Format_UE(TEXT("failed: {}"), InLeg.Get_RigFailure()); }
+        if (InLeg.Get_Rig().Get_Failure() != ECk_ProceduralRig_Failure::None)
+        { return ck::Format_UE(TEXT("failed: {}"), InLeg.Get_Rig().Get_Failure()); }
 
-        return InLeg.Get_RigReady() ? TEXT("ready") : TEXT("waiting for gait");
+        return InLeg.Get_Rig().Get_Ready() ? TEXT("ready") : TEXT("waiting for gait");
     }
 
     auto
@@ -70,6 +72,53 @@ namespace ck_procedural_debug_window
 // --------------------------------------------------------------------------------------------------------------------
 
 auto
+    FCkProceduralAnimationDebugger_TimelineCache::
+    Reset()
+    -> void
+{
+    Events.Reset();
+    Spans.Reset();
+    SpanSequences.Reset();
+    SampleSequences.Reset();
+    SpeedSamples->Reset();
+    SupportSamples->Reset();
+    EntityId.Reset();
+    Revision = MAX_uint64;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    FCkProceduralAnimationDebugger_TimelineCache::
+    EvictBefore(
+        uint64 InFirstSequence,
+        int32 InFirstSelectionId)
+    -> void
+{
+    const auto EvictedSamples = Algo::LowerBound(SampleSequences, InFirstSequence);
+    if (EvictedSamples > 0)
+    {
+        SampleSequences.RemoveAt(0, EvictedSamples);
+        SpeedSamples->RemoveAt(0, EvictedSamples);
+        SupportSamples->RemoveAt(0, EvictedSamples);
+    }
+
+    const auto EvictedEvents = Algo::LowerBoundBy(Events, InFirstSelectionId,
+        [](const FCkDebug_TimelineEvent& InEvent) { return InEvent.SelectionId; });
+    if (EvictedEvents > 0)
+    { Events.RemoveAt(0, EvictedEvents); }
+
+    const auto EvictedSpans = Algo::LowerBound(SpanSequences, InFirstSequence);
+    if (EvictedSpans > 0)
+    {
+        SpanSequences.RemoveAt(0, EvictedSpans);
+        Spans.RemoveAt(0, EvictedSpans);
+    }
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
     SCkProceduralAnimationDebuggerWindow::
     Construct(
         const FArguments&)
@@ -78,8 +127,6 @@ auto
     Register_WithGate();
     _Model = MakeShared<FCkProceduralAnimationDebugger_Model>();
     _WorldModel = MakeShared<FCkDebuggerModel_WorldSelector>();
-    _SpeedSamples = MakeShared<TArray<float>>();
-    _SupportSamples = MakeShared<TArray<float>>();
     _Preview = MakeShared<FCkProceduralAnimationDebugger_Preview>();
     const auto WeakWindow = TWeakPtr<SCkProceduralAnimationDebuggerWindow>{SharedThis(this)};
     const auto WeakModel = TWeakPtr<FCkProceduralAnimationDebugger_Model>{_Model};
@@ -118,14 +165,14 @@ auto
         .OnSelectionChanged_Lambda([WeakWindow](int32 InLegIndex)
         {
             if (const auto Window = WeakWindow.Pin())
-            { Window->SelectLegAt(InLegIndex); }
+            { Window->DoSelect_LegAt(InLegIndex); }
         });
 
     _Viewport = SNew(SCkDebug_3dPreviewViewport).Descriptor(FCkDebug3dPreviewDescriptor{}).Adapter(_Preview)
         .SafeAreaOverlay(SNew(SCkDebug_SelectableLabel)
             .Text(FText::FromString(TEXT("Recorded diagnostic rig · goal cubes · actual probe rays / normals"))));
     _Preview->Initialize(_Viewport->Get_PreviewWorld());
-    _PreviewSelectedHandle = _Preview->Get_OnLegSelected().AddRaw(this, &SCkProceduralAnimationDebuggerWindow::SelectLeg);
+    _PreviewSelectedHandle = _Preview->Get_OnLegSelected().AddRaw(this, &SCkProceduralAnimationDebuggerWindow::DoSelect_Leg);
     _TimelineHost = SNew(SBox).MinDesiredHeight(120.0f);
 
     const auto Toolbar = SNew(SHorizontalBox)
@@ -180,7 +227,7 @@ auto
                 { return; }
 
                 Window->_Filter = InText;
-                Window->RefreshPresentation();
+                Window->DoRefresh_Presentation();
             })]
         + SVerticalBox::Slot().FillHeight(1.0f)[_Roster.ToSharedRef()];
 
@@ -189,25 +236,28 @@ auto
         [SNew(SCkDebug_SelectableLabel).Text_Lambda([WeakWindow]()
         {
             const auto Window = WeakWindow.Pin();
-            return Window.IsValid() ? Window->Get_DetailText() : FText{};
+            return Window.IsValid() ? Window->DoGet_DetailText() : FText{};
         })]
         + SVerticalBox::Slot().FillHeight(1.0f)
         [SNew(SSplitter)
             + SSplitter::Slot().Value(0.60f)
             [SNew(SCkDebug_PaneHost).ContentMode(ECkDebugPaneContent::OpaqueRenderer)[_Viewport.ToSharedRef()]]
             + SSplitter::Slot().Value(0.40f)
-            [SNew(SCkDebug_PaneHost)[_Legs.ToSharedRef()]]]
+            [SNew(SCkDebug_PaneHost)
+                [SNew(SVerticalBox)
+                    + SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Left).Padding(CkStyle::SpaceS)[DoBuild_LegActions()]
+                    + SVerticalBox::Slot().FillHeight(1.0f)[_Legs.ToSharedRef()]]]]
         + SVerticalBox::Slot().AutoHeight().Padding(CkStyle::SpaceS)
         [SNew(SHorizontalBox)
             + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
             [SNew(SCkDebug_SelectableLabel).Text(FText::FromString(TEXT("Speed cm/s")))]
             + SHorizontalBox::Slot().FillWidth(1.0f).Padding(CkStyle::SpaceM, 0.0f)
-            [SNew(SCkDebug_Sparkline).Samples(_SpeedSamples).Color_Lambda([]() { return CkStyle::Info(); })
+            [SNew(SCkDebug_Sparkline).Samples(_TimelineCache.SpeedSamples).Color_Lambda([]() { return CkStyle::Info(); })
                 .DesiredSize(FVector2D{200.0, 35.0})]
             + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
             [SNew(SCkDebug_SelectableLabel).Text(FText::FromString(TEXT("Trusted feet")))]
             + SHorizontalBox::Slot().FillWidth(1.0f).Padding(CkStyle::SpaceM, 0.0f)
-            [SNew(SCkDebug_Sparkline).Samples(_SupportSamples).Color_Lambda([]() { return CkStyle::Ok(); })
+            [SNew(SCkDebug_Sparkline).Samples(_TimelineCache.SupportSamples).Color_Lambda([]() { return CkStyle::Ok(); })
                 .DesiredSize(FVector2D{200.0, 35.0})]]
         + SVerticalBox::Slot().AutoHeight()
         [SNew(SCkDebug_PaneHost).ContentMode(ECkDebugPaneContent::OpaqueRenderer)[_TimelineHost.ToSharedRef()]]
@@ -220,7 +270,7 @@ auto
         .StatusText_Lambda([WeakWindow]()
         {
             const auto Window = WeakWindow.Pin();
-            return Window.IsValid() ? Window->Get_StatusText() : FText{};
+            return Window.IsValid() ? Window->DoGet_StatusText() : FText{};
         })
         .ToolbarContent()[Toolbar]
         .CommonActionsContent()[SNew(SCkDebug_ViewportPickerControls).Picker(_Picker)
@@ -229,7 +279,7 @@ auto
             + SSplitter::Slot().Value(0.24f)[SNew(SCkDebug_PaneHost)[Sidebar]]
             + SSplitter::Slot().Value(0.76f)[SNew(SCkDebug_PaneHost)[Detail]]]];
 
-    _ModelChangedHandle = _Model->Get_OnChanged().AddRaw(this, &SCkProceduralAnimationDebuggerWindow::RefreshPresentation);
+    _ModelChangedHandle = _Model->Get_OnChanged().AddRaw(this, &SCkProceduralAnimationDebuggerWindow::DoRefresh_Presentation);
     _WorldChangedHandle = _WorldModel->OnWorldChanged.AddLambda([WeakModel](UWorld* InWorld)
     {
         if (const auto Model = WeakModel.Pin())
@@ -237,7 +287,62 @@ auto
     });
     _WorldModel->Ensure_AutoSelect();
     _Model->Set_World(_WorldModel->Get_SelectedWorld());
-    RefreshPresentation();
+    DoRefresh_Presentation();
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkProceduralAnimationDebuggerWindow::
+    DoBuild_LegActions()
+    -> TSharedRef<SWidget>
+{
+    const auto WeakModel = TWeakPtr<FCkProceduralAnimationDebugger_Model>{_Model};
+    const auto HasSelectedLeg = [WeakModel]() -> bool
+    {
+        const auto Model = WeakModel.Pin();
+        return Model.IsValid() && ck::IsValid(Model->Get_SelectedLeg());
+    };
+
+    return SNew(SHorizontalBox)
+        + SHorizontalBox::Slot().AutoWidth()
+        [SNew(SButton).Tag(TEXT("ProceduralAnimation.EnableDisableLeg"))
+            .Text_Lambda([WeakModel]()
+            {
+                const auto Model = WeakModel.Pin();
+                const auto Leg = Model.IsValid() ? Model->Get_SelectedLeg() : FCk_Handle_ProceduralLeg{};
+                const auto LegIsDisabled = ck::IsValid(Leg) && NOT UCk_Utils_ProceduralLeg_UE::Get_IsEnabled(Leg);
+                return FText::FromString(LegIsDisabled ? TEXT("Enable leg") : TEXT("Disable leg"));
+            })
+            .ToolTipText(FText::FromString(TEXT(
+                "Disable the selected leg: it leaves the step schedule and rides rigidly with the body, like a dead limb. "
+                "Press again to enable it; it swings back from where it hangs.")))
+            .IsEnabled_Lambda(HasSelectedLeg)
+            .OnClicked_Lambda([WeakModel]()
+            {
+                const auto Model = WeakModel.Pin();
+                const auto Leg = Model.IsValid() ? Model->Get_SelectedLeg() : FCk_Handle_ProceduralLeg{};
+                if (ck::Is_NOT_Valid(Leg))
+                { return FReply::Handled(); }
+
+                Model->Request_EnableDisableSelectedLeg(UCk_Utils_ProceduralLeg_UE::Get_IsEnabled(Leg)
+                    ? ECk_EnableDisable::Disable
+                    : ECk_EnableDisable::Enable);
+                return FReply::Handled();
+            })]
+        + SHorizontalBox::Slot().AutoWidth().Padding(CkStyle::SpaceS, 0.0f)
+        [SNew(SButton).Tag(TEXT("ProceduralAnimation.DetachLeg")).Text(FText::FromString(TEXT("Detach leg")))
+            .ToolTipText(FText::FromString(TEXT(
+                "Detach the selected leg. Its parts are released through OnProceduralLeg_Detached, where the game decides "
+                "whether they ragdoll, and the survivors adapt per the gait's leg-loss policy. Irreversible; the parts "
+                "stay owned by the body.")))
+            .IsEnabled_Lambda(HasSelectedLeg)
+            .OnClicked_Lambda([WeakModel]()
+            {
+                if (const auto Model = WeakModel.Pin())
+                { Model->Request_DetachSelectedLeg(ECk_ProceduralLeg_ReleasedPartsOwnership::KeepBodyOwned); }
+                return FReply::Handled();
+            })];
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -300,7 +405,7 @@ auto
 
 auto
     SCkProceduralAnimationDebuggerWindow::
-    RefreshPresentation()
+    DoRefresh_Presentation()
     -> void
 {
     if (_Released || NOT _Model.IsValid() || NOT _Roster.IsValid())
@@ -312,35 +417,35 @@ auto
     if (ck::IsValid(_Model->Get_World()) && _WorldModel->Get_SelectedWorld() != _Model->Get_World())
     { _WorldModel->Set_SelectedWorld(_Model->Get_World()); }
 
-    RefreshRoster();
+    DoRefresh_Roster();
 
     const auto* Sample = _Model->Get_History().Get_Displayed();
     if (Sample == nullptr)
     {
         _Legs->Clear_Items();
         _Preview->Reset();
-        ResetTimelineData();
+        _TimelineCache.Reset();
         _FramedEntity.Reset();
         if (_Timeline.IsValid())
         { _Timeline->Set_Content(0.0, 1.0, {}, {}); }
         return;
     }
 
-    RefreshLegs(*Sample);
+    DoRefresh_Legs(*Sample);
     _Preview->Show(*Sample, _Model->Get_SelectedLegId());
     if (_FramedEntity != Sample->Get_EntityId())
     {
         _FramedEntity = Sample->Get_EntityId();
         _Viewport->Apply_CameraPreset(ECkDebug3dCameraPreset::FrameAll);
     }
-    RefreshTimeline();
+    DoRefresh_Timeline();
 }
 
 // --------------------------------------------------------------------------------------------------------------------
 
 auto
     SCkProceduralAnimationDebuggerWindow::
-    RefreshRoster()
+    DoRefresh_Roster()
     -> void
 {
     auto Items = TArray<FCkDebug_EntityHealthItem>{};
@@ -373,7 +478,7 @@ auto
 
 auto
     SCkProceduralAnimationDebuggerWindow::
-    RefreshLegs(
+    DoRefresh_Legs(
         const FCk_ProceduralAnimation_DebugSnapshot& InSample)
     -> void
 {
@@ -389,15 +494,15 @@ auto
         Item.Key = Leg.Get_LegEntityId();
         Item.Source = FText::FromString(Leg.Get_Id().ToString());
         Item.Headline = FText::FromString(ck::Format_UE(TEXT("{} · {}"), EnabledState, ck_procedural_debug_window::Get_LegState(Leg)));
-        Item.Tone = NOT Leg.Get_Enabled() ? ECk_Tone::Neutral : Leg.Get_ContactTrusted() ? ECk_Tone::Ok : ECk_Tone::Warn;
-        Item.RightLabel = FText::FromString(ck::Format_UE(TEXT("{:.0f}%"), Leg.Get_SwingAlpha() * 100.0f));
+        Item.Tone = NOT Leg.Get_Enabled() ? ECk_Tone::Neutral : Leg.Get_Foot().Get_ContactTrusted() ? ECk_Tone::Ok : ECk_Tone::Warn;
+        Item.RightLabel = FText::FromString(ck::Format_UE(TEXT("{:.0f}%"), Leg.Get_Foot().Get_SwingAlpha() * 100.0f));
         Item.Detail = FText::FromString(ck::Format_UE(
             TEXT("{} · phase {:.2f} · error {:.1f}/{:.1f} cm\nProbe {}: hit {} · fraction {:.4f} · missing {:.3f}s\nRig {}"),
-            EnabledState, Leg.Get_PhaseOffset(), FVector::Distance(Leg.Get_PlantedPosition(), Leg.Get_IdealTarget()),
-            Leg.Get_StepThreshold(), Leg.Get_ProbeAttemptCount(), Leg.Get_ProbeHit(), Leg.Get_ProbeHitFraction(),
-            Leg.Get_MissingContact().Get_Seconds(), ck_procedural_debug_window::Get_RigState(Leg)));
+            EnabledState, Leg.Get_Foot().Get_PhaseOffset(), FVector::Distance(Leg.Get_Foot().Get_PlantedPosition(), Leg.Get_Targeting().Get_IdealTarget()),
+            Leg.Get_Targeting().Get_StepThreshold(), Leg.Get_Probe().Get_AttemptCount(), Leg.Get_Probe().Get_Hit(), Leg.Get_Probe().Get_HitFraction(),
+            Leg.Get_Probe().Get_MissingContact().Get_Seconds(), ck_procedural_debug_window::Get_RigState(Leg)));
         Item.CopyText = ck::Format_UE(TEXT("{}\n{}\n{}\nfoot {}\ntarget {}\nnormal {}"), Item.Key, Item.Headline.ToString(),
-            Item.Detail.ToString(), Leg.Get_FootPosition().ToString(), Leg.Get_IdealTarget().ToString(), Leg.Get_Normal().ToString());
+            Item.Detail.ToString(), Leg.Get_Foot().Get_Position().ToString(), Leg.Get_Targeting().Get_IdealTarget().ToString(), Leg.Get_Foot().Get_Normal().ToString());
         Item.SelectionId = Index;
         Legs.Add(MoveTemp(Item));
     }
@@ -413,7 +518,7 @@ auto
 
 auto
     SCkProceduralAnimationDebuggerWindow::
-    RefreshTimeline()
+    DoRefresh_Timeline()
     -> void
 {
     const auto& History = _Model->Get_History();
@@ -430,67 +535,48 @@ auto
         if (_Timeline.IsValid() && _Timeline->Get_IsInteracting())
         { return; }
 
-        RecreateTimeline(Labels);
+        DoRecreate_Timeline(Labels);
     }
 
-    if (_TimelineRevision == _Model->Get_HistoryRevision())
+    if (_TimelineCache.Revision == _Model->Get_HistoryRevision())
     { return; }
 
-    _TimelineRevision = _Model->Get_HistoryRevision();
+    _TimelineCache.Revision = _Model->Get_HistoryRevision();
     const auto* First = History.Get_Sample(0);
     const auto* Last = History.Get_Sample(History.Get_Count() - 1);
     if (First == nullptr || Last == nullptr)
     {
-        ResetTimelineData();
+        _TimelineCache.Reset();
         _Timeline->Set_Content(0.0, 1.0, {}, {});
         return;
     }
 
-    if (First->Get_EntityId() != _TimelineEntityId)
+    if (First->Get_EntityId() != _TimelineCache.EntityId)
     {
-        ResetTimelineData();
-        _TimelineEntityId = First->Get_EntityId();
+        _TimelineCache.Reset();
+        _TimelineCache.EntityId = First->Get_EntityId();
     }
 
-    const auto FirstSequence = First->Get_Sequence();
-    const auto EvictedSamples = Algo::LowerBound(_TimelineSampleSequences, FirstSequence);
-    if (EvictedSamples > 0)
-    {
-        _TimelineSampleSequences.RemoveAt(0, EvictedSamples);
-        _SpeedSamples->RemoveAt(0, EvictedSamples);
-        _SupportSamples->RemoveAt(0, EvictedSamples);
-    }
+    const auto FirstSequence = First->Get_Sample().Get_Sequence();
+    _TimelineCache.EvictBefore(FirstSequence, ck_procedural_debug_window::Get_SequenceSelectionId(FirstSequence));
 
-    const auto FirstSelectionId = ck_procedural_debug_window::Get_SequenceSelectionId(FirstSequence);
-    const auto EvictedEvents = Algo::LowerBoundBy(_TimelineEvents, FirstSelectionId,
-        [](const FCkDebug_TimelineEvent& InEvent) { return InEvent.SelectionId; });
-    if (EvictedEvents > 0)
-    { _TimelineEvents.RemoveAt(0, EvictedEvents); }
-
-    const auto EvictedSpans = Algo::LowerBound(_TimelineSpanSequences, FirstSequence);
-    if (EvictedSpans > 0)
-    {
-        _TimelineSpanSequences.RemoveAt(0, EvictedSpans);
-        _TimelineSpans.RemoveAt(0, EvictedSpans);
-    }
-
-    const auto LastPresented = _TimelineSampleSequences.IsEmpty() ? uint64{0} : _TimelineSampleSequences.Last();
+    const auto LastPresented = _TimelineCache.SampleSequences.IsEmpty() ? uint64{0} : _TimelineCache.SampleSequences.Last();
     for (auto Index = 0; Index < History.Get_Count(); ++Index)
     {
-        if (History.Get_Sample(Index)->Get_Sequence() > LastPresented)
-        { AppendTimelineSample(Index); }
+        if (History.Get_Sample(Index)->Get_Sample().Get_Sequence() > LastPresented)
+        { DoAppend_TimelineSample(Index); }
     }
 
-    const auto StartSeconds = First->Get_Time().Get_Seconds();
-    const auto EndSeconds = FMath::Max(StartSeconds + 0.001, Last->Get_Time().Get_Seconds());
-    _Timeline->Set_Content(StartSeconds, EndSeconds, _TimelineEvents, _TimelineSpans);
+    const auto StartSeconds = First->Get_Sample().Get_Time().Get_Seconds();
+    const auto EndSeconds = FMath::Max(StartSeconds + 0.001, Last->Get_Sample().Get_Time().Get_Seconds());
+    _Timeline->Set_Content(StartSeconds, EndSeconds, _TimelineCache.Events, _TimelineCache.Spans);
 }
 
 // --------------------------------------------------------------------------------------------------------------------
 
 auto
     SCkProceduralAnimationDebuggerWindow::
-    RecreateTimeline(
+    DoRecreate_Timeline(
         const TArray<FString>& InLaneLabels)
     -> void
 {
@@ -509,12 +595,12 @@ auto
         {
             const auto Window = WeakWindow.Pin();
             const auto* Sample = Window.IsValid() && Window->_Model.IsValid() ? Window->_Model->Get_History().Get_Displayed() : nullptr;
-            return Sample != nullptr ? TOptional<double>{Sample->Get_Time().Get_Seconds()} : TOptional<double>{};
+            return Sample != nullptr ? TOptional<double>{Sample->Get_Sample().Get_Time().Get_Seconds()} : TOptional<double>{};
         })
         .OnScrubbed_Lambda([WeakWindow](double InTime)
         {
             if (const auto Window = WeakWindow.Pin())
-            { Window->ScrubTime(InTime); }
+            { Window->DoScrub_Time(InTime); }
         })
         .OnEventSelected_Lambda([WeakWindow](int32 InSelectionId)
         {
@@ -530,41 +616,24 @@ auto
     }
 
     _TimelineHost->SetContent(_Timeline.ToSharedRef());
-    ResetTimelineData();
+    _TimelineCache.Reset();
 }
 
 // --------------------------------------------------------------------------------------------------------------------
 
 auto
     SCkProceduralAnimationDebuggerWindow::
-    ResetTimelineData()
-    -> void
-{
-    _TimelineEvents.Reset();
-    _TimelineSpans.Reset();
-    _TimelineSpanSequences.Reset();
-    _TimelineSampleSequences.Reset();
-    _SpeedSamples->Reset();
-    _SupportSamples->Reset();
-    _TimelineEntityId.Reset();
-    _TimelineRevision = MAX_uint64;
-}
-
-// --------------------------------------------------------------------------------------------------------------------
-
-auto
-    SCkProceduralAnimationDebuggerWindow::
-    AppendTimelineSample(
+    DoAppend_TimelineSample(
         int32 InChronologicalIndex)
     -> void
 {
     const auto& History = _Model->Get_History();
     const auto* Sample = History.Get_Sample(InChronologicalIndex);
     const auto* Previous = History.Get_Sample(InChronologicalIndex - 1);
-    const auto Sequence = Sample->Get_Sequence();
+    const auto Sequence = Sample->Get_Sample().Get_Sequence();
     // A band only joins adjacent simulation frames. A gated capture must not invent
     // a continuous plant or swing across frames it did not observe.
-    const auto JoinsPrevious = Previous != nullptr && Previous->Get_Sequence() + 1 == Sequence;
+    const auto JoinsPrevious = Previous != nullptr && Previous->Get_Sample().Get_Sequence() + 1 == Sequence;
 
     auto TrustedCount = 0;
     for (auto LegIndex = 0; LegIndex < Sample->Get_Legs().Num(); ++LegIndex)
@@ -573,36 +642,36 @@ auto
         if (Leg.Get_LegEntityId().IsEmpty())
         { continue; }
 
-        TrustedCount += Leg.Get_ContactTrusted() ? 1 : 0;
-        const auto Color = NOT Leg.Get_ContactTrusted() ? CkStyle::Warn() : Leg.Get_Planted() ? CkStyle::Ok() : CkStyle::Info();
+        TrustedCount += Leg.Get_Foot().Get_ContactTrusted() ? 1 : 0;
+        const auto Color = NOT Leg.Get_Foot().Get_ContactTrusted() ? CkStyle::Warn() : Leg.Get_Foot().Get_Planted() ? CkStyle::Ok() : CkStyle::Info();
 
         auto Event = FCkDebug_TimelineEvent{};
         Event.LaneIndex = LegIndex;
-        Event.TimeSeconds = Sample->Get_Time().Get_Seconds();
+        Event.TimeSeconds = Sample->Get_Sample().Get_Time().Get_Seconds();
         Event.Shape = ECkDebug_TimelineMarker::Diamond;
         Event.Color = Color;
         Event.Tooltip = ck::Format_UE(TEXT("{} · sample {} · {}"), Leg.Get_Id(), Sequence, ck_procedural_debug_window::Get_LegState(Leg));
         Event.SelectionId = ck_procedural_debug_window::Get_SequenceSelectionId(Sequence);
-        _TimelineEvents.Add(MoveTemp(Event));
+        _TimelineCache.Events.Add(MoveTemp(Event));
 
         if (JoinsPrevious)
         {
-            _TimelineSpans.Add({LegIndex, Previous->Get_Time().Get_Seconds(), Sample->Get_Time().Get_Seconds(), Color,
+            _TimelineCache.Spans.Add({LegIndex, Previous->Get_Sample().Get_Time().Get_Seconds(), Sample->Get_Sample().Get_Time().Get_Seconds(), Color,
                 TEXT("Adjacent observed frames")});
-            _TimelineSpanSequences.Add(Sequence);
+            _TimelineCache.SpanSequences.Add(Sequence);
         }
     }
 
-    _SpeedSamples->Add(Sample->Get_Velocity().Size());
-    _SupportSamples->Add(TrustedCount);
-    _TimelineSampleSequences.Add(Sequence);
+    _TimelineCache.SpeedSamples->Add(Sample->Get_Gait().Get_Velocity().Size());
+    _TimelineCache.SupportSamples->Add(TrustedCount);
+    _TimelineCache.SampleSequences.Add(Sequence);
 }
 
 // --------------------------------------------------------------------------------------------------------------------
 
 auto
     SCkProceduralAnimationDebuggerWindow::
-    SelectLeg(
+    DoSelect_Leg(
         const FString& InLegEntityId)
     -> void
 {
@@ -616,7 +685,7 @@ auto
 
 auto
     SCkProceduralAnimationDebuggerWindow::
-    SelectLegAt(
+    DoSelect_LegAt(
         int32 InLegIndex)
     -> void
 {
@@ -627,14 +696,14 @@ auto
     if (Sample == nullptr || NOT Sample->Get_Legs().IsValidIndex(InLegIndex))
     { return; }
 
-    SelectLeg(Sample->Get_Legs()[InLegIndex].Get_LegEntityId());
+    DoSelect_Leg(Sample->Get_Legs()[InLegIndex].Get_LegEntityId());
 }
 
 // --------------------------------------------------------------------------------------------------------------------
 
 auto
     SCkProceduralAnimationDebuggerWindow::
-    ScrubTime(
+    DoScrub_Time(
         double InSeconds)
     -> void
 {
@@ -646,7 +715,7 @@ auto
     auto Distance = TNumericLimits<double>::Max();
     for (auto Index = 0; Index < History.Get_Count(); ++Index)
     {
-        const auto Delta = FMath::Abs(History.Get_Sample(Index)->Get_Time().Get_Seconds() - InSeconds);
+        const auto Delta = FMath::Abs(History.Get_Sample(Index)->Get_Sample().Get_Time().Get_Seconds() - InSeconds);
         if (Delta < Distance)
         {
             Distance = Delta;
@@ -660,7 +729,7 @@ auto
 
 auto
     SCkProceduralAnimationDebuggerWindow::
-    Get_StatusText() const
+    DoGet_StatusText() const
     -> FText
 {
     if (_Released || NOT _Model.IsValid())
@@ -676,7 +745,7 @@ auto
 
 auto
     SCkProceduralAnimationDebuggerWindow::
-    Get_DetailText() const
+    DoGet_DetailText() const
     -> FText
 {
     const auto* Sample = _Model.IsValid() ? _Model->Get_History().Get_Displayed() : nullptr;
@@ -685,10 +754,10 @@ auto
 
     const auto* Status = _Model->Get_History().Get_IsLive() ? _Model->Get_LiveStatus() : Sample;
     const auto Detail = ck::Format_UE(TEXT("{} · t {:.3f}s · sample {} · cadence {:.2f}x · {}{}"),
-        Sample->Get_EntityName(), Sample->Get_Time().Get_Seconds(), Sample->Get_Sequence(), Sample->Get_CadenceScale(),
-        Sample->Get_Airborne() ? TEXT("Airborne") : TEXT("Grounded"),
-        Status != nullptr && Status->Get_GaitFailed() ? TEXT(" · GAIT FAILED")
-            : Sample->Get_RigPosePending() || NOT Sample->Get_RigMatchesGaitSequence() ? TEXT(" · rig pose not synchronized")
+        Sample->Get_EntityName(), Sample->Get_Sample().Get_Time().Get_Seconds(), Sample->Get_Sample().Get_Sequence(), Sample->Get_Gait().Get_CadenceScale(),
+        Sample->Get_Gait().Get_Airborne() ? TEXT("Airborne") : TEXT("Grounded"),
+        Status != nullptr && Status->Get_Status().Get_GaitFailed() ? TEXT(" · GAIT FAILED")
+            : Sample->Get_Freshness().Get_RigPosePending() || NOT Sample->Get_Freshness().Get_RigMatchesGaitSequence() ? TEXT(" · rig pose not synchronized")
             : TEXT(""));
     return FText::FromString(Detail);
 }

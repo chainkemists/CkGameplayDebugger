@@ -8,6 +8,7 @@
 #include "CkCore/Validation/CkIsValid.h"
 
 #include "CkDebuggerCommon/Models/CkDebuggerModel_WorldSelector.h"
+#include "CkDebuggerCommon/Navigation/CkDebug_SelectionSync.h"
 #include "CkDebuggerCommon/Picker/CkDebug_ViewportPicker.h"
 #include "CkDebuggerCommon/Picker/SCkDebug_ViewportPickerControls.h"
 #include "CkDebuggerCommon/Search/SCkDebug_SearchBar.h"
@@ -21,6 +22,9 @@
 #include "CkDebuggerCommon/Widgets/SCkDebug_WorldSelector.h"
 #include "CkDebuggerCommon/Window/CkDebuggerRefreshGate.h"
 #include "CkDebuggerCommon/Window/SCkDebug_WindowChrome.h"
+
+#include "CkEcs/EntityLifetime/CkEntityLifetime_Fragment.h"
+#include "CkEcs/EntityLifetime/CkEntityLifetime_Utils.h"
 
 #include "CkProceduralAnimation/Leg/CkProceduralLeg_Utils.h"
 
@@ -219,7 +223,7 @@ auto
 
     const auto Sidebar = SNew(SVerticalBox)
         + SVerticalBox::Slot().AutoHeight().Padding(CkStyle::SpaceS)
-        [SNew(SCkDebug_SearchBar).HintText(FText::FromString(TEXT("Filter gait entities / segments")))
+        [SNew(SCkDebug_SearchBar).HintText(FText::FromString(TEXT("Filter gait entities")))
             .OnSearchTextChanged_Lambda([WeakWindow](const FString& InText)
             {
                 const auto Window = WeakWindow.Pin();
@@ -812,11 +816,46 @@ auto
 
 auto
     SCkProceduralAnimationDebuggerWindow::
+    Resolve_ProceduralEntity(
+        const FCk_Handle& InEntity)
+    -> FCk_Handle
+{
+    return ck::DebugSelectionSync::Resolve_ClosestLineageMatch(InEntity, [](const FCk_Handle& InCandidate) -> bool
+    {
+        return FCkProceduralAnimationDebugger_DataCollector::Is_Supported(InCandidate);
+    });
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkProceduralAnimationDebuggerWindow::
     Is_ProceduralEntity(
         const FCk_Handle& InEntity)
     -> bool
 {
-    return FCkProceduralAnimationDebugger_DataCollector::Is_Supported(InEntity);
+    // The picker previews each match's owner chain itself, so this filter only has to accept a gait body and its
+    // descendants (legs, limb parts). Walking up, not searching the lineage both ways, keeps it cheap per gathered entity.
+    constexpr auto MaxAncestorDepth = 64;
+    if (ck::Is_NOT_Valid(InEntity))
+    { return false; }
+
+    const auto Transient = UCk_Utils_EntityLifetime_UE::Get_TransientEntity(InEntity);
+    auto Candidate = InEntity;
+    for (auto Depth = 0; Depth < MaxAncestorDepth; ++Depth)
+    {
+        if (FCkProceduralAnimationDebugger_DataCollector::Is_Supported(Candidate))
+        { return true; }
+
+        if (NOT Candidate.Has<ck::FFragment_LifetimeOwner>())
+        { return false; }
+
+        Candidate = UCk_Utils_EntityLifetime_UE::Get_LifetimeOwner(Candidate);
+        if (ck::Is_NOT_Valid(Candidate) || Candidate == Transient)
+        { return false; }
+    }
+
+    return false;
 }
 
 // --------------------------------------------------------------------------------------------------------------------

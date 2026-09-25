@@ -5,23 +5,23 @@ record for style, macros, ECS patterns, and collaboration protocol; nothing from
 here. Full extension runbooks live in the `ck-gameplaydebugger-extension` skill (this plugin's
 `.claude/skills/`, authored in Phase 2 of the doc campaign).
 
-## Identity (verified 2026-08-28)
+## Identity (module census verified 2026-09-24)
 
 - **Naming surprise, up front:** the repo/folder is `CkGameplayDebugger`, but the plugin it ships
   is **`CkDebugger.uplugin`** (FriendlyName "Ck Gameplay Debugger"). One *module* inside also
   carries the repo name — that module is the legacy generation, not the plugin.
-- **34-module debugger suite** for the CkFoundation ECS: 5 Runtime (`CkGameplayDebugger`,
-  `CkDebuggerCommon`, `CkEntityDebugOverlay`, `CkInputHudOverlay`, `CkNavmeshDebugDraw`) + 25 DeveloperTool
+- **36-module debugger suite** for the CkFoundation ECS: 5 Runtime (`CkGameplayDebugger`,
+  `CkDebuggerCommon`, `CkEntityDebugOverlay`, `CkInputHudOverlay`, `CkNavmeshDebugDraw`) + 27 DeveloperTool
   (`CkEcsDebugger`, `CkSmDebugger`, `CkDialogDebugger`, `CkAudioDebugger`, `CkAggroDebugger`,
   `CkSaveDebugger`, `CkOptimizationDebugger`, `CkPerfLab`, `CkTextureDebugger`, `CkUIDebugger`,
   `CkSchedulerDebugger`, `CkAStarDebugger`, `CkGoapDebugger`, `CkAiDebugger`, `CkCrowdDebugger`,
   `CkEqsDebugger`, `CkInputDebugger`, `CkIntentDebugger`, `CkObjectPoolingDebugger`, `CkJoltDebugger`,
-  `CkMapDebugger`, `CkInsightsDebugger`, `CkStyleLabDebugger`, `CkVisualLodDebugger`,
+  `CkMapDebugger`, `CkInsightsDebugger`, `CkStyleLabDebugger`, `CkVisualLodDebugger`, `CkHangMonitor`, `CkProceduralAnimationDebugger`,
    `CkDebuggerLauncher`) + 4 Editor companions
    (`CkSaveDebuggerEditor`, `CkOptimizationDebuggerEditor`, `CkGridEditor`, `CkJoltBakeInspector`). Plugin dependency: **CkFoundation only**.
   The Runtime types are load-bearing for packaged in-world tooling; each feature compiles its behavior out of Shipping.
-- **Packaged-module contract (2026-08-29):** all 25 DeveloperTool modules are included in
-  Development/DebugGame and excluded from Test/Shipping. ECS, State Machine, Scheduler, and GOAP
+- **Packaged-module contract (2026-08-29):** the DeveloperTool modules are included in
+  Development/DebugGame and excluded from Test/Shipping, subject to each module's platform allow-list (HangMonitor is Windows-only). ECS, State Machine, Scheduler, and GOAP
   use the same runtime-Slate graph canvases in editor and packaged targets; native GraphEditor
   adapters remain editor-only and must never become a Game-target dependency.
 - **No AngelScript surface anywhere in this plugin** — no `Script/` dir, zero `.as` files
@@ -35,7 +35,7 @@ here. Full extension runbooks live in the `ck-gameplaydebugger-extension` skill 
 | Gen | Module(s) | Type | What it is | Status |
 |---|---|---|---|---|
 | 1 (2023) | `CkGameplayDebugger` | Runtime | Single UE-GameplayDebugger category: DebugProfile data assets, Blueprint Filters/Submenus/Actions, canvas draw. Compiles out of Shipping via self-defined `WITH_GAMEPLAY_DEBUGGER` (`CkGameplayDebugger.Build.cs:33-39`). | Frozen since early 2024 — **maintenance-only; do not add new features here** (deprecation not proclaimed; maintainer's call). |
-| 2 (2025→) | 24 packaged feature debugger modules + `CkDebuggerLauncher` | 25 DeveloperTool | Slate debugger tabs on the shared `CkDebuggerCommon` widget base, plus the discovery/launch rail. Editor targets dock them under Tools > Debug; packaged Development/DebugGame targets open DeveloperTool windows as floating Slate windows. Test/Shipping exclude DeveloperTool modules. | **Extend when you need a standalone analysis tool. Preserve packaged support.** |
+| 2 (2025→) | 26 packaged feature debugger modules + `CkDebuggerLauncher` | 27 DeveloperTool | Slate debugger tabs on the shared `CkDebuggerCommon` widget base, plus the discovery/launch rail. Editor targets dock them under Tools > Debug; packaged Development/DebugGame targets open DeveloperTool windows as floating Slate windows. Test/Shipping exclude DeveloperTool modules. | **Extend when you need a standalone analysis tool. Preserve packaged support.** |
 | 3 (2026, current flagship) | `CkEntityDebugOverlay`, `CkNavmeshDebugDraw` | Runtime | In-game debug surfaces. The entity overlay provides focus cards, pills, and markers; navmesh draw owns a retained, time-budgeted in-world Recast surface. Both are non-Shipping and command-driven. | **Extend when you need in-game/on-screen debug info.** |
 
 The 2024-2025 Cog-based EcsDebugger era is dead — removed from `Source/`; only stale traces
@@ -149,10 +149,14 @@ remain (see Open issues).
 
 Facts above verified against code on **2026-07-14** (launcher branch based on `7fd41c8`). Re-verify with:
 
-- Module count/types: `rg -c '"Name"' CkDebugger.uplugin` (expect **35** = 34 modules + the
+- Module count/types: `rg -c '"Name"' CkDebugger.uplugin` (expect **37** = 36 modules + the
    CkFoundation entry in the `Plugins` dependency array), or count modules only:
-   `(Get-Content CkDebugger.uplugin -Raw | ConvertFrom-Json).Modules.Count` (expect 34); read the
+   `(Get-Content CkDebugger.uplugin -Raw | ConvertFrom-Json).Modules.Count` (expect 36); read the
   `"Type"` fields.
 - Registration macros: `rg -n 'define CK_REGISTER_DEBUG_OVERLAY_PROVIDER' Source/CkEntityDebugOverlay` · `rg -n 'define CK_REGISTER_DEBUGGER_INSPECTOR' Source/CkEcsDebugger`.
 - Settings Config attributes: `rg -n 'UCLASS\(Config' Source/CkEntityDebugOverlay/Public/CkEntityDebugOverlay/Settings/CkDebugOverlay_Settings.h`.
 - No-AS claim: `rg --no-ignore --files -g '*.as' .` (expect zero matches).
+
+## Procedural animation
+
+CkProceduralAnimationDebugger adds the Systems launcher entry and console command ck.ProceduralAnimationDebugger. It consumes copied CkProceduralAnimation diagnostics: entity roster and picking, per-leg contact/probe evidence, bounded Hold/Scrub/Live history, sampled timelines and historical rig preview. ECS inspector links route through the common target registry. See Source/CkProceduralAnimationDebugger/Claude.md for ownership and lifecycle contracts. Packaged behavior is architecturally supported but requires a separate packaged validation gate.

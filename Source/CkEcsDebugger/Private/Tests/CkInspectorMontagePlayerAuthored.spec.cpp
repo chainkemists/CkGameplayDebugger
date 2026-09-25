@@ -34,13 +34,13 @@ namespace ck_inspector_montage_player_authored_test
         const ECk_MontagePlayer_StateKind InKind,
         const float InPlayRate,
         const FName InSection,
-        const bool bInAddParams = true) -> FCk_Handle
+        const bool bInAddSkeletalMesh = true) -> FCk_Handle
     {
         auto Entity = UCk_Utils_EntityLifetime_UE::Request_CreateEntity(InOwner);
         if (ck::Is_NOT_Valid(Entity))
         { return {}; }
-        if (bInAddParams)
-        { Entity.Add<ck::FFragment_MontagePlayer_SkeletalMesh>(FCk_MontagePlayer_Spec{}); }
+        if (bInAddSkeletalMesh)
+        { Entity.Add<ck::FFragment_MontagePlayer_SkeletalMesh>(); }
         auto State = FCk_MontagePlayer_State{};
         State.Set_Kind(InKind).Set_PlayRate(InPlayRate).Set_SectionName(InSection);
         Entity.Add<ck::FFragment_MontagePlayer>(State);

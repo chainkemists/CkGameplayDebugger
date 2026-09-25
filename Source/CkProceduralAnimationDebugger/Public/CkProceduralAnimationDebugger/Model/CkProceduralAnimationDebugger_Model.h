@@ -3,6 +3,8 @@
 #include "CkProceduralAnimationDebugger/Data/CkProceduralAnimationDebugger_DataCollector.h"
 #include "CkProceduralAnimationDebugger/Data/CkProceduralAnimationDebugger_History.h"
 
+#include "CkProceduralAnimation/Leg/CkProceduralLeg_Fragment_Data.h"
+
 // --------------------------------------------------------------------------------------------------------------------
 
 enum class ECkProceduralAnimationDebugger_SelectionSync : uint8
@@ -39,6 +41,12 @@ public:
     auto Get_SelectedGone() const -> bool { return _SelectedGone; }
     auto Get_SelectedId() const -> const FString& { return _SelectedId; }
     auto Get_SelectedLegId() const -> const FString& { return _SelectedLegId; }
+    // The live leg behind the selected leg id; invalid once that leg is detached or its body is gone.
+    auto Get_SelectedLeg() const -> FCk_Handle_ProceduralLeg;
+    // The only gameplay mutations the debugger makes. Both go through the leg feature's public requests,
+    // exactly as gameplay code would, and are rejected without a live selected leg.
+    auto Request_EnableDisableSelectedLeg(ECk_EnableDisable InEnableDisable) -> bool;
+    auto Request_DetachSelectedLeg(ECk_ProceduralLeg_ReleasedPartsOwnership InPartsOwnership) -> bool;
     auto Get_LiveStatus() const -> const FCk_ProceduralAnimation_DebugSnapshot*;
     auto Request_Hold() -> void;
     auto Request_GoLive() -> void;

@@ -56,8 +56,8 @@ namespace ck_procedural_debug_preview
             TArray<FCk_DebugScene_Instance>& OutInstances)
         -> void
     {
-        const auto& Segments = InLeg.Get_Segments();
-        auto Joint = InLeg.Get_HipWorld();
+        const auto& Segments = InLeg.Get_Rig().Get_Segments();
+        auto Joint = InLeg.Get_Targeting().Get_HipWorld();
         for (auto Index = 0; Index < Segments.Num(); ++Index)
         {
             auto Pose = Segments[Index].Get_Transform();
@@ -70,9 +70,9 @@ namespace ck_procedural_debug_preview
             Joint = NextJoint;
         }
 
-        if (InLeg.Get_Foot().Get_Available())
+        if (InLeg.Get_Rig().Get_Foot().Get_Available())
         {
-            auto FootPose = InLeg.Get_Foot().Get_Transform();
+            auto FootPose = InLeg.Get_Rig().Get_Foot().Get_Transform();
             FootPose.AddToTranslation(-InOrigin);
             OutInstances.Add(MakeInstance(FootPose, FootPartSize, InColor, InId));
         }
@@ -84,11 +84,11 @@ namespace ck_procedural_debug_preview
             const FCk_ProceduralAnimation_DebugLeg& InLeg)
         -> bool
     {
-        return InSample.Get_RigMatchesGaitSequence()
-            && NOT InSample.Get_RigPosePending()
-            && InLeg.Get_HasRig()
-            && NOT InLeg.Get_Segments().IsEmpty()
-            && NOT InLeg.Get_Segments().ContainsByPredicate([](const FCk_ProceduralAnimation_DebugPart& InPart)
+        return InSample.Get_Freshness().Get_RigMatchesGaitSequence()
+            && NOT InSample.Get_Freshness().Get_RigPosePending()
+            && InLeg.Get_Rig().Get_Composed()
+            && NOT InLeg.Get_Rig().Get_Segments().IsEmpty()
+            && NOT InLeg.Get_Rig().Get_Segments().ContainsByPredicate([](const FCk_ProceduralAnimation_DebugPart& InPart)
             {
                 return NOT InPart.Get_Available();
             });
@@ -124,12 +124,12 @@ auto
     _SelectedLegId = InSelectedLegId;
     _SelectedCenter.Reset();
 
-    const auto Origin = InSample.Get_BodyTransform().GetLocation();
+    const auto Origin = InSample.Get_Gait().Get_BodyTransform().GetLocation();
     auto Lines = TArray<FCk_DebugScene_Line>{};
     auto Labels = TArray<FCk_DebugScene_Label>{};
     _Target->Begin_Reconcile();
 
-    auto Body = InSample.Get_BodyTransform();
+    auto Body = InSample.Get_Gait().Get_BodyTransform();
     Body.SetLocation(FVector::ZeroVector);
     const auto BodyInstances = TArray<FCk_DebugScene_Instance>{
         ck_procedural_debug_preview::MakeInstance(Body, ck_procedural_debug_preview::BodySize, CkStyle::TextDim(), 0)};
@@ -142,7 +142,7 @@ auto
         return;
     }
 
-    Lines.Add({FVector::ZeroVector, InSample.Get_SupportNormal() * 100.0, CkStyle::Accent(), 3.0f});
+    Lines.Add({FVector::ZeroVector, InSample.Get_Gait().Get_SupportNormal() * 100.0, CkStyle::Accent(), 3.0f});
     for (auto Index = 0; Index < InSample.Get_Legs().Num(); ++Index)
     {
         const auto& Leg = InSample.Get_Legs()[Index];
@@ -154,14 +154,14 @@ auto
         const auto Color = IsSelected ? CkStyle::Accent()
             : Leg.Get_Enabled() ? ck::debug_axes::Get_CategoricalColor(Index)
             : CkStyle::TextMute();
-        const auto ContactColor = Leg.Get_ContactTrusted() ? CkStyle::Ok() : CkStyle::Warn();
-        const auto Hip = Leg.Get_HipWorld() - Origin;
-        const auto Foot = Leg.Get_FootPosition() - Origin;
+        const auto ContactColor = Leg.Get_Foot().Get_ContactTrusted() ? CkStyle::Ok() : CkStyle::Warn();
+        const auto Hip = Leg.Get_Targeting().Get_HipWorld() - Origin;
+        const auto Foot = Leg.Get_Foot().Get_Position() - Origin;
 
         auto Instances = TArray<FCk_DebugScene_Instance>{};
-        Instances.Add(ck_procedural_debug_preview::MakeInstance(FTransform{Leg.Get_FootRotation(), Foot},
+        Instances.Add(ck_procedural_debug_preview::MakeInstance(FTransform{Leg.Get_Foot().Get_Rotation(), Foot},
             ck_procedural_debug_preview::FootOutputSize, Color, Id));
-        Instances.Add(ck_procedural_debug_preview::MakeInstance(FTransform{Leg.Get_IdealTarget() - Origin},
+        Instances.Add(ck_procedural_debug_preview::MakeInstance(FTransform{Leg.Get_Targeting().Get_IdealTarget() - Origin},
             ck_procedural_debug_preview::GoalSize, ContactColor, Id));
 
         if (ck_procedural_debug_preview::Get_IsChainDrawable(InSample, Leg))
@@ -179,13 +179,13 @@ auto
             return;
         }
 
-        Lines.Add({Leg.Get_ProbeStart() - Origin, Leg.Get_ProbeEnd() - Origin, CkStyle::TextMute(), 1.0f});
-        if (Leg.Get_ProbeHit())
+        Lines.Add({Leg.Get_Probe().Get_Start() - Origin, Leg.Get_Probe().Get_End() - Origin, CkStyle::TextMute(), 1.0f});
+        if (Leg.Get_Probe().Get_Hit())
         {
-            const auto Hit = Leg.Get_ProbeHitPosition() - Origin;
-            Lines.Add({Hit, Hit + Leg.Get_ProbeHitNormal() * 25.0, ContactColor, 3.0f});
+            const auto Hit = Leg.Get_Probe().Get_HitPosition() - Origin;
+            Lines.Add({Hit, Hit + Leg.Get_Probe().Get_HitNormal() * 25.0, ContactColor, 3.0f});
         }
-        Lines.Add({Foot, Leg.Get_IdealTarget() - Origin, Color, 1.0f});
+        Lines.Add({Foot, Leg.Get_Targeting().Get_IdealTarget() - Origin, Color, 1.0f});
 
         if (_ShowLabels)
         { Labels.Add({Foot + FVector{0.0, 0.0, 12.0}, Leg.Get_Id().ToString(), Color, 1.0f}); }

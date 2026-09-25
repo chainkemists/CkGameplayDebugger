@@ -16,6 +16,24 @@ class SBox;
 
 // --------------------------------------------------------------------------------------------------------------------
 
+// Timeline and sparkline presentation, appended from the history ring and evicted with it by solve sequence.
+struct CKPROCEDURALANIMATIONDEBUGGER_API FCkProceduralAnimationDebugger_TimelineCache
+{
+    TArray<FCkDebug_TimelineEvent> Events;
+    TArray<FCkDebug_TimelineSpan> Spans;
+    TArray<uint64> SpanSequences;
+    TArray<uint64> SampleSequences;
+    TSharedRef<TArray<float>> SpeedSamples = MakeShared<TArray<float>>();
+    TSharedRef<TArray<float>> SupportSamples = MakeShared<TArray<float>>();
+    FString EntityId;
+    uint64 Revision = MAX_uint64;
+
+    auto Reset() -> void;
+    auto EvictBefore(uint64 InFirstSequence, int32 InFirstSelectionId) -> void;
+};
+
+// --------------------------------------------------------------------------------------------------------------------
+
 class CKPROCEDURALANIMATIONDEBUGGER_API SCkProceduralAnimationDebuggerWindow : public SCkDebugger_WindowBase
 {
 public:
@@ -35,18 +53,18 @@ public:
     static auto Is_ProceduralEntity(const FCk_Handle& InEntity) -> bool;
 
 private:
-    auto RefreshPresentation() -> void;
-    auto RefreshRoster() -> void;
-    auto RefreshLegs(const FCk_ProceduralAnimation_DebugSnapshot& InSample) -> void;
-    auto RefreshTimeline() -> void;
-    auto RecreateTimeline(const TArray<FString>& InLaneLabels) -> void;
-    auto ResetTimelineData() -> void;
-    auto AppendTimelineSample(int32 InChronologicalIndex) -> void;
-    auto SelectLeg(const FString& InLegEntityId) -> void;
-    auto SelectLegAt(int32 InLegIndex) -> void;
-    auto ScrubTime(double InSeconds) -> void;
-    auto Get_StatusText() const -> FText;
-    auto Get_DetailText() const -> FText;
+    auto DoBuild_LegActions() -> TSharedRef<SWidget>;
+    auto DoRefresh_Presentation() -> void;
+    auto DoRefresh_Roster() -> void;
+    auto DoRefresh_Legs(const FCk_ProceduralAnimation_DebugSnapshot& InSample) -> void;
+    auto DoRefresh_Timeline() -> void;
+    auto DoRecreate_Timeline(const TArray<FString>& InLaneLabels) -> void;
+    auto DoAppend_TimelineSample(int32 InChronologicalIndex) -> void;
+    auto DoSelect_Leg(const FString& InLegEntityId) -> void;
+    auto DoSelect_LegAt(int32 InLegIndex) -> void;
+    auto DoScrub_Time(double InSeconds) -> void;
+    auto DoGet_StatusText() const -> FText;
+    auto DoGet_DetailText() const -> FText;
 
 private:
     TSharedPtr<FCkProceduralAnimationDebugger_Model> _Model;
@@ -58,15 +76,8 @@ private:
     TSharedPtr<SBox> _TimelineHost;
     TSharedPtr<FCkProceduralAnimationDebugger_Preview> _Preview;
     TSharedPtr<SCkDebug_3dPreviewViewport> _Viewport;
-    TSharedPtr<TArray<float>> _SpeedSamples;
-    TSharedPtr<TArray<float>> _SupportSamples;
-    TArray<FCkDebug_TimelineEvent> _TimelineEvents;
-    TArray<FCkDebug_TimelineSpan> _TimelineSpans;
-    TArray<uint64> _TimelineSpanSequences;
-    TArray<uint64> _TimelineSampleSequences;
+    FCkProceduralAnimationDebugger_TimelineCache _TimelineCache;
     TArray<FString> _LaneLabels;
-    FString _TimelineEntityId;
-    uint64 _TimelineRevision = MAX_uint64;
     FString _Filter;
     FString _FramedEntity;
     bool _Released = false;

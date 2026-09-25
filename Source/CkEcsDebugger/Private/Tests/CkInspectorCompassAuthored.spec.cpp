@@ -49,7 +49,11 @@ namespace ck_inspector_compass_authored_test
         Params.Set_MaxEntries(InMaxEntries);
         Params.Set_HeadingSource(InSource);
         Params.Set_UpdateInterval(InInterval);
-        Entity.Add<ck::FFragment_Compass_Params>(Params);
+        Entity.Add<ck::FFragment_Compass_Params>(
+            Params.Get_ArcDegrees(),
+            Params.Get_MaxEntries(),
+            Params.Get_HeadingSource(),
+            Params.Get_UpdateInterval());
         auto& Current = Entity.Add<ck::FFragment_Compass>();
         Current._Observer = Entity;
         Current._HeadingDegrees = InHeading;

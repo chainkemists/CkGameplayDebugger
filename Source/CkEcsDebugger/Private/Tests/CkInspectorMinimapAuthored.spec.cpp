@@ -49,7 +49,12 @@ namespace ck_inspector_minimap_authored_test
         Params.Set_FrameShape(InFrame);
         Params.Set_MaxEntries(InMaxEntries);
         Params.Set_FixedBounds(FCk_Minimap_WorldBounds{FVector2D{100.0, 200.0}, FVector2D{300.0, 400.0}});
-        Entity.Add<ck::FFragment_Minimap_Params>(Params);
+        Entity.Add<ck::FFragment_Minimap_Params>(
+            Params.Get_ProjectionMode(),
+            Params.Get_FrameShape(),
+            Params.Get_FixedBounds(),
+            Params.Get_MaxEntries(),
+            Params.Get_UpdateInterval());
         auto& Current = Entity.Add<ck::FFragment_Minimap>();
         Current._Observer = Entity;
         Current._ViewExtent = InViewExtent;

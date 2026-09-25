@@ -15,6 +15,21 @@
 namespace ck_procedural_debug_collector
 {
     auto
+        DoAggregate_Status(
+            ECk_ProceduralAnimation_Status InAggregate,
+            ECk_ProceduralAnimation_Status InRig)
+        -> ECk_ProceduralAnimation_Status
+    {
+        if (InAggregate == ECk_ProceduralAnimation_Status::Failed || InRig == ECk_ProceduralAnimation_Status::Failed)
+        { return ECk_ProceduralAnimation_Status::Failed; }
+
+        if (InAggregate == ECk_ProceduralAnimation_Status::PendingSetup || InRig == ECk_ProceduralAnimation_Status::PendingSetup)
+        { return ECk_ProceduralAnimation_Status::PendingSetup; }
+
+        return ECk_ProceduralAnimation_Status::Ready;
+    }
+
+    auto
         Make_Summary(
             const FCk_Handle& InBody)
         -> FCkProceduralAnimationDebugger_Summary
@@ -23,8 +38,7 @@ namespace ck_procedural_debug_collector
         const auto Legs = UCk_Utils_ProceduralGait_UE::Get_Legs(Gait);
 
         auto HasRig = false;
-        auto RigReady = true;
-        auto RigFailed = false;
+        auto RigStatus = ECk_ProceduralAnimation_Status::Ready;
         for (const auto& Leg : Legs)
         {
             const auto Rig = UCk_Utils_ProceduralRig_UE::Cast(Leg);
@@ -32,18 +46,15 @@ namespace ck_procedural_debug_collector
             { continue; }
 
             HasRig = true;
-            RigReady &= UCk_Utils_ProceduralRig_UE::Get_IsReady(Rig);
-            RigFailed |= UCk_Utils_ProceduralRig_UE::Get_Failure(Rig) != ECk_ProceduralRig_Failure::None;
+            RigStatus = DoAggregate_Status(RigStatus, UCk_Utils_ProceduralRig_UE::Get_Status(Rig));
         }
 
         auto Summary = FCkProceduralAnimationDebugger_Summary{};
         Summary.Set_EntityName(InBody.Get_DebugName())
             .Set_EntityId(InBody.Get_Entity().ToString())
-            .Set_GaitReady(UCk_Utils_ProceduralGait_UE::Get_IsReady(Gait))
-            .Set_GaitFailed(UCk_Utils_ProceduralGait_UE::Get_HasFailed(Gait))
+            .Set_GaitStatus(UCk_Utils_ProceduralGait_UE::Get_Status(Gait))
             .Set_HasRig(HasRig)
-            .Set_RigReady(HasRig && RigReady)
-            .Set_RigFailed(RigFailed)
+            .Set_RigStatus(HasRig ? RigStatus : ECk_ProceduralAnimation_Status::PendingSetup)
             .Set_LegCount(Legs.Num())
             .Set_EnabledLegCount(UCk_Utils_ProceduralGait_UE::Get_EnabledLegCount(Gait))
             .Set_PlantedCount(UCk_Utils_ProceduralGait_UE::Get_PlantedCount(Gait));
@@ -61,11 +72,9 @@ auto
 {
     return _EntityName == InOther._EntityName
         && _EntityId == InOther._EntityId
-        && _GaitReady == InOther._GaitReady
-        && _GaitFailed == InOther._GaitFailed
+        && _GaitStatus == InOther._GaitStatus
         && _HasRig == InOther._HasRig
-        && _RigReady == InOther._RigReady
-        && _RigFailed == InOther._RigFailed
+        && _RigStatus == InOther._RigStatus
         && _LegCount == InOther._LegCount
         && _EnabledLegCount == InOther._EnabledLegCount
         && _PlantedCount == InOther._PlantedCount;

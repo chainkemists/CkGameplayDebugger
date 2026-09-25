@@ -4,6 +4,8 @@
 
 #include "CkEcs/Handle/CkHandle.h"
 
+#include "CkProceduralAnimation/CkProceduralAnimation_Fragment_Data.h"
+
 // --------------------------------------------------------------------------------------------------------------------
 
 class UWorld;
@@ -18,11 +20,9 @@ struct CKPROCEDURALANIMATIONDEBUGGER_API FCkProceduralAnimationDebugger_Summary
 private:
     FName _EntityName;
     FString _EntityId;
-    bool _GaitReady = false;
-    bool _GaitFailed = false;
+    ECk_ProceduralAnimation_Status _GaitStatus = ECk_ProceduralAnimation_Status::PendingSetup;
     bool _HasRig = false;
-    bool _RigReady = false;
-    bool _RigFailed = false;
+    ECk_ProceduralAnimation_Status _RigStatus = ECk_ProceduralAnimation_Status::PendingSetup;
     int32 _LegCount = 0;
     int32 _EnabledLegCount = 0;
     int32 _PlantedCount = 0;
@@ -30,11 +30,9 @@ private:
 public:
     CK_PROPERTY(_EntityName);
     CK_PROPERTY(_EntityId);
-    CK_PROPERTY(_GaitReady);
-    CK_PROPERTY(_GaitFailed);
+    CK_PROPERTY(_GaitStatus);
     CK_PROPERTY(_HasRig);
-    CK_PROPERTY(_RigReady);
-    CK_PROPERTY(_RigFailed);
+    CK_PROPERTY(_RigStatus);
     CK_PROPERTY(_LegCount);
     CK_PROPERTY(_EnabledLegCount);
     CK_PROPERTY(_PlantedCount);

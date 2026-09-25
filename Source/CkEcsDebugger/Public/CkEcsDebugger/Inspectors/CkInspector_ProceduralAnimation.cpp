@@ -49,13 +49,13 @@ namespace ck_inspector_procedural_animation
             const FCk_ProceduralAnimation_DebugLeg& InLeg)
         -> FString
     {
-        if (NOT InLeg.Get_HasRig())
+        if (NOT InLeg.Get_Rig().Get_Composed())
         { return TEXT("Not composed"); }
 
-        if (InLeg.Get_RigFailure() != ECk_ProceduralRig_Failure::None)
-        { return ck::Format_UE(TEXT("Failed: {}"), InLeg.Get_RigFailure()); }
+        if (InLeg.Get_Rig().Get_Failure() != ECk_ProceduralRig_Failure::None)
+        { return ck::Format_UE(TEXT("Failed: {}"), InLeg.Get_Rig().Get_Failure()); }
 
-        return InLeg.Get_RigReady() ? TEXT("Ready") : TEXT("Waiting for gait");
+        return InLeg.Get_Rig().Get_Ready() ? TEXT("Ready") : TEXT("Waiting for gait");
     }
 
     auto
@@ -73,7 +73,7 @@ namespace ck_inspector_procedural_animation
         if (InspectedLeg != nullptr)
         { return Get_LegRigState(*InspectedLeg); }
 
-        if (NOT InSnapshot.Get_HasRig())
+        if (NOT InSnapshot.Get_Status().Get_HasRig())
         { return TEXT("Not composed"); }
 
         auto Rigged = 0;
@@ -81,16 +81,16 @@ namespace ck_inspector_procedural_animation
         auto Failed = 0;
         for (const auto& Leg : InSnapshot.Get_Legs())
         {
-            if (NOT Leg.Get_HasRig())
+            if (NOT Leg.Get_Rig().Get_Composed())
             { continue; }
 
             ++Rigged;
-            Ready += Leg.Get_RigReady() ? 1 : 0;
-            Failed += Leg.Get_RigFailure() != ECk_ProceduralRig_Failure::None ? 1 : 0;
+            Ready += Leg.Get_Rig().Get_Ready() ? 1 : 0;
+            Failed += Leg.Get_Rig().Get_Failure() != ECk_ProceduralRig_Failure::None ? 1 : 0;
         }
 
         return Failed > 0
-            ? ck::Format_UE(TEXT("{}/{} legs ready, {} failed ({})"), Ready, Rigged, Failed, InSnapshot.Get_RigFailure())
+            ? ck::Format_UE(TEXT("{}/{} legs ready, {} failed ({})"), Ready, Rigged, Failed, InSnapshot.Get_Status().Get_RigFailure())
             : ck::Format_UE(TEXT("{}/{} legs ready"), Ready, Rigged);
     }
 }
@@ -146,10 +146,10 @@ auto
             [Cache, Reader = MoveTemp(InReader), InNeedsSample](const FCk_Handle& InCurrentEntity)
             {
                 const auto& Snapshot = Cache->Get(InCurrentEntity);
-                if (NOT Snapshot.Get_Available())
+                if (NOT Snapshot.Get_Status().Get_Available())
                 { return FText::FromString(TEXT("Unavailable")); }
 
-                if (InNeedsSample && NOT Snapshot.Get_HasAcceptedSample())
+                if (InNeedsSample && NOT Snapshot.Get_Status().Get_HasAcceptedSample())
                 { return FText::FromString(TEXT("No accepted solve")); }
 
                 return FText::FromString(Reader(InCurrentEntity, Snapshot));
@@ -161,15 +161,15 @@ auto
 
     Add(TEXT("Gait"), [](const FCk_Handle&, const FCk_ProceduralAnimation_DebugSnapshot& InSnapshot)
     {
-        return InSnapshot.Get_GaitFailed() ? FString{TEXT("Failed; last accepted solve retained")}
-            : InSnapshot.Get_GaitReady() ? FString{TEXT("Ready")}
+        return InSnapshot.Get_Status().Get_GaitFailed() ? FString{TEXT("Failed; last accepted solve retained")}
+            : InSnapshot.Get_Status().Get_GaitReady() ? FString{TEXT("Ready")}
             : FString{TEXT("Waiting for evaluation")};
     }, ReadableBeforeFirstSolve);
 
     Add(TEXT("Accepted solve"), [](const FCk_Handle&, const FCk_ProceduralAnimation_DebugSnapshot& InSnapshot)
     {
-        return ck::Format_UE(TEXT("#{} at {:.3f}s{}"), InSnapshot.Get_Sequence(),
-            InSnapshot.Get_Time().Get_Seconds(), InSnapshot.Get_GaitFresh() ? TEXT("") : TEXT(" (retained)"));
+        return ck::Format_UE(TEXT("#{} at {:.3f}s{}"), InSnapshot.Get_Sample().Get_Sequence(),
+            InSnapshot.Get_Sample().Get_Time().Get_Seconds(), InSnapshot.Get_Freshness().Get_GaitFresh() ? TEXT("") : TEXT(" (retained)"));
     }, NeedsAcceptedSample);
 
     Add(TEXT("Feet"), [](const FCk_Handle&, const FCk_ProceduralAnimation_DebugSnapshot& InSnapshot)
@@ -185,37 +185,37 @@ auto
 
             ++Present;
             Enabled += Leg.Get_Enabled() ? 1 : 0;
-            Planted += Leg.Get_Planted() ? 1 : 0;
-            Trusted += Leg.Get_ContactTrusted() ? 1 : 0;
+            Planted += Leg.Get_Foot().Get_Planted() ? 1 : 0;
+            Trusted += Leg.Get_Foot().Get_ContactTrusted() ? 1 : 0;
         }
         return ck::Format_UE(TEXT("{} legs / {} enabled / {} planted / {} trusted"), Present, Enabled, Planted, Trusted);
     }, NeedsAcceptedSample);
 
     Add(TEXT("Clock / cadence"), [](const FCk_Handle&, const FCk_ProceduralAnimation_DebugSnapshot& InSnapshot)
     {
-        return ck::Format_UE(TEXT("{:.3f} / {:.2f}x"), InSnapshot.Get_GaitClock(), InSnapshot.Get_CadenceScale());
+        return ck::Format_UE(TEXT("{:.3f} / {:.2f}x"), InSnapshot.Get_Gait().Get_Clock(), InSnapshot.Get_Gait().Get_CadenceScale());
     }, NeedsAcceptedSample);
 
     Add(TEXT("Solver airborne"), [](const FCk_Handle&, const FCk_ProceduralAnimation_DebugSnapshot& InSnapshot)
     {
-        return FString{InSnapshot.Get_Airborne() ? TEXT("Yes") : TEXT("No")};
+        return FString{InSnapshot.Get_Gait().Get_Airborne() ? TEXT("Yes") : TEXT("No")};
     }, NeedsAcceptedSample);
 
     Add(TEXT("Observed speed"), [](const FCk_Handle&, const FCk_ProceduralAnimation_DebugSnapshot& InSnapshot)
     {
-        return ck::Format_UE(TEXT("{:.1f} cm/s"), InSnapshot.Get_Velocity().Size());
+        return ck::Format_UE(TEXT("{:.1f} cm/s"), InSnapshot.Get_Gait().Get_Velocity().Size());
     }, NeedsAcceptedSample);
 
     Add(TEXT("Surface motion"), [](const FCk_Handle&, const FCk_ProceduralAnimation_DebugSnapshot& InSnapshot)
     {
-        if (NOT InSnapshot.Get_HasSurfaceMotion())
+        if (NOT InSnapshot.Get_Status().Get_HasSurfaceMotion())
         { return FString{TEXT("Not composed")}; }
 
-        if (NOT InSnapshot.Get_MotionMatchesGaitFrame())
+        if (NOT InSnapshot.Get_Freshness().Get_MotionMatchesGaitFrame())
         { return FString{TEXT("Different update frame")}; }
 
-        return InSnapshot.Get_TrustedContact() ? FString{TEXT("Current trusted support")}
-            : InSnapshot.Get_Grounded() ? FString{TEXT("Grounded through contact grace")}
+        return InSnapshot.Get_Motion().Get_TrustedContact() ? FString{TEXT("Current trusted support")}
+            : InSnapshot.Get_Motion().Get_Grounded() ? FString{TEXT("Grounded through contact grace")}
             : FString{TEXT("Airborne")};
     }, NeedsAcceptedSample);
 
@@ -226,13 +226,13 @@ auto
 
     Add(TEXT("Rig pose"), [](const FCk_Handle&, const FCk_ProceduralAnimation_DebugSnapshot& InSnapshot)
     {
-        if (NOT InSnapshot.Get_HasRig())
+        if (NOT InSnapshot.Get_Status().Get_HasRig())
         { return FString{TEXT("Not composed")}; }
 
-        if (NOT InSnapshot.Get_RigMatchesGaitSequence())
+        if (NOT InSnapshot.Get_Freshness().Get_RigMatchesGaitSequence())
         { return FString{TEXT("Different solve sequence")}; }
 
-        return FString{InSnapshot.Get_RigPosePending() ? TEXT("Transform requests pending") : TEXT("Applied")};
+        return FString{InSnapshot.Get_Freshness().Get_RigPosePending() ? TEXT("Transform requests pending") : TEXT("Applied")};
     }, NeedsAcceptedSample);
 
     return Builder.Build(InEntity, InFilter);

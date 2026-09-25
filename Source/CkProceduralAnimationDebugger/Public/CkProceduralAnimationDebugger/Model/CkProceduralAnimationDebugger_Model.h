@@ -59,7 +59,7 @@ private:
     auto DoClear() -> void;
     auto DoCapture_Selected() -> void;
     auto HandleSelection(const FCk_Handle& InEntity, FName InSource) -> void;
-    auto HandleWorldCleanup(UWorld* InWorld, bool InSessionEnded, bool InCleanupResources) -> void;
+    auto HandleWorldInvalidated(UWorld* InWorld) -> void;
 
 private:
     TWeakObjectPtr<UWorld> _World;
@@ -74,7 +74,7 @@ private:
     FSimpleMulticastDelegate _OnChanged;
     FDelegateHandle _SessionHandle;
     FDelegateHandle _SelectionHandle;
-    FDelegateHandle _WorldCleanupHandle;
+    FDelegateHandle _WorldInvalidatedHandle;
 };
 
 // --------------------------------------------------------------------------------------------------------------------

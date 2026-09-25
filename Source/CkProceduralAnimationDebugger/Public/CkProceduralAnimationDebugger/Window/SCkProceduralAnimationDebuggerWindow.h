@@ -50,6 +50,8 @@ public:
     auto Request_Refresh() -> void;
     auto ReleaseSession() -> void;
     static auto OpenForEntity(const FCk_Handle& InEntity) -> void;
+    // The gait body closest in lineage to InEntity, so a leg or limb part resolves to the body that owns it.
+    static auto Resolve_ProceduralEntity(const FCk_Handle& InEntity) -> FCk_Handle;
     static auto Is_ProceduralEntity(const FCk_Handle& InEntity) -> bool;
 
 private:

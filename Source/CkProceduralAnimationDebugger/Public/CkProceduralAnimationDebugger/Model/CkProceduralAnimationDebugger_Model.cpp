@@ -42,7 +42,7 @@ FCkProceduralAnimationDebugger_Model::
 {
     _SessionHandle = ck::DebugSessionLifecycle::Get_OnSessionInvalidated().AddRaw(this, &FCkProceduralAnimationDebugger_Model::Reset);
     _SelectionHandle = ck::DebugSelectionSync::Get_OnSelection().AddRaw(this, &FCkProceduralAnimationDebugger_Model::HandleSelection);
-    _WorldCleanupHandle = FWorldDelegates::OnWorldCleanup.AddRaw(this, &FCkProceduralAnimationDebugger_Model::HandleWorldCleanup);
+    _WorldInvalidatedHandle = ck::DebugSessionLifecycle::Get_OnWorldInvalidated().AddRaw(this, &FCkProceduralAnimationDebugger_Model::HandleWorldInvalidated);
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -137,7 +137,10 @@ auto
     });
 
     if (Row == nullptr)
-    { return false; }
+    {
+        _OnChanged.Broadcast();
+        return false;
+    }
 
     if (_SelectedId != Row->Summary.Get_EntityId())
     {
@@ -283,7 +286,7 @@ auto
     _Released = true;
     ck::DebugSessionLifecycle::Get_OnSessionInvalidated().Remove(_SessionHandle);
     ck::DebugSelectionSync::Get_OnSelection().Remove(_SelectionHandle);
-    FWorldDelegates::OnWorldCleanup.Remove(_WorldCleanupHandle);
+    ck::DebugSessionLifecycle::Get_OnWorldInvalidated().Remove(_WorldInvalidatedHandle);
     Reset();
     _OnChanged.Clear();
 }
@@ -409,10 +412,8 @@ auto
 
 auto
     FCkProceduralAnimationDebugger_Model::
-    HandleWorldCleanup(
-        UWorld* InWorld,
-        bool,
-        bool)
+    HandleWorldInvalidated(
+        UWorld* InWorld)
     -> void
 {
     if (_World.Get() == InWorld)

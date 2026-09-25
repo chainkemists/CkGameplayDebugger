@@ -2,12 +2,9 @@
 
 #include "CkProceduralAnimationDebugger/Window/SCkProceduralAnimationDebuggerWindow.h"
 
-#include "CkCore/Validation/CkIsValid.h"
-
 #include "CkDebuggerCommon/Launcher/CkDebuggerTabUtils.h"
 #include "CkDebuggerCommon/Launcher/CkDebuggerToolRegistry.h"
 #include "CkDebuggerCommon/Navigation/CkDebug_EntityTarget.h"
-#include "CkDebuggerCommon/Navigation/CkDebug_SelectionSync.h"
 
 #include <Framework/Docking/TabManager.h>
 #include <HAL/IConsoleManager.h>
@@ -23,17 +20,6 @@
 
 namespace ck_procedural_debug_module
 {
-    auto
-        Resolve(
-            const FCk_Handle& InEntity)
-        -> FCk_Handle
-    {
-        return ck::DebugSelectionSync::Resolve_ClosestLineageMatch(InEntity, [](const FCk_Handle& InCandidate) -> bool
-        {
-            return SCkProceduralAnimationDebuggerWindow::Is_ProceduralEntity(InCandidate);
-        });
-    }
-
     static FAutoConsoleCommand Command(TEXT("ck.ProceduralAnimationDebugger"),
         TEXT("Open (1), close (0), or toggle the procedural animation debugger."),
         FConsoleCommandWithArgsDelegate::CreateLambda([](const TArray<FString>& InArgs)
@@ -82,11 +68,11 @@ auto
         TEXT("CkProceduralAnimationDebugger"), Get_TabName(),
         [](const auto& InEntity)
         {
-            return ck::IsValid(ck_procedural_debug_module::Resolve(InEntity));
+            return ck::IsValid(SCkProceduralAnimationDebuggerWindow::Resolve_ProceduralEntity(InEntity));
         },
         [](const auto& InEntity)
         {
-            SCkProceduralAnimationDebuggerWindow::OpenForEntity(ck_procedural_debug_module::Resolve(InEntity));
+            SCkProceduralAnimationDebuggerWindow::OpenForEntity(InEntity);
         }});
     _PreExitHandle = FCoreDelegates::OnEnginePreExit.AddRaw(this, &FCkProceduralAnimationDebuggerModule::HandleEnginePreExit);
 }

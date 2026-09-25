@@ -61,7 +61,7 @@ namespace ck_procedural_debug_window
         if (InLeg.Get_Rig().Get_Failure() != ECk_ProceduralRig_Failure::None)
         { return ck::Format_UE(TEXT("failed: {}"), InLeg.Get_Rig().Get_Failure()); }
 
-        return InLeg.Get_Rig().Get_Ready() ? TEXT("ready") : TEXT("waiting for gait");
+        return InLeg.Get_Rig().Get_Status() == ECk_ProceduralAnimation_Status::Ready ? TEXT("ready") : TEXT("waiting for gait");
     }
 
     auto
@@ -315,7 +315,8 @@ auto
             {
                 const auto Model = WeakModel.Pin();
                 const auto Leg = Model.IsValid() ? Model->Get_SelectedLeg() : FCk_Handle_ProceduralLeg{};
-                const auto LegIsDisabled = ck::IsValid(Leg) && NOT UCk_Utils_ProceduralLeg_UE::Get_IsEnabled(Leg);
+                const auto LegIsDisabled = ck::IsValid(Leg)
+                    && UCk_Utils_ProceduralLeg_UE::Get_EnableDisable(Leg) == ECk_EnableDisable::Disable;
                 return FText::FromString(LegIsDisabled ? TEXT("Enable leg") : TEXT("Disable leg"));
             })
             .ToolTipText(FText::FromString(TEXT(
@@ -329,9 +330,9 @@ auto
                 if (ck::Is_NOT_Valid(Leg))
                 { return FReply::Handled(); }
 
-                Model->Request_EnableDisableSelectedLeg(UCk_Utils_ProceduralLeg_UE::Get_IsEnabled(Leg)
-                    ? ECk_EnableDisable::Disable
-                    : ECk_EnableDisable::Enable);
+                Model->Request_EnableDisableSelectedLeg(UCk_Utils_ProceduralLeg_UE::Get_EnableDisable(Leg) == ECk_EnableDisable::Disable
+                    ? ECk_EnableDisable::Enable
+                    : ECk_EnableDisable::Disable);
                 return FReply::Handled();
             })]
         + SHorizontalBox::Slot().AutoWidth().Padding(CkStyle::SpaceS, 0.0f)
@@ -459,7 +460,9 @@ auto
         if (NOT _Filter.IsEmpty() && NOT Row.Label.Contains(_Filter) && NOT Summary.Get_EntityId().Contains(_Filter))
         { continue; }
 
-        const auto Failed = Summary.Get_GaitFailed() || Summary.Get_RigFailed();
+        const auto Failed = Summary.Get_GaitStatus() == ECk_ProceduralAnimation_Status::Failed
+            || (Summary.Get_HasRig() && Summary.Get_RigStatus() == ECk_ProceduralAnimation_Status::Failed);
+        const auto Tracking = Summary.Get_GaitStatus() == ECk_ProceduralAnimation_Status::Ready;
         auto Item = FCkDebug_EntityHealthItem{};
         Item.RowIdentity = Row.Entity;
         Item.SelectionTarget = Row.Entity;
@@ -467,8 +470,8 @@ auto
         Item.Context = FText::FromString(Summary.Get_EntityId());
         Item.Summary = FText::FromString(ck::Format_UE(TEXT("{} legs · {} enabled · {} planted"),
             Summary.Get_LegCount(), Summary.Get_EnabledLegCount(), Summary.Get_PlantedCount()));
-        Item.Status = FText::FromString(Failed ? TEXT("Failed") : Summary.Get_GaitReady() ? TEXT("Tracking") : TEXT("Pending"));
-        Item.Tone = Failed ? ECk_Tone::Err : Summary.Get_GaitReady() ? ECk_Tone::Ok : ECk_Tone::Warn;
+        Item.Status = FText::FromString(Failed ? TEXT("Failed") : Tracking ? TEXT("Tracking") : TEXT("Pending"));
+        Item.Tone = Failed ? ECk_Tone::Err : Tracking ? ECk_Tone::Ok : ECk_Tone::Warn;
         Items.Add(MoveTemp(Item));
     }
 
@@ -760,7 +763,7 @@ auto
     const auto Detail = ck::Format_UE(TEXT("{} · t {:.3f}s · sample {} · cadence {:.2f}x · {}{}"),
         Sample->Get_EntityName(), Sample->Get_Sample().Get_Time().Get_Seconds(), Sample->Get_Sample().Get_Sequence(), Sample->Get_Gait().Get_CadenceScale(),
         Sample->Get_Gait().Get_Airborne() ? TEXT("Airborne") : TEXT("Grounded"),
-        Status != nullptr && Status->Get_Status().Get_GaitFailed() ? TEXT(" · GAIT FAILED")
+        Status != nullptr && Status->Get_Status().Get_GaitStatus() == ECk_ProceduralAnimation_Status::Failed ? TEXT(" · GAIT FAILED")
             : Sample->Get_Freshness().Get_RigPosePending() || NOT Sample->Get_Freshness().Get_RigMatchesGaitSequence() ? TEXT(" · rig pose not synchronized")
             : TEXT(""));
     return FText::FromString(Detail);

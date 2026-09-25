@@ -194,6 +194,65 @@ auto
 
 auto
     FCkProceduralAnimationDebugger_Model::
+    Get_SelectedLeg() const
+    -> FCk_Handle_ProceduralLeg
+{
+    if (_Released || _SelectedLegId.IsEmpty())
+    { return {}; }
+
+    const auto Body = Get_SelectedHandle();
+    if (ck::Is_NOT_Valid(Body))
+    { return {}; }
+
+    for (const auto& Leg : UCk_Utils_ProceduralLeg_UE::Get_Legs(Body))
+    {
+        if (Leg.Get_Entity().ToString() == _SelectedLegId)
+        { return Leg; }
+    }
+
+    return {};
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    FCkProceduralAnimationDebugger_Model::
+    Request_EnableDisableSelectedLeg(
+        ECk_EnableDisable InEnableDisable)
+    -> bool
+{
+    auto Leg = Get_SelectedLeg();
+    if (ck::Is_NOT_Valid(Leg))
+    { return false; }
+
+    UCk_Utils_ProceduralLeg_UE::Request_EnableDisable(Leg, FCk_Request_ProceduralLeg_EnableDisable{InEnableDisable}, {});
+    return true;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    FCkProceduralAnimationDebugger_Model::
+    Request_DetachSelectedLeg(
+        ECk_ProceduralLeg_ReleasedPartsOwnership InPartsOwnership)
+    -> bool
+{
+    auto Leg = Get_SelectedLeg();
+    if (ck::Is_NOT_Valid(Leg))
+    { return false; }
+
+    UCk_Utils_ProceduralLeg_UE::Request_Detach(Leg, FCk_Request_ProceduralLeg_Detach{InPartsOwnership}, {});
+
+    // The detached leg leaves the list on its next capture; keeping it focused would point the preview at nothing.
+    _SelectedLegId.Reset();
+    _OnChanged.Broadcast();
+    return true;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    FCkProceduralAnimationDebugger_Model::
     Get_LiveStatus() const
     -> const FCk_ProceduralAnimation_DebugSnapshot*
 {

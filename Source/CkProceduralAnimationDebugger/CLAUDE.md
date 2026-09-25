@@ -1,6 +1,6 @@
 # CkProceduralAnimationDebugger
 
-DeveloperTool UI for CkFoundation's procedural gait, surface motion and rigid rig. Open through the CK Debugger Suite (Systems), an ECS entity's Open In menu, or `ck.ProceduralAnimationDebugger 1`. This is read-only inspection; it does not retune settings, move entities, run contact queries or pause gameplay.
+DeveloperTool UI for CkFoundation's procedural gait, surface motion and rigid rig. Open through the CK Debugger Suite (Systems), an ECS entity's Open In menu, or `ck.ProceduralAnimationDebugger 1`. Inspection is read-only with one exception: the leg actions below. It does not retune settings, move entities, run contact queries or pause gameplay.
 
 ## Data and ownership
 
@@ -15,6 +15,10 @@ The default ring holds 600 accepted samples (bounded constructor range 1–4096)
 Capture follows the common per-window refresh policy. This is SAMPLE history, not a complete recording of every solver frame. Timeline diamonds are actual observations; colored spans join only adjacent observed simulation sequences. Gaps are not reconstructed. The window appends newly recorded samples to its timeline and sparklines and drops evicted ones, rather than rebuilding them every refresh; a marker selects its sample by solve sequence. Pan, zoom and follow-live survive a change of the lane set. Times remain `FCk_Time` in the model and become seconds only at widget boundaries.
 
 The left roster supports filtering and common viewport picking. Selecting a leg in the evidence list or preview focuses that leg's diagnostic selection. The leg list shows each leg as Enabled or Disabled with its own rig status; a detached leg disappears from the list and preview, while the snapshot keeps its index-stable entry with an empty leg entity id so timeline lanes do not shift. Timeline click/drag scrubs to the nearest retained sample. The common preview supplies camera navigation, frame-all/frame-selection and label visibility. Frame rig restores a useful overview without moving gameplay actors.
+
+## Leg actions
+
+Two buttons above the leg list act on the selected leg of the live selection: **Disable leg / Enable leg** (`Request_EnableDisableSelectedLeg`) and **Detach leg** (`Request_DetachSelectedLeg`, parts stay owned by the body). They are the only gameplay mutations the debugger makes, and they go through `UCk_Utils_ProceduralLeg_UE::Request_EnableDisable` and `Request_Detach` exactly as gameplay code would; nothing writes a fragment. Both are disabled when no live leg matches the selected leg id: a gone body, a detached leg, or no leg selected. What happens to detached parts is the game's `OnProceduralLeg_Detached` binding (the gym ragdolls them); with no binding they stay where they were released. A detach clears the selected leg.
 
 ## Preview contract
 

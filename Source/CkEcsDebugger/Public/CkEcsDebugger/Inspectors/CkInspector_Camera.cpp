@@ -832,11 +832,12 @@ auto SCkInspector_CameraAuthored::Get_Text(const FString& InKey) const -> FStrin
     }
     if (NOT Get_IsAvailable()) { return TEXT("--"); }
     const auto& Current = _Entity.Get<ck::FFragment_Camera>();
+    const auto& CameraPov = _Entity.Get<ck::FFragment_Camera_Pov>();
     const auto& Profile = Current.Get_ComposedProfile();
-    const auto& Pov = Current.Get_PovState();
+    const auto& Pov = CameraPov.Get_PovState();
     const auto FormatVector = [](const FVector& V) { return FString::Printf(TEXT("%.2f  %.2f  %.2f"), V.X, V.Y, V.Z); };
     const auto FormatRotator = [](const FRotator& R) { return FString::Printf(TEXT("%.2f  %.2f  %.2f"), R.Roll, R.Pitch, R.Yaw); };
-    if (InKey == TEXT("orientation")) return ck::Format_UE(TEXT("{}"), Current.Get_OrientationIntention());
+    if (InKey == TEXT("orientation")) return ck::Format_UE(TEXT("{}"), CameraPov.Get_OrientationIntention());
     if (InKey == TEXT("dominant")) return DoFmt_ClassName(Current.Get_DominantLayerClass().Get());
     if (InKey == TEXT("look-at")) return Current.Get_DominantLookAt().IsSet() ? ck::Format_UE(TEXT("{}"), Current.Get_DominantLookAt().GetValue()) : TEXT("(none)");
     if (InKey == TEXT("fov")) return ck::Format_UE(TEXT("{:.1f}"), Profile.Get_Sensor().Get_FOV());
@@ -846,9 +847,9 @@ auto SCkInspector_CameraAuthored::Get_Text(const FString& InKey) const -> FStrin
     if (InKey == TEXT("orientation-control")) return Current.Get_ComposedProfile().Get_HasOrientationControl() ? TEXT("Yes") : TEXT("No");
     if (InKey == TEXT("auto-reorient")) return Profile.Get_HasAutoReorient() ? TEXT("Yes") : TEXT("No");
     if (InKey == TEXT("collision")) return Profile.Get_HasCollision() ? TEXT("Yes") : TEXT("No");
-    if (InKey == TEXT("view-location")) return FormatVector(Current.Get_ViewInfo().Location);
-    if (InKey == TEXT("view-rotation")) return FormatRotator(Current.Get_ViewInfo().Rotation);
-    if (InKey == TEXT("view-fov")) return ck::Format_UE(TEXT("{:.1f}"), Current.Get_ViewInfo().FOV);
+    if (InKey == TEXT("view-location")) return FormatVector(CameraPov.Get_ViewInfo().Location);
+    if (InKey == TEXT("view-rotation")) return FormatRotator(CameraPov.Get_ViewInfo().Rotation);
+    if (InKey == TEXT("view-fov")) return ck::Format_UE(TEXT("{:.1f}"), CameraPov.Get_ViewInfo().FOV);
     if (InKey == TEXT("pov-boom")) return FormatRotator(Pov._BoomArmRotation);
     if (InKey == TEXT("pov-group")) return FormatVector(Pov._GroupBaseLocation);
     if (InKey == TEXT("pov-look-at")) return FormatVector(Pov._LookAtLocation);
@@ -877,13 +878,14 @@ auto SCkInspector_CameraAuthored::Get_Number(const FString& InKey) const -> floa
 {
     if (NOT Get_IsAvailable()) { return 0.0f; }
     const auto& Current = _Entity.Get<ck::FFragment_Camera>();
-    const auto& Boom = Current.Get_PovState()._BoomArmRotation;
+    const auto& CameraPov = _Entity.Get<ck::FFragment_Camera_Pov>();
+    const auto& Boom = CameraPov.Get_PovState()._BoomArmRotation;
     if (InKey == TEXT("yaw-min")) return Current.Get_ComposedProfile().Get_OrientationControl().Get_Yaw().Get_Limits().Get_Min();
     if (InKey == TEXT("yaw-max")) return Current.Get_ComposedProfile().Get_OrientationControl().Get_Yaw().Get_Limits().Get_Max();
     if (InKey == TEXT("boom-roll")) return Boom.Roll;
     if (InKey == TEXT("boom-pitch")) return Boom.Pitch;
     if (InKey == TEXT("boom-yaw")) return Boom.Yaw;
-    const FVector Intention = Current.Get_OrientationIntention();
+    const FVector Intention = CameraPov.Get_OrientationIntention();
     if (InKey == TEXT("intention-x")) return Intention.X;
     if (InKey == TEXT("intention-y")) return Intention.Y;
     return Intention.Z;
@@ -1044,7 +1046,7 @@ auto SCkInspector_CameraAuthored::Commit_BoomRotation(const FRotator& InRotation
 auto SCkInspector_CameraAuthored::Commit_BoomComponent(const FString& InKey, const float InValue) -> void
 {
     if (NOT Get_IsAvailable()) { return; }
-    auto Rotation = _Entity.Get<ck::FFragment_Camera>().Get_PovState()._BoomArmRotation;
+    auto Rotation = _Entity.Get<ck::FFragment_Camera_Pov>().Get_PovState()._BoomArmRotation;
     if (InKey == TEXT("boom-roll")) Rotation.Roll = InValue;
     else if (InKey == TEXT("boom-pitch")) Rotation.Pitch = InValue;
     else Rotation.Yaw = InValue;
@@ -1080,7 +1082,7 @@ auto SCkInspector_CameraAuthored::Commit_OrientationIntention(const FVector& InV
 auto SCkInspector_CameraAuthored::Commit_OrientationComponent(const FString& InKey, const float InValue) -> void
 {
     if (NOT Get_IsAvailable()) { return; }
-    auto Intention = _Entity.Get<ck::FFragment_Camera>().Get_OrientationIntention();
+    auto Intention = _Entity.Get<ck::FFragment_Camera_Pov>().Get_OrientationIntention();
     if (InKey == TEXT("intention-x")) Intention.X = InValue;
     else if (InKey == TEXT("intention-y")) Intention.Y = InValue;
     else Intention.Z = InValue;

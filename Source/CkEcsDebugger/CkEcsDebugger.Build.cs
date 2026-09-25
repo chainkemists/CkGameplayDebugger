@@ -60,6 +60,7 @@ public class CkEcsDebugger : CkModuleRules
             "CkPathNetwork",
             "CkPhysics",
             "CkProjectile",
+            "CkProceduralAnimation",
             "CkRaySense",
             "CkRecord",
             "CkRelationship",

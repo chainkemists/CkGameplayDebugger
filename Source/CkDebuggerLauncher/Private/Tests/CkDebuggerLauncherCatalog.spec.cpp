@@ -56,6 +56,7 @@ bool FCkDebuggerLauncherCatalog_AllDebuggersHaveLaunchableDescriptors::RunTest(c
         TEXT("CkOptimizationDebugger"),
         TEXT("CkTextureDebugger"),
         TEXT("CkVisualLodDebugger"),
+        TEXT("CkProceduralAnimationDebugger"),
     };
 
     const auto Tools = FCkDebuggerToolRegistry::Get().Get_Tools();
@@ -173,7 +174,7 @@ bool FCkDebuggerLauncherCatalog_AllCatalogTabsCloseAndReopen::RunTest(const FStr
         DrainSlate();
     };
 
-    TestEqual(TEXT("Lifecycle census covers every registered standalone debugger tab"), Tools.Num(), 25);
+    TestEqual(TEXT("Lifecycle census covers every registered standalone debugger tab"), Tools.Num(), PLATFORM_WINDOWS ? 26 : 25);
     for (const auto& Tool : Tools)
     {
         const auto TabId = Tool.Get_TabId();
@@ -330,6 +331,7 @@ bool FCkDebuggerLauncherPackaging_DevToolDescriptorsIncludeDevelopmentCookedWin6
     TestExpectedModule(TEXT("CkDebugger"), TEXT("CkOptimizationDebugger"));
     TestExpectedModule(TEXT("CkDebugger"), TEXT("CkTextureDebugger"));
     TestExpectedModule(TEXT("CkDebugger"), TEXT("CkVisualLodDebugger"));
+    TestExpectedModule(TEXT("CkDebugger"), TEXT("CkProceduralAnimationDebugger"));
     TestExpectedModule(TEXT("CkDebugger"), TEXT("CkInsightsDebugger"));
     TestExpectedModule(TEXT("CkDebugger"), TEXT("CkHangMonitor"));
     TestExpectedModule(TEXT("CkDebugger"), TEXT("CkDebuggerLauncher"));

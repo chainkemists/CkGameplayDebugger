@@ -204,7 +204,7 @@ auto FCkMapDebuggerAuthoredRelease::RunTest(const FString&) -> bool
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
     FCkMapDebuggerAuthoredModuleLifecycle,
     "Ck.MapDebugger.Authored.ModuleOpenCloseOpenPreExit",
-    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter | EAutomationTestFlags::NonNullRHI)
 
 auto FCkMapDebuggerAuthoredModuleLifecycle::RunTest(const FString&) -> bool
 {
@@ -282,7 +282,7 @@ auto FCkMapDebuggerAuthoredModuleLifecycle::RunTest(const FString&) -> bool
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
     FCkMapDebuggerAuthoredStartupRepairAndRow,
     "Ck.MapDebugger.Authored.StartupRepairAndLazyRow",
-    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter | EAutomationTestFlags::NonNullRHI)
 
 auto FCkMapDebuggerAuthoredStartupRepairAndRow::RunTest(const FString&) -> bool
 {

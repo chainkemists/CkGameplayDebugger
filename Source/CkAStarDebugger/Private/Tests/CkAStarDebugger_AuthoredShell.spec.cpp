@@ -154,7 +154,7 @@ namespace ck_astar_debugger_authored_shell_tests
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
     FCkAStarDebugger_AuthoredShell,
     "Ck.AStarDebugger.AuthoredShell",
-    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter | EAutomationTestFlags::NonNullRHI)
 
 auto FCkAStarDebugger_AuthoredShell::RunTest(const FString&) -> bool
 {

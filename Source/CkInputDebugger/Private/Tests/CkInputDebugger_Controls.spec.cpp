@@ -157,7 +157,7 @@ namespace ck_input_debugger_controls_tests
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCkInputDebugger_Controls,
     "Ck.UiAuthoring.DebuggerMigration.InputControls",
-    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter | EAutomationTestFlags::NonNullRHI)
 
 auto FCkInputDebugger_Controls::RunTest(const FString&) -> bool
 {

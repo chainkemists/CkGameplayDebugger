@@ -48,7 +48,7 @@ bool FCkDebuggerTabUtils_ReleaseDetachesModuleContent::RunTest(const FString& Pa
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
     FCkDebuggerTabUtils_TerminalReleaseRemovesParentedTab,
     "Ck.DebuggerCommon.TabUtils.TerminalReleaseRemovesParentedTab",
-    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter | EAutomationTestFlags::NonNullRHI)
 
 bool FCkDebuggerTabUtils_TerminalReleaseRemovesParentedTab::RunTest(const FString& Parameters)
 {

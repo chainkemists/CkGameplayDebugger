@@ -131,7 +131,7 @@ namespace ck_ui_debugger_history_authored_tests
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCkUIDebugger_HistoryAuthored,
     "Ck.UiAuthoring.UIDebugger.History",
-    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter | EAutomationTestFlags::NonNullRHI)
 
 auto FCkUIDebugger_HistoryAuthored::RunTest(const FString&) -> bool
 {

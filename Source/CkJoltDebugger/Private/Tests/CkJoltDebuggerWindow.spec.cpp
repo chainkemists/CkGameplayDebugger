@@ -24,7 +24,7 @@ auto CountWidgetType(const TSharedRef<SWidget>& InWidget, const FString& InType)
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
     FCkJoltDebuggerWindow_ConstructsWithoutSlotAttributeEnsure,
     "Ck.JoltDebugger.Window.ConstructsWithoutSlotAttributeEnsure",
-    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter | EAutomationTestFlags::NonNullRHI)
 
 auto FCkJoltDebuggerWindow_ConstructsWithoutSlotAttributeEnsure::RunTest(const FString&) -> bool
 {

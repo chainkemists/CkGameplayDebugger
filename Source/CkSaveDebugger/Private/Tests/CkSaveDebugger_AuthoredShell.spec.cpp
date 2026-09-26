@@ -81,7 +81,7 @@ struct FCkSaveDebuggerAuthoredShellTestAccess
 };
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCkSaveDebuggerAuthoredShell,
-    "Ck.UiAuthoring.SaveDebugger.AuthoredShell", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+    "Ck.UiAuthoring.SaveDebugger.AuthoredShell", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter | EAutomationTestFlags::NonNullRHI)
 
 bool FCkSaveDebuggerAuthoredShell::RunTest(const FString&)
 {

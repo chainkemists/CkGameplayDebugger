@@ -138,7 +138,7 @@ auto FCkStyleLab_ProfilesAuthored::RunTest(const FString&) -> bool
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCkStyleLab_ProfilesGeometry,
     "Ck.UiAuthoring.StyleLab.ProfileGeometry",
-    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter | EAutomationTestFlags::NonNullRHI)
 
 auto FCkStyleLab_ProfilesGeometry::RunTest(const FString&) -> bool
 {

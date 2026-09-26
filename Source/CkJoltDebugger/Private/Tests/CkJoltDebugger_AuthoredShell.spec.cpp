@@ -148,7 +148,7 @@ auto FCkJoltDebuggerAuthoredShellPortsAndReload::RunTest(const FString&) -> bool
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCkJoltDebuggerAuthoredShellLifecycle,
-    "Ck.JoltDebugger.Authored.CloseReopenPreExit", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+    "Ck.JoltDebugger.Authored.CloseReopenPreExit", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter | EAutomationTestFlags::NonNullRHI)
 
 auto FCkJoltDebuggerAuthoredShellLifecycle::RunTest(const FString&) -> bool
 {

@@ -51,7 +51,7 @@ namespace ck_audio_debugger_radar_visual_test
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
     FCkAudioDebugger_RadarVisual,
     "Ck.AudioDebugger.Radar.Visual",
-    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter | EAutomationTestFlags::NonNullRHI)
 
 auto FCkAudioDebugger_RadarVisual::RunTest(const FString&) -> bool
 {

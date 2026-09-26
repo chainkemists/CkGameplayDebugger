@@ -116,7 +116,7 @@ namespace ck_debug_event_log_tests
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCkDebugEventLog_AuthoredPresentation,
     "Ck.UiAuthoring.Debugger.EventLog.AuthoredPresentation",
-    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter | EAutomationTestFlags::NonNullRHI)
 
 auto FCkDebugEventLog_AuthoredPresentation::RunTest(const FString&) -> bool
 {

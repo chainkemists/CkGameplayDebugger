@@ -355,7 +355,7 @@ namespace ck_texture_debugger_layout_capture_tests
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
     FCkTextureDebugger_LayoutCapture_Surface,
     "Ck.TextureDebugger.LayoutCapture.Surface",
-    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter | EAutomationTestFlags::NonNullRHI)
 
 auto FCkTextureDebugger_LayoutCapture_Surface::RunTest(const FString&) -> bool
 {
@@ -443,7 +443,7 @@ auto FCkTextureDebugger_LayoutCapture_Surface::RunTest(const FString&) -> bool
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCkTextureDebugger_LayoutCapture_SceneAudit,
     "Ck.TextureDebugger.LayoutCapture.SceneAudit",
-    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter | EAutomationTestFlags::NonNullRHI)
 
 auto FCkTextureDebugger_LayoutCapture_SceneAudit::RunTest(const FString&) -> bool
 {
@@ -486,7 +486,7 @@ auto FCkTextureDebugger_LayoutCapture_SceneAudit::RunTest(const FString&) -> boo
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCkTextureDebugger_LayoutCapture_UvDensity,
     "Ck.TextureDebugger.LayoutCapture.UvDensity",
-    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter | EAutomationTestFlags::NonNullRHI)
 
 auto FCkTextureDebugger_LayoutCapture_UvDensity::RunTest(const FString&) -> bool
 {
@@ -511,7 +511,7 @@ auto FCkTextureDebugger_LayoutCapture_UvDensity::RunTest(const FString&) -> bool
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCkTextureDebugger_LayoutCapture_MaterialInputs,
     "Ck.TextureDebugger.LayoutCapture.MaterialInputs",
-    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter | EAutomationTestFlags::NonNullRHI)
 
 auto FCkTextureDebugger_LayoutCapture_MaterialInputs::RunTest(const FString&) -> bool
 {
@@ -568,7 +568,7 @@ auto FCkTextureDebugger_LayoutCapture_MaterialInputs::RunTest(const FString&) ->
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCkTextureDebugger_LayoutCapture_SurfaceLighting,
     "Ck.TextureDebugger.LayoutCapture.SurfaceLighting",
-    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter | EAutomationTestFlags::NonNullRHI)
 
 auto FCkTextureDebugger_LayoutCapture_SurfaceLighting::RunTest(const FString&) -> bool
 {

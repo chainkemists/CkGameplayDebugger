@@ -105,7 +105,7 @@ namespace ck_inspector_interaction_resolver_authored_test
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCkInspectorInteractionResolverAuthored,
     "Ck.UiAuthoring.EcsDebugger.InteractionResolverInspector.AuthoredComposition",
-    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter | EAutomationTestFlags::NonNullRHI)
 
 auto FCkInspectorInteractionResolverAuthored::RunTest(const FString&) -> bool
 {

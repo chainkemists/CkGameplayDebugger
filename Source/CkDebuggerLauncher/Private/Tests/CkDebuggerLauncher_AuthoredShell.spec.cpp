@@ -150,7 +150,7 @@ auto FCkDebuggerLauncherAuthoredShell::RunTest(const FString&) -> bool
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCkDebuggerLauncherAuthoredModuleLifecycle, "Ck.DebuggerLauncher.Authored.ModuleCloseReopenPreExit",
-    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter | EAutomationTestFlags::NonNullRHI)
 
 auto FCkDebuggerLauncherAuthoredModuleLifecycle::RunTest(const FString&) -> bool
 {
@@ -347,7 +347,7 @@ auto FCkDebuggerSuiteAuthoredShell::RunTest(const FString&) -> bool
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCkDebuggerSuiteAuthoredModuleLifecycle, "Ck.DebuggerLauncher.Authored.SuiteCloseReopenPreExit",
-    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter | EAutomationTestFlags::NonNullRHI)
 
 auto FCkDebuggerSuiteAuthoredModuleLifecycle::RunTest(const FString&) -> bool
 {

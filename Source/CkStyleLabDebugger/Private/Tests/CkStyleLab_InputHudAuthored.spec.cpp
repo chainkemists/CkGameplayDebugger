@@ -269,7 +269,7 @@ namespace ck_style_lab_input_hud_authored_tests
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCkStyleLab_InputHudAuthored,
     "Ck.UiAuthoring.StyleLab.InputHudAuthored",
-    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter | EAutomationTestFlags::NonNullRHI)
 
 auto FCkStyleLab_InputHudAuthored::RunTest(const FString&) -> bool
 {

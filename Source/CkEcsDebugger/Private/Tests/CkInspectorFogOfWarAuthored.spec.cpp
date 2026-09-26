@@ -121,7 +121,7 @@ namespace ck_inspector_fog_of_war_authored_test
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCkInspectorFogOfWarAuthored,
     "Ck.UiAuthoring.EcsDebugger.FogOfWarInspector.AuthoredComposition",
-    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter | EAutomationTestFlags::NonNullRHI)
 
 auto FCkInspectorFogOfWarAuthored::RunTest(const FString&) -> bool
 {

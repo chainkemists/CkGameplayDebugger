@@ -193,7 +193,7 @@ namespace ck_inspector_physics_authored_test
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCkInspectorPhysicsAuthored,
     "Ck.UiAuthoring.EcsDebugger.PhysicsInspector.AuthoredComposition",
-    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter | EAutomationTestFlags::NonNullRHI)
 
 auto FCkInspectorPhysicsAuthored::RunTest(const FString&) -> bool
 {

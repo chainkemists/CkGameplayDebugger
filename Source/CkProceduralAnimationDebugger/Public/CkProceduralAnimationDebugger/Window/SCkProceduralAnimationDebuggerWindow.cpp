@@ -641,6 +641,8 @@ auto
     // A band only joins adjacent simulation frames. A gated capture must not invent
     // a continuous plant or swing across frames it did not observe.
     const auto JoinsPrevious = Previous != nullptr && Previous->Get_Sample().Get_Sequence() + 1 == Sequence;
+    const auto SampleSeconds = Sample->Get_Sample().Get_Time().Get_Seconds();
+    const auto SelectionId = ck_procedural_debug_window::Get_SequenceSelectionId(Sequence);
 
     auto TrustedCount = 0;
     for (auto LegIndex = 0; LegIndex < Sample->Get_Legs().Num(); ++LegIndex)
@@ -654,12 +656,28 @@ auto
 
         auto Event = FCkDebug_TimelineEvent{};
         Event.LaneIndex = LegIndex;
-        Event.TimeSeconds = Sample->Get_Sample().Get_Time().Get_Seconds();
+        Event.TimeSeconds = SampleSeconds;
         Event.Shape = ECkDebug_TimelineMarker::Diamond;
         Event.Color = Color;
         Event.Tooltip = ck::Format_UE(TEXT("{} · sample {} · {}"), Leg.Get_Id(), Sequence, ck_procedural_debug_window::Get_LegState(Leg));
-        Event.SelectionId = ck_procedural_debug_window::Get_SequenceSelectionId(Sequence);
+        Event.SelectionId = SelectionId;
         _TimelineCache.Events.Add(MoveTemp(Event));
+
+        // Samples are gated, so a plant or lift is only known to have happened somewhere between two observations.
+        const auto* PreviousLeg = Previous != nullptr && Previous->Get_Legs().IsValidIndex(LegIndex) ? &Previous->Get_Legs()[LegIndex] : nullptr;
+        if (PreviousLeg != nullptr && PreviousLeg->Get_Id() == Leg.Get_Id()
+            && PreviousLeg->Get_Foot().Get_Planted() != Leg.Get_Foot().Get_Planted())
+        {
+            auto Footfall = FCkDebug_TimelineEvent{};
+            Footfall.LaneIndex = LegIndex;
+            Footfall.TimeSeconds = SampleSeconds;
+            Footfall.Shape = ECkDebug_TimelineMarker::Square;
+            Footfall.Color = Leg.Get_Foot().Get_Planted() ? CkStyle::Ok() : CkStyle::Info();
+            Footfall.Tooltip = ck::Format_UE(TEXT("{} {} between samples {} and {}"), Leg.Get_Id(),
+                Leg.Get_Foot().Get_Planted() ? TEXT("planted") : TEXT("lifted"), Previous->Get_Sample().Get_Sequence(), Sequence);
+            Footfall.SelectionId = SelectionId;
+            _TimelineCache.Events.Add(MoveTemp(Footfall));
+        }
 
         if (JoinsPrevious)
         {
@@ -766,7 +784,13 @@ auto
         Status != nullptr && Status->Get_Status().Get_GaitStatus() == ECk_ProceduralAnimation_Status::Failed ? TEXT(" · GAIT FAILED")
             : Sample->Get_Freshness().Get_RigPosePending() || NOT Sample->Get_Freshness().Get_RigMatchesGaitSequence() ? TEXT(" · rig pose not synchronized")
             : TEXT(""));
-    return FText::FromString(Detail);
+
+    const auto& BodyPose = Sample->Get_BodyPose();
+    const auto BodyPoseLine = BodyPose.Get_Composed()
+        ? ck::Format_UE(TEXT("Body pose: {}, drop {:.1f} cm, tilt {:.1f} deg"), BodyPose.Get_Status(), -BodyPose.Get_Offset().GetLocation().Z,
+            FMath::RadiansToDegrees(BodyPose.Get_Offset().GetRotation().AngularDistance(FQuat::Identity)))
+        : FString{TEXT("Body pose: none")};
+    return FText::FromString(ck::Format_UE(TEXT("{}\n{}"), Detail, BodyPoseLine));
 }
 
 // --------------------------------------------------------------------------------------------------------------------

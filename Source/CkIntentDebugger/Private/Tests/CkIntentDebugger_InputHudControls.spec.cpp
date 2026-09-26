@@ -212,7 +212,7 @@ auto FCkIntentDebugger_InputHudControlsConstruction::RunTest(const FString&) -> 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
     FCkIntentDebugger_InputHudControlsAuthored,
     "Ck.UiAuthoring.IntentDebugger.InputHudControls",
-    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter | EAutomationTestFlags::NonNullRHI)
 
 auto FCkIntentDebugger_InputHudControlsAuthored::RunTest(const FString&) -> bool
 {

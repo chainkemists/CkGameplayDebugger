@@ -346,7 +346,7 @@ auto FCkTextureDebugger_SceneAudit_Authored::RunTest(const FString&) -> bool
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCkTextureDebugger_SceneAudit_ContextCommands,
                                  "Ck.TextureDebugger.SceneAudit.ContextCommands",
-                                 EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+                                 EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter | EAutomationTestFlags::NonNullRHI)
 
 auto FCkTextureDebugger_SceneAudit_ContextCommands::RunTest(const FString&) -> bool
 {

@@ -113,7 +113,7 @@ namespace ck_debug_ui_registry_tests
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCkDebug_UiRegistry_Runtime,
     "Ck.UiAuthoring.Debugger.CommonWidgets",
-    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter | EAutomationTestFlags::NonNullRHI)
 
 auto FCkDebug_UiRegistry_Runtime::RunTest(const FString&) -> bool
 {
@@ -354,7 +354,7 @@ auto FCkDebug_WindowChrome_AuthoredFrame::RunTest(const FString&) -> bool
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCkDebug_UiRegistry_Inspector,
     "Ck.UiAuthoring.Debugger.InspectorContainer",
-    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter | EAutomationTestFlags::NonNullRHI)
 
 auto FCkDebug_UiRegistry_Inspector::RunTest(const FString&) -> bool
 {
@@ -441,7 +441,7 @@ auto FCkDebug_UiRegistry_Inspector::RunTest(const FString&) -> bool
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCkDebug_UiRegistry_DebugSwitch,
     "Ck.UiAuthoring.Debugger.DebugSwitch",
-    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter | EAutomationTestFlags::NonNullRHI)
 
 auto FCkDebug_UiRegistry_DebugSwitch::RunTest(const FString&) -> bool
 {
@@ -664,7 +664,7 @@ auto FCkDebug_UiRegistry_EntityRef::RunTest(const FString&) -> bool
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCkDebug_UiRegistry_Tabs,
     "Ck.DebuggerCommon.UnderlineTabs.Authored",
-    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter | EAutomationTestFlags::NonNullRHI)
 
 auto FCkDebug_UiRegistry_Tabs::RunTest(const FString&) -> bool
 {

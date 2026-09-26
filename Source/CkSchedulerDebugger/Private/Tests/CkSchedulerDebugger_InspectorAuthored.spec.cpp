@@ -83,7 +83,7 @@ namespace ck_scheduler_debugger_inspector_authored_test
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCkSchedulerDebugger_InspectorAuthored,
     "Ck.UiAuthoring.SchedulerDebugger.Inspector.AuthoredComposition",
-    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter | EAutomationTestFlags::NonNullRHI)
 
 auto FCkSchedulerDebugger_InspectorAuthored::RunTest(const FString&) -> bool
 {

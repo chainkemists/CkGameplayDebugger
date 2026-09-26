@@ -120,7 +120,7 @@ namespace ck_ecs_debugger_window_shell_authored_tests
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
     FCkEcsDebugger_WindowShellAuthored,
     "Ck.EcsDebugger.AuthoredWindow",
-    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter | EAutomationTestFlags::NonNullRHI)
 
 auto FCkEcsDebugger_WindowShellAuthored::RunTest(const FString&) -> bool
 {

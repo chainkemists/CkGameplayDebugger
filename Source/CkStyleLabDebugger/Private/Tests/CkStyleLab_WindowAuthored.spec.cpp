@@ -136,7 +136,7 @@ namespace ck_style_lab_window_authored_tests
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCkStyleLab_WindowAuthored,
     "Ck.UiAuthoring.StyleLab.Window",
-    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter | EAutomationTestFlags::NonNullRHI)
 
 auto FCkStyleLab_WindowAuthored::RunTest(const FString&) -> bool
 {

@@ -195,7 +195,7 @@ namespace ck_input_hud_spec
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCkInputHud_AuthoredRoot_Test,
     "Ck.InputHud.Authored.Root",
-    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter | EAutomationTestFlags::NonNullRHI)
 
 bool FCkInputHud_AuthoredRoot_Test::RunTest(const FString&)
 {

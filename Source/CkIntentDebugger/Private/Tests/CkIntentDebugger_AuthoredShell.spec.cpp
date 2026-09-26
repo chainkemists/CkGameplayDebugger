@@ -108,7 +108,7 @@ namespace ck_intent_debugger_authored_shell_test
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
     FCkIntentDebuggerAuthoredShell,
     "Ck.UiAuthoring.IntentDebugger.AuthoredShell",
-    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter | EAutomationTestFlags::NonNullRHI)
 
 auto FCkIntentDebuggerAuthoredShell::RunTest(const FString&) -> bool
 {

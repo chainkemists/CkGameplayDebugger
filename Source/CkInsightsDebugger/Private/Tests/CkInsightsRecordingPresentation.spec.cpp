@@ -340,7 +340,7 @@ using ck_insights_recording_presentation_tests::FCk_Latent_RecordingPresentation
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
     FCkInsightsRecordingPresentation,
     "Ck.InsightsDebugger.Capture.RecordingPresentation",
-    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter | EAutomationTestFlags::NonNullRHI)
 
 auto FCkInsightsRecordingPresentation::RunTest(const FString&) -> bool
 {

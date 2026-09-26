@@ -350,7 +350,7 @@ namespace ck_audio_debugger_authored_shell_tests
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
     FCkAudioDebugger_AuthoredShell,
     "Ck.AudioDebugger.AuthoredShell",
-    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter | EAutomationTestFlags::NonNullRHI)
 
 auto FCkAudioDebugger_AuthoredShell::RunTest(const FString&) -> bool
 {

@@ -85,7 +85,7 @@ namespace ck_audio_debugger_lifecycle_test
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
     FCkAudioDebugger_ProductionLifecycle,
     "Ck.AudioDebugger.ProductionLifecycle.Release",
-    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter | EAutomationTestFlags::NonNullRHI)
 
 auto FCkAudioDebugger_ProductionLifecycle::RunTest(const FString&) -> bool
 {

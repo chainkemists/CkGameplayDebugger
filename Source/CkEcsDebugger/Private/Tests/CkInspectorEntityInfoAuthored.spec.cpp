@@ -86,7 +86,7 @@ namespace ck_inspector_entity_info_authored_test
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCkInspectorEntityInfoAuthored,
     "Ck.UiAuthoring.EcsDebugger.EntityInfoInspector.AuthoredComposition",
-    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter | EAutomationTestFlags::NonNullRHI)
 
 auto FCkInspectorEntityInfoAuthored::RunTest(const FString&) -> bool
 {

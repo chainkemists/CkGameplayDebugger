@@ -150,7 +150,7 @@ namespace ck_inspector_iskm_proxy_authored_test
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCkInspectorIskmProxyAuthored,
     "Ck.UiAuthoring.EcsDebugger.IskmProxyInspector.AuthoredComposition",
-    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter | EAutomationTestFlags::NonNullRHI)
 
 auto FCkInspectorIskmProxyAuthored::RunTest(const FString&) -> bool
 {

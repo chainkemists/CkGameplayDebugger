@@ -257,7 +257,7 @@ bool FCkTextureDebugger_Ux_StableTables::RunTest(const FString& Parameters)
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
     FCkTextureDebugger_Ux_NativeTableEvents,
     "Ck.TextureDebugger.Ux.NativeTableEvents",
-    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter | EAutomationTestFlags::NonNullRHI)
 
 bool FCkTextureDebugger_Ux_NativeTableEvents::RunTest(const FString& Parameters)
 {
@@ -458,7 +458,7 @@ bool FCkTextureDebugger_Ux_NativeTableEvents::RunTest(const FString& Parameters)
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
     FCkTextureDebugger_Ux_TextureHealthContextMenuTarget,
     "Ck.TextureDebugger.Ux.TextureHealthContextMenuTarget",
-    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter | EAutomationTestFlags::NonNullRHI)
 
 bool FCkTextureDebugger_Ux_TextureHealthContextMenuTarget::RunTest(const FString& Parameters)
 {
@@ -552,7 +552,7 @@ bool FCkTextureDebugger_Ux_TextureHealthContextMenuTarget::RunTest(const FString
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCkTextureDebugger_Ux_PreviewLifetime,
     "Ck.TextureDebugger.Ux.PreviewLifetime",
-    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter | EAutomationTestFlags::NonNullRHI)
 
 auto FCkTextureDebugger_Ux_PreviewLifetime::RunTest(const FString&) -> bool
 {

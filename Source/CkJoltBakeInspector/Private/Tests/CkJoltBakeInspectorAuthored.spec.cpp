@@ -308,7 +308,7 @@ namespace ck_jolt_bake_inspector_authored_tests
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
     FCkJoltBakeInspector_AuthoredPresentation,
     "Ck.Jolt.Cook.Inspector.Authored.Presentation",
-    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter | EAutomationTestFlags::NonNullRHI)
 
 auto FCkJoltBakeInspector_AuthoredPresentation::RunTest(const FString&) -> bool
 {
@@ -598,7 +598,7 @@ auto FCkJoltBakeInspector_AuthoredPresentation::RunTest(const FString&) -> bool
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
     FCkJoltBakeInspector_AuthoredModuleLifecycle,
     "Ck.Jolt.Cook.Inspector.Authored.ModuleLifecycle",
-    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter | EAutomationTestFlags::NonNullRHI)
 
 auto FCkJoltBakeInspector_AuthoredModuleLifecycle::RunTest(const FString&) -> bool
 {

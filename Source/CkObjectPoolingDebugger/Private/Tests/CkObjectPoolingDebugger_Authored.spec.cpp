@@ -138,7 +138,7 @@ namespace ck_object_pooling_debugger_authored_tests
     }
 } // namespace ck_object_pooling_debugger_authored_tests
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCkObjectPoolingDebugger_AuthoredWindow, "Ck.UiAuthoring.ObjectPoolingDebugger.Authored.Window",
-                                 EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+                                 EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter | EAutomationTestFlags::NonNullRHI)
 auto FCkObjectPoolingDebugger_AuthoredWindow::RunTest(const FString&) -> bool
 {
     using namespace ck_object_pooling_debugger_authored_tests;

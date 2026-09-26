@@ -102,7 +102,7 @@ namespace ck_texture_debugger_window_authored_tests
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCkTextureDebugger_AuthoredWindow,
     "Ck.TextureDebugger.AuthoredWindow",
-    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter | EAutomationTestFlags::NonNullRHI)
 
 auto FCkTextureDebugger_AuthoredWindow::RunTest(const FString&) -> bool
 {

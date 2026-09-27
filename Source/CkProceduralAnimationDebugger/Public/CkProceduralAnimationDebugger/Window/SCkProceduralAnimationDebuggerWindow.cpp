@@ -132,6 +132,19 @@ namespace ck_procedural_debug_window
         return ck::Format_UE(TEXT("Height: {} · feet plane {}"), RidesFeet ? TEXT("planted feet") : TEXT("rays"),
             Get_FeetPlaneName(InSample.Get_Gait().Get_FeetPlane()));
     }
+
+    auto
+        Get_WallState(
+            const FCk_ProceduralAnimation_DebugSnapshot& InSample)
+        -> FString
+    {
+        const auto& Motion = InSample.Get_Motion();
+        const auto Slides = Motion.Get_WallPolicy() == ECk_SurfaceMotion_WallPolicy::Slide;
+        const auto Step = Motion.Get_MaxStepHeight() > 0.0f ? ck::Format_UE(TEXT("step {:.0f} cm"), Motion.Get_MaxStepHeight()) : FString{TEXT("no step")};
+        const auto Obstructed = Motion.Get_Obstruction() == ECk_SurfaceMotion_Obstruction::Wall;
+        return ck::Format_UE(TEXT("Walls: {} · {} · obstruction {}"), Slides ? TEXT("slide") : TEXT("climb"), Step,
+            Obstructed ? TEXT("wall") : TEXT("none"));
+    }
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -852,7 +865,8 @@ auto
         ? ck::Format_UE(TEXT("Body pose: {}, drop {:.1f} cm, tilt {:.1f} deg"), BodyPose.Get_Status(), -BodyPose.Get_Offset().GetLocation().Z,
             FMath::RadiansToDegrees(BodyPose.Get_Offset().GetRotation().AngularDistance(FQuat::Identity)))
         : FString{TEXT("Body pose: none")};
-    return FText::FromString(ck::Format_UE(TEXT("{}\n{}\n{}"), Detail, BodyPoseLine, ck_procedural_debug_window::Get_HeightState(*Sample)));
+    return FText::FromString(ck::Format_UE(TEXT("{}\n{}\n{}\n{}"), Detail, BodyPoseLine, ck_procedural_debug_window::Get_HeightState(*Sample),
+        ck_procedural_debug_window::Get_WallState(*Sample)));
 }
 
 // --------------------------------------------------------------------------------------------------------------------

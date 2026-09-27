@@ -29,6 +29,7 @@ namespace ck_procedural_debug_preview
     constexpr auto ChosenRingRadius = 10.0;
     constexpr auto ChosenRingSegments = 16;
     constexpr auto PendingContactLength = 80.0;
+    constexpr auto ObstructionLength = 60.0;
     constexpr auto FeetPlaneHalfSize = 30.0;
 
     // The plane the gait fitted through the supporting feet, as a square outline around its point: Ok while fitted, Warn
@@ -231,6 +232,11 @@ auto
     {
         Lines.Add({FVector::ZeroVector, InSample.Get_Motion().Get_CandidateNormal() * ck_procedural_debug_preview::PendingContactLength,
             CkStyle::Warn(), 2.0f});
+    }
+    if (InSample.Get_Motion().Get_Obstruction() == ECk_SurfaceMotion_Obstruction::Wall)
+    {
+        Lines.Add({FVector::ZeroVector, InSample.Get_Motion().Get_ObstructionNormal() * ck_procedural_debug_preview::ObstructionLength,
+            CkStyle::Err(), 2.0f});
     }
     for (auto Index = 0; Index < InSample.Get_Legs().Num(); ++Index)
     {

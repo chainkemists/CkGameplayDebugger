@@ -26,7 +26,7 @@ Two buttons above the leg list act on the selected leg of the live selection: **
 
 The shared `SCkDebug_3dPreviewViewport` owns the preview world; `FCk_DebugScene_Target` owns retained geometry. Cached Common primitive meshes represent a diagnostic body/segments/feet, not replicas of authored gameplay meshes. Root-relative presentation avoids large world coordinates while preserving recorded orientations and relative poses. Actual rig segments are drawn from each recorded segment transform, one box per segment plus the foot part, only when the snapshot says rig and gait sequences agree and no transform application is pending; otherwise the preview shows the solver foot/hip line explicitly. Disabled legs are drawn muted.
 
-Goal cubes, the final actual probe ray, hit normals and foot-to-target lines are observations copied from runtime. The debugger never reruns traces. The runtime snapshot currently exposes the final probe attempt and its count, not every retry; UI must not imply otherwise.
+Goal cubes, the final actual probe ray, hit normals and foot-to-target lines are observations copied from runtime, and so are the selected leg's foothold candidates (crosses tinted by verdict: usable Ok, miss muted, unreachable Warn, too steep Info, occluded Err; a ring around the chosen one and a line from the hip to it), every swinging leg's landing-ground probe and the surface motion's pending contact normal. The debugger never reruns traces. The runtime snapshot currently exposes the final probe attempt and its count, not every retry; UI must not imply otherwise.
 
 ## Shared surfaces and verification
 

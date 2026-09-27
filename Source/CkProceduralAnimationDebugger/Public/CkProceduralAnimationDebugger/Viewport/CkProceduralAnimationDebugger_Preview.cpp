@@ -29,6 +29,31 @@ namespace ck_procedural_debug_preview
     constexpr auto ChosenRingRadius = 10.0;
     constexpr auto ChosenRingSegments = 16;
     constexpr auto PendingContactLength = 80.0;
+    constexpr auto FeetPlaneHalfSize = 30.0;
+
+    // The plane the gait fitted through the supporting feet, as a square outline around its point: Ok while fitted, Warn
+    // while held.
+    auto
+        Add_FeetPlaneLines(
+            const FCk_ProceduralAnimation_DebugGait& InGait,
+            const FVector& InOrigin,
+            TArray<FCk_DebugScene_Line>& OutLines)
+        -> void
+    {
+        if (InGait.Get_FeetPlane() == ck::EProceduralGaitFeetPlane::None)
+        { return; }
+
+        const auto Color = InGait.Get_FeetPlane() == ck::EProceduralGaitFeetPlane::Fitted ? CkStyle::Ok() : CkStyle::Warn();
+        const auto Centre = InGait.Get_FeetPlanePoint() - InOrigin;
+        auto Tangent = FVector::ZeroVector;
+        auto Bitangent = FVector::ZeroVector;
+        InGait.Get_FeetPlaneNormal().GetSafeNormal(KINDA_SMALL_NUMBER, FVector::UpVector).FindBestAxisVectors(Tangent, Bitangent);
+        const auto Corners = TArray<FVector, TInlineAllocator<4>>{
+            Centre + (Tangent + Bitangent) * FeetPlaneHalfSize, Centre + (Tangent - Bitangent) * FeetPlaneHalfSize,
+            Centre - (Tangent + Bitangent) * FeetPlaneHalfSize, Centre - (Tangent - Bitangent) * FeetPlaneHalfSize};
+        for (auto Corner = 0; Corner < Corners.Num(); ++Corner)
+        { OutLines.Add({Corners[Corner], Corners[(Corner + 1) % Corners.Num()], Color, 2.0f}); }
+    }
 
     auto
         Get_VerdictColor(
@@ -201,6 +226,7 @@ auto
     }
 
     Lines.Add({FVector::ZeroVector, InSample.Get_Gait().Get_SupportNormal() * 100.0, CkStyle::Accent(), 3.0f});
+    ck_procedural_debug_preview::Add_FeetPlaneLines(InSample.Get_Gait(), Origin, Lines);
     if (InSample.Get_Motion().Get_CandidateSeen() > FCk_Time{})
     {
         Lines.Add({FVector::ZeroVector, InSample.Get_Motion().Get_CandidateNormal() * ck_procedural_debug_preview::PendingContactLength,
@@ -253,11 +279,13 @@ auto
         const auto& LandingProbe = Leg.Get_LandingProbe();
         if (LandingProbe.Get_AttemptCount() > 0)
         {
-            Lines.Add({LandingProbe.Get_Start() - Origin, LandingProbe.Get_End() - Origin, CkStyle::Info(), 1.0f});
+            // A probe that found no ground under the landing point sends the swing back onto its validated target.
+            const auto LandingColor = Leg.Get_LandingGround() == ck::EProceduralGaitLandingGround::None ? CkStyle::Warn() : CkStyle::Info();
+            Lines.Add({LandingProbe.Get_Start() - Origin, LandingProbe.Get_End() - Origin, LandingColor, 1.0f});
             if (LandingProbe.Get_Hit())
             {
                 const auto Hit = LandingProbe.Get_HitPosition() - Origin;
-                Lines.Add({Hit, Hit + LandingProbe.Get_HitNormal() * 25.0, CkStyle::Info(), 2.0f});
+                Lines.Add({Hit, Hit + LandingProbe.Get_HitNormal() * 25.0, LandingColor, 2.0f});
             }
         }
         Lines.Add({Foot, Leg.Get_Targeting().Get_IdealTarget() - Origin, Color, 1.0f});

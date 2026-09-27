@@ -71,6 +71,33 @@ namespace ck_procedural_debug_window
     {
         return static_cast<int32>(FMath::Min<uint64>(InSequence, static_cast<uint64>(MAX_int32)));
     }
+
+    auto
+        Get_FootholdSourceName(
+            ck::EProceduralFootholdSource InSource)
+        -> const TCHAR*
+    {
+        switch (InSource)
+        {
+            case ck::EProceduralFootholdSource::None: return TEXT("none");
+            case ck::EProceduralFootholdSource::Ideal: return TEXT("ideal");
+            case ck::EProceduralFootholdSource::Held: return TEXT("held");
+            case ck::EProceduralFootholdSource::Front: return TEXT("front");
+            case ck::EProceduralFootholdSource::Inward: return TEXT("inward");
+            case ck::EProceduralFootholdSource::Outward: return TEXT("outward");
+            case ck::EProceduralFootholdSource::Ring: return TEXT("ring");
+        }
+        return TEXT("none");
+    }
+
+    auto
+        Get_FootholdState(
+            const FCk_ProceduralAnimation_DebugLeg& InLeg)
+        -> FString
+    {
+        return ck::Format_UE(TEXT("Foothold {} · {} candidates{}"), Get_FootholdSourceName(InLeg.Get_FootholdSource()),
+            InLeg.Get_Footholds().Num(), InLeg.Get_PlantOccluded() ? TEXT(" · plant occluded") : TEXT(""));
+    }
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -174,7 +201,7 @@ auto
 
     _Viewport = SNew(SCkDebug_3dPreviewViewport).Descriptor(FCkDebug3dPreviewDescriptor{}).Adapter(_Preview)
         .SafeAreaOverlay(SNew(SCkDebug_SelectableLabel)
-            .Text(FText::FromString(TEXT("Recorded diagnostic rig · goal cubes · actual probe rays / normals"))));
+            .Text(FText::FromString(TEXT("Recorded diagnostic rig · goal cubes · actual probe rays / normals · selected leg's foothold candidates"))));
     _Preview->Initialize(_Viewport->Get_PreviewWorld());
     _PreviewSelectedHandle = _Preview->Get_OnLegSelected().AddRaw(this, &SCkProceduralAnimationDebuggerWindow::DoSelect_Leg);
     _TimelineHost = SNew(SBox).MinDesiredHeight(120.0f);
@@ -504,10 +531,11 @@ auto
         Item.Tone = NOT Leg.Get_Enabled() ? ECk_Tone::Neutral : Leg.Get_Foot().Get_ContactTrusted() ? ECk_Tone::Ok : ECk_Tone::Warn;
         Item.RightLabel = FText::FromString(ck::Format_UE(TEXT("{:.0f}%"), Leg.Get_Foot().Get_SwingAlpha() * 100.0f));
         Item.Detail = FText::FromString(ck::Format_UE(
-            TEXT("{} · phase {:.2f} · error {:.1f}/{:.1f} cm\nProbe {}: hit {} · fraction {:.4f} · missing {:.3f}s\nRig {}"),
+            TEXT("{} · phase {:.2f} · error {:.1f}/{:.1f} cm\nProbe {}: hit {} · fraction {:.4f} · missing {:.3f}s\n{}\nRig {}"),
             EnabledState, Leg.Get_Foot().Get_PhaseOffset(), FVector::Distance(Leg.Get_Foot().Get_PlantedPosition(), Leg.Get_Targeting().Get_IdealTarget()),
             Leg.Get_Targeting().Get_StepThreshold(), Leg.Get_Probe().Get_AttemptCount(), Leg.Get_Probe().Get_Hit(), Leg.Get_Probe().Get_HitFraction(),
-            Leg.Get_Probe().Get_MissingContact().Get_Seconds(), ck_procedural_debug_window::Get_RigState(Leg)));
+            Leg.Get_Probe().Get_MissingContact().Get_Seconds(), ck_procedural_debug_window::Get_FootholdState(Leg),
+            ck_procedural_debug_window::Get_RigState(Leg)));
         Item.CopyText = ck::Format_UE(TEXT("{}\n{}\n{}\nfoot {}\ntarget {}\nnormal {}"), Item.Key, Item.Headline.ToString(),
             Item.Detail.ToString(), Leg.Get_Foot().Get_Position().ToString(), Leg.Get_Targeting().Get_IdealTarget().ToString(), Leg.Get_Foot().Get_Normal().ToString());
         Item.SelectionId = Index;
@@ -778,9 +806,9 @@ auto
     { return FText::FromString(TEXT("Select a gait entity. Capture starts when its first accepted solve is observed.")); }
 
     const auto* Status = _Model->Get_History().Get_IsLive() ? _Model->Get_LiveStatus() : Sample;
-    const auto Detail = ck::Format_UE(TEXT("{} · t {:.3f}s · sample {} · cadence {:.2f}x · {}{}"),
+    const auto Detail = ck::Format_UE(TEXT("{} · t {:.3f}s · sample {} · cadence {:.2f}x · rays {}/solve · {}{}"),
         Sample->Get_EntityName(), Sample->Get_Sample().Get_Time().Get_Seconds(), Sample->Get_Sample().Get_Sequence(), Sample->Get_Gait().Get_CadenceScale(),
-        Sample->Get_Gait().Get_Airborne() ? TEXT("Airborne") : TEXT("Grounded"),
+        Sample->Get_Gait().Get_RaysLastSolve(), Sample->Get_Gait().Get_Airborne() ? TEXT("Airborne") : TEXT("Grounded"),
         Status != nullptr && Status->Get_Status().Get_GaitStatus() == ECk_ProceduralAnimation_Status::Failed ? TEXT(" · GAIT FAILED")
             : Sample->Get_Freshness().Get_RigPosePending() || NOT Sample->Get_Freshness().Get_RigMatchesGaitSequence() ? TEXT(" · rig pose not synchronized")
             : TEXT(""));

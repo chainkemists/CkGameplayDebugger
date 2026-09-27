@@ -108,6 +108,30 @@ namespace ck_procedural_debug_window
         return ck::Format_UE(TEXT("Foothold {} · {} candidates{}"), Get_FootholdSourceName(InLeg.Get_FootholdSource()),
             InLeg.Get_Footholds().Num(), InLeg.Get_PlantOccluded() ? TEXT(" · plant occluded") : TEXT(""));
     }
+
+    auto
+        Get_FeetPlaneName(
+            ck::EProceduralGaitFeetPlane InFeetPlane)
+        -> const TCHAR*
+    {
+        switch (InFeetPlane)
+        {
+            case ck::EProceduralGaitFeetPlane::None: return TEXT("none");
+            case ck::EProceduralGaitFeetPlane::Fitted: return TEXT("fitted");
+            case ck::EProceduralGaitFeetPlane::Held: return TEXT("held");
+        }
+        return TEXT("none");
+    }
+
+    auto
+        Get_HeightState(
+            const FCk_ProceduralAnimation_DebugSnapshot& InSample)
+        -> FString
+    {
+        const auto RidesFeet = InSample.Get_Motion().Get_HeightSource() == ECk_SurfaceMotion_HeightSource::PlantedFeet;
+        return ck::Format_UE(TEXT("Height: {} · feet plane {}"), RidesFeet ? TEXT("planted feet") : TEXT("rays"),
+            Get_FeetPlaneName(InSample.Get_Gait().Get_FeetPlane()));
+    }
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -828,7 +852,7 @@ auto
         ? ck::Format_UE(TEXT("Body pose: {}, drop {:.1f} cm, tilt {:.1f} deg"), BodyPose.Get_Status(), -BodyPose.Get_Offset().GetLocation().Z,
             FMath::RadiansToDegrees(BodyPose.Get_Offset().GetRotation().AngularDistance(FQuat::Identity)))
         : FString{TEXT("Body pose: none")};
-    return FText::FromString(ck::Format_UE(TEXT("{}\n{}"), Detail, BodyPoseLine));
+    return FText::FromString(ck::Format_UE(TEXT("{}\n{}\n{}"), Detail, BodyPoseLine, ck_procedural_debug_window::Get_HeightState(*Sample)));
 }
 
 // --------------------------------------------------------------------------------------------------------------------

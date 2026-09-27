@@ -227,8 +227,10 @@ auto
         Instances.Add(ck_procedural_debug_preview::MakeInstance(FTransform{Leg.Get_Targeting().Get_IdealTarget() - Origin},
             ck_procedural_debug_preview::GoalSize, ContactColor, Id));
 
+        // The snapshot counts the crossing links without naming them, so a crossing chain is tinted whole.
+        const auto ChainColor = Leg.Get_Rig().Get_ChainState() == ECk_ProceduralRig_ChainState::Crossing ? CkStyle::Err() : Color;
         if (ck_procedural_debug_preview::Get_IsChainDrawable(InSample, Leg))
-        { ck_procedural_debug_preview::Add_ChainInstances(Leg, Origin, Color, Id, Instances); }
+        { ck_procedural_debug_preview::Add_ChainInstances(Leg, Origin, ChainColor, Id, Instances); }
         else
         { Lines.Add({Hip, Foot, Color, 2.0f}); }
 

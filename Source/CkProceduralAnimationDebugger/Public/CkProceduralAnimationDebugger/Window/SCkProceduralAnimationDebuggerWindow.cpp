@@ -58,10 +58,20 @@ namespace ck_procedural_debug_window
         if (NOT InLeg.Get_Rig().Get_Composed())
         { return TEXT("no rig"); }
 
-        if (InLeg.Get_Rig().Get_Failure() != ECk_ProceduralRig_Failure::None)
-        { return ck::Format_UE(TEXT("failed: {}"), InLeg.Get_Rig().Get_Failure()); }
+        const auto& Rig = InLeg.Get_Rig();
+        if (Rig.Get_Failure() != ECk_ProceduralRig_Failure::None)
+        { return ck::Format_UE(TEXT("failed: {}"), Rig.Get_Failure()); }
 
-        return InLeg.Get_Rig().Get_Status() == ECk_ProceduralAnimation_Status::Ready ? TEXT("ready") : TEXT("waiting for gait");
+        if (Rig.Get_Status() != ECk_ProceduralAnimation_Status::Ready)
+        { return TEXT("waiting for gait"); }
+
+        if (Rig.Get_Clearance() == ECk_ProceduralRig_Clearance::None)
+        { return TEXT("ready"); }
+
+        if (Rig.Get_ChainState() == ECk_ProceduralRig_ChainState::Crossing)
+        { return ck::Format_UE(TEXT("ready · crossing, {} links through a solid or the body"), Rig.Get_CrossingLinks()); }
+
+        return ck::Format_UE(TEXT("ready · clear, swivel {:.0f} deg"), Rig.Get_SwivelDegrees());
     }
 
     auto

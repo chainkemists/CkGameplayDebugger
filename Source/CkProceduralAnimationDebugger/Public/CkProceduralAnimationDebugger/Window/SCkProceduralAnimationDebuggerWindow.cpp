@@ -865,6 +865,9 @@ auto
         ? ck::Format_UE(TEXT("Body pose: {}, drop {:.1f} cm, tilt {:.1f} deg"), BodyPose.Get_Status(), -BodyPose.Get_Offset().GetLocation().Z,
             FMath::RadiansToDegrees(BodyPose.Get_Offset().GetRotation().AngularDistance(FQuat::Identity)))
         : FString{TEXT("Body pose: none")};
+    if (NOT Sample->Get_Status().Get_HasSurfaceMotion())
+    { return FText::FromString(ck::Format_UE(TEXT("{}\n{}"), Detail, BodyPoseLine)); }
+
     return FText::FromString(ck::Format_UE(TEXT("{}\n{}\n{}\n{}"), Detail, BodyPoseLine, ck_procedural_debug_window::Get_HeightState(*Sample),
         ck_procedural_debug_window::Get_WallState(*Sample)));
 }

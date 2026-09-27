@@ -25,6 +25,64 @@ namespace ck_procedural_debug_preview
     const auto FootOutputSize = FVector{10.0};
     const auto FootPartSize = FVector{14.0, 12.0, 6.0};
     const auto GoalSize = FVector{5.0};
+    constexpr auto CandidateCrossHalfSize = 2.0;
+    constexpr auto ChosenRingRadius = 10.0;
+    constexpr auto ChosenRingSegments = 16;
+    constexpr auto PendingContactLength = 80.0;
+
+    auto
+        Get_VerdictColor(
+            ck::EProceduralFootholdVerdict InVerdict)
+        -> FLinearColor
+    {
+        switch (InVerdict)
+        {
+            case ck::EProceduralFootholdVerdict::Usable: return CkStyle::Ok();
+            case ck::EProceduralFootholdVerdict::Miss: return CkStyle::TextMute();
+            case ck::EProceduralFootholdVerdict::Unreachable: return CkStyle::Warn();
+            case ck::EProceduralFootholdVerdict::TooSteep: return CkStyle::Info();
+            case ck::EProceduralFootholdVerdict::Occluded: return CkStyle::Err();
+            case ck::EProceduralFootholdVerdict::Inboard: return CkStyle::Accent();
+            case ck::EProceduralFootholdVerdict::UnderBody: return CkStyle::AccentDim();
+        }
+        return CkStyle::TextMute();
+    }
+
+    // Each candidate a solve validated as a cross tinted by its verdict, a ring around the one that became the target and
+    // the line from the hip to it.
+    auto
+        Add_FootholdLines(
+            const FCk_ProceduralAnimation_DebugLeg& InLeg,
+            const FVector& InOrigin,
+            TArray<FCk_DebugScene_Line>& OutLines)
+        -> void
+    {
+        const auto& Footholds = InLeg.Get_Footholds();
+        for (const auto& Foothold : Footholds)
+        {
+            const auto Centre = Foothold.Get_Position() - InOrigin;
+            const auto Color = Get_VerdictColor(Foothold.Get_Verdict());
+            for (const auto& Axis : {FVector::ForwardVector, FVector::RightVector, FVector::UpVector})
+            { OutLines.Add({Centre - Axis * CandidateCrossHalfSize, Centre + Axis * CandidateCrossHalfSize, Color, 2.0f}); }
+        }
+
+        if (NOT Footholds.IsValidIndex(InLeg.Get_ChosenFoothold()))
+        { return; }
+
+        const auto& Chosen = Footholds[InLeg.Get_ChosenFoothold()];
+        const auto Centre = Chosen.Get_Position() - InOrigin;
+        auto Tangent = FVector::ZeroVector;
+        auto Bitangent = FVector::ZeroVector;
+        Chosen.Get_Normal().GetSafeNormal(KINDA_SMALL_NUMBER, FVector::UpVector).FindBestAxisVectors(Tangent, Bitangent);
+        for (auto Segment = 0; Segment < ChosenRingSegments; ++Segment)
+        {
+            const auto From = UE_DOUBLE_TWO_PI * Segment / ChosenRingSegments;
+            const auto To = UE_DOUBLE_TWO_PI * (Segment + 1) / ChosenRingSegments;
+            OutLines.Add({Centre + (Tangent * FMath::Cos(From) + Bitangent * FMath::Sin(From)) * ChosenRingRadius,
+                Centre + (Tangent * FMath::Cos(To) + Bitangent * FMath::Sin(To)) * ChosenRingRadius, CkStyle::Accent(), 2.0f});
+        }
+        OutLines.Add({InLeg.Get_Targeting().Get_HipWorld() - InOrigin, Centre, CkStyle::Accent(), 1.5f});
+    }
 
     auto
         MakeInstance(
@@ -143,6 +201,11 @@ auto
     }
 
     Lines.Add({FVector::ZeroVector, InSample.Get_Gait().Get_SupportNormal() * 100.0, CkStyle::Accent(), 3.0f});
+    if (InSample.Get_Motion().Get_CandidateSeen() > FCk_Time{})
+    {
+        Lines.Add({FVector::ZeroVector, InSample.Get_Motion().Get_CandidateNormal() * ck_procedural_debug_preview::PendingContactLength,
+            CkStyle::Warn(), 2.0f});
+    }
     for (auto Index = 0; Index < InSample.Get_Legs().Num(); ++Index)
     {
         const auto& Leg = InSample.Get_Legs()[Index];
@@ -185,7 +248,19 @@ auto
             const auto Hit = Leg.Get_Probe().Get_HitPosition() - Origin;
             Lines.Add({Hit, Hit + Leg.Get_Probe().Get_HitNormal() * 25.0, ContactColor, 3.0f});
         }
+        const auto& LandingProbe = Leg.Get_LandingProbe();
+        if (LandingProbe.Get_AttemptCount() > 0)
+        {
+            Lines.Add({LandingProbe.Get_Start() - Origin, LandingProbe.Get_End() - Origin, CkStyle::Info(), 1.0f});
+            if (LandingProbe.Get_Hit())
+            {
+                const auto Hit = LandingProbe.Get_HitPosition() - Origin;
+                Lines.Add({Hit, Hit + LandingProbe.Get_HitNormal() * 25.0, CkStyle::Info(), 2.0f});
+            }
+        }
         Lines.Add({Foot, Leg.Get_Targeting().Get_IdealTarget() - Origin, Color, 1.0f});
+        if (IsSelected)
+        { ck_procedural_debug_preview::Add_FootholdLines(Leg, Origin, Lines); }
 
         if (_ShowLabels)
         { Labels.Add({Foot + FVector{0.0, 0.0, 12.0}, Leg.Get_Id().ToString(), Color, 1.0f}); }

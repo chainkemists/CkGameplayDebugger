@@ -39,6 +39,8 @@
 
 namespace ck_procedural_debug_window
 {
+    constexpr auto RigFootGapWarningCm = 5.0;
+
     auto
         Get_LegState(
             const FCk_ProceduralAnimation_DebugLeg& InLeg)
@@ -65,11 +67,14 @@ namespace ck_procedural_debug_window
         if (Rig.Get_Status() != ECk_ProceduralAnimation_Status::Ready)
         { return TEXT("waiting for gait"); }
 
-        if (Rig.Get_Clearance() == ECk_ProceduralRig_Clearance::None)
-        { return TEXT("ready"); }
-
         if (Rig.Get_ChainState() == ECk_ProceduralRig_ChainState::Crossing)
-        { return ck::Format_UE(TEXT("ready · crossing, {} links through a solid or the body"), Rig.Get_CrossingLinks()); }
+        {
+            return ck::Format_UE(TEXT("ready · crossing: {} world/body links, {} sibling links"),
+                Rig.Get_CrossingLinks(), Rig.Get_SiblingCrossingLinks());
+        }
+
+        if (Rig.Get_Clearance() == ECk_ProceduralRig_Clearance::None)
+        { return Rig.Get_SegmentClearanceRadii().IsEmpty() ? TEXT("ready") : TEXT("ready · sibling clearance checked"); }
 
         return ck::Format_UE(TEXT("ready · clear, swivel {:.0f} deg"), Rig.Get_SwivelDegrees());
     }
@@ -128,9 +133,25 @@ namespace ck_procedural_debug_window
             const FCk_ProceduralAnimation_DebugSnapshot& InSample)
         -> FString
     {
-        const auto RidesFeet = InSample.Get_Motion().Get_HeightSource() == ECk_SurfaceMotion_HeightSource::PlantedFeet;
-        return ck::Format_UE(TEXT("Height: {} · feet plane {}"), RidesFeet ? TEXT("planted feet") : TEXT("rays"),
-            Get_FeetPlaneName(InSample.Get_Gait().Get_FeetPlane()));
+        const auto& Motion = InSample.Get_Motion();
+        const auto RidesFeet = Motion.Get_HeightSource() == ECk_SurfaceMotion_HeightSource::PlantedFeet;
+        auto LastContact = TEXT("stale");
+        if (InSample.Get_Freshness().Get_MotionMatchesGaitFrame())
+        {
+            switch (Motion.Get_ContactSource())
+            {
+                case ECk_SurfaceMotion_ContactSource::None: LastContact = TEXT("none"); break;
+                case ECk_SurfaceMotion_ContactSource::Forward: LastContact = TEXT("forward"); break;
+                case ECk_SurfaceMotion_ContactSource::Down: LastContact = TEXT("down"); break;
+                case ECk_SurfaceMotion_ContactSource::LookAhead: LastContact = TEXT("look ahead"); break;
+                case ECk_SurfaceMotion_ContactSource::Fan: LastContact = TEXT("fan"); break;
+                case ECk_SurfaceMotion_ContactSource::Fall: LastContact = TEXT("fall"); break;
+                case ECk_SurfaceMotion_ContactSource::Feet: LastContact = TEXT("feet"); break;
+                case ECk_SurfaceMotion_ContactSource::Step: LastContact = TEXT("step"); break;
+            }
+        }
+        return ck::Format_UE(TEXT("Height policy: {} · last contact {} · feet plane {}"),
+            RidesFeet ? TEXT("planted feet") : TEXT("rays"), LastContact, Get_FeetPlaneName(InSample.Get_Gait().Get_FeetPlane()));
     }
 
     auto
@@ -141,9 +162,31 @@ namespace ck_procedural_debug_window
         const auto& Motion = InSample.Get_Motion();
         const auto Slides = Motion.Get_WallPolicy() == ECk_SurfaceMotion_WallPolicy::Slide;
         const auto Step = Motion.Get_MaxStepHeight() > 0.0f ? ck::Format_UE(TEXT("step {:.0f} cm"), Motion.Get_MaxStepHeight()) : FString{TEXT("no step")};
+        const auto Fresh = InSample.Get_Freshness().Get_MotionMatchesGaitFrame();
         const auto Obstructed = Motion.Get_Obstruction() == ECk_SurfaceMotion_Obstruction::Wall;
         return ck::Format_UE(TEXT("Walls: {} · {} · obstruction {}"), Slides ? TEXT("slide") : TEXT("climb"), Step,
-            Obstructed ? TEXT("wall") : TEXT("none"));
+            Fresh ? (Obstructed ? TEXT("wall") : TEXT("none")) : TEXT("stale"));
+    }
+
+    auto
+        Get_ReachPaceState(
+            const FCk_ProceduralAnimation_DebugSnapshot& InSample)
+        -> FString
+    {
+        if (NOT InSample.Get_Freshness().Get_MotionMatchesGaitFrame())
+        { return TEXT("Reach pace: stale"); }
+
+        const auto& Motion = InSample.Get_Motion();
+        auto State = TEXT("free");
+        switch (Motion.Get_ReachPaceState())
+        {
+            case ECk_SurfaceMotion_ReachPaceState::Free: State = TEXT("free"); break;
+            case ECk_SurfaceMotion_ReachPaceState::Pacing: State = TEXT("pacing"); break;
+            case ECk_SurfaceMotion_ReachPaceState::Blocked: State = TEXT("blocked"); break;
+            case ECk_SurfaceMotion_ReachPaceState::PhysicalOverride: State = TEXT("physical / existing reach override"); break;
+        }
+        return ck::Format_UE(TEXT("Reach pace: {} · min {:.0f}% voluntary · {} trials / {} rays"), State,
+            Motion.Get_ReachPaceScale() * 100.0f, Motion.Get_ReachPaceTrials(), Motion.Get_ReachPaceRays());
     }
 }
 
@@ -577,12 +620,24 @@ auto
         Item.Headline = FText::FromString(ck::Format_UE(TEXT("{} · {}"), EnabledState, ck_procedural_debug_window::Get_LegState(Leg)));
         Item.Tone = NOT Leg.Get_Enabled() ? ECk_Tone::Neutral : Leg.Get_Foot().Get_ContactTrusted() ? ECk_Tone::Ok : ECk_Tone::Warn;
         Item.RightLabel = FText::FromString(ck::Format_UE(TEXT("{:.0f}%"), Leg.Get_Foot().Get_SwingAlpha() * 100.0f));
+        const auto& Rig = Leg.Get_Rig();
+        const auto& Freshness = InSample.Get_Freshness();
+        const auto RigFootCurrent = Leg.Get_Enabled() && Freshness.Get_RigMatchesGaitSequence() && NOT Freshness.Get_RigPosePending()
+            && Rig.Get_Composed() && Rig.Get_Status() == ECk_ProceduralAnimation_Status::Ready && Rig.Get_Foot().Get_Available();
+        const auto RigFootGap = RigFootCurrent
+            ? FVector::Distance(Rig.Get_Foot().Get_Transform().GetLocation(), Leg.Get_Foot().Get_Position()) : 0.0;
+        const auto ShowRigFootGap = RigFootCurrent && FMath::IsFinite(RigFootGap);
+        const auto RigFootGapDetail = ShowRigFootGap
+            ? ck::Format_UE(TEXT("\nRig foot–target gap {:.1f} cm"), RigFootGap) : FString{};
+        if (Leg.Get_Enabled() && Leg.Get_Foot().Get_Planted() && ShowRigFootGap
+            && RigFootGap > ck_procedural_debug_window::RigFootGapWarningCm)
+        { Item.Tone = ECk_Tone::Warn; }
         Item.Detail = FText::FromString(ck::Format_UE(
-            TEXT("{} · phase {:.2f} · error {:.1f}/{:.1f} cm\nProbe {}: hit {} · fraction {:.4f} · missing {:.3f}s\n{}\nRig {}"),
+            TEXT("{} · phase {:.2f} · error {:.1f}/{:.1f} cm\nProbe {}: hit {} · fraction {:.4f} · missing {:.3f}s\n{}\nRig {}{}"),
             EnabledState, Leg.Get_Foot().Get_PhaseOffset(), FVector::Distance(Leg.Get_Foot().Get_PlantedPosition(), Leg.Get_Targeting().Get_IdealTarget()),
             Leg.Get_Targeting().Get_StepThreshold(), Leg.Get_Probe().Get_AttemptCount(), Leg.Get_Probe().Get_Hit(), Leg.Get_Probe().Get_HitFraction(),
             Leg.Get_Probe().Get_MissingContact().Get_Seconds(), ck_procedural_debug_window::Get_FootholdState(Leg),
-            ck_procedural_debug_window::Get_RigState(Leg)));
+            ck_procedural_debug_window::Get_RigState(Leg), RigFootGapDetail));
         Item.CopyText = ck::Format_UE(TEXT("{}\n{}\n{}\nfoot {}\ntarget {}\nnormal {}"), Item.Key, Item.Headline.ToString(),
             Item.Detail.ToString(), Leg.Get_Foot().Get_Position().ToString(), Leg.Get_Targeting().Get_IdealTarget().ToString(), Leg.Get_Foot().Get_Normal().ToString());
         Item.SelectionId = Index;
@@ -868,8 +923,9 @@ auto
     if (NOT Sample->Get_Status().Get_HasSurfaceMotion())
     { return FText::FromString(ck::Format_UE(TEXT("{}\n{}"), Detail, BodyPoseLine)); }
 
-    return FText::FromString(ck::Format_UE(TEXT("{}\n{}\n{}\n{}"), Detail, BodyPoseLine, ck_procedural_debug_window::Get_HeightState(*Sample),
-        ck_procedural_debug_window::Get_WallState(*Sample)));
+    return FText::FromString(ck::Format_UE(TEXT("{}\n{}\n{}\n{}\n{}"), Detail, BodyPoseLine,
+        ck_procedural_debug_window::Get_HeightState(*Sample), ck_procedural_debug_window::Get_WallState(*Sample),
+        ck_procedural_debug_window::Get_ReachPaceState(*Sample)));
 }
 
 // --------------------------------------------------------------------------------------------------------------------

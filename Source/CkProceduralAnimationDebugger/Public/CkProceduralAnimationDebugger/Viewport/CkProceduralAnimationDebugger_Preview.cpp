@@ -70,6 +70,7 @@ namespace ck_procedural_debug_preview
             case ck::EProceduralFootholdVerdict::Occluded: return CkStyle::Err();
             case ck::EProceduralFootholdVerdict::Inboard: return CkStyle::Accent();
             case ck::EProceduralFootholdVerdict::UnderBody: return CkStyle::AccentDim();
+            case ck::EProceduralFootholdVerdict::Reserved: return CkStyle::Warn();
         }
         return CkStyle::TextMute();
     }
@@ -228,12 +229,13 @@ auto
 
     Lines.Add({FVector::ZeroVector, InSample.Get_Gait().Get_SupportNormal() * 100.0, CkStyle::Accent(), 3.0f});
     ck_procedural_debug_preview::Add_FeetPlaneLines(InSample.Get_Gait(), Origin, Lines);
-    if (InSample.Get_Motion().Get_CandidateSeen() > FCk_Time{})
+    if (InSample.Get_Freshness().Get_MotionMatchesGaitFrame() && InSample.Get_Motion().Get_CandidateSeen() > FCk_Time{})
     {
         Lines.Add({FVector::ZeroVector, InSample.Get_Motion().Get_CandidateNormal() * ck_procedural_debug_preview::PendingContactLength,
             CkStyle::Warn(), 2.0f});
     }
-    if (InSample.Get_Motion().Get_Obstruction() == ECk_SurfaceMotion_Obstruction::Wall)
+    if (InSample.Get_Freshness().Get_MotionMatchesGaitFrame()
+        && InSample.Get_Motion().Get_Obstruction() == ECk_SurfaceMotion_Obstruction::Wall)
     {
         Lines.Add({FVector::ZeroVector, InSample.Get_Motion().Get_ObstructionNormal() * ck_procedural_debug_preview::ObstructionLength,
             CkStyle::Err(), 2.0f});

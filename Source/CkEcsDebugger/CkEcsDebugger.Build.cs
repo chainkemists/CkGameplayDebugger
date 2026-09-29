@@ -27,6 +27,7 @@ public class CkEcsDebugger : CkModuleRules
             "CkAttribute",
             "CkAudio",
             "CkCamera",
+            "CkChain",
             "CkChaos",
             "CkCore",
             "CkCrowd",

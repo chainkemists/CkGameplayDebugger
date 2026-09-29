@@ -86,6 +86,7 @@ UCk_DebugOverlay_Settings::UCk_DebugOverlay_Settings()
                 TEXT("Ck.OnScreenDebugger.Provider.EntityCollection"),
                 TEXT("Ck.OnScreenDebugger.Provider.AnimPlans"),
                 TEXT("Ck.OnScreenDebugger.Provider.Timer"),
+                TEXT("Ck.OnScreenDebugger.Provider.Chain"),
                 TEXT("Ck.OnScreenDebugger.Provider.Label"),
                 TEXT("Ck.OnScreenDebugger.Provider.Variables"),
             });

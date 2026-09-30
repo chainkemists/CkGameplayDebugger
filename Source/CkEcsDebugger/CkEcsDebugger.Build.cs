@@ -68,6 +68,7 @@ public class CkEcsDebugger : CkModuleRules
             "CkRenderTarget",
             "CkResourceLoader",
             "CkResolver",
+            "CkRotateTowards",
             "CkSlateLayout",
             "CkShapes",
             "CkSnapshot",

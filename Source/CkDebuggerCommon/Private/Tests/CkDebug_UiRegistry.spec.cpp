@@ -122,10 +122,16 @@ auto FCkDebug_UiRegistry_Runtime::RunTest(const FString&) -> bool
 
     TSharedPtr<const FCkUiWidgetRegistrySnapshot> Registry;
     if (!TestTrue(TEXT("Debug widget registry creates atomically"), FCkDebug_UiRegistry::TryCreate(Registry).Succeeded) || !Registry.IsValid()) { return false; }
-    if (!TestTrue(TEXT("Debug registry has meter, sparkline, status, icon, and inspector-action definitions"), Registry->Find(TEXT("debug-meter")) != nullptr
+    if (!TestTrue(TEXT("Debug registry has both meter tags, sparkline, status, icon, and inspector-action definitions"), Registry->Find(TEXT("debug-meter")) != nullptr
+        && Registry->Find(TEXT("debug-meter-readonly")) != nullptr
         && Registry->Find(TEXT("debug-sparkline")) != nullptr
         && Registry->Find(TEXT("debug-status")) != nullptr && Registry->Find(TEXT("debug-icon")) != nullptr
         && Registry->Find(TEXT("debug-inspector-action")) != nullptr)) { return false; }
+    const auto& RetainedMeterDefinition = *Registry->Find(TEXT("debug-meter"));
+    const auto& ReadOnlyMeterDefinition = *Registry->Find(TEXT("debug-meter-readonly"));
+    TestTrue(TEXT("Original meter remains retained while read-only meter uses only the stateless factory"),
+        static_cast<bool>(RetainedMeterDefinition.RetainedFactory) && !RetainedMeterDefinition.Factory
+            && static_cast<bool>(ReadOnlyMeterDefinition.Factory) && !ReadOnlyMeterDefinition.RetainedFactory);
 
     FText Label = FText::FromString(TEXT("Loading"));
     FLinearColor Fill = FLinearColor::Blue;
@@ -247,6 +253,42 @@ auto FCkDebug_UiRegistry_Runtime::RunTest(const FString&) -> bool
                 && TargetView->GetRevision() == TargetRevision
                 && FindWidget(TargetRegion, TEXT("SCkDebug_MeterBar")) == TargetMeter);
     }
+
+    auto ReadOnlyFraction = 0.4f;
+    auto ReadOnlyFill = FLinearColor::Blue;
+    auto ReadOnlyTarget = 0.6f;
+    auto ReadOnlyTip = FText::FromString(TEXT("Read-only meter"));
+    auto ReadOnlyData = FCkUiView::FDataBindings{};
+    ReadOnlyData.Number.Add(TEXT("fraction"), TAttribute<float>::CreateLambda([&ReadOnlyFraction]() { return ReadOnlyFraction; }));
+    ReadOnlyData.Color.Add(TEXT("fill"), TAttribute<FLinearColor>::CreateLambda([&ReadOnlyFill]() { return ReadOnlyFill; }));
+    ReadOnlyData.Visibility.Add(TEXT("target-visible"), TAttribute<bool>(true));
+    ReadOnlyData.Number.Add(TEXT("target-fraction"), TAttribute<float>::CreateLambda([&ReadOnlyTarget]() { return ReadOnlyTarget; }));
+    ReadOnlyData.Text.Add(TEXT("tooltip"), TAttribute<FText>::CreateLambda([&ReadOnlyTip]() { return ReadOnlyTip; }));
+    const auto ReadOnlyView = FCkUiView::Create({}, {}, {}, FSlateFontInfo{}, MoveTemp(ReadOnlyData), Registry);
+    const auto ReadOnlyRegion = ReadOnlyView->GetRegion(TEXT("main"));
+    const auto ReadOnlyMarkup = FString{TEXT("<ui version=\"1\"><region name=\"main\"><debug-meter-readonly id=\"read-only\" fraction-bind=\"fraction\" fill-bind=\"fill\" target-visible-bind=\"target-visible\" target-fraction-bind=\"target-fraction\" tooltip-bind=\"tooltip\" width=\"96\" height=\"4\"/></region></ui>")};
+    if (!TestTrue(TEXT("Read-only meter admits the shared typed meter schema"), ReadOnlyView->TryReload(ReadOnlyMarkup, TEXT("")).Succeeded)) { return false; }
+    const auto ReadOnlyMeter = StaticCastSharedPtr<SCkDebug_MeterBar>(FindWidget(ReadOnlyRegion, TEXT("SCkDebug_MeterBar")));
+    if (!TestTrue(TEXT("Read-only meter factory mounts the real meter leaf"), ReadOnlyMeter.IsValid())) { return false; }
+    TestTrue(TEXT("Read-only meter reads fraction, fill, target, and tooltip bindings"),
+        ReadOnlyMeter->Get_Fraction() == 0.4f && ReadOnlyMeter->Get_FillColor() == FLinearColor::Blue
+            && ReadOnlyMeter->Get_TargetFraction() == TOptional<float>{0.6f}
+            && GetToolTipText(ReadOnlyMeter.ToSharedRef()) == TEXT("Read-only meter"));
+    ReadOnlyFraction = 0.8f;
+    ReadOnlyFill = FLinearColor::Green;
+    ReadOnlyTarget = 1.3f;
+    ReadOnlyTip = FText::FromString(TEXT("Updated meter"));
+    TestTrue(TEXT("Stateless meter attributes remain live and target clamps without a reload"),
+        ReadOnlyMeter->Get_Fraction() == 0.8f && ReadOnlyMeter->Get_FillColor() == FLinearColor::Green
+            && ReadOnlyMeter->Get_TargetFraction() == TOptional<float>{1.0f}
+            && GetToolTipText(ReadOnlyMeter.ToSharedRef()) == TEXT("Updated meter"));
+
+    const auto InvalidReadOnlyView = FCkUiView::Create({}, {}, {}, FSlateFontInfo{}, {}, Registry);
+    const auto InvalidReadOnlyRegion = InvalidReadOnlyView->GetRegion(TEXT("main"));
+    const auto InvalidReadOnly = InvalidReadOnlyView->TryReload(ReadOnlyMarkup, TEXT(""));
+    TestTrue(TEXT("Missing typed meter bindings reject without publishing a read-only widget"),
+        !InvalidReadOnly.Succeeded && !InvalidReadOnly.Errors.IsEmpty()
+            && !FindWidget(InvalidReadOnlyRegion, TEXT("SCkDebug_MeterBar")).IsValid());
 
     const int64 Revision = View->GetRevision();
     const TSharedPtr<SWidget> OriginalMeter = Meter;

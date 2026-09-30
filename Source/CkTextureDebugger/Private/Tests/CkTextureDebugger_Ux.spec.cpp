@@ -5,6 +5,7 @@
 #include "CkSlateLayout/SCkUiTable.h"
 #include "CkSlateLayout/CkFlexText.h"
 #include "CkDebuggerCommon/Models/CkDebuggerModel_WorldSelector.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_MeterBar.h"
 
 #include "Components/StaticMeshComponent.h"
 #include "Engine/Engine.h"
@@ -343,6 +344,16 @@ bool FCkTextureDebugger_Ux_NativeTableEvents::RunTest(const FString& Parameters)
     };
     if (!ExerciseHeldRowClick(1) || !ExerciseHeldRowClick(2)) { return false; }
 
+    const auto InitialRowWidget = List->WidgetFromItem(LongItem);
+    if (!TestTrue(TEXT("Texture Health generates the authored row containing its residency meter"), InitialRowWidget.IsValid())) { return false; }
+    auto InitialMeters = TArray<TSharedPtr<SWidget>>{};
+    Find_WidgetsByType(InitialRowWidget->AsWidget(), TEXT("SCkDebug_MeterBar"), InitialMeters);
+    if (!TestEqual(TEXT("Production Texture Health row mounts one real meter"), InitialMeters.Num(), 1)) { return false; }
+    const auto InitialMeter = StaticCastSharedPtr<SCkDebug_MeterBar>(InitialMeters[0]);
+    TestTrue(TEXT("Production meter reads initial published residency and accent"), InitialMeter.IsValid()
+        && FMath::IsNearlyEqual(InitialMeter->Get_Fraction(), 0.7f)
+        && InitialMeter->Get_FillColor().Equals(CkStyle::Accent()));
+
     List->SetSelection(LongItem, ESelectInfo::OnMouseClick);
     const auto InitialSelection = Table->Get_Selection();
     TestTrue(TEXT("Real list selection enters the table's public selection state"), InitialSelection.IsSet());
@@ -375,6 +386,18 @@ bool FCkTextureDebugger_Ux_NativeTableEvents::RunTest(const FString& Parameters)
     TestEqual(TEXT("Real Filter box narrows the table through its bound production callback"), List->GetNumItemsBeingObserved(), 1);
     TestTrue(TEXT("Filter retains the matching stable list pointer"), List->GetItems()[0] == LongItem);
     TestTrue(TEXT("Filter retains selection of its matching row"), Table->Get_Selection().IsSet());
+    List->RequestListRefresh();
+    Table->SlatePrepass(1.0f);
+    List->Tick(ListGeometry, FPlatformTime::Seconds(), 0.0f);
+    const auto UpdatedRowWidget = List->WidgetFromItem(LongItem);
+    if (!TestTrue(TEXT("Published residency row remains generated after filtering"), UpdatedRowWidget.IsValid())) { return false; }
+    auto UpdatedMeters = TArray<TSharedPtr<SWidget>>{};
+    Find_WidgetsByType(UpdatedRowWidget->AsWidget(), TEXT("SCkDebug_MeterBar"), UpdatedMeters);
+    if (!TestEqual(TEXT("Updated production row still mounts one meter"), UpdatedMeters.Num(), 1)) { return false; }
+    const auto UpdatedMeter = StaticCastSharedPtr<SCkDebug_MeterBar>(UpdatedMeters[0]);
+    TestTrue(TEXT("Read-only authored meter reads republished residency and accent"), UpdatedMeter.IsValid()
+        && FMath::IsNearlyEqual(UpdatedMeter->Get_Fraction(), 0.9f)
+        && UpdatedMeter->Get_FillColor().Equals(CkStyle::Accent()));
 
     FilterBox->SetText(FText::GetEmpty());
     TestEqual(TEXT("Clearing the real Filter box restores the table inventory"), List->GetNumItemsBeingObserved(), 12);
@@ -421,6 +444,15 @@ bool FCkTextureDebugger_Ux_NativeTableEvents::RunTest(const FString& Parameters)
     List->Tick(ListGeometry, FPlatformTime::Seconds(), 0.0f);
     TestTrue(TEXT("Reloaded table exposes its authored heading"), Contains_Text(Table, TEXT("Texture inspection")));
     TestTrue(TEXT("Reloaded generated texture cell exposes its authored marker"), Contains_Text(Table, TEXT("Reload marker")));
+    const auto ReloadedRowWidget = List->WidgetFromItem(LongItem);
+    if (!TestTrue(TEXT("Reloaded Texture Health row is generated"), ReloadedRowWidget.IsValid())) { return false; }
+    auto ReloadedMeters = TArray<TSharedPtr<SWidget>>{};
+    Find_WidgetsByType(ReloadedRowWidget->AsWidget(), TEXT("SCkDebug_MeterBar"), ReloadedMeters);
+    if (!TestEqual(TEXT("Reloaded production row mounts one meter"), ReloadedMeters.Num(), 1)) { return false; }
+    const auto ReloadedMeter = StaticCastSharedPtr<SCkDebug_MeterBar>(ReloadedMeters[0]);
+    TestTrue(TEXT("External layout reload remounts the real read-only meter with current row values"),
+        ReloadedMeter.IsValid() && FMath::IsNearlyEqual(ReloadedMeter->Get_Fraction(), 0.9f)
+            && ReloadedMeter->Get_FillColor().Equals(CkStyle::Accent()));
     TestTrue(TEXT("Retired rows do not create cell diagnostics during reload"), Table->Get_AuthoredTable()->GetLastCellError().IsEmpty());
     auto SearchAfterReload = TArray<TSharedPtr<SWidget>>{};
     Find_WidgetsByType(Table, TEXT("SSearchBox"), SearchAfterReload);

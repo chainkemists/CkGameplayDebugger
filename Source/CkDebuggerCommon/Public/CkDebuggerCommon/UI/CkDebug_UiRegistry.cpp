@@ -747,10 +747,10 @@ namespace ck_debug_ui_registry
         TSharedPtr<SCkDebug_MeterBar> Widget;
     };
 
-    auto RegisterMeter(FCkUiWidgetRegistry& InRegistry) -> FCkUiLoadResult
+    auto MakeMeterRegistration(const FString& InTag) -> FCkUiCustomWidgetRegistration
     {
         auto Registration = FCkUiCustomWidgetRegistration{};
-        Registration.Schema.Tag = TEXT("debug-meter");
+        Registration.Schema.Tag = InTag;
         Registration.Schema.Properties = {
             {TEXT("fraction"), ECkUiCustomPropertyKind::NumberBinding},
             {TEXT("fill"), ECkUiCustomPropertyKind::ColorBinding},
@@ -761,12 +761,37 @@ namespace ck_debug_ui_registry
             {TEXT("height"), ECkUiCustomPropertyKind::Number, false},
             {TEXT("tooltip"), ECkUiCustomPropertyKind::TextBinding, false},
         };
+        return Registration;
+    }
+
+    auto RegisterMeter(FCkUiWidgetRegistry& InRegistry) -> FCkUiLoadResult
+    {
+        auto Registration = MakeMeterRegistration(TEXT("debug-meter"));
         Registration.RetainedFactory = [](const FCkUiCustomWidgetArguments& Arguments, FString& OutFailure) -> TSharedPtr<ICkUiRetainedWidget>
         {
             auto Configuration = FMeterConfiguration{};
             if (!MakeMeterConfiguration(Arguments, Configuration, OutFailure)) { return {}; }
             const auto Meter = MakeShared<FMeterComponent>(MoveTemp(Configuration));
             Meter->Initialize();
+            return Meter;
+        };
+        return InRegistry.Register(MoveTemp(Registration));
+    }
+
+    auto RegisterReadOnlyMeter(FCkUiWidgetRegistry& InRegistry) -> FCkUiLoadResult
+    {
+        auto Registration = MakeMeterRegistration(TEXT("debug-meter-readonly"));
+        Registration.Factory = [](const FCkUiCustomWidgetArguments& Arguments, FString& OutFailure) -> TSharedPtr<SWidget>
+        {
+            auto Configuration = FMeterConfiguration{};
+            if (!MakeMeterConfiguration(Arguments, Configuration, OutFailure)) { return {}; }
+            const auto Meter = SNew(SCkDebug_MeterBar)
+                .Fraction(Configuration.Fraction)
+                .FillColor(Configuration.Fill)
+                .TargetFraction(Configuration.Target)
+                .TargetColor(Configuration.TargetColor)
+                .DesiredSize(Configuration.Size);
+            Meter->SetToolTipText(Configuration.Tooltip);
             return Meter;
         };
         return InRegistry.Register(MoveTemp(Registration));
@@ -854,6 +879,10 @@ auto FCkDebug_UiRegistry::TryCreate(TSharedPtr<const FCkUiWidgetRegistrySnapshot
     if (const FCkUiLoadResult MeterResult = ck_debug_ui_registry::RegisterMeter(Staging); !MeterResult.Succeeded)
     {
         return MeterResult;
+    }
+    if (const FCkUiLoadResult ReadOnlyMeterResult = ck_debug_ui_registry::RegisterReadOnlyMeter(Staging); !ReadOnlyMeterResult.Succeeded)
+    {
+        return ReadOnlyMeterResult;
     }
     if (const FCkUiLoadResult SparklineResult = ck_debug_ui_registry::RegisterSparkline(Staging); !SparklineResult.Succeeded)
     {

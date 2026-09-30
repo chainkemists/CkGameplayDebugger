@@ -3,6 +3,7 @@
 #if WITH_EDITOR && WITH_DEV_AUTOMATION_TESTS
 
 #include "CkJoltDebugger/Window/SCkJoltDebuggerWindow.h"
+#include "CkSlateLayout/SCkUiSurface.h"
 
 #include "CkEcs/EntityLifetime/CkEntityLifetime_Utils.h"
 #include "CkEcs/World/CkEcsWorld.h"
@@ -32,8 +33,11 @@ auto FCkJoltDebuggerWindow_ConstructsWithoutSlotAttributeEnsure::RunTest(const F
     Window->SlatePrepass();
 
     TestTrue(TEXT("Jolt debugger window has a non-empty layout"), Window->GetDesiredSize().Y > 0.0f);
-    TestEqual(TEXT("Jolt debugger window has exactly one Common host for each major pane"),
-        ck_jolt_debugger_window_tests::CountWidgetType(Window, TEXT("SCkDebug_PaneHost")), 4);
+    const TSharedPtr<FCkUiView> AuthoredShell = Window->Get_AuthoredShellView();
+    TestTrue(TEXT("Jolt debugger mounts its successful authored shell without the native fallback"),
+        AuthoredShell.IsValid() && AuthoredShell->GetLastResult().Succeeded && !Window->IsUsingNativeShellFallback());
+    TestEqual(TEXT("Jolt authored shell retains two Common hosts in the stats/detail right rail"),
+        ck_jolt_debugger_window_tests::CountWidgetType(Window, TEXT("SCkDebug_PaneHost")), 2);
     return true;
 }
 

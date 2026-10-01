@@ -788,7 +788,16 @@ auto
 
 auto SCkInsightsAnalyzerTab::DoCreateBody() -> TSharedRef<SWidget>
 {
-    SAssignNew(_BodyHost, SBox)[DoCreateNativeBody()];
+    SAssignNew(_BodyHost, SBox)
+        .Tag(TEXT("InsightsAnalyzer.RetainedResults"))
+        .Visibility_Lambda([Weak = TWeakPtr<SCkInsightsAnalyzerTab>{SharedThis(this)}]()
+        {
+            const auto Tab = Weak.Pin();
+            if (!Tab.IsValid() || Tab->_PresentationReleased) { return EVisibility::Collapsed; }
+            return FCkInsightsDebuggerModule::Get().Get_CaptureController().Get_Snapshot().State == ECkInsightsCaptureState::Idle
+                ? EVisibility::Visible : EVisibility::Collapsed;
+        })
+        [DoCreateNativeBody()];
     DoInitializeAuthoredShell();
     return _BodyHost.ToSharedRef();
 }
@@ -797,7 +806,6 @@ auto SCkInsightsAnalyzerTab::DoCreateNativeBody() -> TSharedRef<SWidget>
 {
     using namespace ck_insights_analyzer_tab;
 
-    auto* Capture = &FCkInsightsDebuggerModule::Get().Get_CaptureController();
     SAssignNew(_SummaryMount, SBox)[DoCreateSummaryStrip()];
     SAssignNew(_FrameBarChartMount, SBox)
     [
@@ -813,12 +821,6 @@ auto SCkInsightsAnalyzerTab::DoCreateNativeBody() -> TSharedRef<SWidget>
     SAssignNew(_RawReportMount, SBox)[DoCreateRawReportArea()];
 
     return SNew(SBox)
-        .Tag(TEXT("InsightsAnalyzer.RetainedResults"))
-        .Visibility_Lambda([Capture]()
-        {
-            return Capture->Get_Snapshot().State == ECkInsightsCaptureState::Idle
-                ? EVisibility::Visible : EVisibility::Collapsed;
-        })
         .Padding(PanelPadding)
         [
             SNew(SVerticalBox)

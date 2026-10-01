@@ -2,9 +2,11 @@
 
 #include "CkInsightsDebugger/Window/SCkInsightsAnalyzerTab.h"
 
+#include "Framework/Application/SlateApplication.h"
 #include "Misc/AutomationTest.h"
 #include "HAL/PlatformTime.h"
 #include "Trace/Trace.h"
+#include "Widgets/SWindow.h"
 #include "Widgets/SWidget.h"
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -41,6 +43,7 @@ namespace ck_insights_recording_presentation_tests
 
         virtual ~FCk_Latent_RecordingPresentation() override
         {
+            CloseTabWindow();
             _RetainedChild.Reset();
             _RetainedResults.Reset();
             _Tab.Reset();
@@ -58,6 +61,19 @@ namespace ck_insights_recording_presentation_tests
                 if (_Capture->Get_CompletedCapture(CompletedPath, CompletedGuid))
                 { _Capture->Acknowledge_CompletedCapture(CompletedGuid); }
             }
+
+            if (_ParkedModuleTab)
+            {
+                if (NOT FSlateApplication::IsInitialized())
+                { _Test->AddError(TEXT("Cannot restore the parked Insights Analyzer tab after Slate shutdown.")); }
+                else
+                {
+                    auto& Module = FCkInsightsDebuggerModule::Get();
+                    Module.OpenDebugger();
+                    _Test->TestTrue(TEXT("Recording presentation restores the preexisting Insights Analyzer tab"),
+                        Module.IsDebuggerOpen());
+                }
+            }
         }
 
         virtual auto Update() -> bool override
@@ -73,17 +89,27 @@ namespace ck_insights_recording_presentation_tests
                         _Test->AddError(TEXT("The recording presentation test requires no existing active trace."));
                         return true;
                     }
-                    if (FCkInsightsDebuggerModule::Get().IsDebuggerOpen())
-                    {
-                        _Test->AddError(TEXT("The recording presentation test requires the Insights Analyzer tab to be closed."));
-                        return true;
-                    }
                     auto ExistingCompletionPath = FString{};
                     auto ExistingCompletionGuid = FGuid{};
                     if (_Capture->Get_CompletedCapture(ExistingCompletionPath, ExistingCompletionGuid))
                     {
                         _Test->AddError(TEXT("The recording presentation test requires no pending Insights capture completion."));
                         return true;
+                    }
+                    if (NOT FSlateApplication::IsInitialized())
+                    {
+                        _Test->AddError(TEXT("Recording presentation requires Slate before parking the module tab."));
+                        return true;
+                    }
+
+                    auto& Module = FCkInsightsDebuggerModule::Get();
+                    if (Module.IsDebuggerOpen())
+                    {
+                        Module.CloseDebugger();
+                        if (NOT _Test->TestFalse(TEXT("Recording presentation parks the preexisting Insights Analyzer tab"),
+                            Module.IsDebuggerOpen()))
+                        { return true; }
+                        _ParkedModuleTab = true;
                     }
 
                     if (NOT OpenTabAndFindRetainedResults())
@@ -157,6 +183,7 @@ namespace ck_insights_recording_presentation_tests
 
                     _RetainedChild.Reset();
                     _RetainedResults.Reset();
+                    CloseTabWindow();
                     _Tab.Reset();
                     _Deadline = Now + TimeoutSeconds;
                     _Phase = EPhase::StartCloseDuringCapture;
@@ -210,6 +237,7 @@ namespace ck_insights_recording_presentation_tests
 
                     _ClosedTab = _Tab;
                     _RetainedResults.Reset();
+                    CloseTabWindow();
                     _Tab.Reset();
                     _Test->TestFalse(TEXT("Closing a tab releases its Slate instance"), _ClosedTab.IsValid());
 
@@ -225,6 +253,7 @@ namespace ck_insights_recording_presentation_tests
                         _RetainedResults->GetVisibility() == EVisibility::Collapsed);
 
                     _RetainedResults.Reset();
+                    CloseTabWindow();
                     _Tab.Reset();
                     _Deadline = Now + TimeoutSeconds;
                     _Phase = EPhase::AwaitClosedCaptureCompletion;
@@ -256,6 +285,7 @@ namespace ck_insights_recording_presentation_tests
                                 TEXT("A tab reopened after automatic completion restores retained results"),
                                 _RetainedResults->GetVisibility() == EVisibility::Visible);
                             _RetainedResults.Reset();
+                            CloseTabWindow();
                             _Tab.Reset();
                         }
                         _Test->TestTrue(
@@ -272,7 +302,21 @@ namespace ck_insights_recording_presentation_tests
     private:
         auto OpenTabAndFindRetainedResults() -> bool
         {
+            if (NOT FSlateApplication::IsInitialized())
+            {
+                _Test->AddError(TEXT("Recording presentation requires Slate before mounting the Insights Analyzer tab."));
+                return false;
+            }
             _Tab = SNew(SCkInsightsAnalyzerTab);
+            _HostWindow = SNew(SWindow)
+                .AutoCenter(EAutoCenter::None)
+                .ClientSize(FVector2D{1120.0f, 700.0f})
+                .CreateTitleBar(false)
+                .HasCloseButton(false)
+                [
+                    _Tab.ToSharedRef()
+                ];
+            FSlateApplication::Get().AddWindow(_HostWindow.ToSharedRef(), true);
             RepassTab();
             _RetainedResults = FindWidgetWithTag(_Tab.ToSharedRef(), FName{RetainedResultsTag});
             _Test->TestNotNull(TEXT("Insights Analyzer exposes its tagged retained-results subtree"), _RetainedResults.Get());
@@ -297,8 +341,30 @@ namespace ck_insights_recording_presentation_tests
 
         auto RepassTab() const -> void
         {
-            _Tab->MarkPrepassAsDirty();
-            _Tab->SlatePrepass();
+            if (NOT FSlateApplication::IsInitialized())
+            {
+                _Test->AddError(TEXT("Recording presentation cannot tick the mounted tab after Slate shutdown."));
+                return;
+            }
+            FSlateApplication& Slate = FSlateApplication::Get();
+            Slate.PumpMessages();
+            Slate.Tick();
+        }
+
+        auto CloseTabWindow() -> void
+        {
+            if (NOT _HostWindow.IsValid()) { return; }
+            if (NOT FSlateApplication::IsInitialized())
+            {
+                _Test->AddError(TEXT("Recording presentation cannot destroy its mounted window after Slate shutdown."));
+                _HostWindow.Reset();
+                return;
+            }
+            FSlateApplication& Slate = FSlateApplication::Get();
+            Slate.DestroyWindowImmediately(_HostWindow.ToSharedRef());
+            _HostWindow.Reset();
+            Slate.PumpMessages();
+            Slate.Tick();
         }
 
         auto StopTraceIfNeeded() const -> void
@@ -323,11 +389,13 @@ namespace ck_insights_recording_presentation_tests
 
         FAutomationTestBase* _Test = nullptr;
         FCkInsightsCaptureController* _Capture = nullptr;
+        TSharedPtr<SWindow> _HostWindow;
         TSharedPtr<SCkInsightsAnalyzerTab> _Tab;
         TWeakPtr<SCkInsightsAnalyzerTab> _ClosedTab;
         TSharedPtr<SWidget> _RetainedResults;
         TSharedPtr<SWidget> _RetainedChild;
         bool _StartedTestCapture = false;
+        bool _ParkedModuleTab = false;
         EPhase _Phase = EPhase::StartEarlyStop;
         double _Deadline = 0.0;
     };

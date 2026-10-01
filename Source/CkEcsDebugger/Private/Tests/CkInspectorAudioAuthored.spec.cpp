@@ -119,7 +119,7 @@ namespace ck_inspector_audio_authored_test
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCkInspectorAudioAuthored,
     "Ck.UiAuthoring.EcsDebugger.AudioInspector.AuthoredComposition",
-    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter | EAutomationTestFlags::NonNullRHI)
 
 auto FCkInspectorAudioAuthored::RunTest(const FString&) -> bool
 {

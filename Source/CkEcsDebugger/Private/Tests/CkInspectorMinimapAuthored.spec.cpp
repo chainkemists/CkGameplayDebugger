@@ -131,7 +131,7 @@ namespace ck_inspector_minimap_authored_test
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCkInspectorMinimapAuthored,
     "Ck.UiAuthoring.EcsDebugger.MinimapInspector.AuthoredComposition",
-    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter | EAutomationTestFlags::NonNullRHI)
 
 auto FCkInspectorMinimapAuthored::RunTest(const FString&) -> bool
 {

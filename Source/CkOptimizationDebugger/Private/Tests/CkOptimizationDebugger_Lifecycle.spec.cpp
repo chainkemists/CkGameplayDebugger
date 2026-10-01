@@ -78,7 +78,7 @@ struct FCkOptimizationDebuggerLifecycleTestAccess
 };
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCkOptimizationDebuggerLifecycle,
-    "Ck.OptimizationDebugger.Lifecycle.ReleasePresentation", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+    "Ck.OptimizationDebugger.Lifecycle.ReleasePresentation", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter | EAutomationTestFlags::NonNullRHI)
 
 bool FCkOptimizationDebuggerLifecycle::RunTest(const FString&)
 {

@@ -96,7 +96,7 @@ namespace ck_inspector_shapes_authored_test
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCkInspectorShapesAuthored,
     "Ck.UiAuthoring.EcsDebugger.ShapesInspector.AuthoredComposition",
-    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter | EAutomationTestFlags::NonNullRHI)
 
 auto FCkInspectorShapesAuthored::RunTest(const FString&) -> bool
 {

@@ -82,7 +82,7 @@ namespace ck_crowd_debugger_lifecycle_test
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCkCrowdDebugger_ProductionLifecycle,
     "Ck.CrowdDebugger.ProductionLifecycle.Release",
-    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter | EAutomationTestFlags::NonNullRHI)
 
 auto FCkCrowdDebugger_ProductionLifecycle::RunTest(const FString&) -> bool
 {

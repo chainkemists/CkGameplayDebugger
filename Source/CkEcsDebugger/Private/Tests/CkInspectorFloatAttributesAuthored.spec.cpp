@@ -240,7 +240,7 @@ namespace ck_inspector_float_attributes_authored_test
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCkInspectorFloatAttributesAuthored,
     "Ck.UiAuthoring.EcsDebugger.FloatAttributesInspector.AuthoredComposition",
-    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter | EAutomationTestFlags::NonNullRHI)
 
 auto FCkInspectorFloatAttributesAuthored::RunTest(const FString&) -> bool
 {

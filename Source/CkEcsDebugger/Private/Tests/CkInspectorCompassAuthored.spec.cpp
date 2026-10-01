@@ -118,7 +118,7 @@ namespace ck_inspector_compass_authored_test
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCkInspectorCompassAuthored,
     "Ck.UiAuthoring.EcsDebugger.CompassInspector.AuthoredComposition",
-    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter | EAutomationTestFlags::NonNullRHI)
 
 auto FCkInspectorCompassAuthored::RunTest(const FString&) -> bool
 {

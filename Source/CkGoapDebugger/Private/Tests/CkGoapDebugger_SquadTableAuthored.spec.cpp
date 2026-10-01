@@ -52,7 +52,7 @@ namespace ck_goap_debugger_squad_table_authored_tests
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
     FCkGoapDebuggerSquadTable_AuthoredEmpty,
     "Ck.UiAuthoring.GoapDebugger.SquadTable.Authored.Empty",
-    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter | EAutomationTestFlags::NonNullRHI)
 
 auto FCkGoapDebuggerSquadTable_AuthoredEmpty::RunTest(const FString&) -> bool
 {

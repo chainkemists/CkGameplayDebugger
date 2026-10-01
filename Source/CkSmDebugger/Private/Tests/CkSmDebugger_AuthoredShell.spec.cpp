@@ -42,7 +42,7 @@ struct FCkSmDebuggerAuthoredShellTestAccess
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCkSmDebuggerAuthoredShell,
     "Ck.UiAuthoring.SmDebugger.AuthoredShell",
-    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter | EAutomationTestFlags::NonNullRHI)
 
 auto FCkSmDebuggerAuthoredShell::RunTest(const FString&) -> bool
 {

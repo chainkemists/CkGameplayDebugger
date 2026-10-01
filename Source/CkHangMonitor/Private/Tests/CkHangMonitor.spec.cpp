@@ -297,7 +297,7 @@ bool FCkHangMonitor_RejectsStaleStopWithoutPartialState::RunTest(const FString&)
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
     FCkHangMonitor_OptInCurrentProcessArmAndStop,
     "Ck.DebuggerLauncher.HangMonitor.OptInCurrentProcessArmAndStop",
-    ck_hang_monitor_tests::kTestFlags)
+    ck_hang_monitor_tests::kTestFlags | EAutomationTestFlags::NonNullRHI)
 
 bool FCkHangMonitor_OptInCurrentProcessArmAndStop::RunTest(const FString&)
 {

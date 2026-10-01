@@ -73,7 +73,7 @@ namespace ck_inspector_tween_authored_test
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCkInspectorTweenAuthored,
     "Ck.UiAuthoring.EcsDebugger.TweenInspector.AuthoredComposition",
-    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter | EAutomationTestFlags::NonNullRHI)
 
 auto FCkInspectorTweenAuthored::RunTest(const FString&) -> bool
 {

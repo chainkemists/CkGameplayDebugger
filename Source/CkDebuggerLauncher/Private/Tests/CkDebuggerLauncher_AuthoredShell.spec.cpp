@@ -89,7 +89,7 @@ namespace ck_debugger_launcher_authored_tests
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCkDebuggerLauncherAuthoredShell, "Ck.DebuggerLauncher.Authored.ShellRecoveryAndLifecycle",
-    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter | EAutomationTestFlags::NonNullRHI)
 
 auto FCkDebuggerLauncherAuthoredShell::RunTest(const FString&) -> bool
 {
@@ -181,7 +181,7 @@ auto FCkDebuggerLauncherAuthoredModuleLifecycle::RunTest(const FString&) -> bool
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCkDebuggerSuiteAuthoredShell, "Ck.DebuggerLauncher.Authored.SuiteShellRecoveryAndOwnership",
-    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter | EAutomationTestFlags::NonNullRHI)
 
 auto FCkDebuggerSuiteAuthoredShell::RunTest(const FString&) -> bool
 {

@@ -22,7 +22,7 @@ namespace ck_goap_debugger_window_shell_authored_tests
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
     FCkGoapDebuggerWindow_AuthoredShell,
     "Ck.UiAuthoring.GoapDebugger.Window.AuthoredStableShell",
-    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter | EAutomationTestFlags::NonNullRHI)
 
 auto FCkGoapDebuggerWindow_AuthoredShell::RunTest(const FString&) -> bool
 {

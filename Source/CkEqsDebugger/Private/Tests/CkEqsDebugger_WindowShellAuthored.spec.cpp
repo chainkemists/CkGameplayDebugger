@@ -41,7 +41,7 @@ namespace ck_eqs_debugger_window_shell_authored_tests
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
     FCkEqsDebuggerWindow_AuthoredShell,
     "Ck.UiAuthoring.EqsDebugger.Window.AuthoredStableShell",
-    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter | EAutomationTestFlags::NonNullRHI)
 
 auto FCkEqsDebuggerWindow_AuthoredShell::RunTest(const FString&) -> bool
 {

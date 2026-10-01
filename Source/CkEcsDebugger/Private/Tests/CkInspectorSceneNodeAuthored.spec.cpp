@@ -195,7 +195,7 @@ namespace ck_inspector_scene_node_authored_test
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCkInspectorSceneNodeAuthored,
     "Ck.UiAuthoring.EcsDebugger.SceneNodeInspector.AuthoredComposition",
-    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter | EAutomationTestFlags::NonNullRHI)
 
 auto FCkInspectorSceneNodeAuthored::RunTest(const FString&) -> bool
 {

@@ -231,7 +231,7 @@ namespace ck_inspector_byte_attributes_authored_test
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCkInspectorByteAttributesAuthored,
     "Ck.UiAuthoring.EcsDebugger.ByteAttributesInspector.AuthoredComposition",
-    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter | EAutomationTestFlags::NonNullRHI)
 
 auto FCkInspectorByteAttributesAuthored::RunTest(const FString&) -> bool
 {

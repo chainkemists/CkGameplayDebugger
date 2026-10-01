@@ -94,7 +94,7 @@ namespace ck_map_debugger_authored_shell_tests
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
     FCkMapDebuggerAuthoredPortsAndReload,
     "Ck.MapDebugger.Authored.PortsAndReload",
-    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter | EAutomationTestFlags::NonNullRHI)
 
 auto FCkMapDebuggerAuthoredPortsAndReload::RunTest(const FString&) -> bool
 {
@@ -158,7 +158,7 @@ auto FCkMapDebuggerAuthoredPortsAndReload::RunTest(const FString&) -> bool
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
     FCkMapDebuggerAuthoredRelease,
     "Ck.MapDebugger.Authored.CloseReopenPreExit",
-    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter | EAutomationTestFlags::NonNullRHI)
 
 auto FCkMapDebuggerAuthoredRelease::RunTest(const FString&) -> bool
 {

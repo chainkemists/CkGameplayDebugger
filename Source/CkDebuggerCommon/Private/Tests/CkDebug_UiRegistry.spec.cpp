@@ -592,7 +592,7 @@ auto FCkDebug_UiRegistry_DebugSwitch::RunTest(const FString&) -> bool
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCkDebug_UiRegistry_EntityRef,
     "Ck.UiAuthoring.Debugger.EntityRef",
-    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter | EAutomationTestFlags::NonNullRHI)
 
 auto FCkDebug_UiRegistry_EntityRef::RunTest(const FString&) -> bool
 {

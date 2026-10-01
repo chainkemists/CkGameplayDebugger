@@ -91,7 +91,7 @@ namespace ck_jolt_debugger_authored_shell_tests
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCkJoltDebuggerAuthoredShellPortsAndReload,
-    "Ck.JoltDebugger.Authored.PortsAndReload", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+    "Ck.JoltDebugger.Authored.PortsAndReload", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter | EAutomationTestFlags::NonNullRHI)
 
 auto FCkJoltDebuggerAuthoredShellPortsAndReload::RunTest(const FString&) -> bool
 {

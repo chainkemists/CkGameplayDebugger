@@ -248,7 +248,7 @@ namespace ck_inspector_integer_attributes_authored_test
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCkInspectorIntegerAttributesAuthored,
     "Ck.UiAuthoring.EcsDebugger.IntegerAttributesInspector.AuthoredComposition",
-    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter | EAutomationTestFlags::NonNullRHI)
 
 auto FCkInspectorIntegerAttributesAuthored::RunTest(const FString&) -> bool
 {

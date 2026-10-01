@@ -38,7 +38,7 @@ namespace ck_ai_debugger_window_authored_tests
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
     FCkAiDebugger_AuthoredWindow,
     "Ck.AiDebugger.AuthoredWindow",
-    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter | EAutomationTestFlags::NonNullRHI)
 
 auto FCkAiDebugger_AuthoredWindow::RunTest(const FString&) -> bool
 {

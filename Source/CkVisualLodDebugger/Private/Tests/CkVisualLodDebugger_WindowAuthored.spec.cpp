@@ -25,7 +25,7 @@ namespace ck_visual_lod_debugger_window_authored_tests
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
     FCkVisualLodDebugger_AuthoredWindow,
     "Ck.VisualLodDebugger.AuthoredWindow",
-    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter | EAutomationTestFlags::NonNullRHI)
 
 auto FCkVisualLodDebugger_AuthoredWindow::RunTest(const FString&) -> bool
 {

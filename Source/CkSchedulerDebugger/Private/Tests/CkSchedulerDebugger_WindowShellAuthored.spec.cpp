@@ -38,7 +38,7 @@ namespace ck_scheduler_debugger_window_shell_authored_tests
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FCkSchedulerDebuggerWindow_AuthoredShell,
 	"Ck.UiAuthoring.SchedulerDebugger.Window.AuthoredStableShell",
-	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter | EAutomationTestFlags::NonNullRHI)
 
 auto FCkSchedulerDebuggerWindow_AuthoredShell::RunTest(const FString&) -> bool
 {

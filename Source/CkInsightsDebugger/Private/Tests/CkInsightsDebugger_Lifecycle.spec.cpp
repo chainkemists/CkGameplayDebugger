@@ -45,7 +45,7 @@ struct FCkInsightsLifecycleTestAccess
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCkInsightsDebuggerLifecycle,
     "Ck.InsightsDebugger.Lifecycle.ReleasePresentation",
-    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter | EAutomationTestFlags::NonNullRHI)
 
 bool FCkInsightsDebuggerLifecycle::RunTest(const FString&)
 {

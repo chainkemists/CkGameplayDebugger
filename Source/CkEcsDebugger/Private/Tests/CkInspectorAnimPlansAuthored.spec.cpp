@@ -115,7 +115,7 @@ namespace ck_inspector_anim_plans_authored_test
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCkInspectorAnimPlansAuthored,
     "Ck.UiAuthoring.EcsDebugger.AnimPlansInspector.AuthoredComposition",
-    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter | EAutomationTestFlags::NonNullRHI)
 
 auto FCkInspectorAnimPlansAuthored::RunTest(const FString&) -> bool
 {

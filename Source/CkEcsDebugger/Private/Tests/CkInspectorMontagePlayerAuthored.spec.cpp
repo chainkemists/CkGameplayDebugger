@@ -118,7 +118,7 @@ namespace ck_inspector_montage_player_authored_test
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCkInspectorMontagePlayerAuthored,
     "Ck.UiAuthoring.EcsDebugger.MontagePlayerInspector.AuthoredComposition",
-    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter | EAutomationTestFlags::NonNullRHI)
 
 auto FCkInspectorMontagePlayerAuthored::RunTest(const FString&) -> bool
 {

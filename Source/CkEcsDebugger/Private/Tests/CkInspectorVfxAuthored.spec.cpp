@@ -93,7 +93,7 @@ namespace ck_inspector_vfx_authored_test
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCkInspectorVfxAuthored,
     "Ck.UiAuthoring.EcsDebugger.VfxInspector.AuthoredComposition",
-    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter | EAutomationTestFlags::NonNullRHI)
 
 auto FCkInspectorVfxAuthored::RunTest(const FString&) -> bool
 {

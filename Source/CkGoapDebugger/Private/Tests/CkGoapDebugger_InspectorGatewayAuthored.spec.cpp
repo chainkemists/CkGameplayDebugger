@@ -99,7 +99,7 @@ namespace ck_goap_debugger_gateway_authored_tests
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
     FCkGoapDebugger_InspectorGatewayAuthored,
     "Ck.UiAuthoring.GoapDebugger.InspectorGateway.AuthoredComposition",
-    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter | EAutomationTestFlags::NonNullRHI)
 
 auto FCkGoapDebugger_InspectorGatewayAuthored::RunTest(const FString&) -> bool
 {

@@ -71,7 +71,7 @@ struct FCkCrowdDebuggerAuthoredShellTestAccess
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCkCrowdDebugger_AuthoredShell,
 	"Ck.CrowdDebugger.AuthoredShell.ProductionPorts",
-	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter | EAutomationTestFlags::NonNullRHI)
 
 auto FCkCrowdDebugger_AuthoredShell::RunTest(const FString&) -> bool
 {

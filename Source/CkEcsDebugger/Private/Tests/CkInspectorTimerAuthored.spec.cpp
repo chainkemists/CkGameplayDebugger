@@ -118,7 +118,7 @@ namespace ck_inspector_timer_authored_test
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCkInspectorTimerAuthored,
     "Ck.UiAuthoring.EcsDebugger.TimerInspector.AuthoredComposition",
-    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter | EAutomationTestFlags::NonNullRHI)
 
 auto FCkInspectorTimerAuthored::RunTest(const FString&) -> bool
 {

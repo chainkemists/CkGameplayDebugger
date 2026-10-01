@@ -16,6 +16,7 @@
 #include "Misc/ScopeExit.h"
 #include "ModuleDescriptor.h"
 #include "Widgets/Docking/SDockTab.h"
+#include "Widgets/SNullWidget.h"
 
 // --------------------------------------------------------------------------------------------------------------------
 
@@ -139,7 +140,7 @@ bool FCkDebuggerLauncherCatalog_AllDebuggersHaveLaunchableDescriptors::RunTest(c
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
     FCkDebuggerLauncherCatalog_AllCatalogTabsCloseAndReopen,
     "Ck.DebuggerLauncher.Catalog.AllCatalogTabsCloseAndReopen",
-    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter | EAutomationTestFlags::NonNullRHI)
 
 // --------------------------------------------------------------------------------------------------------------------
 
@@ -158,22 +159,11 @@ bool FCkDebuggerLauncherCatalog_AllCatalogTabsCloseAndReopen::RunTest(const FStr
     { return false; }
 
     const auto Tools = FCkDebuggerToolRegistry::Get().Get_Tools();
-    auto OpenedByTest = TSet<FName>{};
     const auto DrainSlate = []()
     {
         FSlateApplication::Get().PumpMessages();
         FSlateApplication::Get().Tick();
     };
-    ON_SCOPE_EXIT
-    {
-        for (const auto TabId : OpenedByTest)
-        {
-            if (const auto LiveTab = TabManager->FindExistingLiveTab(FTabId{TabId}); LiveTab.IsValid())
-            { LiveTab->RequestCloseTab(); }
-        }
-        DrainSlate();
-    };
-
     TestEqual(TEXT("Lifecycle census covers every registered standalone debugger tab"), Tools.Num(), PLATFORM_WINDOWS ? 26 : 25);
     for (const auto& Tool : Tools)
     {
@@ -189,14 +179,63 @@ bool FCkDebuggerLauncherCatalog_AllCatalogTabsCloseAndReopen::RunTest(const FStr
         if (NOT TestTrue(*FactoryMessage, Tool.Get_TabFactory().IsBound()))
         { continue; }
 
+        TSharedPtr<SDockTab> InitialRealTab = TabManager->FindExistingLiveTab(FTabId{TabId});
+        const bool bRealTabWasOpen = InitialRealTab.IsValid();
+        TSharedPtr<SDockTab> OwnedFixtureTab;
+        ON_SCOPE_EXIT
+        {
+            if (OwnedFixtureTab.IsValid())
+            { OwnedFixtureTab->RequestCloseTab(); }
+            if (const auto LiveFixture = TabManager->FindExistingLiveTab(FTabId{FixtureTabId}); LiveFixture.IsValid())
+            { LiveFixture->RequestCloseTab(); }
+            DrainSlate();
+
+            const auto FixtureGoneMessage = ck::Format_UE(TEXT("Lifecycle fixture cleanup removes its tab: {}"), TabId);
+            if (NOT TestFalse(*FixtureGoneMessage, TabManager->FindExistingLiveTab(FTabId{FixtureTabId}).IsValid()))
+            { return; }
+
+            const auto RealAbsentMessage = ck::Format_UE(TEXT("Lifecycle fixture leaves no stale real tab: {}"), TabId);
+            const bool bRealTabAbsent = NOT TabManager->FindExistingLiveTab(FTabId{TabId}).IsValid();
+            if (NOT bRealTabWasOpen)
+            {
+                TestTrue(*RealAbsentMessage, bRealTabAbsent);
+                return;
+            }
+            if (NOT TestTrue(*RealAbsentMessage, bRealTabAbsent))
+            { return; }
+
+            // Reopen through the registered spawner so the owning module retains the restored production tab.
+            const TSharedPtr<SDockTab> RestoredTab = TabManager->TryInvokeTab(FTabId{TabId});
+            const auto RestoredMessage = ck::Format_UE(TEXT("Initially open production tab is restored: {}"), TabId);
+            if (NOT TestTrue(*RestoredMessage, RestoredTab.IsValid()))
+            { return; }
+            const auto RestoredIdentityMessage = ck::Format_UE(TEXT("Restored production tab uses its registered id: {}"), TabId);
+            TestTrue(*RestoredIdentityMessage, TabManager->FindExistingLiveTab(FTabId{TabId}) == RestoredTab);
+            const auto RestoredParentMessage = ck::Format_UE(TEXT("Restored production tab has a docking parent: {}"), TabId);
+            TestTrue(*RestoredParentMessage, RestoredTab->GetParent().IsValid());
+            const auto RestoredContentMessage = ck::Format_UE(TEXT("Restored production tab has content: {}"), TabId);
+            TestFalse(*RestoredContentMessage, RestoredTab->GetContent() == SNullWidget::NullWidget);
+        };
+
+        // Direct factory calls replace module-owned tab state, so first remove any existing production tab.
+        if (bRealTabWasOpen)
+        {
+            InitialRealTab->RequestCloseTab();
+            DrainSlate();
+            const auto RealCloseMessage = ck::Format_UE(TEXT("Production tab closes before isolated factory calls: {}"), TabId);
+            if (NOT TestFalse(*RealCloseMessage, TabManager->FindExistingLiveTab(FTabId{TabId}).IsValid()))
+            { continue; }
+            // Let the spawner's weak reuse cache expire before restoring the closed tab.
+            InitialRealTab.Reset();
+        }
+
         const TSharedRef<SDockTab> FirstTab = Tool.Get_TabFactory().Execute();
+        OwnedFixtureTab = FirstTab;
         TabManager->InsertNewDocumentTab(
             HostTabId, FixtureTabId, FTabManager::FLiveTabSearch{HostTabId}, FirstTab);
         const auto OpensMessage = ck::Format_UE(TEXT("Production factory opens tab in a live docking host: {}"), TabId);
         if (NOT TestTrue(*OpensMessage, TabManager->FindExistingLiveTab(FTabId{FixtureTabId}).IsValid()))
         { continue; }
-        OpenedByTest.Add(FixtureTabId);
-
         const auto FirstParentMessage = ck::Format_UE(TEXT("First tab is attached to a production host: {}"), TabId);
         TestTrue(*FirstParentMessage, FirstTab->GetParent().IsValid());
         FirstTab->RequestCloseTab();
@@ -205,8 +244,10 @@ bool FCkDebuggerLauncherCatalog_AllCatalogTabsCloseAndReopen::RunTest(const FStr
         const auto ClosesMessage = ck::Format_UE(TEXT("Normal close removes live tab: {}"), TabId);
         if (NOT TestFalse(*ClosesMessage, TabManager->FindExistingLiveTab(FTabId{FixtureTabId}).IsValid()))
         { continue; }
+        OwnedFixtureTab.Reset();
 
         const TSharedRef<SDockTab> ReopenedTab = Tool.Get_TabFactory().Execute();
+        OwnedFixtureTab = ReopenedTab;
         TabManager->InsertNewDocumentTab(
             HostTabId, FixtureTabId, FTabManager::FLiveTabSearch{HostTabId}, ReopenedTab);
         const auto ReopensMessage = ck::Format_UE(TEXT("Production factory reopens a fresh tab: {}"), TabId);
@@ -219,7 +260,7 @@ bool FCkDebuggerLauncherCatalog_AllCatalogTabsCloseAndReopen::RunTest(const FStr
 
         const auto FinalCloseMessage = ck::Format_UE(TEXT("Reopened tab closes without a stale live entry: {}"), TabId);
         if (TestFalse(*FinalCloseMessage, TabManager->FindExistingLiveTab(FTabId{FixtureTabId}).IsValid()))
-        { OpenedByTest.Remove(FixtureTabId); }
+        { OwnedFixtureTab.Reset(); }
     }
 
     return true;

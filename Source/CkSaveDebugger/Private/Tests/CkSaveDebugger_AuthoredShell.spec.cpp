@@ -5,6 +5,7 @@
 #include "CkSlateLayout/SCkUiSurface.h"
 
 #include "Framework/Application/SlateApplication.h"
+#include "Framework/Docking/TabManager.h"
 #include "Interfaces/IPluginManager.h"
 #include "Misc/AutomationTest.h"
 #include "Misc/FileHelper.h"
@@ -147,11 +148,24 @@ bool FCkSaveDebuggerAuthoredShell::RunTest(const FString&)
         && FCkSaveDebuggerAuthoredShellTestAccess::PortsHaveAuthoredOwners(*RecoveryWindow));
 
     FCkSaveDebuggerModule& Module = FModuleManager::LoadModuleChecked<FCkSaveDebuggerModule>(TEXT("CkSaveDebugger"));
-    Module.CloseDebugger(); Module.OpenDebugger();
+    const bool TabBeforeClose = FCkSaveDebuggerAuthoredShellTestAccess::GetTab(Module).IsValid();
+    const bool WindowBeforeClose = FCkSaveDebuggerAuthoredShellTestAccess::GetWindow(Module).IsValid();
+    Module.CloseDebugger();
+    const bool TabAfterClose = FCkSaveDebuggerAuthoredShellTestAccess::GetTab(Module).IsValid();
+    const bool WindowAfterClose = FCkSaveDebuggerAuthoredShellTestAccess::GetWindow(Module).IsValid();
+    Module.OpenDebugger();
     Slate.PumpMessages(); Slate.Tick();
     const TSharedPtr<SCkSaveDebuggerWindow> ModuleWindow = FCkSaveDebuggerAuthoredShellTestAccess::GetWindow(Module);
     const TSharedPtr<SDockTab> Tab = FCkSaveDebuggerAuthoredShellTestAccess::GetTab(Module);
-    if (NOT TestTrue(TEXT("real loaded module opens Save tab"), ModuleWindow.IsValid() && Tab.IsValid())) { return false; }
+    const TSharedRef<FGlobalTabmanager> TabManager = FGlobalTabmanager::Get();
+    const FString OpenDiagnostic = FString::Printf(
+        TEXT("real loaded module opens Save tab (real-spawner=%d fixture-spawner=%d real-live=%d fixture-live=%d tab-before/closed/open=%d/%d/%d window-before/closed/open=%d/%d/%d)"),
+        TabManager->HasTabSpawner(FName{TEXT("CkSaveDebugger")}),
+        TabManager->HasTabSpawner(FName{TEXT("CkLifecycleFixture_CkSaveDebugger")}),
+        TabManager->FindExistingLiveTab(FTabId{FName{TEXT("CkSaveDebugger")}}).IsValid(),
+        TabManager->FindExistingLiveTab(FTabId{FName{TEXT("CkLifecycleFixture_CkSaveDebugger")}}).IsValid(),
+        TabBeforeClose, TabAfterClose, Tab.IsValid(), WindowBeforeClose, WindowAfterClose, ModuleWindow.IsValid());
+    if (NOT TestTrue(*OpenDiagnostic, ModuleWindow.IsValid() && Tab.IsValid())) { return false; }
     const TSharedPtr<FCkUiView> HeldView = ModuleWindow->Get_AuthoredBody();
     int32 VisualizerCallbackCount = 0;
     ck::save_debugger_viz::Register_OnRowClicked([&VisualizerCallbackCount](const uint32) { ++VisualizerCallbackCount; });

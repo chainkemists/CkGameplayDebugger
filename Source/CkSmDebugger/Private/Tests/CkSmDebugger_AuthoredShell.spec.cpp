@@ -4,6 +4,7 @@
 #include "CkSlateLayout/SCkUiSurface.h"
 
 #include "Framework/Application/SlateApplication.h"
+#include "Framework/Docking/TabManager.h"
 #include "Interfaces/IPluginManager.h"
 #include "Misc/AutomationTest.h"
 #include "Misc/FileHelper.h"
@@ -38,6 +39,8 @@ struct FCkSmDebuggerAuthoredShellTestAccess
     static auto Poll(SCkSmDebuggerWindow& InWindow) -> void { InWindow.PollAuthoredShell(0.0, 0.0f); }
     static auto PreExit(FCkSmDebuggerModule& InModule) -> void { InModule.HandleEnginePreExit(); }
     static auto Tab(const FCkSmDebuggerModule& InModule) -> TSharedPtr<SDockTab> { return InModule._DebuggerTab; }
+    static auto DescribeState(const FCkSmDebuggerModule& InModule) -> FString
+    { return FString::Printf(TEXT("tab=%d window=%d"), InModule._DebuggerTab.IsValid(), InModule._DebuggerWindow.IsValid()); }
 };
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCkSmDebuggerAuthoredShell,
@@ -90,9 +93,20 @@ auto FCkSmDebuggerAuthoredShell::RunTest(const FString&) -> bool
     TestTrue(TEXT("released shell fails closed"), FCkSmDebuggerAuthoredShellTestAccess::GetShell(*Window) == nullptr);
 
     FCkSmDebuggerModule& Module = FModuleManager::LoadModuleChecked<FCkSmDebuggerModule>(TEXT("CkSmDebugger"));
-    Module.CloseDebugger(); Module.OpenDebugger();
+    const FString StateBeforeClose = FCkSmDebuggerAuthoredShellTestAccess::DescribeState(Module);
+    Module.CloseDebugger();
+    const FString StateAfterClose = FCkSmDebuggerAuthoredShellTestAccess::DescribeState(Module);
+    Module.OpenDebugger();
     const TSharedPtr<SDockTab> OpenTab = FCkSmDebuggerAuthoredShellTestAccess::Tab(Module);
-    TestTrue(TEXT("real production tab opens"), OpenTab.IsValid());
+    const TSharedRef<FGlobalTabmanager> TabManager = FGlobalTabmanager::Get();
+    const FString OpenDiagnostic = FString::Printf(
+        TEXT("real production tab opens (real-spawner=%d fixture-spawner=%d real-live=%d fixture-live=%d before-close=[%s] after-close=[%s] after-open=[%s])"),
+        TabManager->HasTabSpawner(FName{TEXT("CkSmDebugger")}),
+        TabManager->HasTabSpawner(FName{TEXT("CkLifecycleFixture_CkSmDebugger")}),
+        TabManager->FindExistingLiveTab(FTabId{FName{TEXT("CkSmDebugger")}}).IsValid(),
+        TabManager->FindExistingLiveTab(FTabId{FName{TEXT("CkLifecycleFixture_CkSmDebugger")}}).IsValid(),
+        *StateBeforeClose, *StateAfterClose, *FCkSmDebuggerAuthoredShellTestAccess::DescribeState(Module));
+    TestTrue(*OpenDiagnostic, OpenTab.IsValid());
     Module.CloseDebugger();
     TestTrue(TEXT("ordinary close releases the retained tab content"), !OpenTab.IsValid() || OpenTab->GetContent() == SNullWidget::NullWidget);
     Module.OpenDebugger();

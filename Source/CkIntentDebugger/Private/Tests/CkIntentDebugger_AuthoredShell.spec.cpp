@@ -12,6 +12,7 @@
 #include "CkSlateLayout/SCkUiRepeat.h"
 #include "CkDebuggerCommon/Window/SCkDebug_WindowChrome.h"
 #include "Framework/Application/SlateApplication.h"
+#include "Framework/Docking/TabManager.h"
 #include "Interfaces/IPluginManager.h"
 #include "Misc/AutomationTest.h"
 #include "Misc/FileHelper.h"
@@ -194,7 +195,11 @@ auto FCkIntentDebuggerAuthoredShell::RunTest(const FString&) -> bool
         && FCkIntentDebuggerAuthoredTestAccess::BodyHostOwnsAuthoredMain(*RecoveryWindow));
 
     FCkIntentDebuggerModule& Module = FModuleManager::LoadModuleChecked<FCkIntentDebuggerModule>(TEXT("CkIntentDebugger"));
+    const bool TabBeforeClose = FCkIntentDebuggerAuthoredTestAccess::GetTab(Module).IsValid();
+    const bool WindowBeforeClose = Module.Get_DebuggerWindow().IsValid();
     Module.CloseDebugger();
+    const bool TabAfterClose = FCkIntentDebuggerAuthoredTestAccess::GetTab(Module).IsValid();
+    const bool WindowAfterClose = Module.Get_DebuggerWindow().IsValid();
     Module.OpenDebugger();
     Slate.PumpMessages();
     Slate.Tick();
@@ -202,7 +207,16 @@ auto FCkIntentDebuggerAuthoredShell::RunTest(const FString&) -> bool
     const TSharedPtr<SDockTab> ModuleTab = FCkIntentDebuggerAuthoredTestAccess::GetTab(Module);
     const TSharedPtr<SWidget> ModuleChrome = ModuleWindow.IsValid() ? FCkIntentDebuggerAuthoredTestAccess::GetChrome(*ModuleWindow) : nullptr;
     const TSharedPtr<SComboButton> InputHudMenu = ModuleWindow.IsValid() ? FCkIntentDebuggerAuthoredTestAccess::GetInputHudMenu(*ModuleWindow) : nullptr;
-    if (NOT TestTrue(TEXT("module open creates the real tab, chrome, and HUD menu"), ModuleWindow.IsValid() && ModuleTab.IsValid() && ModuleChrome.IsValid() && InputHudMenu.IsValid())) { return false; }
+    const TSharedRef<FGlobalTabmanager> TabManager = FGlobalTabmanager::Get();
+    const FString OpenDiagnostic = FString::Printf(
+        TEXT("module open creates the real tab, chrome, and HUD menu (real-spawner=%d fixture-spawner=%d real-live=%d fixture-live=%d tab-before/closed/open=%d/%d/%d window-before/closed/open=%d/%d/%d chrome=%d hud-menu=%d)"),
+        TabManager->HasTabSpawner(FName{TEXT("CkIntentDebugger")}),
+        TabManager->HasTabSpawner(FName{TEXT("CkLifecycleFixture_CkIntentDebugger")}),
+        TabManager->FindExistingLiveTab(FTabId{FName{TEXT("CkIntentDebugger")}}).IsValid(),
+        TabManager->FindExistingLiveTab(FTabId{FName{TEXT("CkLifecycleFixture_CkIntentDebugger")}}).IsValid(),
+        TabBeforeClose, TabAfterClose, ModuleTab.IsValid(),
+        WindowBeforeClose, WindowAfterClose, ModuleWindow.IsValid(), ModuleChrome.IsValid(), InputHudMenu.IsValid());
+    if (NOT TestTrue(*OpenDiagnostic, ModuleWindow.IsValid() && ModuleTab.IsValid() && ModuleChrome.IsValid() && InputHudMenu.IsValid())) { return false; }
     InputHudMenu->SetIsOpen(true);
     Slate.Tick();
     TestTrue(TEXT("owned HUD popup is armed before ordinary close"), InputHudMenu->IsOpen());
